@@ -1,0 +1,25 @@
+# .github/workflows/test.yml
+name: Python Test
+
+on:
+  push:
+    branches:
+      - main
+      - "release/v**"
+      - "maint/**"
+  pull_request:
+    branches:
+      - main
+      - "release/v**"
+      - "maint/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test Placeholder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Success
+        run: echo "SQL Server backend tests are disabled until implementation is ready."
