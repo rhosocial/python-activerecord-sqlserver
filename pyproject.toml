@@ -76,6 +76,10 @@ asyncio_mode = "auto"
 testpaths = [
     "tests",
 ]
+markers = [
+    "requires_capability: marks tests requiring specific backend capabilities",
+    "requires_protocol: marks tests requiring specific backend protocol support",
+]
 
 [tool.coverage.run]
 source = ["rhosocial.activerecord.backend.impl.sqlserver"]
