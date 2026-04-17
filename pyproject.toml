@@ -3,7 +3,7 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rhosocial_activerecord_sqlserver"
+name = "rhosocial-activerecord-sqlserver"
 version = "1.0.0.dev2"
 description = "SQL Server backend implementation for rhosocial-activerecord, providing robust and optimized SQL Server database support."
 readme = "README.md"
@@ -79,6 +79,7 @@ testpaths = [
 markers = [
     "requires_capability: marks tests requiring specific backend capabilities",
     "requires_protocol: marks tests requiring specific backend protocol support",
+    "requires_inner_join: marks tests requiring INNER JOIN support",
 ]
 
 [tool.coverage.run]
