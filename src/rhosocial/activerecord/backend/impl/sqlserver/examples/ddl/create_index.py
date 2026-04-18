@@ -1,5 +1,5 @@
 """
-Basic transaction with context manager for automatic commit/rollback.
+Create an index on an existing table.
 """
 
 import os
@@ -23,7 +23,6 @@ config = SQLServerConnectionConfig(
     trust_server_certificate=(
         os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
     ),
-    autocommit=False,
 )
 backend = SQLServerBackend(connection_config=config)
 backend.connect()
@@ -42,15 +41,16 @@ ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='txn_users',
+    table_name='users',
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
             ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
         ]),
-        ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
+        ColumnDefinition('email', 'NVARCHAR(200)', constraints=[
             ColumnConstraint(ColumnConstraintType.NOT_NULL),
         ]),
+        ColumnDefinition('name', 'NVARCHAR(100)'),
     ],
     if_not_exists=True,
 )
@@ -60,58 +60,33 @@ backend.execute(sql, params, options=ddl_options)
 # ============================================================
 # SECTION: Business Logic (the pattern to learn)
 # ============================================================
-from rhosocial.activerecord.backend.expression import InsertExpression, ValuesSource
-from rhosocial.activerecord.backend.expression.core import Literal
+from rhosocial.activerecord.backend.expression import CreateIndexExpression
 
-# Use transaction context manager for automatic commit/rollback
-# If an exception occurs, the transaction is automatically rolled back
-with backend.transaction():
-    insert_expr = InsertExpression(
-        dialect=dialect,
-        into='txn_users',
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
-    )
-    sql, params = insert_expr.to_sql()
-    backend.execute(sql, params)
-    
-    insert_expr2 = InsertExpression(
-        dialect=dialect,
-        into='txn_users',
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'Bob')]]),
-    )
-    sql, params = insert_expr2.to_sql()
-    backend.execute(sql, params)
-    
-    print("Both inserts executed within transaction")
-
-# Transaction is automatically committed when exiting the context
-print("Transaction committed")
-
-# ============================================================
-# SECTION: Execution (verify results)
-# ============================================================
-from rhosocial.activerecord.backend.expression import QueryExpression, TableExpression, Column
-
-query = QueryExpression(
+create_idx = CreateIndexExpression(
     dialect=dialect,
-    select=[Column(dialect, 'id'), Column(dialect, 'name')],
-    from_=TableExpression(dialect, 'txn_users'),
+    index_name='idx_users_email',
+    table_name='users',
+    columns=['email'],
+    unique=True,
+    if_not_exists=True,
 )
-sql, params = query.to_sql()
-dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
-result = backend.execute(sql, params, options=dql_options)
-print(f"Rows after transaction: {len(result.data) if result.data else 0}")
-for row in result.data or []:
-    print(f" {row}")
+
+sql, params = create_idx.to_sql()
+print(f"SQL: {sql}")
+print(f"Params: {params}")
+
+# ============================================================
+# SECTION: Execution (run the expression)
+# ============================================================
+result = backend.execute(sql, params, options=ddl_options)
+print("Index created: idx_users_email")
 
 # ============================================================
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='txn_users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table_name='users', if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

@@ -1,5 +1,5 @@
 """
-Basic transaction with context manager for automatic commit/rollback.
+Batch insert multiple rows efficiently.
 """
 
 import os
@@ -23,7 +23,6 @@ config = SQLServerConnectionConfig(
     trust_server_certificate=(
         os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
     ),
-    autocommit=False,
 )
 backend = SQLServerBackend(connection_config=config)
 backend.connect()
@@ -42,7 +41,7 @@ ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='txn_users',
+    table_name='batch_users',
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -51,6 +50,7 @@ create_table = CreateTableExpression(
         ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
             ColumnConstraint(ColumnConstraintType.NOT_NULL),
         ]),
+        ColumnDefinition('email', 'NVARCHAR(200)'),
     ],
     if_not_exists=True,
 )
@@ -63,46 +63,46 @@ backend.execute(sql, params, options=ddl_options)
 from rhosocial.activerecord.backend.expression import InsertExpression, ValuesSource
 from rhosocial.activerecord.backend.expression.core import Literal
 
-# Use transaction context manager for automatic commit/rollback
-# If an exception occurs, the transaction is automatically rolled back
-with backend.transaction():
-    insert_expr = InsertExpression(
-        dialect=dialect,
-        into='txn_users',
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
-    )
-    sql, params = insert_expr.to_sql()
-    backend.execute(sql, params)
-    
-    insert_expr2 = InsertExpression(
-        dialect=dialect,
-        into='txn_users',
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'Bob')]]),
-    )
-    sql, params = insert_expr2.to_sql()
-    backend.execute(sql, params)
-    
-    print("Both inserts executed within transaction")
+# Prepare batch data
+users = [
+    ('Alice', 'alice@example.com'),
+    ('Bob', 'bob@example.com'),
+    ('Charlie', 'charlie@example.com'),
+]
 
-# Transaction is automatically committed when exiting the context
-print("Transaction committed")
+# Create batch insert with multiple value rows
+insert_expr = InsertExpression(
+    dialect=dialect,
+    into='batch_users',
+    columns=['name', 'email'],
+    source=ValuesSource(
+        dialect,
+        [[Literal(dialect, name), Literal(dialect, email)] for name, email in users],
+    ),
+)
+
+sql, params = insert_expr.to_sql()
+print(f"SQL: {sql}")
+print(f"Params: {params}")
 
 # ============================================================
-# SECTION: Execution (verify results)
+# SECTION: Execution (run the expression)
 # ============================================================
+result = backend.execute(sql, params)
+print(f"Affected rows: {result.affected_rows}")
+
+# Verify insertion
 from rhosocial.activerecord.backend.expression import QueryExpression, TableExpression, Column
 
 query = QueryExpression(
     dialect=dialect,
-    select=[Column(dialect, 'id'), Column(dialect, 'name')],
-    from_=TableExpression(dialect, 'txn_users'),
+    select=[Column(dialect, 'id'), Column(dialect, 'name'), Column(dialect, 'email')],
+    from_=TableExpression(dialect, 'batch_users'),
 )
 sql, params = query.to_sql()
 dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 result = backend.execute(sql, params, options=dql_options)
-print(f"Rows after transaction: {len(result.data) if result.data else 0}")
+print(f"Inserted rows:")
 for row in result.data or []:
     print(f" {row}")
 
@@ -111,7 +111,7 @@ for row in result.data or []:
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='txn_users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table_name='batch_users', if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

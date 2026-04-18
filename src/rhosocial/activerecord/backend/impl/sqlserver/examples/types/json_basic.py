@@ -1,5 +1,8 @@
 """
-Basic transaction with context manager for automatic commit/rollback.
+JSON operations using SQL Server 2016+ JSON functions.
+
+SQL Server doesn't have a native JSON type but provides functions
+for working with JSON data stored in NVARCHAR columns.
 """
 
 import os
@@ -23,7 +26,6 @@ config = SQLServerConnectionConfig(
     trust_server_certificate=(
         os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
     ),
-    autocommit=False,
 )
 backend = SQLServerBackend(connection_config=config)
 backend.connect()
@@ -39,18 +41,17 @@ from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
 
 ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
+dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='txn_users',
+    table_name='json_data',
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
             ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
         ]),
-        ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
-            ColumnConstraint(ColumnConstraintType.NOT_NULL),
-        ]),
+        ColumnDefinition('data', 'NVARCHAR(MAX)'),
     ],
     if_not_exists=True,
 )
@@ -63,55 +64,45 @@ backend.execute(sql, params, options=ddl_options)
 from rhosocial.activerecord.backend.expression import InsertExpression, ValuesSource
 from rhosocial.activerecord.backend.expression.core import Literal
 
-# Use transaction context manager for automatic commit/rollback
-# If an exception occurs, the transaction is automatically rolled back
-with backend.transaction():
-    insert_expr = InsertExpression(
-        dialect=dialect,
-        into='txn_users',
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
-    )
-    sql, params = insert_expr.to_sql()
-    backend.execute(sql, params)
-    
-    insert_expr2 = InsertExpression(
-        dialect=dialect,
-        into='txn_users',
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'Bob')]]),
-    )
-    sql, params = insert_expr2.to_sql()
-    backend.execute(sql, params)
-    
-    print("Both inserts executed within transaction")
+# Insert JSON data as string literal
+# Note: SQL Server 2022+ supports JSON_OBJECT function
+json_literal = '{"name": "John", "age": 30, "hobbies": ["reading", "coding"]}'
 
-# Transaction is automatically committed when exiting the context
-print("Transaction committed")
+insert_expr = InsertExpression(
+    dialect=dialect,
+    into='json_data',
+    columns=['data'],
+    source=ValuesSource(dialect, [[Literal(dialect, json_literal)]]),
+)
+sql, params = insert_expr.to_sql()
+backend.execute(sql, params)
+print("JSON data inserted")
 
 # ============================================================
-# SECTION: Execution (verify results)
+# SECTION: Execution (query JSON data)
 # ============================================================
+# For JSON queries, we use raw SQL since JSON_VALUE/JSON_QUERY
+# are SQL Server specific functions not yet available as expressions
 from rhosocial.activerecord.backend.expression import QueryExpression, TableExpression, Column
 
+# Basic query to get the JSON data
 query = QueryExpression(
     dialect=dialect,
-    select=[Column(dialect, 'id'), Column(dialect, 'name')],
-    from_=TableExpression(dialect, 'txn_users'),
+    select=[Column(dialect, 'id'), Column(dialect, 'data')],
+    from_=TableExpression(dialect, 'json_data'),
 )
 sql, params = query.to_sql()
-dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 result = backend.execute(sql, params, options=dql_options)
-print(f"Rows after transaction: {len(result.data) if result.data else 0}")
+print(f"Stored JSON data:")
 for row in result.data or []:
-    print(f" {row}")
+    print(f" ID={row['id']}: {row['data']}")
 
 # ============================================================
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='txn_users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table_name='json_data', if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 
