@@ -1,0 +1,457 @@
+# src/rhosocial/activerecord/backend/impl/sqlserver/adapters.py
+"""
+SQL Server type adapters.
+
+This module provides type adapters for converting between Python types
+and SQL Server-specific data types.
+"""
+
+import json
+import uuid
+from abc import ABC, abstractmethod
+from datetime import date, datetime, time
+from typing import Any, Dict, List, Type, Union
+
+
+class TypeAdapter(ABC):
+    """Base class for type adapters."""
+    
+    @property
+    @abstractmethod
+    def supported_types(self) -> Dict[Type, List[str]]:
+        """Return mapping of Python types to SQL Server types."""
+        pass
+    
+    @abstractmethod
+    def to_database(self, value: Any) -> Any:
+        """Convert Python value to database value."""
+        pass
+    
+    @abstractmethod
+    def from_database(self, value: Any) -> Any:
+        """Convert database value to Python value."""
+        pass
+
+
+class SQLServerUUIDAdapter(TypeAdapter):
+    """Adapter for UNIQUEIDENTIFIER type.
+    
+    SQL Server's UNIQUEIDENTIFIER type stores UUIDs.
+    They are typically stored as strings in the format:
+    XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    """
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            uuid.UUID: ["uniqueidentifier"],
+            str: ["uniqueidentifier"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        
+        if isinstance(value, str):
+            try:
+                uuid.UUID(value)
+                return value
+            except ValueError:
+                raise ValueError(f"Invalid UUID string: {value}")
+        
+        raise TypeError(f"Expected UUID or str, got {type(value)}")
+    
+    def from_database(self, value: Any) -> uuid.UUID:
+        if value is None:
+            return None
+        
+        if isinstance(value, uuid.UUID):
+            return value
+        
+        return uuid.UUID(str(value))
+
+
+class SQLServerDateTimeAdapter(TypeAdapter):
+    """Adapter for DATETIME2 type.
+    
+    SQL Server DATETIME2 has better precision than DATETIME:
+    - DATETIME: 3.33ms accuracy, 1753-01-01 to 9999-12-31
+    - DATETIME2: 100ns accuracy, 0001-01-01 to 9999-12-31
+    """
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            datetime: ["datetime2", "datetime", "smalldatetime"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        
+        if isinstance(value, datetime):
+            return value
+        
+        raise TypeError(f"Expected datetime, got {type(value)}")
+    
+    def from_database(self, value: Any) -> datetime:
+        if value is None:
+            return None
+        
+        if isinstance(value, datetime):
+            return value
+        
+        if isinstance(value, str):
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        
+        raise TypeError(f"Cannot convert {type(value)} to datetime")
+
+
+class SQLServerDateTimeOffsetAdapter(TypeAdapter):
+    """Adapter for DATETIMEOFFSET type.
+    
+    DATETIMEOFFSET includes timezone information:
+    - Stores date, time, and timezone offset
+    - Useful for applications spanning multiple timezones
+    """
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            datetime: ["datetimeoffset"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        from datetime import timezone
+        
+        if value is None:
+            return None
+        
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value
+        
+        raise TypeError(f"Expected datetime, got {type(value)}")
+    
+    def from_database(self, value: Any) -> datetime:
+        if value is None:
+            return None
+        
+        if isinstance(value, datetime):
+            return value
+        
+        if isinstance(value, str):
+            return datetime.fromisoformat(value)
+        
+        raise TypeError(f"Cannot convert {type(value)} to datetime")
+
+
+class SQLServerDateAdapter(TypeAdapter):
+    """Adapter for DATE type."""
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            date: ["date"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, date):
+            return value
+        if isinstance(value, datetime):
+            return value.date()
+        raise TypeError(f"Expected date, got {type(value)}")
+    
+    def from_database(self, value: Any) -> date:
+        if value is None:
+            return None
+        if isinstance(value, date):
+            return value
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, str):
+            return date.fromisoformat(value)
+        raise TypeError(f"Cannot convert {type(value)} to date")
+
+
+class SQLServerTimeAdapter(TypeAdapter):
+    """Adapter for TIME type."""
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            time: ["time"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, time):
+            return value
+        if isinstance(value, datetime):
+            return value.time()
+        raise TypeError(f"Expected time, got {type(value)}")
+    
+    def from_database(self, value: Any) -> time:
+        if value is None:
+            return None
+        if isinstance(value, time):
+            return value
+        if isinstance(value, datetime):
+            return value.time()
+        if isinstance(value, str):
+            return time.fromisoformat(value)
+        raise TypeError(f"Cannot convert {type(value)} to time")
+
+
+class SQLServerJSONAdapter(TypeAdapter):
+    """Adapter for JSON data in SQL Server 2016+.
+    
+    SQL Server 2016+ supports JSON functions but doesn't have
+    a native JSON type. JSON data is stored as NVARCHAR(MAX).
+    """
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            dict: ["nvarchar(max)", "json"],
+            list: ["nvarchar(max)", "json"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        
+        if isinstance(value, (dict, list)):
+            return json.dumps(value)
+        
+        if isinstance(value, str):
+            json.loads(value)
+            return value
+        
+        raise TypeError(f"Expected dict, list, or str, got {type(value)}")
+    
+    def from_database(self, value: Any) -> Union[dict, list]:
+        if value is None:
+            return None
+        
+        if isinstance(value, (dict, list)):
+            return value
+        
+        if isinstance(value, str):
+            return json.loads(value)
+        
+        raise TypeError(f"Cannot convert {type(value)} to dict/list")
+
+
+class SQLServerXMLAdapter(TypeAdapter):
+    """Adapter for XML type.
+    
+    SQL Server has native XML support with:
+    - XML type for storage
+    - XQuery for querying
+    - XML indexes for performance
+    """
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            str: ["xml"],
+            bytes: ["xml"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        
+        if isinstance(value, str):
+            return value
+        
+        if isinstance(value, bytes):
+            return value.decode('utf-8')
+        
+        if isinstance(value, dict):
+            return self._dict_to_xml(value)
+        
+        raise TypeError(f"Expected str, bytes, or dict, got {type(value)}")
+    
+    def from_database(self, value: Any) -> str:
+        if value is None:
+            return None
+        
+        if isinstance(value, str):
+            return value
+        
+        if isinstance(value, bytes):
+            return value.decode('utf-8')
+        
+        raise TypeError(f"Cannot convert {type(value)} to XML")
+    
+    def _dict_to_xml(self, data: dict, root: str = "root") -> str:
+        import xml.etree.ElementTree as ET
+        
+        root_elem = ET.Element(root)
+        self._build_xml(root_elem, data)
+        return ET.tostring(root_elem, encoding='unicode')
+    
+    def _build_xml(self, parent, data):
+        for key, value in data.items():
+            if isinstance(value, dict):
+                elem = ET.SubElement(parent, key)
+                self._build_xml(elem, value)
+            elif isinstance(value, list):
+                for item in value:
+                    elem = ET.SubElement(parent, key)
+                    if isinstance(item, dict):
+                        self._build_xml(elem, item)
+                    else:
+                        elem.text = str(item)
+            else:
+                elem = ET.SubElement(parent, key)
+                elem.text = str(value)
+
+
+class SQLServerSpatialAdapter(TypeAdapter):
+    """Adapter for GEOGRAPHY and GEOMETRY types.
+    
+    SQL Server supports spatial data through:
+    - geography: For earth-based coordinates (lat/lon)
+    - geometry: For planar coordinates
+    
+    Uses Well-Known Text (WKT) or Well-Known Binary (WKB) format.
+    """
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            str: ["geography", "geometry"],
+            bytes: ["geography", "geometry"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        
+        if isinstance(value, str):
+            return value
+        
+        if isinstance(value, bytes):
+            return value
+        
+        if isinstance(value, dict):
+            return self._dict_to_wkt(value)
+        
+        raise TypeError(f"Expected str, bytes, or dict, got {type(value)}")
+    
+    def from_database(self, value: Any) -> str:
+        if value is None:
+            return None
+        
+        if isinstance(value, str):
+            return value
+        
+        if isinstance(value, bytes):
+            return value.decode('utf-8')
+        
+        raise TypeError(f"Cannot convert {type(value)} to spatial type")
+    
+    def _dict_to_wkt(self, data: dict) -> str:
+        geom_type = data.get('type', 'Point')
+        
+        if geom_type == 'Point':
+            coords = data.get('coordinates', [0, 0])
+            return f"POINT({coords[0]} {coords[1]})"
+        
+        elif geom_type == 'LineString':
+            coords = data.get('coordinates', [])
+            points = " ".join(f"{c[0]} {c[1]}" for c in coords)
+            return f"LINESTRING({points})"
+        
+        elif geom_type == 'Polygon':
+            coords = data.get('coordinates', [[]])
+            rings = []
+            for ring in coords:
+                points = " ".join(f"{c[0]} {c[1]}" for c in ring)
+                rings.append(f"({points})")
+            return f"POLYGON({','.join(rings)})"
+        
+        raise ValueError(f"Unsupported geometry type: {geom_type}")
+
+
+class SQLServerHierarchyIdAdapter(TypeAdapter):
+    """Adapter for HIERARCHYID type.
+    
+    HIERARCHYID is a CLR type in SQL Server for representing
+    hierarchical data (organizational charts, file systems, etc.).
+    """
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        return {
+            str: ["hierarchyid"],
+            list: ["hierarchyid"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        
+        if isinstance(value, str):
+            return value
+        
+        if isinstance(value, list):
+            return "/" + "/".join(str(x) for x in value) + "/"
+        
+        raise TypeError(f"Expected str or list, got {type(value)}")
+    
+    def from_database(self, value: Any) -> str:
+        if value is None:
+            return None
+        
+        return str(value)
+
+
+class SQLServerDecimalAdapter(TypeAdapter):
+    """Adapter for DECIMAL/NUMERIC type."""
+    
+    @property
+    def supported_types(self) -> Dict[Type, List[str]]:
+        from decimal import Decimal
+        return {
+            Decimal: ["decimal", "numeric", "money", "smallmoney"],
+            float: ["decimal", "numeric"],
+            int: ["decimal", "numeric"],
+        }
+    
+    def to_database(self, value: Any) -> Any:
+        if value is None:
+            return None
+        
+        from decimal import Decimal
+        if isinstance(value, Decimal):
+            return float(value)
+        
+        if isinstance(value, (int, float)):
+            return value
+        
+        raise TypeError(f"Expected Decimal, int, or float, got {type(value)}")
+    
+    def from_database(self, value: Any):
+        from decimal import Decimal
+        
+        if value is None:
+            return None
+        
+        if isinstance(value, Decimal):
+            return value
+        
+        if isinstance(value, (int, float, str)):
+            return Decimal(str(value))
+        
+        raise TypeError(f"Cannot convert {type(value)} to Decimal")
