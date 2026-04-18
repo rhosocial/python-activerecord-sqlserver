@@ -1,15 +1,17 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/examples/query/basic.py
 """Basic query examples for SQL Server.
 
-Demonstrates:
-- Simple SELECT queries
-- Parameterized queries
-- Pagination with OFFSET FETCH
-- Aggregation queries
+This example demonstrates:
+1. Simple SELECT queries
+2. Parameterized queries
+3. Pagination with OFFSET FETCH
+4. Aggregation queries
+5. Common Table Expressions (CTE)
+6. Window functions
+
+Connection configuration is loaded from environment variables with defaults.
 """
 
-import yaml
-from pathlib import Path
+import os
 
 from rhosocial.activerecord.backend.impl.sqlserver import (
     SQLServerBackend,
@@ -18,38 +20,27 @@ from rhosocial.activerecord.backend.impl.sqlserver import (
 
 
 def get_backend():
-    """Get a configured backend instance."""
-    config_path = Path(__file__).parent.parent.parent.parent.parent.parent.parent / "tests" / "config" / "sqlserver_scenarios.yaml"
-    
-    config = {}
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            config_data = yaml.safe_load(f)
-            config = config_data.get('scenarios', {}).get('sqlserver_2022', {})
-    
-    backend = SQLServerBackend(
-        connection_config=SQLServerConnectionConfig(
-            host=config.get('host', 'localhost'),
-            port=config.get('port', 1433),
-            database=config.get('database', 'test_db'),
-            username=config.get('username', 'sa'),
-            password=config.get('password', ''),
-            driver=config.get('driver', 'ODBC Driver 17 for SQL Server'),
-            encrypt=config.get('encrypt', False),
-            trust_server_certificate=config.get('trust_server_certificate', True),
-        )
+    """Get a configured backend instance from environment variables."""
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '1433')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', 'Password123!'),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'ODBC Driver 17 for SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true',
     )
     
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
     return backend
 
 
 def example_simple_select():
-    """Example: Simple SELECT query.
-    
-    SQL Server uses standard SELECT syntax.
-    """
+    """Example: Simple SELECT query."""
+    print("\n--- Simple SELECT ---")
     backend = get_backend()
-    backend.connect()
     
     result = backend.execute("SELECT 1 AS id, 'Hello' AS message")
     
@@ -66,8 +57,8 @@ def example_parameterized_query():
     
     SQL Server uses ? for parameter placeholders (qmark style).
     """
+    print("\n--- Parameterized Query ---")
     backend = get_backend()
-    backend.connect()
     
     result = backend.execute(
         "SELECT name FROM sys.databases WHERE database_id < ?",
@@ -88,8 +79,8 @@ def example_pagination():
     SQL Server 2012+ uses OFFSET FETCH syntax for pagination.
     Note: ORDER BY is required when using OFFSET FETCH.
     """
+    print("\n--- Pagination (OFFSET FETCH) ---")
     backend = get_backend()
-    backend.connect()
     
     page = 1
     page_size = 10
@@ -112,19 +103,15 @@ def example_pagination():
 
 
 def example_aggregation():
-    """Example: Aggregation queries.
-    
-    SQL Server supports standard aggregation functions.
-    """
+    """Example: Aggregation queries."""
+    print("\n--- Aggregation ---")
     backend = get_backend()
-    backend.connect()
     
     result = backend.execute("""
         SELECT 
             COUNT(*) AS total_count,
             MIN(name) AS min_name,
-            MAX(name) AS max_name,
-            LEN(name) AS name_length
+            MAX(name) AS max_name
         FROM sys.databases
     """)
     
@@ -138,18 +125,14 @@ def example_aggregation():
 
 
 def example_group_by():
-    """Example: GROUP BY with HAVING.
-    
-    SQL Server supports GROUP BY with filtering using HAVING.
-    """
+    """Example: GROUP BY with HAVING."""
+    print("\n--- GROUP BY ---")
     backend = get_backend()
-    backend.connect()
     
     result = backend.execute("""
         SELECT 
             type_desc,
-            COUNT(*) AS count,
-            SUM(size) AS total_size
+            COUNT(*) AS count
         FROM sys.master_files
         GROUP BY type_desc
         HAVING COUNT(*) > 0
@@ -165,12 +148,9 @@ def example_group_by():
 
 
 def example_case_expression():
-    """Example: CASE expression.
-    
-    SQL Server supports CASE for conditional logic in queries.
-    """
+    """Example: CASE expression for conditional logic."""
+    print("\n--- CASE Expression ---")
     backend = get_backend()
-    backend.connect()
     
     result = backend.execute("""
         SELECT 
@@ -193,12 +173,9 @@ def example_case_expression():
 
 
 def example_common_table_expression():
-    """Example: Common Table Expression (CTE).
-    
-    SQL Server supports CTEs with WITH clause.
-    """
+    """Example: Common Table Expression (CTE)."""
+    print("\n--- CTE ---")
     backend = get_backend()
-    backend.connect()
     
     result = backend.execute("""
         WITH db_info AS (
@@ -219,12 +196,9 @@ def example_common_table_expression():
 
 
 def example_window_function():
-    """Example: Window functions.
-    
-    SQL Server 2012+ supports enhanced window functions.
-    """
+    """Example: Window functions (SQL Server 2012+)."""
+    print("\n--- Window Functions ---")
     backend = get_backend()
-    backend.connect()
     
     result = backend.execute("""
         SELECT 
@@ -261,12 +235,11 @@ def main():
     ]
     
     for name, func in examples:
-        print(f"\n{name}:")
         try:
             func()
-            print("   ✓ Success")
+            print(f"   ✓ {name} completed")
         except Exception as e:
-            print(f"   ✗ Error: {e}")
+            print(f"   ✗ {name} failed: {e}")
     
     print("\n" + "=" * 60)
     print("Query examples completed")

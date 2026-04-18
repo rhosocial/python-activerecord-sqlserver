@@ -283,3 +283,489 @@ jobs:
         run: |
           export PYTHONPATH=src
           python -m pytest tests/
+
+  test-py310-sqlserver2019:
+    name: Run tests with Python 3.10 and SQL Server 2019
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Password123!
+        options: >-
+          --health-cmd "opt/mssql/bin-tools18/healthcheck.sh"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+        ports:
+          - 1436:1433
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Install activerecord and testsuite from PyPI
+        run: |
+          pip install rhosocial-activerecord==1.0.0.dev24
+          pip install rhosocial-activerecord-testsuite==1.0.0.dev11
+
+      - name: Create test database
+        run: |
+          python -c "
+          import pyodbc
+
+          connection_string = (
+              'DRIVER={ODBC Driver 17 for SQL Server};'
+              'SERVER=localhost,1436;'
+              'DATABASE=master;'
+              'UID=sa;'
+              'PWD=Password123!;'
+              'TrustServerCertificate=yes;'
+              'Encrypt=no;'
+          )
+
+          conn = pyodbc.connect(connection_string)
+          cursor = conn.cursor()
+          cursor.execute('CREATE DATABASE test_db')
+          print('Successfully created test_db')
+          cursor.close()
+          conn.close()
+          "
+
+      - name: Create SQL Server scenario config
+        run: |
+          cat > sqlserver_scenarios.yaml << EOF
+          scenarios:
+            sqlserver_2019:
+              host: localhost
+              port: 1436
+              database: test_db
+              username: sa
+              password: Password123!
+              driver: "ODBC Driver 17 for SQL Server"
+              encrypt: false
+              trust_server_certificate: true
+              autocommit: true
+          EOF
+          echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=src
+          python -m pytest tests/
+
+  test-py311-sqlserver2019:
+    name: Run tests with Python 3.11 and SQL Server 2019
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Password123!
+        options: >-
+          --health-cmd "opt/mssql/bin-tools18/healthcheck.sh"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+        ports:
+          - 1437:1433
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Install activerecord and testsuite from PyPI
+        run: |
+          pip install rhosocial-activerecord==1.0.0.dev24
+          pip install rhosocial-activerecord-testsuite==1.0.0.dev11
+
+      - name: Create test database
+        run: |
+          python -c "
+          import pyodbc
+
+          connection_string = (
+              'DRIVER={ODBC Driver 17 for SQL Server};'
+              'SERVER=localhost,1437;'
+              'DATABASE=master;'
+              'UID=sa;'
+              'PWD=Password123!;'
+              'TrustServerCertificate=yes;'
+              'Encrypt=no;'
+          )
+
+          conn = pyodbc.connect(connection_string)
+          cursor = conn.cursor()
+          cursor.execute('CREATE DATABASE test_db')
+          print('Successfully created test_db')
+          cursor.close()
+          conn.close()
+          "
+
+      - name: Create SQL Server scenario config
+        run: |
+          cat > sqlserver_scenarios.yaml << EOF
+          scenarios:
+            sqlserver_2019:
+              host: localhost
+              port: 1437
+              database: test_db
+              username: sa
+              password: Password123!
+              driver: "ODBC Driver 17 for SQL Server"
+              encrypt: false
+              trust_server_certificate: true
+              autocommit: true
+          EOF
+          echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=src
+          python -m pytest tests/
+
+  test-py312-sqlserver2019:
+    name: Run tests with Python 3.12 and SQL Server 2019
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Password123!
+        options: >-
+          --health-cmd "opt/mssql/bin-tools18/healthcheck.sh"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+        ports:
+          - 1438:1433
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Install activerecord and testsuite from PyPI
+        run: |
+          pip install rhosocial-activerecord==1.0.0.dev24
+          pip install rhosocial-activerecord-testsuite==1.0.0.dev11
+
+      - name: Create test database
+        run: |
+          python -c "
+          import pyodbc
+
+          connection_string = (
+              'DRIVER={ODBC Driver 17 for SQL Server};'
+              'SERVER=localhost,1438;'
+              'DATABASE=master;'
+              'UID=sa;'
+              'PWD=Password123!;'
+              'TrustServerCertificate=yes;'
+              'Encrypt=no;'
+          )
+
+          conn = pyodbc.connect(connection_string)
+          cursor = conn.cursor()
+          cursor.execute('CREATE DATABASE test_db')
+          print('Successfully created test_db')
+          cursor.close()
+          conn.close()
+          "
+
+      - name: Create SQL Server scenario config
+        run: |
+          cat > sqlserver_scenarios.yaml << EOF
+          scenarios:
+            sqlserver_2019:
+              host: localhost
+              port: 1438
+              database: test_db
+              username: sa
+              password: Password123!
+              driver: "ODBC Driver 17 for SQL Server"
+              encrypt: false
+              trust_server_certificate: true
+              autocommit: true
+          EOF
+          echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=src
+          python -m pytest tests/
+
+  test-py310-sqlserver2025:
+    name: Run tests with Python 3.10 and SQL Server 2025
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2025-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Password123!
+        options: >-
+          --health-cmd "opt/mssql/bin-tools18/healthcheck.sh"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+        ports:
+          - 1439:1433
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Install activerecord and testsuite from PyPI
+        run: |
+          pip install rhosocial-activerecord==1.0.0.dev24
+          pip install rhosocial-activerecord-testsuite==1.0.0.dev11
+
+      - name: Create test database
+        run: |
+          python -c "
+          import pyodbc
+
+          connection_string = (
+              'DRIVER={ODBC Driver 17 for SQL Server};'
+              'SERVER=localhost,1439;'
+              'DATABASE=master;'
+              'UID=sa;'
+              'PWD=Password123!;'
+              'TrustServerCertificate=yes;'
+              'Encrypt=no;'
+          )
+
+          conn = pyodbc.connect(connection_string)
+          cursor = conn.cursor()
+          cursor.execute('CREATE DATABASE test_db')
+          print('Successfully created test_db')
+          cursor.close()
+          conn.close()
+          "
+
+      - name: Create SQL Server scenario config
+        run: |
+          cat > sqlserver_scenarios.yaml << EOF
+          scenarios:
+            sqlserver_2025:
+              host: localhost
+              port: 1439
+              database: test_db
+              username: sa
+              password: Password123!
+              driver: "ODBC Driver 17 for SQL Server"
+              encrypt: false
+              trust_server_certificate: true
+              autocommit: true
+          EOF
+          echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=src
+          python -m pytest tests/
+
+  test-py311-sqlserver2025:
+    name: Run tests with Python 3.11 and SQL Server 2025
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2025-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Password123!
+        options: >-
+          --health-cmd "opt/mssql/bin-tools18/healthcheck.sh"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+        ports:
+          - 1440:1433
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Install activerecord and testsuite from PyPI
+        run: |
+          pip install rhosocial-activerecord==1.0.0.dev24
+          pip install rhosocial-activerecord-testsuite==1.0.0.dev11
+
+      - name: Create test database
+        run: |
+          python -c "
+          import pyodbc
+
+          connection_string = (
+              'DRIVER={ODBC Driver 17 for SQL Server};'
+              'SERVER=localhost,1440;'
+              'DATABASE=master;'
+              'UID=sa;'
+              'PWD=Password123!;'
+              'TrustServerCertificate=yes;'
+              'Encrypt=no;'
+          )
+
+          conn = pyodbc.connect(connection_string)
+          cursor = conn.cursor()
+          cursor.execute('CREATE DATABASE test_db')
+          print('Successfully created test_db')
+          cursor.close()
+          conn.close()
+          "
+
+      - name: Create SQL Server scenario config
+        run: |
+          cat > sqlserver_scenarios.yaml << EOF
+          scenarios:
+            sqlserver_2025:
+              host: localhost
+              port: 1440
+              database: test_db
+              username: sa
+              password: Password123!
+              driver: "ODBC Driver 17 for SQL Server"
+              encrypt: false
+              trust_server_certificate: true
+              autocommit: true
+          EOF
+          echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=src
+          python -m pytest tests/
+
+  test-py312-sqlserver2025:
+    name: Run tests with Python 3.12 and SQL Server 2025
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2025-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Password123!
+        options: >-
+          --health-cmd "opt/mssql/bin-tools18/healthcheck.sh"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+        ports:
+          - 1441:1433
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Install activerecord and testsuite from PyPI
+        run: |
+          pip install rhosocial-activerecord==1.0.0.dev24
+          pip install rhosocial-activerecord-testsuite==1.0.0.dev11
+
+      - name: Create test database
+        run: |
+          python -c "
+          import pyodbc
+
+          connection_string = (
+              'DRIVER={ODBC Driver 17 for SQL Server};'
+              'SERVER=localhost,1441;'
+              'DATABASE=master;'
+              'UID=sa;'
+              'PWD=Password123!;'
+              'TrustServerCertificate=yes;'
+              'Encrypt=no;'
+          )
+
+          conn = pyodbc.connect(connection_string)
+          cursor = conn.cursor()
+          cursor.execute('CREATE DATABASE test_db')
+          print('Successfully created test_db')
+          cursor.close()
+          conn.close()
+          "
+
+      - name: Create SQL Server scenario config
+        run: |
+          cat > sqlserver_scenarios.yaml << EOF
+          scenarios:
+            sqlserver_2025:
+              host: localhost
+              port: 1441
+              database: test_db
+              username: sa
+              password: Password123!
+              driver: "ODBC Driver 17 for SQL Server"
+              encrypt: false
+              trust_server_certificate: true
+              autocommit: true
+          EOF
+          echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=src
+          python -m pytest tests/

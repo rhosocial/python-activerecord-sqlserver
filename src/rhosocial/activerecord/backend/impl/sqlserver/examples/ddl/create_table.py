@@ -1,16 +1,16 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/examples/ddl/create_table.py
 """DDL CREATE TABLE examples for SQL Server.
 
-Demonstrates:
-- Basic table creation
-- IDENTITY columns (auto-increment)
-- Constraints (PRIMARY KEY, FOREIGN KEY, CHECK, DEFAULT)
-- Computed columns
-- Temporal tables (SQL Server 2016+)
+This example demonstrates:
+1. Basic table creation
+2. IDENTITY columns (auto-increment)
+3. Constraints (PRIMARY KEY, FOREIGN KEY, CHECK, DEFAULT)
+4. Computed columns
+5. Temporal tables (SQL Server 2016+)
+
+Connection configuration is loaded from environment variables with defaults.
 """
 
-import yaml
-from pathlib import Path
+import os
 
 from rhosocial.activerecord.backend.impl.sqlserver import (
     SQLServerBackend,
@@ -19,38 +19,27 @@ from rhosocial.activerecord.backend.impl.sqlserver import (
 
 
 def get_backend():
-    """Get a configured backend instance."""
-    config_path = Path(__file__).parent.parent.parent.parent.parent.parent / "tests" / "config" / "sqlserver_scenarios.yaml"
-    
-    config = {}
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            config_data = yaml.safe_load(f)
-            config = config_data.get('scenarios', {}).get('sqlserver_2022', {})
-    
-    backend = SQLServerBackend(
-        connection_config=SQLServerConnectionConfig(
-            host=config.get('host', 'localhost'),
-            port=config.get('port', 1433),
-            database=config.get('database', 'test_db'),
-            username=config.get('username', 'sa'),
-            password=config.get('password', ''),
-            driver=config.get('driver', 'ODBC Driver 17 for SQL Server'),
-            encrypt=config.get('encrypt', False),
-            trust_server_certificate=config.get('trust_server_certificate', True),
-        )
+    """Get a configured backend instance from environment variables."""
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '1433')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', 'Password123!'),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'ODBC Driver 17 for SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true',
     )
     
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
     return backend
 
 
 def example_basic_table():
-    """Example: Basic table creation.
-    
-    Creates a simple table with common column types.
-    """
+    """Example: Basic table creation."""
+    print("\n--- Basic Table ---")
     backend = get_backend()
-    backend.connect()
     
     backend.execute("""
         IF OBJECT_ID('basic_table', 'U') IS NOT NULL
@@ -75,9 +64,10 @@ def example_identity_column():
     """Example: IDENTITY column (auto-increment).
     
     SQL Server uses IDENTITY for auto-increment columns.
+    Syntax: IDENTITY(seed, increment)
     """
+    print("\n--- IDENTITY Column ---")
     backend = get_backend()
-    backend.connect()
     
     backend.execute("""
         IF OBJECT_ID('identity_example', 'U') IS NOT NULL
@@ -92,8 +82,10 @@ def example_identity_column():
     """)
     
     backend.execute("INSERT INTO identity_example (data) VALUES ('test')")
-    result = backend.execute("SELECT SCOPE_IDENTITY() AS last_id")
-    print(f"First ID value: {result.data[0]['last_id']}")
+    
+    # Get the last identity value
+    identity = backend.get_scope_identity()
+    print(f"First ID value: {identity}")
     
     backend.disconnect()
 
@@ -103,9 +95,10 @@ def example_constraints():
     
     Demonstrates PRIMARY KEY, FOREIGN KEY, CHECK, DEFAULT, UNIQUE.
     """
+    print("\n--- Constraints ---")
     backend = get_backend()
-    backend.connect()
     
+    # Drop tables in reverse order due to FK
     backend.execute("""
         IF OBJECT_ID('orders', 'U') IS NOT NULL
             DROP TABLE orders
@@ -150,8 +143,8 @@ def example_computed_column():
     
     SQL Server supports computed columns (virtual or persisted).
     """
+    print("\n--- Computed Column ---")
     backend = get_backend()
-    backend.connect()
     
     backend.execute("""
         IF OBJECT_ID('products', 'U') IS NOT NULL
@@ -187,18 +180,26 @@ def example_temporal_table():
     
     Temporal tables automatically track history of data changes.
     """
+    print("\n--- Temporal Table ---")
     backend = get_backend()
-    backend.connect()
     
-    backend.execute("""
-        IF OBJECT_ID('employees', 'U') IS NOT NULL
-            DROP TABLE employees
-    """)
-    
+    # Drop history table first
     backend.execute("""
         IF OBJECT_ID('employees_history', 'U') IS NOT NULL
             DROP TABLE employees_history
     """)
+    
+    try:
+        # Try to disable system versioning if exists
+        backend.execute("""
+            IF OBJECT_ID('employees', 'U') IS NOT NULL
+            BEGIN
+                ALTER TABLE employees SET (SYSTEM_VERSIONING = OFF);
+                DROP TABLE employees;
+            END
+        """)
+    except:
+        pass
     
     try:
         backend.execute("""
@@ -226,9 +227,10 @@ def example_table_with_json():
     """Example: Table with JSON data.
     
     SQL Server 2016+ supports JSON functions, though not a native JSON type.
+    Uses ISJSON() for validation in CHECK constraint.
     """
+    print("\n--- JSON Data ---")
     backend = get_backend()
-    backend.connect()
     
     backend.execute("""
         IF OBJECT_ID('json_data', 'U') IS NOT NULL
@@ -263,8 +265,8 @@ def example_table_with_json():
 
 def cleanup():
     """Clean up test tables."""
+    print("\n--- Cleanup ---")
     backend = get_backend()
-    backend.connect()
     
     tables = ['basic_table', 'identity_example', 'customers', 'orders', 
               'products', 'json_data']
@@ -295,16 +297,16 @@ def main():
         ("IDENTITY Column", example_identity_column),
         ("Constraints", example_constraints),
         ("Computed Column", example_computed_column),
+        ("Temporal Table", example_temporal_table),
         ("JSON Data", example_table_with_json),
     ]
     
     for name, func in examples:
-        print(f"\n{name}:")
         try:
             func()
-            print("   ✓ Success")
+            print(f"   ✓ {name} completed")
         except Exception as e:
-            print(f"   ✗ Error: {e}")
+            print(f"   ✗ {name} failed: {e}")
     
     print("\n" + "=" * 60)
     cleanup()

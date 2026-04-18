@@ -1,15 +1,15 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/examples/transaction/basic.py
 """Transaction management examples for SQL Server.
 
-Demonstrates:
-- Basic transaction control (BEGIN, COMMIT, ROLLBACK)
-- Savepoint usage
-- Isolation levels
-- SNAPSHOT isolation
+This example demonstrates:
+1. Basic transaction control (BEGIN, COMMIT, ROLLBACK)
+2. Savepoint usage
+3. Isolation levels
+4. SNAPSHOT isolation (SQL Server specific)
+
+Connection configuration is loaded from environment variables with defaults.
 """
 
-import yaml
-from pathlib import Path
+import os
 
 from rhosocial.activerecord.backend.impl.sqlserver import (
     SQLServerBackend,
@@ -19,59 +19,56 @@ from rhosocial.activerecord.backend.transaction import IsolationLevel
 
 
 def get_backend():
-    """Get a configured backend instance."""
-    config_path = Path(__file__).parent.parent.parent.parent.parent.parent / "tests" / "config" / "sqlserver_scenarios.yaml"
-    
-    config = {}
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            config_data = yaml.safe_load(f)
-            config = config_data.get('scenarios', {}).get('sqlserver_2022', {})
-    
-    backend = SQLServerBackend(
-        connection_config=SQLServerConnectionConfig(
-            host=config.get('host', 'localhost'),
-            port=config.get('port', 1433),
-            database=config.get('database', 'test_db'),
-            username=config.get('username', 'sa'),
-            password=config.get('password', ''),
-            driver=config.get('driver', 'ODBC Driver 17 for SQL Server'),
-            encrypt=config.get('encrypt', False),
-            trust_server_certificate=config.get('trust_server_certificate', True),
-            autocommit=False,
-        )
+    """Get a configured backend instance from environment variables."""
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '1433')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', 'Password123!'),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'ODBC Driver 17 for SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true',
+        autocommit=False,
     )
     
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
     return backend
 
 
-def example_basic_transaction():
-    """Example: Basic transaction with COMMIT.
+def setup_test_table(backend):
+    """Create test table for examples."""
+    backend.execute("""
+        IF OBJECT_ID('test_users', 'U') IS NOT NULL
+            DROP TABLE test_users
+    """)
     
-    SQL Server uses BEGIN TRANSACTION / COMMIT TRANSACTION.
-    """
+    backend.execute("""
+        CREATE TABLE test_users (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            name NVARCHAR(100) NOT NULL,
+            email NVARCHAR(200)
+        )
+    """)
+    
+    backend.execute(
+        "INSERT INTO test_users (name, email) VALUES (?, ?)",
+        ("John Doe", "john@example.com")
+    )
+
+
+def example_basic_transaction():
+    """Example: Basic transaction with COMMIT."""
+    print("\n--- Basic Transaction ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin()
         
-        backend.execute("""
-            IF OBJECT_ID('test_users', 'U') IS NOT NULL
-                DROP TABLE test_users
-        """)
-        
-        backend.execute("""
-            CREATE TABLE test_users (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                name NVARCHAR(100) NOT NULL,
-                email NVARCHAR(200)
-            )
-        """)
-        
         backend.execute(
             "INSERT INTO test_users (name, email) VALUES (?, ?)",
-            ("John Doe", "john@example.com")
+            ("Jane Doe", "jane@example.com")
         )
         
         backend.transaction_manager.commit()
@@ -86,22 +83,21 @@ def example_basic_transaction():
 
 
 def example_rollback():
-    """Example: Transaction with ROLLBACK.
-    
-    Demonstrates how to rollback a transaction on error.
-    """
+    """Example: Transaction with ROLLBACK."""
+    print("\n--- Rollback ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin()
         
         backend.execute(
             "INSERT INTO test_users (name, email) VALUES (?, ?)",
-            ("Jane Doe", "jane@example.com")
+            ("Rollback Test", "rollback@example.com")
         )
         
-        raise Exception("Simulated error to trigger rollback")
+        # Simulate an error to trigger rollback
+        print("Simulating error...")
+        raise Exception("Simulated error")
         
         backend.transaction_manager.commit()
         
@@ -118,8 +114,8 @@ def example_savepoint():
     
     SQL Server supports SAVE TRANSACTION for savepoints.
     """
+    print("\n--- Savepoint ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin()
@@ -145,6 +141,7 @@ def example_savepoint():
             ("User 3", "user3@example.com")
         )
         
+        # Rollback to savepoint sp2
         backend.transaction_manager.rollback("sp2")
         print("Rolled back to sp2 (User 3 undone)")
         
@@ -160,18 +157,15 @@ def example_savepoint():
 
 
 def example_isolation_level():
-    """Example: Transaction with isolation level.
-    
-    SQL Server supports multiple isolation levels.
-    """
+    """Example: Transaction with isolation level."""
+    print("\n--- Isolation Level ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin(isolation_level=IsolationLevel.SERIALIZABLE)
         
-        result = backend.execute("SELECT * FROM test_users")
-        print(f"Read {len(result.data)} users in SERIALIZABLE isolation")
+        result = backend.execute("SELECT COUNT(*) AS count FROM test_users")
+        print(f"Read {result.data[0]['count']} users in SERIALIZABLE isolation")
         
         backend.transaction_manager.commit()
         
@@ -186,16 +180,17 @@ def example_isolation_level():
 def example_snapshot_isolation():
     """Example: SNAPSHOT isolation level.
     
-    SQL Server's SNAPSHOT isolation provides MVCC-like behavior.
+    SQL Server's SNAPSHOT isolation provides MVCC-like behavior,
+    similar to PostgreSQL's MVCC.
     """
+    print("\n--- SNAPSHOT Isolation ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin(snapshot=True)
         
-        result = backend.execute("SELECT * FROM test_users")
-        print(f"Read {len(result.data)} users in SNAPSHOT isolation")
+        result = backend.execute("SELECT COUNT(*) AS count FROM test_users")
+        print(f"Read {result.data[0]['count']} users in SNAPSHOT isolation")
         
         backend.transaction_manager.commit()
         
@@ -210,10 +205,11 @@ def example_snapshot_isolation():
 def example_context_manager():
     """Example: Using transaction as context manager.
     
-    Transactions can be used with 'with' statement for automatic commit/rollback.
+    Transactions can be used with 'with' statement for automatic
+    commit/rollback.
     """
+    print("\n--- Context Manager ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         with backend.transaction_manager.transaction():
@@ -231,42 +227,17 @@ def example_context_manager():
         backend.disconnect()
 
 
-def example_lock_timeout():
-    """Example: Setting lock timeout.
-    
-    Controls how long SQL Server waits for locked resources.
-    """
-    backend = get_backend()
-    backend.connect()
-    
-    try:
-        backend.transaction_manager.begin()
-        backend.transaction_manager.set_lock_timeout(5000)
-        print("Lock timeout set to 5000ms (5 seconds)")
-        
-        backend.execute("SELECT * FROM test_users")
-        
-        backend.transaction_manager.commit()
-        
-    except Exception as e:
-        backend.transaction_manager.rollback()
-        print(f"Error: {e}")
-    
-    finally:
-        backend.disconnect()
-
-
 def cleanup():
     """Clean up test tables."""
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.execute("DROP TABLE IF EXISTS test_users")
-        backend.disconnect()
         print("Cleanup completed")
     except:
-        backend.disconnect()
+        pass
+    
+    backend.disconnect()
 
 
 def main():
@@ -275,6 +246,12 @@ def main():
     print("SQL Server Transaction Examples")
     print("=" * 60)
     
+    # Setup test table first
+    print("\nSetting up test table...")
+    backend = get_backend()
+    setup_test_table(backend)
+    backend.disconnect()
+    
     examples = [
         ("Basic Transaction", example_basic_transaction),
         ("Rollback", example_rollback),
@@ -282,16 +259,14 @@ def main():
         ("Isolation Level", example_isolation_level),
         ("Snapshot Isolation", example_snapshot_isolation),
         ("Context Manager", example_context_manager),
-        ("Lock Timeout", example_lock_timeout),
     ]
     
     for name, func in examples:
-        print(f"\n{name}:")
         try:
             func()
-            print("   ✓ Success")
+            print(f"   ✓ {name} completed")
         except Exception as e:
-            print(f"   ✗ Error: {e}")
+            print(f"   ✗ {name} failed: {e}")
     
     print("\n" + "=" * 60)
     cleanup()

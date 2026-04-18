@@ -1,12 +1,12 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/examples/insert/output.py
 """INSERT with OUTPUT clause examples.
 
 SQL Server uses the OUTPUT clause (similar to RETURNING in PostgreSQL)
 to return data from INSERT, UPDATE, and DELETE operations.
+
+Connection configuration is loaded from environment variables with defaults.
 """
 
-import yaml
-from pathlib import Path
+import os
 
 from rhosocial.activerecord.backend.impl.sqlserver import (
     SQLServerBackend,
@@ -15,29 +15,21 @@ from rhosocial.activerecord.backend.impl.sqlserver import (
 
 
 def get_backend():
-    """Get a configured backend instance."""
-    config_path = Path(__file__).parent.parent.parent.parent.parent.parent / "tests" / "config" / "sqlserver_scenarios.yaml"
-    
-    config = {}
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            config_data = yaml.safe_load(f)
-            config = config_data.get('scenarios', {}).get('sqlserver_2022', {})
-    
-    backend = SQLServerBackend(
-        connection_config=SQLServerConnectionConfig(
-            host=config.get('host', 'localhost'),
-            port=config.get('port', 1433),
-            database=config.get('database', 'test_db'),
-            username=config.get('username', 'sa'),
-            password=config.get('password', ''),
-            driver=config.get('driver', 'ODBC Driver 17 for SQL Server'),
-            encrypt=config.get('encrypt', False),
-            trust_server_certificate=config.get('trust_server_certificate', True),
-            autocommit=False,
-        )
+    """Get a configured backend instance from environment variables."""
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '1433')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', 'Password123!'),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'ODBC Driver 17 for SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true',
+        autocommit=False,
     )
     
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
     return backend
 
 
@@ -69,8 +61,8 @@ def example_insert_output():
         OUTPUT inserted.column1, inserted.column2
         VALUES (values)
     """
+    print("\n--- INSERT with OUTPUT ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin()
@@ -99,31 +91,28 @@ def example_insert_output():
         backend.disconnect()
 
 
-def example_insert_output_into():
-    """Example: INSERT with OUTPUT INTO a table variable.
-    
-    OUTPUT INTO can insert the output into a table variable
-    or temporary table for further processing.
-    """
+def example_multi_insert_output():
+    """Example: Multi-row INSERT with OUTPUT."""
+    print("\n--- Multi-row INSERT with OUTPUT ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin()
         
-        backend.execute("""
-            DECLARE @inserted TABLE (id INT, name NVARCHAR(100), created_at DATETIME2);
-            
-            INSERT INTO output_test (name)
-            OUTPUT inserted.id, inserted.name, inserted.created_at
-            INTO @inserted
-            VALUES ('User A'), ('User B'), ('User C');
-            
-            SELECT * FROM @inserted;
+        result = backend.execute("""
+            INSERT INTO output_test (name, status)
+            OUTPUT inserted.id, inserted.name, inserted.status
+            VALUES 
+                ('User A', 'active'),
+                ('User B', 'inactive'),
+                ('User C', 'active')
         """)
         
+        print(f"Inserted {len(result.data)} rows:")
+        for row in result.data:
+            print(f"  ID: {row['id']}, Name: {row['name']}, Status: {row['status']}")
+        
         backend.transaction_manager.commit()
-        print("Inserted 3 rows with OUTPUT INTO")
         
     except Exception as e:
         backend.transaction_manager.rollback()
@@ -139,8 +128,8 @@ def example_update_output():
     OUTPUT can return both old (deleted) and new (inserted) values
     for UPDATE operations.
     """
+    print("\n--- UPDATE with OUTPUT ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin()
@@ -176,8 +165,8 @@ def example_delete_output():
     
     OUTPUT returns the deleted rows for DELETE operations.
     """
+    print("\n--- DELETE with OUTPUT ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin()
@@ -208,12 +197,13 @@ def example_merge_output():
     MERGE is SQL Server's native upsert mechanism, supporting
     INSERT, UPDATE, and DELETE in a single statement.
     """
+    print("\n--- MERGE with OUTPUT ---")
     backend = get_backend()
-    backend.connect()
     
     try:
         backend.transaction_manager.begin()
         
+        # Create source data
         backend.execute("""
             CREATE TABLE #source (name NVARCHAR(100), status NVARCHAR(20));
             INSERT INTO #source VALUES ('User A', 'active'), ('User D', 'new');
@@ -252,7 +242,6 @@ def example_merge_output():
 def cleanup():
     """Clean up test tables."""
     backend = get_backend()
-    backend.connect()
     backend.execute("DROP TABLE IF EXISTS output_test")
     backend.disconnect()
 
@@ -265,18 +254,18 @@ def main():
     
     examples = [
         ("INSERT with OUTPUT", example_insert_output),
+        ("Multi-row INSERT", example_multi_insert_output),
         ("UPDATE with OUTPUT", example_update_output),
         ("DELETE with OUTPUT", example_delete_output),
         ("MERGE with OUTPUT", example_merge_output),
     ]
     
     for name, func in examples:
-        print(f"\n{name}:")
         try:
             func()
-            print("   ✓ Success")
+            print(f"   ✓ {name} completed")
         except Exception as e:
-            print(f"   ✗ Error: {e}")
+            print(f"   ✗ {name} failed: {e}")
     
     print("\n" + "=" * 60)
     cleanup()
