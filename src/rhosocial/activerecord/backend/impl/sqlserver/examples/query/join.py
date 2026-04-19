@@ -1,5 +1,5 @@
 """
-JOIN multiple tables including CROSS APPLY (SQL Server specific).
+JOIN multiple tables.
 """
 
 import os
@@ -16,11 +16,11 @@ from rhosocial.activerecord.backend.schema import StatementType
 
 config = SQLServerConnectionConfig(
     host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '1433')),
+    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
     database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
     username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
     password=os.environ.get('SQLSERVER_PASSWORD', 'Password123!'),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'ODBC Driver 17 for SQL Server'),
+    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
     encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
     trust_server_certificate=(
         os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
@@ -42,33 +42,11 @@ from rhosocial.activerecord.backend.expression.statements import (
     ColumnConstraintType,
     TableConstraint,
     TableConstraintType,
-    ForeignKeyConstraint,
 )
 
 ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
-dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 
-# Create orders table
-create_orders = CreateTableExpression(
-    dialect=dialect,
-    table_name='join_orders',
-    columns=[
-        ColumnDefinition('id', 'INT', constraints=[
-            ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-            ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
-        ]),
-        ColumnDefinition('user_id', 'INT', constraints=[
-            ColumnConstraint(ColumnConstraintType.NOT_NULL),
-        ]),
-        ColumnDefinition('amount', 'DECIMAL(10,2)'),
-    ],
-    if_not_exists=True,
-)
-sql, params = create_orders.to_sql()
-backend.execute(sql, params, options=ddl_options)
-
-# Create users table
-create_users = CreateTableExpression(
+users_table = CreateTableExpression(
     dialect=dialect,
     table_name='join_users',
     columns=[
@@ -82,27 +60,55 @@ create_users = CreateTableExpression(
     ],
     if_not_exists=True,
 )
-sql, params = create_users.to_sql()
+sql, params = users_table.to_sql()
 backend.execute(sql, params, options=ddl_options)
 
-# Insert users
-for name in ['Alice', 'Bob']:
+orders_table = CreateTableExpression(
+    dialect=dialect,
+    table_name='join_orders',
+    columns=[
+        ColumnDefinition('id', 'INT', constraints=[
+            ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
+            ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+        ]),
+        ColumnDefinition('user_id', 'INT'),
+        ColumnDefinition('amount', 'DECIMAL(10,2)'),
+    ],
+    table_constraints=[
+        TableConstraint(
+            constraint_type=TableConstraintType.FOREIGN_KEY,
+            columns=['user_id'],
+            foreign_key_table='join_users',
+            foreign_key_columns=['id'],
+        ),
+    ],
+    if_not_exists=True,
+)
+sql, params = orders_table.to_sql()
+backend.execute(sql, params, options=ddl_options)
+
+users = [('Alice',), ('Bob',)]
+for user in users:
     insert_expr = InsertExpression(
         dialect=dialect,
         into='join_users',
         columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, name)]]),
+        source=ValuesSource(dialect, [[Literal(dialect, v) for v in user]]),
     )
     sql, params = insert_expr.to_sql()
     backend.execute(sql, params)
 
-# Insert orders
-for user_id, amount in [(1, 100.00), (1, 200.00), (2, 150.00)]:
+orders = [
+    (1, 100.0),
+    (1, 200.0),
+    (2, 150.0),
+]
+for row in orders:
     insert_expr = InsertExpression(
         dialect=dialect,
         into='join_orders',
         columns=['user_id', 'amount'],
-        source=ValuesSource(dialect, [[Literal(dialect, user_id), Literal(dialect, amount)]]),
+        source=ValuesSource(dialect, [[Literal(dialect, v) for v in row]]),
     )
     sql, params = insert_expr.to_sql()
     backend.execute(sql, params)
@@ -114,43 +120,40 @@ from rhosocial.activerecord.backend.expression import (
     QueryExpression,
     TableExpression,
     Column,
-    JoinClause,
-    JoinType,
+    JoinExpression,
 )
 from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
 
-# INNER JOIN example
-join_query = QueryExpression(
+join_expr = JoinExpression(
     dialect=dialect,
-    select=[
-        Column(dialect, 'u.id', alias='user_id'),
-        Column(dialect, 'u.name', alias='user_name'),
-        Column(dialect, 'o.id', alias='order_id'),
-        Column(dialect, 'o.amount'),
-    ],
-    from_=TableExpression(dialect, 'join_users', alias='u'),
-    joins=[
-        JoinClause(
-            dialect,
-            join_type=JoinType.INNER,
-            table=TableExpression(dialect, 'join_orders', alias='o'),
-            on_condition=ComparisonPredicate(
-                dialect,
-                '=',
-                Column(dialect, 'u.id'),
-                Column(dialect, 'o.user_id'),
-            ),
-        ),
-    ],
+    left_table=TableExpression(dialect, 'join_users', alias='u'),
+    right_table=TableExpression(dialect, 'join_orders', alias='o'),
+    join_type='LEFT JOIN',
+    condition=ComparisonPredicate(
+        dialect,
+        '=',
+        Column(dialect, 'id', 'u'),
+        Column(dialect, 'user_id', 'o'),
+    ),
 )
 
-sql, params = join_query.to_sql()
+query = QueryExpression(
+    dialect=dialect,
+    select=[
+        Column(dialect, 'name', 'u'),
+        Column(dialect, 'amount', 'o'),
+    ],
+    from_=join_expr,
+)
+
+sql, params = query.to_sql()
 print(f"SQL: {sql}")
 print(f"Params: {params}")
 
 # ============================================================
 # SECTION: Execution (run the expression)
 # ============================================================
+dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 result = backend.execute(sql, params, options=dql_options)
 print(f"Rows returned: {len(result.data) if result.data else 0}")
 for row in result.data or []:

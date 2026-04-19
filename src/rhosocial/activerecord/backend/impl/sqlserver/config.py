@@ -92,17 +92,8 @@ class SQLServerConnectionConfig(BaseModel):
     @classmethod
     def validate_driver(cls, v: str) -> str:
         """Validate ODBC driver name."""
-        valid_drivers = [
-            "ODBC Driver 11 for SQL Server",
-            "ODBC Driver 13 for SQL Server",
-            "ODBC Driver 17 for SQL Server",
-            "ODBC Driver 18 for SQL Server",
-            "SQL Server Native Client 11.0",
-        ]
-        if v not in valid_drivers:
-            pass
         return v
-    
+
     def build_connection_string(self) -> str:
         """Build ODBC connection string from configuration.
         
@@ -139,9 +130,11 @@ class SQLServerConnectionConfig(BaseModel):
             if self.password:
                 parts.append(f"PWD={self.password}")
         
-        parts.append(f"Encrypt={'yes' if self.encrypt else 'no'}")
-        parts.append(f"TrustServerCertificate={'yes' if self.trust_server_certificate else 'no'}")
-        
+        legacy_drivers = ["SQL Server", "SQL Server Native Client 11.0"]
+        if self.driver not in legacy_drivers:
+            parts.append(f"Encrypt={'yes' if self.encrypt else 'no'}")
+            parts.append(f"TrustServerCertificate={'yes' if self.trust_server_certificate else 'no'}")
+
         parts.append(f"Connection Timeout={self.timeout}")
         
         if self.charset and self.charset.upper() != "UTF-8":

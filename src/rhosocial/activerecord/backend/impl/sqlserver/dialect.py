@@ -92,6 +92,8 @@ if TYPE_CHECKING:
         ColumnDefinition,
         TableConstraint,
         IndexDefinition,
+        CreateTableExpression,
+        DropTableExpression,
     )
     from rhosocial.activerecord.backend.expression.transaction import (
         BeginTransactionExpression,
@@ -418,11 +420,34 @@ class SQLServerDialect(
             sql_parts.append(f"FETCH NEXT {limit} ROWS ONLY")
         
         return " ".join(sql_parts), params
-    
+
+    def format_limit_offset_clause(self, clause: "LimitOffsetClause") -> Tuple[str, tuple]:
+        """Format LIMIT/OFFSET clause for SQL Server using OFFSET FETCH syntax."""
+        if clause.limit is None and clause.offset is None:
+            return "", ()
+
+        if self.version < SQL_SERVER_2012:
+            raise UnsupportedFeatureError(
+                self.name,
+                "OFFSET FETCH pagination",
+                "SQL Server 2012+ required for OFFSET FETCH. Use ROW_NUMBER() for older versions."
+            )
+
+        parts = []
+        params = []
+
+        offset_val = clause.offset if clause.offset is not None else 0
+        parts.append(f"OFFSET {offset_val} ROWS")
+
+        if clause.limit is not None:
+            parts.append(f"FETCH NEXT {clause.limit} ROWS ONLY")
+
+        return " ".join(parts), tuple(params)
+
     def format_returning_clause(self, clause: "ReturningClause") -> Tuple[str, tuple]:
         """
         Format RETURNING as OUTPUT clause for SQL Server.
-        
+
         SQL Server OUTPUT syntax:
         - INSERT: OUTPUT inserted.column, inserted.column2
         - UPDATE: OUTPUT deleted.old_column, inserted.new_column
@@ -430,23 +455,24 @@ class SQLServerDialect(
         """
         all_params = []
         expr_parts = []
-        
+
         for expr in clause.expressions:
-            expr_sql, expr_params = expr.to_sql()
-            expr_parts.append(expr_sql)
+            if hasattr(expr, 'table') and expr.table:
+                expr_sql, expr_params = expr.to_sql()
+                expr_parts.append(f"INSERTED.{expr_sql}")
+            else:
+                expr_sql, expr_params = expr.to_sql()
+                expr_parts.append(f"INSERTED.{expr_sql}")
             all_params.extend(expr_params)
-        
+
         output_sql = f"OUTPUT {', '.join(expr_parts)}"
-        
-        if clause.alias:
-            output_sql += f" AS {self.format_identifier(clause.alias)}"
-        
+
         return output_sql, tuple(all_params)
-    
+
     def format_insert_statement(self, expr: "InsertExpression") -> Tuple[str, tuple]:
         """
         Format INSERT statement with SQL Server-specific options.
-        
+
         SQL Server supports:
         - OUTPUT clause for returning inserted rows
         - INSERT TOP (n) for limiting rows
@@ -454,24 +480,30 @@ class SQLServerDialect(
         """
         if self.strict_validation:
             expr.validate(strict=True)
-        
+
         all_params: List[Any] = []
-        
+
         table_sql, table_params = expr.into.to_sql()
         all_params.extend(table_params)
-        
+
         parts = ["INSERT INTO", table_sql]
-        
+
         if expr.columns:
             columns_sql = "(" + ", ".join([self.format_identifier(c) for c in expr.columns]) + ")"
             parts.append(columns_sql)
-        
+
+        # Add OUTPUT clause before VALUES/SELECT (SQL Server requirement)
+        if expr.returning:
+            returning_sql, returning_params = self.format_returning_clause(expr.returning)
+            parts.append(returning_sql)
+            all_params.extend(returning_params)
+
         from rhosocial.activerecord.backend.expression.statements import (
             DefaultValuesSource,
             ValuesSource,
             SelectSource,
         )
-        
+
         if isinstance(expr.source, DefaultValuesSource):
             parts.append("DEFAULT VALUES")
         elif isinstance(expr.source, ValuesSource):
@@ -490,14 +522,9 @@ class SQLServerDialect(
             s_sql, s_params = expr.source.select_query.to_sql()
             parts.append(s_sql)
             all_params.extend(s_params)
-        
+
         sql = " ".join(parts)
-        
-        if expr.returning:
-            returning_sql, returning_params = self.format_returning_clause(expr.returning)
-            sql += f" {returning_sql}"
-            all_params.extend(returning_params)
-        
+
         return sql, tuple(all_params)
     
     def format_update_statement(self, expr) -> Tuple[str, tuple]:
@@ -915,3 +942,213 @@ class SQLServerDialect(
             return "GROUPING SETS", ()
         
         raise UnsupportedFeatureError(self.name, f"{operation} grouping operation")
+
+    def format_create_table_statement(
+        self, expr: "CreateTableExpression"
+    ) -> Tuple[str, tuple]:
+        """Format CREATE TABLE statement for SQL Server.
+
+        SQL Server doesn't support IF NOT EXISTS syntax for CREATE TABLE
+        (until SQL Server 2016 for DROP, but not CREATE). When if_not_exists
+        is True, we simply skip the IF NOT EXISTS clause since it's not supported.
+        """
+        all_params: List[Any] = []
+
+        # Build CREATE TABLE header
+        parts = ["CREATE TABLE"]
+        if expr.temporary:
+            parts.append("TEMPORARY")
+
+        # Note: SQL Server doesn't support IF NOT EXISTS for CREATE TABLE
+        # We ignore if_not_exists flag and proceed with CREATE TABLE
+        # In production, callers should handle existence checks separately
+
+        table_sql, table_params = expr.table.to_sql()
+        all_params.extend(table_params)
+        parts.append(table_sql)
+
+        # Build column definitions
+        from rhosocial.activerecord.backend.expression.statements import (
+            ColumnConstraintType,
+        )
+        column_parts = []
+        for col_def in expr.columns:
+            col_sql, col_params = self._format_column_definition(col_def, ColumnConstraintType)
+            column_parts.append(col_sql)
+            all_params.extend(col_params)
+
+        # Build table constraints
+        for t_const in expr.table_constraints:
+            const_sql, const_params = self._format_table_constraint(t_const)
+            if const_sql:
+                column_parts.append(const_sql)
+                all_params.extend(const_params)
+
+        # Build inline indexes (SQL Server specific)
+        for idx_def in expr.indexes:
+            idx_sql = self._format_inline_index(idx_def)
+            column_parts.append(idx_sql)
+
+        parts.append(f"({', '.join(column_parts)})")
+
+        return ' '.join(parts), tuple(all_params)
+
+    def _format_column_definition(self, col_def: "ColumnDefinition", ColumnConstraintType) -> Tuple[str, List[Any]]:
+        """Format a column definition for SQL Server."""
+        parts = [self.format_identifier(col_def.name), col_def.data_type]
+        params: List[Any] = []
+
+        constraint_parts = []
+        for constraint in col_def.constraints:
+            if constraint.constraint_type == ColumnConstraintType.PRIMARY_KEY:
+                constraint_parts.append("PRIMARY KEY")
+            elif constraint.constraint_type == ColumnConstraintType.NOT_NULL:
+                constraint_parts.append("NOT NULL")
+            elif constraint.constraint_type == ColumnConstraintType.UNIQUE:
+                constraint_parts.append("UNIQUE")
+            elif constraint.constraint_type == ColumnConstraintType.DEFAULT:
+                if constraint.default_value is not None:
+                    from rhosocial.activerecord.backend.expression import bases
+                    if isinstance(constraint.default_value, bases.BaseExpression):
+                        default_sql, default_params = constraint.default_value.to_sql()
+                        constraint_parts.append(f"DEFAULT {default_sql}")
+                        params.extend(default_params)
+                    elif isinstance(constraint.default_value, str):
+                        escaped = constraint.default_value.replace("'", "''")
+                        constraint_parts.append(f"DEFAULT '{escaped}'")
+                    else:
+                        constraint_parts.append(f"DEFAULT {constraint.default_value}")
+            elif constraint.constraint_type == ColumnConstraintType.NULL:
+                constraint_parts.append("NULL")
+
+            # Handle IDENTITY (auto-increment)
+            if constraint.is_auto_increment:
+                constraint_parts.append("IDENTITY(1,1)")
+
+        if constraint_parts:
+            parts.append(' '.join(constraint_parts))
+
+        return ' '.join(parts), params
+
+    def _format_table_constraint(self, t_const: "TableConstraint") -> Tuple[str, List[Any]]:
+        """Format a table constraint for SQL Server."""
+        from rhosocial.activerecord.backend.expression.statements import (
+            TableConstraintType,
+            ForeignKeyConstraint,
+            ReferentialAction,
+        )
+
+        parts = []
+        params: List[Any] = []
+
+        if t_const.name:
+            parts.append(f"CONSTRAINT {self.format_identifier(t_const.name)}")
+
+        if t_const.constraint_type == TableConstraintType.PRIMARY_KEY:
+            if t_const.columns:
+                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
+                parts.append(f"PRIMARY KEY ({cols_str})")
+        elif t_const.constraint_type == TableConstraintType.UNIQUE:
+            if t_const.columns:
+                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
+                parts.append(f"UNIQUE ({cols_str})")
+        elif t_const.constraint_type == TableConstraintType.FOREIGN_KEY:
+            if t_const.columns and t_const.foreign_key_table and t_const.foreign_key_columns:
+                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
+                ref_cols_str = ', '.join(
+                    self.format_identifier(c) for c in t_const.foreign_key_columns
+                )
+                ref_table = self.format_identifier(t_const.foreign_key_table)
+                parts.append(
+                    f"FOREIGN KEY ({cols_str}) REFERENCES {ref_table} ({ref_cols_str})"
+                )
+                if isinstance(t_const, ForeignKeyConstraint):
+                    if t_const.on_delete != ReferentialAction.NO_ACTION:
+                        parts.append(f"ON DELETE {t_const.on_delete.value}")
+                    if t_const.on_update != ReferentialAction.NO_ACTION:
+                        parts.append(f"ON UPDATE {t_const.on_update.value}")
+        elif t_const.constraint_type == TableConstraintType.CHECK and t_const.check_condition:
+            check_sql, check_params = t_const.check_condition.to_sql()
+            parts.append(f"CHECK ({check_sql})")
+            params.extend(check_params)
+
+        return ' '.join(parts), params
+
+    def _format_inline_index(self, idx_def: "IndexDefinition") -> str:
+        """Format an inline index definition for SQL Server."""
+        parts = []
+
+        if idx_def.unique:
+            parts.append("UNIQUE")
+
+        parts.append("INDEX")
+        parts.append(self.format_identifier(idx_def.name))
+
+        cols_str = ', '.join(self.format_identifier(c) for c in idx_def.columns)
+        parts.append(f"({cols_str})")
+
+        return ' '.join(parts)
+
+    def format_drop_table_statement(
+        self, expr: "DropTableExpression"
+    ) -> Tuple[str, tuple]:
+        """Format DROP TABLE statement for SQL Server."""
+        parts = ["DROP TABLE"]
+
+        if expr.if_exists and self.supports_if_exists_table():
+            parts.append("IF EXISTS")
+
+        table_sql, table_params = expr.table.to_sql()
+        parts.append(table_sql)
+
+        return ' '.join(parts), table_params
+
+    def format_create_index_statement(self, expr: "CreateIndexExpression") -> Tuple[str, tuple]:
+        """Format CREATE INDEX statement for SQL Server.
+
+        SQL Server doesn't support IF NOT EXISTS for CREATE INDEX.
+        We ignore the if_not_exists flag and generate standard CREATE INDEX.
+        """
+        from rhosocial.activerecord.backend.expression.bases import ToSQLProtocol
+
+        all_params = []
+        parts = ["CREATE"]
+
+        if expr.unique:
+            parts.append("UNIQUE")
+
+        # SQL Server supports clustered/nonclustered indexes
+        if hasattr(expr, 'index_type') and expr.index_type:
+            index_type = expr.index_type.upper()
+            if index_type in ('CLUSTERED', 'NONCLUSTERED'):
+                parts.append(index_type)
+
+        parts.append("INDEX")
+        # Note: SQL Server doesn't support IF NOT EXISTS for CREATE INDEX
+        # We ignore if_not_exists flag
+        parts.append(self.format_identifier(expr.index_name))
+        parts.append("ON")
+        parts.append(self.format_identifier(expr.table_name))
+
+        col_parts = []
+        for col in expr.columns:
+            if isinstance(col, ToSQLProtocol):
+                col_sql, col_params = col.to_sql()
+                col_parts.append(col_sql)
+                all_params.extend(col_params)
+            else:
+                col_parts.append(self.format_identifier(str(col)))
+        parts.append(f"({', '.join(col_parts)})")
+
+        # SQL Server uses INCLUDE for covering indexes
+        if expr.include:
+            include_cols = ", ".join(self.format_identifier(c) for c in expr.include)
+            parts.append(f"INCLUDE ({include_cols})")
+
+        # SQL Server uses WHERE for filtered indexes
+        if expr.where:
+            where_sql, where_params = expr.where.to_sql()
+            parts.append(f"WHERE {where_sql}")
+            all_params.extend(where_params)
+
+        return " ".join(parts), tuple(all_params)

@@ -14,11 +14,11 @@ from rhosocial.activerecord.backend.impl.sqlserver import (
 
 config = SQLServerConnectionConfig(
     host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '1433')),
+    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
     database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
     username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
     password=os.environ.get('SQLSERVER_PASSWORD', 'Password123!'),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'ODBC Driver 17 for SQL Server'),
+    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
     encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
     trust_server_certificate=(
         os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'

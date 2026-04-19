@@ -114,26 +114,88 @@ class SQLServerBackend(
             kwargs['connection_config'] = SQLServerConnectionConfig(**config_params)
         
         super().__init__(**kwargs)
-        
+
         self._version = version
         self._dialect = SQLServerDialect(version)
         self._connection = None
         self._transaction_manager = None
-        
+        self._default_suggestions_cache = None
+
+        self._register_sqlserver_adapters()
+
         self.log(logging.INFO, f"SQLServerBackend initialized (version {version})")
     
     @property
     def dialect(self) -> SQLServerDialect:
         """Get the SQL Server dialect instance."""
         return self._dialect
-    
+
     @property
     def transaction_manager(self) -> SQLServerTransactionManager:
         """Get the transaction manager."""
         if not self._transaction_manager:
             self._transaction_manager = SQLServerTransactionManager(self, self.logger)
         return self._transaction_manager
-    
+
+    def _register_sqlserver_adapters(self) -> None:
+        """Register SQL Server-specific type adapters."""
+        from .adapters import (
+            SQLServerUUIDAdapter,
+            SQLServerDateTimeAdapter,
+            SQLServerDateTimeOffsetAdapter,
+            SQLServerDateAdapter,
+            SQLServerTimeAdapter,
+            SQLServerJSONAdapter,
+            SQLServerXMLAdapter,
+            SQLServerDecimalAdapter,
+        )
+        sqlserver_adapters = [
+            SQLServerUUIDAdapter(),
+            SQLServerDateTimeAdapter(),
+            SQLServerDateTimeOffsetAdapter(),
+            SQLServerDateAdapter(),
+            SQLServerTimeAdapter(),
+            SQLServerJSONAdapter(),
+            SQLServerXMLAdapter(),
+            SQLServerDecimalAdapter(),
+        ]
+        for adapter in sqlserver_adapters:
+            for py_type, db_types in adapter.supported_types.items():
+                for db_type in db_types:
+                    self.adapter_registry.register(adapter, py_type, db_type, allow_override=True)
+        self.log(logging.DEBUG, "Registered SQL Server-specific type adapters.")
+
+    def get_default_adapter_suggestions(self) -> Dict[Tuple[type, type], tuple]:
+        """Provides default type adapter suggestions for SQL Server."""
+        if self._default_suggestions_cache is not None:
+            return self._default_suggestions_cache
+
+        from datetime import date, datetime, time
+        from decimal import Decimal
+        from uuid import UUID
+
+        suggestions = {}
+        type_mappings = [
+            (bool, bool),
+            (int, int),
+            (float, float),
+            (str, str),
+            (bytes, bytes),
+            (datetime, datetime),
+            (date, date),
+            (time, time),
+            (Decimal, Decimal),
+            (UUID, str),
+        ]
+
+        for py_type, db_type in type_mappings:
+            adapter = self.adapter_registry.get_adapter(py_type, db_type)
+            if adapter:
+                suggestions[py_type] = (adapter, db_type)
+
+        self._default_suggestions_cache = suggestions
+        return suggestions
+
     def connect(self) -> None:
         """Establish connection to SQL Server database.
         
