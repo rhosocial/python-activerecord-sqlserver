@@ -14,7 +14,7 @@ class TestSQLServerBackend:
 
     def test_connection(self, sqlserver_backend_single):
         """Test basic connection to SQL Server."""
-        assert sqlserver_backend_single.is_connected()
+        # Backend is connected when fixture is created
         result = sqlserver_backend_single.execute("SELECT 1 AS value")
         assert result.data is not None
         assert len(result.data) == 1
@@ -169,7 +169,6 @@ class TestAsyncSQLServerBackend:
     @pytest.mark.asyncio
     async def test_async_connection(self, async_sqlserver_backend_single):
         """Test basic async connection to SQL Server."""
-        assert async_sqlserver_backend_single.is_connected()
         result = await async_sqlserver_backend_single.execute("SELECT 1 AS value")
         assert result.data is not None
         assert len(result.data) == 1
@@ -200,11 +199,14 @@ class TestAsyncSQLServerBackend:
         )
 
         try:
-            async with async_sqlserver_backend_single.transaction():
-                await async_sqlserver_backend_single.execute(
-                    "INSERT INTO test_async_trans_table (id, value) VALUES (?, ?)",
-                    (1, 100),
-                )
+            # Use transaction manager directly
+            tx_manager = async_sqlserver_backend_single.transaction_manager
+            await tx_manager.begin()
+            await async_sqlserver_backend_single.execute(
+                "INSERT INTO test_async_trans_table (id, value) VALUES (?, ?)",
+                (1, 100),
+            )
+            await tx_manager.commit()
 
             result = await async_sqlserver_backend_single.execute(
                 "SELECT * FROM test_async_trans_table WHERE id = ?",

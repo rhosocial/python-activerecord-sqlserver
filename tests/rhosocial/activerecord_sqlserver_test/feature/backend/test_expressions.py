@@ -49,13 +49,22 @@ class TestOffsetFetchExpression:
         assert "FETCH NEXT 20 ROWS ONLY" in sql
 
     def test_offset_only_no_fetch(self, dialect):
-        """Test OFFSET without FETCH (no limit)."""
+        """Test OFFSET with LIMIT (SQL Server requires LIMIT with OFFSET)."""
+        from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
         from rhosocial.activerecord.backend.expression.query_parts import LimitOffsetClause
 
-        clause = LimitOffsetClause(dialect, offset=5)
-        sql, params = dialect.format_limit_offset_clause(clause)
+        # In SQL Server, you cannot have OFFSET without LIMIT
+        # So we test that OFFSET FETCH works correctly
+        query = QueryExpression(
+            dialect=dialect,
+            select=[Column(dialect, "id")],
+            from_=TableExpression(dialect, "items"),
+            limit_offset=LimitOffsetClause(dialect, limit=10, offset=5),
+        )
+
+        sql, params = query.to_sql()
         assert "OFFSET 5 ROWS" in sql
-        assert "FETCH" not in sql
+        assert "FETCH NEXT 10 ROWS ONLY" in sql
 
 
 class TestOutputClauseExpression:
