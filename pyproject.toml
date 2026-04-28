@@ -35,8 +35,12 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "pyodbc>=5.3.0",
+  "pyodbc>=5.3.0",
+  "rhosocial-activerecord",
 ]
+
+[project.scripts]
+rhosocial-activerecord-sqlserver = "rhosocial.activerecord.backend.impl.sqlserver.__main__:main"
 
 [project.optional-dependencies]
 test = [
