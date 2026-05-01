@@ -53,10 +53,10 @@ class TestSQLServerJSONAdapter:
 
         adapter = SQLServerJSONAdapter()
 
-        result = adapter.to_db({"name": "John", "age": 30})
+        result = adapter.to_database({"name": "John", "age": 30})
         assert result == '{"name": "John", "age": 30}'
 
-        result = adapter.to_db([1, 2, 3])
+        result = adapter.to_database([1, 2, 3])
         assert result == "[1, 2, 3]"
 
     def test_json_from_db(self):
@@ -65,10 +65,10 @@ class TestSQLServerJSONAdapter:
 
         adapter = SQLServerJSONAdapter()
 
-        result = adapter.from_db('{"name": "John", "age": 30}')
+        result = adapter.from_database('{"name": "John", "age": 30}')
         assert result == {"name": "John", "age": 30}
 
-        result = adapter.from_db("[1, 2, 3]")
+        result = adapter.from_database("[1, 2, 3]")
         assert result == [1, 2, 3]
 
 

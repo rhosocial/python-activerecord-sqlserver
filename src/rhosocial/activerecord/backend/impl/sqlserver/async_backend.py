@@ -262,10 +262,14 @@ class AsyncSQLServerBackend(
         """
         if not self._connection:
             await self.connect()
-        
+
         start_time = time.perf_counter()
-        
+
         try:
+            if not params_list:
+                self.log(logging.DEBUG, "Empty parameter list, returning zero affected rows")
+                return QueryResult(affected_rows=0, data=None, duration=0.0)
+
             async with await self._get_cursor() as cursor:
                 await cursor.executemany(sql, params_list)
                 

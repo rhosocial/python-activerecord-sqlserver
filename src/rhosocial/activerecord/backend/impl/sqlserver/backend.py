@@ -325,16 +325,20 @@ class SQLServerBackend(
         """
         if not self._connection:
             self.connect()
-        
+
         cursor = None
         start_time = time.perf_counter()
-        
+
         try:
             cursor = self._get_cursor()
-            
+
             self.log(logging.DEBUG, f"Executing batch operation: {sql}")
             self.log(logging.DEBUG, f"With {len(params_list)} parameter sets")
-            
+
+            if not params_list:
+                self.log(logging.DEBUG, "Empty parameter list, returning zero affected rows")
+                return QueryResult(affected_rows=0, data=None, duration=0.0)
+
             cursor.executemany(sql, params_list)
             
             duration = time.perf_counter() - start_time
