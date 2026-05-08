@@ -1,20 +1,5 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/__init__.py
-"""
-SQL Server backend implementation for the Python ORM.
-
-This module provides:
-- SQL Server synchronous backend with connection management and query execution
-- SQL Server asynchronous backend with async/await support
-- SQL Server-specific connection configuration
-- Type mapping and value conversion
-- Transaction management with savepoint support (sync and async)
-- SQL Server dialect and expression handling
-
-Architecture:
-- SQLServerBackend: Synchronous implementation using pyodbc
-- AsyncSQLServerBackend: Asynchronous implementation using async pyodbc
-- Independent from ORM frameworks - uses only native drivers
-"""
+"""SQL Server backend implementation for the Python ORM."""
 
 from .backend import SQLServerBackend
 from .config import SQLServerConnectionConfig
@@ -34,6 +19,21 @@ from .adapters import (
 
 from .explain import SQLServerExplainResult, SQLServerExplainRow
 
+from .expression import (
+    SQLServerOutputInsertedExpression,
+    SQLServerOutputDeletedExpression,
+    SQLServerTableHintClause,
+    SQLServerTableHint,
+    SQLServerReadPastHint,
+    SQLServerTemporalPeriodDefinition,
+    SQLServerSystemVersioningClause,
+    SQLServerOpenJsonExpression,
+    OpenJsonColumn,
+    SQLServerTryCastExpression,
+    SQLServerTryConvertExpression,
+    SQLServerContainsPredicate,
+    SQLServerFreetextPredicate,
+)
 
 __all__ = [
     "SQLServerBackend",
@@ -51,29 +51,28 @@ __all__ = [
     "SQLServerHierarchyIdAdapter",
     "SQLServerExplainResult",
     "SQLServerExplainRow",
+    "SQLServerOutputInsertedExpression",
+    "SQLServerOutputDeletedExpression",
+    "SQLServerTableHintClause",
+    "SQLServerTableHint",
+    "SQLServerReadPastHint",
+    "SQLServerTemporalPeriodDefinition",
+    "SQLServerSystemVersioningClause",
+    "SQLServerOpenJsonExpression",
+    "OpenJsonColumn",
+    "SQLServerTryCastExpression",
+    "SQLServerTryConvertExpression",
+    "SQLServerContainsPredicate",
+    "SQLServerFreetextPredicate",
 ]
 
 
 def __getattr__(name: str):
-    """Lazily load async components to avoid forcing aioodbc dependency.
-    
-    This allows users to import SQLServerBackend and other sync components without
-    having aioodbc installed. Only when async components are actually accessed
-    will aioodbc be required.
-    
-    Lazily loaded components:
-    - AsyncSQLServerBackend: Async SQL Server backend implementation
-    - AsyncSQLServerTransactionManager: Async transaction manager
-    
-    Raises:
-        ImportError: If aioodbc is not installed when accessing async components.
-        AttributeError: If the requested attribute doesn't exist.
-    """
     _lazy_imports = {
         "AsyncSQLServerBackend": (".async_backend", "AsyncSQLServerBackend"),
         "AsyncSQLServerTransactionManager": (".async_transaction", "AsyncSQLServerTransactionManager"),
     }
-    
+
     if name in _lazy_imports:
         module_path, class_name = _lazy_imports[name]
         try:
@@ -86,5 +85,5 @@ def __getattr__(name: str):
                 f"Install it with: pip install rhosocial-activerecord-sqlserver[async] "
                 f"or pip install aioodbc"
             ) from e
-    
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

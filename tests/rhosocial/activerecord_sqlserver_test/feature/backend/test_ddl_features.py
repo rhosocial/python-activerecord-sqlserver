@@ -135,6 +135,8 @@ class TestAsyncDDLFeatures:
     @pytest.mark.asyncio
     async def test_async_select_into(self, async_sqlserver_backend_single, async_source_table):
         """Test async SELECT INTO."""
+        await async_sqlserver_backend_single.execute("DROP TABLE IF EXISTS test_async_copy")
+
         await async_sqlserver_backend_single.execute(
             "SELECT * INTO test_async_copy FROM test_source_table"
         )

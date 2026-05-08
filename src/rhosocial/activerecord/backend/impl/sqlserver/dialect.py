@@ -9,6 +9,8 @@ based on the SQL Server version provided at initialization.
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
+from rhosocial.activerecord.backend.expression import bases
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.dialect.protocols import (
     CTESupport,
     FilterClauseSupport,
@@ -39,6 +41,16 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
+)
+from .protocols import (
+    SQLServerTableSupport,
+    SQLServerLockingSupport,
+    SQLServerJSONSupport,
+    SQLServerTemporalTableSupport,
+    SQLServerSequenceSupport,
+    SQLServerFullTextSearchSupport,
+    SQLServerPaginationSupport,
+    SQLServerMergeSupport,
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
     CTEMixin,
@@ -72,13 +84,14 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
-    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation
+    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation, JSONExpression
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
         OrderByClause,
         LimitOffsetClause,
         ForUpdateClause,
         QualifyClause,
+        JoinExpression,
     )
     from rhosocial.activerecord.backend.expression.statements import (
         ExplainExpression,
@@ -89,11 +102,21 @@ if TYPE_CHECKING:
         RefreshMaterializedViewExpression,
         ReturningClause,
         InsertExpression,
+        UpdateExpression,
+        DeleteExpression,
         ColumnDefinition,
         TableConstraint,
         IndexDefinition,
         CreateTableExpression,
         DropTableExpression,
+        AlterTableExpression,
+        CreateSchemaExpression,
+        DropSchemaExpression,
+        CreateSequenceExpression,
+        DropSequenceExpression,
+        AlterSequenceExpression,
+        MergeExpression,
+        TruncateExpression,
     )
     from rhosocial.activerecord.backend.expression.transaction import (
         BeginTransactionExpression,
@@ -145,6 +168,7 @@ class SQLServerDialect(
     TableMixin,
     ConstraintMixin,
     IntrospectionMixin,
+    # Protocols for isinstance() checks
     CTESupport,
     FilterClauseSupport,
     WindowFunctionSupport,
@@ -174,6 +198,10 @@ class SQLServerDialect(
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
+    # SQL Server-specific protocols (removed from MRO to avoid diamond inheritance)
+    # SQLServerTableSupport, SQLServerLockingSupport, SQLServerJSONSupport,
+    # SQLServerTemporalTableSupport, SQLServerSequenceSupport,
+    # SQLServerFullTextSearchSupport, SQLServerPaginationSupport, SQLServerMergeSupport,
 ):
     """
     SQL Server dialect implementation that adapts to the SQL Server version.
@@ -540,7 +568,7 @@ class SQLServerDialect(
         parts = ["UPDATE", table_sql]
         
         set_parts = []
-        for col, val in expr.values.items():
+        for col, val in expr.assignments.items():
             col_sql = self.format_identifier(col)
             val_sql, val_params = val.to_sql()
             set_parts.append(f"{col_sql} = {val_sql}")
@@ -566,8 +594,16 @@ class SQLServerDialect(
         
         all_params: List[Any] = []
         
-        table_sql, table_params = expr.table.to_sql()
-        all_params.extend(table_params)
+        # DeleteExpression has .tables (list), not .table
+        if expr.tables:
+            table_refs = []
+            for tbl in expr.tables:
+                tbl_sql, tbl_params = tbl.to_sql()
+                table_refs.append(tbl_sql)
+                all_params.extend(tbl_params)
+            table_sql = ", ".join(table_refs)
+        else:
+            table_sql = ""
         
         parts = ["DELETE FROM", table_sql]
         
@@ -1152,3 +1188,327 @@ class SQLServerDialect(
             all_params.extend(where_params)
 
         return " ".join(parts), tuple(all_params)
+
+    # --- SQL Server-specific format overrides ---
+
+    def format_create_sequence_statement(self, expr: "CreateSequenceExpression") -> Tuple[str, tuple]:
+        """Format CREATE SEQUENCE for SQL Server (2012+).
+
+        SQL Server uses:
+        - CREATE SEQUENCE [schema.]name
+        - START WITH, INCREMENT BY, MINVALUE, MAXVALUE
+        - CYCLE | NO CYCLE, CACHE, NO ORDER (ORDER not supported)
+        - No IF NOT EXISTS support, no OWNED BY
+        """
+        parts = ["CREATE SEQUENCE"]
+        parts.append(self.format_identifier(expr.sequence_name))
+        if expr.start is not None:
+            parts.append(f"START WITH {expr.start}")
+        if expr.increment is not None:
+            parts.append(f"INCREMENT BY {expr.increment}")
+        if expr.minvalue is not None:
+            parts.append(f"MINVALUE {expr.minvalue}")
+        if expr.maxvalue is not None:
+            parts.append(f"MAXVALUE {expr.maxvalue}")
+        if expr.cycle:
+            parts.append("CYCLE")
+        else:
+            parts.append("NO CYCLE")
+        if expr.cache is not None:
+            parts.append(f"CACHE {expr.cache}")
+        return " ".join(parts), ()
+
+    def format_drop_sequence_statement(self, expr: "DropSequenceExpression") -> Tuple[str, tuple]:
+        """Format DROP SEQUENCE for SQL Server (2012+)."""
+        parts = ["DROP SEQUENCE"]
+        if expr.if_exists and self.version >= SQL_SERVER_2012:
+            parts.append("IF EXISTS")
+        parts.append(self.format_identifier(expr.sequence_name))
+        return " ".join(parts), ()
+
+    def format_alter_sequence_statement(self, expr: "AlterSequenceExpression") -> Tuple[str, tuple]:
+        """Format ALTER SEQUENCE for SQL Server."""
+        parts = [f"ALTER SEQUENCE {self.format_identifier(expr.sequence_name)}"]
+        if expr.restart is not None:
+            parts.append(f"RESTART WITH {expr.restart}")
+        if expr.increment is not None:
+            parts.append(f"INCREMENT BY {expr.increment}")
+        if expr.minvalue is not None:
+            parts.append(f"MINVALUE {expr.minvalue}")
+        if expr.maxvalue is not None:
+            parts.append(f"MAXVALUE {expr.maxvalue}")
+        if expr.cycle is not None:
+            parts.append("CYCLE" if expr.cycle else "NO CYCLE")
+        if expr.cache is not None:
+            parts.append(f"CACHE {expr.cache}")
+        return " ".join(parts), ()
+
+    def format_create_schema_statement(self, expr: "CreateSchemaExpression") -> Tuple[str, tuple]:
+        """Format CREATE SCHEMA for SQL Server.
+
+        SQL Server uses CREATE SCHEMA schema_name [AUTHORIZATION owner_name].
+        Does not support IF NOT EXISTS.
+        """
+        parts = ["CREATE SCHEMA"]
+        parts.append(self.format_identifier(expr.schema_name))
+        if expr.authorization:
+            parts.append(f"AUTHORIZATION {self.format_identifier(expr.authorization)}")
+        return " ".join(parts), ()
+
+    def format_drop_schema_statement(self, expr: "DropSchemaExpression") -> Tuple[str, tuple]:
+        """Format DROP SCHEMA for SQL Server.
+
+        SQL Server requires schema to be empty before dropping.
+        Does not support IF EXISTS or CASCADE.
+        """
+        parts = ["DROP SCHEMA"]
+        parts.append(self.format_identifier(expr.schema_name))
+        return " ".join(parts), ()
+
+    def format_truncate_statement(self, expr: "TruncateExpression") -> Tuple[str, tuple]:
+        """Format TRUNCATE TABLE for SQL Server.
+
+        TRUNCATE TABLE is a DDL operation (minimal logging).
+        Does not support RESTART IDENTITY or CASCADE.
+        """
+        sql = f"TRUNCATE TABLE {self.format_identifier(expr.table_name)}"
+        return sql, ()
+
+    def format_merge_statement(self, expr: "MergeExpression") -> Tuple[str, tuple]:
+        """Format MERGE statement for SQL Server (2008+).
+
+        SQL Server MERGE syntax:
+        MERGE INTO target USING source ON condition
+        WHEN MATCHED [AND condition] THEN UPDATE/DELETE
+        WHEN NOT MATCHED [BY TARGET] [AND condition] THEN INSERT
+        WHEN NOT MATCHED BY SOURCE [AND condition] THEN UPDATE/DELETE
+        """
+        from rhosocial.activerecord.backend.expression.statements import MergeActionType
+
+        all_params: list = []
+
+        target_sql, target_params = expr.target_table.to_sql()
+        all_params.extend(target_params)
+
+        source_sql, source_params = expr.source.to_sql()
+        all_params.extend(source_params)
+
+        on_sql, on_params = expr.on_condition.to_sql()
+        all_params.extend(on_params)
+
+        parts = [
+            f"MERGE INTO {target_sql}",
+            f"USING {source_sql}",
+            f"ON {on_sql}",
+        ]
+
+        for action in expr.when_matched:
+            action_parts = []
+            if action.condition:
+                cond_sql, cond_params = action.condition.to_sql()
+                action_parts.append(f"WHEN MATCHED AND {cond_sql}")
+                all_params.extend(cond_params)
+            else:
+                action_parts.append("WHEN MATCHED")
+
+            if action.action_type == MergeActionType.UPDATE:
+                assignments = []
+                for col, as_expr in action.assignments.items():
+                    as_sql, as_params = as_expr.to_sql()
+                    assignments.append(f"{self.format_identifier(col)} = {as_sql}")
+                    all_params.extend(as_params)
+                action_parts.append(f"THEN UPDATE SET {', '.join(assignments)}")
+            elif action.action_type == MergeActionType.DELETE:
+                action_parts.append("THEN DELETE")
+            parts.append(" ".join(action_parts))
+
+        for action in expr.when_not_matched:
+            action_parts = []
+            if action.condition:
+                cond_sql, cond_params = action.condition.to_sql()
+                action_parts.append(f"WHEN NOT MATCHED AND {cond_sql}")
+                all_params.extend(cond_params)
+            else:
+                action_parts.append("WHEN NOT MATCHED BY TARGET")
+
+            if action.action_type == MergeActionType.INSERT:
+                insert_cols, insert_vals = [], []
+                for col, val_expr in action.assignments.items():
+                    insert_cols.append(self.format_identifier(col))
+                    val_sql, val_params = val_expr.to_sql()
+                    insert_vals.append(val_sql)
+                    all_params.extend(val_params)
+                if insert_cols:
+                    action_parts.append(
+                        f"THEN INSERT ({', '.join(insert_cols)}) VALUES ({', '.join(insert_vals)})"
+                    )
+                else:
+                    action_parts.append("THEN INSERT DEFAULT VALUES")
+            parts.append(" ".join(action_parts))
+
+        return " ".join(parts), tuple(all_params)
+
+    def format_set_transaction(self, expr: "SetTransactionExpression") -> Tuple[str, tuple]:
+        """Format SET TRANSACTION for SQL Server.
+
+        SQL Server requires SET TRANSACTION ISOLATION LEVEL before BEGIN TRANSACTION.
+        """
+        from rhosocial.activerecord.backend.errors import UnsupportedTransactionModeError
+        from rhosocial.activerecord.backend.transaction import TransactionMode
+
+        params = expr.get_params()
+        mode = params.get("mode")
+
+        if mode == TransactionMode.READ_ONLY:
+            raise UnsupportedTransactionModeError(
+                feature="READ ONLY transactions",
+                backend="SQL Server",
+                message="SQL Server does not support READ ONLY transactions.",
+            )
+
+        isolation_level = params.get("isolation_level")
+        if isolation_level:
+            level_name = self.get_isolation_level_name(isolation_level)
+            return f"SET TRANSACTION ISOLATION LEVEL {level_name}", ()
+
+        return "", ()
+
+    def format_lateral_expression(
+        self,
+        expr_sql: str,
+        expr_params: tuple,
+        alias: str,
+        join_type: str = "CROSS APPLY",
+    ) -> Tuple[str, tuple]:
+        """Format LATERAL as CROSS APPLY / OUTER APPLY for SQL Server.
+
+        SQL Server uses CROSS APPLY (equivalent to INNER LATERAL) and
+        OUTER APPLY (equivalent to LEFT LATERAL) instead of LATERAL.
+        """
+        if join_type.upper() in ("LEFT", "LEFT JOIN", "LEFT OUTER JOIN"):
+            apply_type = "OUTER APPLY"
+        else:
+            apply_type = "CROSS APPLY"
+
+        sql = f"{apply_type} ({expr_sql})"
+        if alias:
+            sql += f" AS {self.format_identifier(alias)}"
+        return sql, expr_params
+
+    def format_for_update_clause(self, clause: "ForUpdateClause") -> Tuple[str, tuple]:
+        """Format FOR UPDATE for SQL Server using table hints.
+
+        SQL Server does not support FOR UPDATE syntax. Instead, locking
+        is achieved through table hints: WITH (UPDLOCK, ROWLOCK) etc.
+        """
+        all_params: list = []
+
+        sql_parts = ["WITH (UPDLOCK, ROWLOCK)"]
+
+        if clause.skip_locked and self.supports_for_update_skip_locked():
+            sql_parts[0] = "WITH (UPDLOCK, ROWLOCK, READPAST)"
+
+        return " ".join(sql_parts), tuple(all_params)
+
+    def format_set_operation_expression(
+        self,
+        left: "bases.BaseExpression",
+        right: "bases.BaseExpression",
+        operation: str,
+        alias: str,
+        all_: bool,
+        order_by_clause: "OrderByClause" = None,
+        limit_offset_clause: "LimitOffsetClause" = None,
+        for_update_clause: "ForUpdateClause" = None,
+    ) -> Tuple[str, tuple]:
+        """Format set operation for SQL Server.
+
+        SQL Server supports UNION, UNION ALL, INTERSECT, EXCEPT.
+        ORDER BY and OFFSET FETCH apply to the entire set operation result.
+        """
+        left_sql, left_params = left.to_sql()
+        right_sql, right_params = right.to_sql()
+        all_str = " ALL" if all_ else ""
+
+        base_sql = f"{left_sql} {operation}{all_str} {right_sql}"
+
+        all_params = list(left_params + right_params)
+        sql_parts = [f"({base_sql})"]
+
+        if alias:
+            sql_parts.append(f"AS {self.format_identifier(alias)}")
+
+        if order_by_clause:
+            order_by_sql, order_by_params = order_by_clause.to_sql()
+            sql_parts.append(order_by_sql)
+            all_params.extend(order_by_params)
+
+        if limit_offset_clause:
+            limit_offset_sql, limit_offset_params = limit_offset_clause.to_sql()
+            sql_parts.append(limit_offset_sql)
+            all_params.extend(limit_offset_params)
+
+        return " ".join(sql_parts), tuple(all_params)
+
+    def format_alter_table_statement(self, expr: "AlterTableExpression") -> Tuple[str, tuple]:
+        """Format ALTER TABLE for SQL Server.
+
+        SQL Server supports:
+        - ADD column
+        - DROP COLUMN
+        - ALTER COLUMN (modify data type)
+        - ADD CONSTRAINT (PRIMARY KEY, UNIQUE, CHECK, FOREIGN KEY)
+        - DROP CONSTRAINT
+        - Single action per ALTER TABLE statement
+        """
+        all_params: list = []
+        parts = [f"ALTER TABLE {self.format_identifier(expr.table_name)}"]
+
+        action_parts = []
+        for action in expr.actions:
+            action_part, action_params = action.to_sql()
+            action_parts.append(action_part)
+            all_params.extend(action_params)
+
+        if action_parts:
+            parts.append(" ".join(action_parts))
+
+        return " ".join(parts), tuple(all_params)
+
+    def format_expression(self, expr) -> Tuple[str, tuple]:
+        """Format an arbitrary expression to SQL."""
+        if isinstance(expr, BaseExpression):
+            return expr.to_sql()
+        return str(expr), ()
+
+    def format_fulltext_match(
+        self, columns: list, search_string: str, language: str = None
+    ) -> Tuple[str, tuple]:
+        """Format SQL Server CONTAINS full-text search.
+
+        CONTAINS supports:
+        - Simple terms: CONTAINS(column, 'term')
+        - Prefix: CONTAINS(column, '"term*"')
+        - Proximity: CONTAINS(column, 'NEAR((term1, term2))')
+        - Inflectional: CONTAINS(column, 'FORMSOF(INFLECTIONAL, term)')
+        - Thesaurus: CONTAINS(column, 'FORMSOF(THESAURUS, term)')
+        """
+        escaped = search_string.replace("'", "''")
+        cols = ", ".join(self.format_identifier(c) if isinstance(c, str) else c for c in columns)
+
+        sql = f"CONTAINS({cols}, '{escaped}'"
+        if language:
+            sql += f", LANGUAGE '{language}'"
+        sql += ")"
+
+        return sql, ()
+
+    def format_top_n_clause(self, n: int, percentage: bool = False) -> str:
+        """Format TOP n clause for SQL Server.
+
+        SELECT TOP n / SELECT TOP n PERCENT
+        Only valid for SELECT statements.
+        """
+        if percentage:
+            return f"TOP {n} PERCENT"
+        return f"TOP {n}"
