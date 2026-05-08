@@ -5,7 +5,7 @@ SQL Server string function factories.
 Functions: string_agg, concat_ws, trim, format
 """
 
-from typing import Union, Any, TYPE_CHECKING, List
+from typing import Union, Any, TYPE_CHECKING, List, Optional
 
 from rhosocial.activerecord.backend.expression import bases, core
 
