@@ -52,8 +52,7 @@ class SQLServerTransactionManager(TransactionManager):
     
     def __init__(self, backend, logger=None):
         super().__init__(backend, logger)
-        self._savepoints: List[str] = []
-        self._isolation_level: Optional[SQLServerIsolationLevel] = None
+        self._sqlserver_isolation_level: Optional[SQLServerIsolationLevel] = None
         self._name: Optional[str] = None
     
     def begin(
@@ -90,18 +89,23 @@ class SQLServerTransactionManager(TransactionManager):
             )
         
         self._name = name
-        
+
+        # Resolve isolation level from parameter, base class property, or snapshot flag
+        effective_iso = isolation_level
+        if effective_iso is None and isinstance(self._isolation_level, IsolationLevel):
+            effective_iso = self._isolation_level
+
         if snapshot:
-            self._isolation_level = SQLServerIsolationLevel.SNAPSHOT
-        elif isolation_level:
-            self._isolation_level = ISOLATION_LEVEL_MAP.get(isolation_level)
-        
+            self._sqlserver_isolation_level = SQLServerIsolationLevel.SNAPSHOT
+        elif effective_iso:
+            self._sqlserver_isolation_level = ISOLATION_LEVEL_MAP.get(effective_iso)
+
         self._do_begin()
-        
+
         self._state = TransactionState.ACTIVE
         self._savepoints = []
-        
-        self.log(logging.DEBUG, f"Transaction started (isolation={self._isolation_level})")
+
+        self.log(logging.DEBUG, f"Transaction started (isolation={self._sqlserver_isolation_level})")
     
     def _do_begin(self) -> None:
         """Execute the BEGIN TRANSACTION statement."""
@@ -113,8 +117,8 @@ class SQLServerTransactionManager(TransactionManager):
         sql = " ".join(parts)
         self._backend.execute(sql)
         
-        if self._isolation_level:
-            set_iso_sql = f"SET TRANSACTION ISOLATION LEVEL {self._isolation_level.value}"
+        if self._sqlserver_isolation_level:
+            set_iso_sql = f"SET TRANSACTION ISOLATION LEVEL {self._sqlserver_isolation_level.value}"
             self._backend.execute(set_iso_sql)
     
     def commit(self) -> None:
@@ -165,24 +169,31 @@ class SQLServerTransactionManager(TransactionManager):
             sql += f" {self._name}"
         self._backend.execute(sql)
     
-    def savepoint(self, name: str) -> None:
+    def savepoint(self, name: Optional[str] = None) -> str:
         """
         Create a savepoint within the current transaction.
-        
+
         Args:
-            name: Savepoint name
+            name: Savepoint name. If None, auto-generated.
+
+        Returns:
+            str: The name of the created savepoint
         """
         if self._state != TransactionState.ACTIVE:
             raise TransactionError("No active transaction for savepoint")
-        
+
+        if name is None:
+            name = f"sp_{len(self._savepoints) + 1}"
+
         if name in self._savepoints:
             self.log(logging.WARNING, f"Savepoint '{name}' already exists, will be overwritten")
-        
+
         sql = f"SAVE TRANSACTION {name}"
         self._backend.execute(sql)
         self._savepoints.append(name)
-        
+
         self.log(logging.DEBUG, f"Savepoint created: {name}")
+        return name
     
     def _rollback_to_savepoint(self, name: str) -> None:
         """Rollback to a specific savepoint."""
@@ -216,7 +227,6 @@ class SQLServerTransactionManager(TransactionManager):
         """Check if a transaction is currently active."""
         return self._state == TransactionState.ACTIVE
     
-    @property
     def savepoints(self) -> List[str]:
         """Get list of current savepoints."""
         return self._savepoints.copy()

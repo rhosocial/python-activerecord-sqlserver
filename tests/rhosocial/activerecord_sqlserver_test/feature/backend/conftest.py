@@ -166,4 +166,4 @@ async def async_sqlserver_backend_single():
 def sqlserver_dialect():
     """Fixture providing SQLServerDialect instance for testing."""
     from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
-    return SQLServerDialect()
+    return SQLServerDialect(version=(16, 0, 0))

@@ -103,9 +103,10 @@ class TestSyncTransactionIsolation:
         assert len(rows) == 1
 
     def test_supports_isolation_level(self, sqlserver_backend_single, test_table):
-        """Test that SQL Server supports isolation levels."""
+        """Test that SQL Server supports isolation levels via SET statement."""
         dialect = sqlserver_backend_single.dialect
-        assert dialect.supports_isolation_level() is True
+        assert dialect.supports_isolation_level_in_begin() is False
+        assert len(dialect.ISOLATION_LEVEL_NAMES) > 0
 
 
 class TestAsyncTransactionIsolation:

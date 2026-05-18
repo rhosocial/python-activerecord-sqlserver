@@ -13,7 +13,7 @@ class TestSQLServerDialect:
 
     @pytest.fixture
     def dialect(self):
-        return SQLServerDialect()
+        return SQLServerDialect(version=(16, 0, 0))
 
     def test_format_identifier(self, dialect: SQLServerDialect):
         """Test identifier formatting with brackets."""
@@ -80,7 +80,7 @@ class TestSQLServerDialectStatements:
 
     @pytest.fixture
     def dialect(self):
-        return SQLServerDialect()
+        return SQLServerDialect(version=(16, 0, 0))
 
     def test_format_create_index_basic(self, dialect: SQLServerDialect):
         """Test basic CREATE INDEX formatting."""
@@ -120,7 +120,7 @@ class TestSQLServerDialectProtocols:
 
     @pytest.fixture
     def dialect(self):
-        return SQLServerDialect()
+        return SQLServerDialect(version=(16, 0, 0))
 
     def test_supports_returning(self, dialect: SQLServerDialect):
         """Test that SQL Server supports OUTPUT clause (RETURNING)."""

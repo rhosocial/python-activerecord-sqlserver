@@ -14,7 +14,7 @@ class TestOffsetFetchExpression:
 
     @pytest.fixture
     def dialect(self):
-        return SQLServerDialect()
+        return SQLServerDialect(version=(16, 0, 0))
 
     def test_offset_fetch_basic(self, dialect):
         """Test basic OFFSET FETCH formatting."""
@@ -72,7 +72,7 @@ class TestOutputClauseExpression:
 
     @pytest.fixture
     def dialect(self):
-        return SQLServerDialect()
+        return SQLServerDialect(version=(16, 0, 0))
 
     def test_output_clause_insert(self, dialect):
         """Test OUTPUT clause in INSERT statement."""
@@ -127,7 +127,7 @@ class TestCreateIndexExpression:
 
     @pytest.fixture
     def dialect(self):
-        return SQLServerDialect()
+        return SQLServerDialect(version=(16, 0, 0))
 
     def test_basic_index(self, dialect):
         """Test basic CREATE INDEX."""
@@ -181,7 +181,7 @@ class TestJoinExpression:
 
     @pytest.fixture
     def dialect(self):
-        return SQLServerDialect()
+        return SQLServerDialect(version=(16, 0, 0))
 
     def test_inner_join(self, dialect):
         """Test INNER JOIN formatting."""
