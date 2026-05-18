@@ -12,6 +12,8 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from rhosocial.activerecord.backend.base import StorageBackend
+from rhosocial.activerecord.backend.base.operations import AsyncSQLOperationsMixin
+from rhosocial.activerecord.backend.base.transaction_management import AsyncTransactionManagementMixin
 from rhosocial.activerecord.backend.errors import (
     ConnectionError,
     DatabaseError,
@@ -34,6 +36,8 @@ except ImportError:
 
 
 class AsyncSQLServerBackend(
+    AsyncSQLOperationsMixin,
+    AsyncTransactionManagementMixin,
     IntrospectorBackendMixin,
     SQLServerBackendMixin,
     StorageBackend
