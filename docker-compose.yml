@@ -1,0 +1,46 @@
+# docker-compose.yml
+services:
+  sqlserver_2019:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: rhosocial_sqlserver_2019
+    ports:
+      - "11433:1433"
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: Password123!
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123!' -Q 'SELECT 1' -N -C || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  sqlserver_2022:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: rhosocial_sqlserver_2022
+    ports:
+      - "11434:1433"
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: Password123!
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123!' -Q 'SELECT 1' -N -C || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  sqlserver_2025:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    container_name: rhosocial_sqlserver_2025
+    ports:
+      - "11435:1433"
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: Password123!
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123!' -Q 'SELECT 1' -N -C || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
