@@ -246,15 +246,19 @@ class SQLServerDialect(
         "json_array": (SQL_SERVER_2022, None),
     }
     
-    def __init__(self, version: Tuple[int, int, int] = (16, 0, 0)):
+    def __init__(self, version: Optional[Tuple[int, int, int]] = None):
         """
         Initialize SQL Server dialect with specific version.
-        
+
         Args:
-            version: SQL Server version tuple (major, minor, patch)
+            version: SQL Server version tuple (major, minor, patch).
+                If None, the dialect must be adapted via
+                backend.introspect_and_adapt() before version-dependent
+                features can be used.
         """
-        self.version = version
         super().__init__()
+        if version is not None:
+            self.version = version
     
     def get_parameter_placeholder(self, position: int = 0) -> str:
         """SQL Server uses ? for placeholders (ODBC/qmark style)."""
@@ -292,10 +296,30 @@ class SQLServerDialect(
         """SQL Server doesn't support MATERIALIZED hint for CTEs."""
         return False
     
-    def supports_returning_clause(self) -> bool:
-        """SQL Server supports OUTPUT clause (similar to RETURNING)."""
+    def supports_returning_insert(self) -> bool:
+        """SQL Server supports OUTPUT clause for INSERT."""
         return True
-    
+
+    def supports_returning_update(self) -> bool:
+        """SQL Server supports OUTPUT clause for UPDATE."""
+        return True
+
+    def supports_returning_delete(self) -> bool:
+        """SQL Server supports OUTPUT clause for DELETE."""
+        return True
+
+    def supports_constraint_enforced(self) -> bool:
+        """SQL Server does not support ENFORCED/NOT ENFORCED constraint control."""
+        return False
+
+    def supports_fk_match(self) -> bool:
+        """SQL Server does not support MATCH {SIMPLE|PARTIAL|FULL}."""
+        return False
+
+    def supports_deferrable_constraint(self) -> bool:
+        """SQL Server does not support DEFERRABLE constraints."""
+        return False
+
     def supports_window_functions(self) -> bool:
         """Window functions are supported since SQL Server 2005."""
         return True
@@ -1050,7 +1074,7 @@ class SQLServerDialect(
                         constraint_parts.append(f"DEFAULT {default_sql}")
                         params.extend(default_params)
                     elif isinstance(constraint.default_value, str):
-                        escaped = constraint.default_value.replace("'", "''")
+                        escaped = self._escape_sql_string(constraint.default_value)
                         constraint_parts.append(f"DEFAULT '{escaped}'")
                     else:
                         constraint_parts.append(f"DEFAULT {constraint.default_value}")
