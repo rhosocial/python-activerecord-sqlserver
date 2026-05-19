@@ -147,7 +147,7 @@ class TestSQLServerDialectDML:
 
         sql, params = delete.to_sql()
         assert "DELETE" in sql
-        assert "OUTPUT INSERTED.[id]" in sql
+        assert "OUTPUT DELETED.[id]" in sql
 
     def test_insert_top(self, dialect):
         from rhosocial.activerecord.backend.expression import (

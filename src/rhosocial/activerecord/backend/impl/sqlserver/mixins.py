@@ -7,7 +7,7 @@ that extends the base backend capabilities.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple, Type
 
 from .dialect import SQLServerDialect
 
@@ -319,6 +319,39 @@ class SQLServerBackendMixin:
         """Log a message with the specified level."""
         if hasattr(self, '_logger') and self._logger:
             self._logger.log(level, message)
+
+    def get_default_adapter_suggestions(self) -> Dict[Type, Tuple[Any, Type]]:
+        """Provides default type adapter suggestions for SQL Server."""
+        if hasattr(self, '_default_suggestions_cache') and self._default_suggestions_cache is not None:
+            return self._default_suggestions_cache
+
+        from datetime import date, datetime, time
+        from decimal import Decimal
+        from uuid import UUID
+
+        suggestions = {}
+        type_mappings = [
+            (bool, bool),
+            (int, int),
+            (float, float),
+            (str, str),
+            (bytes, bytes),
+            (datetime, datetime),
+            (date, date),
+            (time, time),
+            (Decimal, Decimal),
+            (UUID, str),
+            (dict, str),
+            (list, str),
+        ]
+
+        for py_type, db_type in type_mappings:
+            adapter = self.adapter_registry.get_adapter(py_type, db_type)
+            if adapter:
+                suggestions[py_type] = (adapter, db_type)
+
+        self._default_suggestions_cache = suggestions
+        return suggestions
 
     def _build_query_result(self, cursor, data, duration: float):
         from rhosocial.activerecord.backend.result import QueryResult

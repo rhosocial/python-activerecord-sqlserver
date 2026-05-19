@@ -225,15 +225,48 @@ class AsyncSQLServerBackend(
         start_time = time.perf_counter()
         
         try:
+            # Prepare parameters using adapter suggestions
+            all_suggestions = self.get_default_adapter_suggestions()
+            prepared_params = params
+            if params:
+                param_adapters = []
+                for param_value in params:
+                    py_type = type(param_value)
+                    suggestion = all_suggestions.get(py_type)
+                    param_adapters.append(suggestion)
+                prepared_params = self.prepare_parameters(params, param_adapters)
+            
             async with await self._get_cursor() as cursor:
-                await cursor.execute(sql, params or ())
+                await cursor.execute(sql, prepared_params or ())
                 
-                if cursor.description:
-                    columns = [col[0] for col in cursor.description]
+                is_select = options.process_result_set if options.process_result_set is not None else options.stmt_type == StatementType.DQL
+                data = None
+                if is_select and cursor.description:
                     rows = await cursor.fetchall()
-                    data = [dict(zip(columns, row)) for row in rows]
-                else:
-                    data = None
+                    column_names = [desc[0].strip('"') for desc in cursor.description]
+                    adapters = options.column_adapters or {}
+                    mapping = options.column_mapping or {}
+                    data = []
+                    for row in rows:
+                        row_dict = dict(zip(column_names, row))
+                        adapted_row = self._adapt_row_types(row_dict, adapters)
+                        final_row = self._remap_row_columns(adapted_row, mapping)
+                        data.append(final_row)
+                elif cursor.description:
+                    # Also process result when cursor has data (e.g. OUTPUT clause)
+                    try:
+                        rows = await cursor.fetchall()
+                        column_names = [desc[0].strip('"') for desc in cursor.description]
+                        adapters = options.column_adapters or {}
+                        mapping = options.column_mapping or {}
+                        data = []
+                        for row in rows:
+                            row_dict = dict(zip(column_names, row))
+                            adapted_row = self._adapt_row_types(row_dict, adapters)
+                            final_row = self._remap_row_columns(adapted_row, mapping)
+                            data.append(final_row)
+                    except Exception:
+                        data = None
                 
                 duration = time.perf_counter() - start_time
                 
@@ -244,11 +277,8 @@ class AsyncSQLServerBackend(
                     f"Query executed in {duration:.3f}s, affected {cursor.rowcount} rows"
                 )
                 
-                return QueryResult(
-                    affected_rows=cursor.rowcount,
-                    data=data,
-                    duration=duration
-                )
+                result = self._build_query_result(cursor, data, duration)
+                return result
                 
         except Exception as e:
             self.log(logging.ERROR, f"Error executing query: {str(e)}")

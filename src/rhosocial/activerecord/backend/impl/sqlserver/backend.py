@@ -9,7 +9,7 @@ specific behaviors and SQL dialect.
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import pyodbc
 from pyodbc import Error as PyODBCError, InterfaceError, DatabaseError as PyODBCDatabaseError
@@ -178,38 +178,8 @@ class SQLServerBackend(
 
         self.log(logging.DEBUG, "Registered SQL Server-specific type adapters.")
 
-    def get_default_adapter_suggestions(self) -> Dict[Tuple[type, type], tuple]:
-        """Provides default type adapter suggestions for SQL Server."""
-        if self._default_suggestions_cache is not None:
-            return self._default_suggestions_cache
-
-        from datetime import date, datetime, time
-        from decimal import Decimal
-        from uuid import UUID
-
-        suggestions = {}
-        type_mappings = [
-            (bool, bool),
-            (int, int),
-            (float, float),
-            (str, str),
-            (bytes, bytes),
-            (datetime, datetime),
-            (date, date),
-            (time, time),
-            (Decimal, Decimal),
-            (UUID, str),
-            (dict, str),
-            (list, str),
-        ]
-
-        for py_type, db_type in type_mappings:
-            adapter = self.adapter_registry.get_adapter(py_type, db_type)
-            if adapter:
-                suggestions[py_type] = (adapter, db_type)
-
-        self._default_suggestions_cache = suggestions
-        return suggestions
+    def get_default_adapter_suggestions(self) -> Dict[Type, Tuple[Any, Type]]:
+        return super().get_default_adapter_suggestions()
 
     def connect(self) -> None:
         """Establish connection to SQL Server database.
