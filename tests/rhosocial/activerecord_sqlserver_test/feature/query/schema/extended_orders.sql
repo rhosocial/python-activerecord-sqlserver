@@ -1,0 +1,21 @@
+CREATE TABLE [extended_orders] (
+    [id] INT IDENTITY(1,1) PRIMARY KEY,
+    [user_id] INT NOT NULL,
+    [order_number] NVARCHAR(255) NOT NULL,
+    [total_amount] DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    [status] NVARCHAR(50) NOT NULL DEFAULT 'pending',
+    [priority] NVARCHAR(50) NOT NULL DEFAULT 'medium',
+    [region] NVARCHAR(50) NOT NULL DEFAULT 'default',
+    [category] NVARCHAR(255) NULL,
+    [product] NVARCHAR(255) NULL,
+    [department] NVARCHAR(255) NULL,
+    [year] NVARCHAR(10) NULL,
+    [quarter] NVARCHAR(10) NULL,
+    [created_at] DATETIME2 NULL,
+    [updated_at] DATETIME2 NULL,
+    INDEX [idx_user_id] ([user_id]),
+    INDEX [idx_status] ([status]),
+    INDEX [idx_priority] ([priority]),
+    INDEX [idx_region] ([region]),
+    FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE
+);

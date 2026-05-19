@@ -163,6 +163,19 @@ class SQLServerBackend(
             for py_type, db_types in adapter.supported_types.items():
                 for db_type in db_types:
                     self.adapter_registry.register(adapter, py_type, db_type, allow_override=True)
+
+        import datetime as dt, decimal, uuid
+        type_map = [
+            (SQLServerDateTimeAdapter(),      dt.datetime, dt.datetime),
+            (SQLServerDateTimeOffsetAdapter(), dt.datetime, "datetimeoffset"),
+            (SQLServerDateAdapter(),           dt.date,     dt.date),
+            (SQLServerTimeAdapter(),           dt.time,     dt.time),
+            (SQLServerDecimalAdapter(),        decimal.Decimal, decimal.Decimal),
+            (SQLServerUUIDAdapter(),           uuid.UUID,   str),
+        ]
+        for adapter, py_type, db_type in type_map:
+            self.adapter_registry.register(adapter, py_type, db_type, allow_override=True)
+
         self.log(logging.DEBUG, "Registered SQL Server-specific type adapters.")
 
     def get_default_adapter_suggestions(self) -> Dict[Tuple[type, type], tuple]:
@@ -186,6 +199,8 @@ class SQLServerBackend(
             (time, time),
             (Decimal, Decimal),
             (UUID, str),
+            (dict, str),
+            (list, str),
         ]
 
         for py_type, db_type in type_mappings:

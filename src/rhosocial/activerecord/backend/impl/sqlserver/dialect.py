@@ -496,7 +496,17 @@ class SQLServerDialect(
 
         return " ".join(parts), tuple(params)
 
-    def format_returning_clause(self, clause: "ReturningClause") -> Tuple[str, tuple]:
+    def format_query_statement(self, expr: "QueryExpression") -> Tuple[str, tuple]:
+        sql, params = super().format_query_statement(expr)
+        if expr.limit_offset is not None and expr.order_by is None:
+            lo_sql = expr.limit_offset.to_sql()[0]
+            if lo_sql and lo_sql in sql:
+                sql = sql.replace(lo_sql, f"ORDER BY (SELECT NULL) {lo_sql}")
+            else:
+                sql += " ORDER BY (SELECT NULL)"
+        return sql, tuple(params)
+
+    def format_returning_clause(self, clause: "ReturningClause", default_table: str = "INSERTED") -> Tuple[str, tuple]:
         """
         Format RETURNING as OUTPUT clause for SQL Server.
 
@@ -504,6 +514,11 @@ class SQLServerDialect(
         - INSERT: OUTPUT inserted.column, inserted.column2
         - UPDATE: OUTPUT deleted.old_column, inserted.new_column
         - DELETE: OUTPUT deleted.column
+
+        Args:
+            clause: The ReturningClause with expressions to output.
+            default_table: The default virtual table prefix ("INSERTED" for
+                INSERT/UPDATE, "DELETED" for DELETE).
         """
         all_params = []
         expr_parts = []
@@ -511,10 +526,10 @@ class SQLServerDialect(
         for expr in clause.expressions:
             if hasattr(expr, 'table') and expr.table:
                 expr_sql, expr_params = expr.to_sql()
-                expr_parts.append(f"INSERTED.{expr_sql}")
+                expr_parts.append(f"{default_table}.{expr_sql}")
             else:
                 expr_sql, expr_params = expr.to_sql()
-                expr_parts.append(f"INSERTED.{expr_sql}")
+                expr_parts.append(f"{default_table}.{expr_sql}")
             all_params.extend(expr_params)
 
         output_sql = f"OUTPUT {', '.join(expr_parts)}"
@@ -598,17 +613,17 @@ class SQLServerDialect(
             set_parts.append(f"{col_sql} = {val_sql}")
             all_params.extend(val_params)
         parts.append("SET " + ", ".join(set_parts))
-        
+
         if expr.returning:
             returning_sql, returning_params = self.format_returning_clause(expr.returning)
             parts.append(returning_sql)
             all_params.extend(returning_params)
-        
+
         if expr.where:
             where_sql, where_params = expr.where.to_sql()
-            parts.append(f"WHERE {where_sql}")
+            parts.append(where_sql)
             all_params.extend(where_params)
-        
+
         return " ".join(parts), tuple(all_params)
     
     def format_delete_statement(self, expr) -> Tuple[str, tuple]:
@@ -632,13 +647,13 @@ class SQLServerDialect(
         parts = ["DELETE FROM", table_sql]
         
         if expr.returning:
-            returning_sql, returning_params = self.format_returning_clause(expr.returning)
+            returning_sql, returning_params = self.format_returning_clause(expr.returning, default_table="DELETED")
             parts.append(returning_sql)
             all_params.extend(returning_params)
         
         if expr.where:
             where_sql, where_params = expr.where.to_sql()
-            parts.append(f"WHERE {where_sql}")
+            parts.append(where_sql)
             all_params.extend(where_params)
         
         return " ".join(parts), tuple(all_params)
@@ -1208,7 +1223,7 @@ class SQLServerDialect(
         # SQL Server uses WHERE for filtered indexes
         if expr.where:
             where_sql, where_params = expr.where.to_sql()
-            parts.append(f"WHERE {where_sql}")
+            parts.append(where_sql)
             all_params.extend(where_params)
 
         return " ".join(parts), tuple(all_params)

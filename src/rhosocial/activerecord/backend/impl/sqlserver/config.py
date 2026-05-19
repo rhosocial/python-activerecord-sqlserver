@@ -6,11 +6,13 @@ This module provides configuration classes for SQL Server database connections,
 supporting both Windows Authentication and SQL Server Authentication.
 """
 
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
-from pydantic import BaseModel, Field, field_validator
+from rhosocial.activerecord.backend.config import ConnectionConfig
 
 
-class SQLServerConnectionConfig(BaseModel):
+@dataclass
+class SQLServerConnectionConfig(ConnectionConfig):
     """SQL Server connection configuration.
     
     Supports connection via ODBC driver with full configuration options
@@ -54,45 +56,38 @@ class SQLServerConnectionConfig(BaseModel):
         conn_str = config.build_connection_string()
     """
     
-    host: str = Field(default="localhost", description="Database server hostname")
-    port: int = Field(default=1433, ge=1, le=65535, description="Database server port")
-    database: str = Field(..., description="Database name")
-    
-    username: Optional[str] = Field(default=None, description="Username for SQL Authentication")
-    password: Optional[str] = Field(default=None, description="Password for SQL Authentication")
-    
-    trusted_connection: bool = Field(default=False, description="Use Windows Authentication")
-    
-    driver: str = Field(
-        default="ODBC Driver 17 for SQL Server",
-        description="ODBC driver name"
-    )
-    
-    encrypt: bool = Field(default=True, description="Encrypt connection")
-    trust_server_certificate: bool = Field(
-        default=False,
-        description="Trust server certificate (use only for development)"
-    )
-    
-    timeout: int = Field(default=30, ge=0, description="Connection timeout in seconds")
-    query_timeout: int = Field(default=0, ge=0, description="Query timeout (0 = no limit)")
-    
-    autocommit: bool = Field(default=True, description="Auto-commit mode")
-    
-    charset: str = Field(default="UTF-8", description="Character encoding")
-    
-    pool_size: int = Field(default=5, ge=1, description="Connection pool size")
-    pool_timeout: int = Field(default=30, ge=1, description="Pool timeout in seconds")
-    
-    options: Dict[str, Any] = Field(default_factory=dict, description="Additional ODBC options")
-    
-    model_config = {"extra": "allow"}
-    
-    @field_validator("driver")
-    @classmethod
-    def validate_driver(cls, v: str) -> str:
-        """Validate ODBC driver name."""
-        return v
+    host: str = "localhost"
+    port: int = 1433
+    database: str = ""
+
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+    trusted_connection: bool = False
+
+    driver: str = "ODBC Driver 17 for SQL Server"
+
+    encrypt: bool = True
+    encrypt_connection: Optional[bool] = None
+    trust_server_certificate: bool = False
+
+    timeout: int = 30
+    query_timeout: int = 0
+
+    autocommit: bool = True
+
+    charset: str = "UTF-8"
+
+    pool_size: int = 5
+    pool_timeout: int = 30
+
+    options: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.encrypt_connection is not None:
+            self.encrypt = self.encrypt_connection
+            self.encrypt_connection = None
 
     def build_connection_string(self) -> str:
         """Build ODBC connection string from configuration.

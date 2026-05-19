@@ -319,3 +319,14 @@ class SQLServerBackendMixin:
         """Log a message with the specified level."""
         if hasattr(self, '_logger') and self._logger:
             self._logger.log(level, message)
+
+    def _build_query_result(self, cursor, data, duration: float):
+        from rhosocial.activerecord.backend.result import QueryResult
+
+        if data is not None:
+            affected_rows = len(data) if data else 0
+        else:
+            affected_rows = cursor.rowcount
+        last_insert_id = getattr(cursor, "lastrowid", None)
+
+        return QueryResult(data=data, affected_rows=affected_rows, last_insert_id=last_insert_id, duration=duration)

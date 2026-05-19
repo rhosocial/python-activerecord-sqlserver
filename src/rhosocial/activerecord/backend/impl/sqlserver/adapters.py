@@ -9,7 +9,7 @@ and SQL Server-specific data types.
 import json
 import uuid
 from abc import ABC, abstractmethod
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from typing import Any, Dict, List, Type, Union
 
 
@@ -23,12 +23,12 @@ class TypeAdapter(ABC):
         pass
     
     @abstractmethod
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         """Convert Python value to database value."""
         pass
     
     @abstractmethod
-    def from_database(self, value: Any) -> Any:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         """Convert database value to Python value."""
         pass
 
@@ -48,7 +48,7 @@ class SQLServerUUIDAdapter(TypeAdapter):
             str: ["uniqueidentifier"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         
@@ -64,7 +64,7 @@ class SQLServerUUIDAdapter(TypeAdapter):
         
         raise TypeError(f"Expected UUID or str, got {type(value)}")
     
-    def from_database(self, value: Any) -> uuid.UUID:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> uuid.UUID:
         if value is None:
             return None
         
@@ -88,24 +88,36 @@ class SQLServerDateTimeAdapter(TypeAdapter):
             datetime: ["datetime2", "datetime", "smalldatetime"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         
         if isinstance(value, datetime):
             return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                pass
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value, tz=timezone.utc)
         
         raise TypeError(f"Expected datetime, got {type(value)}")
     
-    def from_database(self, value: Any) -> datetime:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> datetime:
         if value is None:
             return None
         
         if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
             return value
         
         if isinstance(value, str):
-            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+            result = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            if result.tzinfo is None:
+                return result.replace(tzinfo=timezone.utc)
+            return result
         
         raise TypeError(f"Cannot convert {type(value)} to datetime")
 
@@ -124,9 +136,7 @@ class SQLServerDateTimeOffsetAdapter(TypeAdapter):
             datetime: ["datetimeoffset"],
         }
     
-    def to_database(self, value: Any) -> Any:
-        from datetime import timezone
-        
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         
@@ -137,7 +147,7 @@ class SQLServerDateTimeOffsetAdapter(TypeAdapter):
         
         raise TypeError(f"Expected datetime, got {type(value)}")
     
-    def from_database(self, value: Any) -> datetime:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> datetime:
         if value is None:
             return None
         
@@ -159,7 +169,7 @@ class SQLServerDateAdapter(TypeAdapter):
             date: ["date"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         if isinstance(value, date):
@@ -168,7 +178,7 @@ class SQLServerDateAdapter(TypeAdapter):
             return value.date()
         raise TypeError(f"Expected date, got {type(value)}")
     
-    def from_database(self, value: Any) -> date:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> date:
         if value is None:
             return None
         if isinstance(value, date):
@@ -189,7 +199,7 @@ class SQLServerTimeAdapter(TypeAdapter):
             time: ["time"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         if isinstance(value, time):
@@ -198,7 +208,7 @@ class SQLServerTimeAdapter(TypeAdapter):
             return value.time()
         raise TypeError(f"Expected time, got {type(value)}")
     
-    def from_database(self, value: Any) -> time:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> time:
         if value is None:
             return None
         if isinstance(value, time):
@@ -224,7 +234,7 @@ class SQLServerJSONAdapter(TypeAdapter):
             list: ["nvarchar(max)", "json"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         
@@ -237,7 +247,7 @@ class SQLServerJSONAdapter(TypeAdapter):
         
         raise TypeError(f"Expected dict, list, or str, got {type(value)}")
     
-    def from_database(self, value: Any) -> Union[dict, list]:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Union[dict, list]:
         if value is None:
             return None
         
@@ -266,7 +276,7 @@ class SQLServerXMLAdapter(TypeAdapter):
             bytes: ["xml"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         
@@ -281,7 +291,7 @@ class SQLServerXMLAdapter(TypeAdapter):
         
         raise TypeError(f"Expected str, bytes, or dict, got {type(value)}")
     
-    def from_database(self, value: Any) -> str:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> str:
         if value is None:
             return None
         
@@ -334,7 +344,7 @@ class SQLServerSpatialAdapter(TypeAdapter):
             bytes: ["geography", "geometry"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         
@@ -349,7 +359,7 @@ class SQLServerSpatialAdapter(TypeAdapter):
         
         raise TypeError(f"Expected str, bytes, or dict, got {type(value)}")
     
-    def from_database(self, value: Any) -> str:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> str:
         if value is None:
             return None
         
@@ -398,7 +408,7 @@ class SQLServerHierarchyIdAdapter(TypeAdapter):
             list: ["hierarchyid"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         
@@ -410,7 +420,7 @@ class SQLServerHierarchyIdAdapter(TypeAdapter):
         
         raise TypeError(f"Expected str or list, got {type(value)}")
     
-    def from_database(self, value: Any) -> str:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> str:
         if value is None:
             return None
         
@@ -429,7 +439,7 @@ class SQLServerDecimalAdapter(TypeAdapter):
             int: ["decimal", "numeric"],
         }
     
-    def to_database(self, value: Any) -> Any:
+    def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
         
@@ -442,7 +452,7 @@ class SQLServerDecimalAdapter(TypeAdapter):
         
         raise TypeError(f"Expected Decimal, int, or float, got {type(value)}")
     
-    def from_database(self, value: Any):
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None):
         from decimal import Decimal
         
         if value is None:
