@@ -33,7 +33,7 @@ def create_parser(subparsers):
   %(prog)s --host localhost --database mydb -f query.sql
 
   # Using environment variables for connection
-  export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa SQLSERVER_PASSWORD=secret
+  export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa SQLSERVER_PASSWORD=your_password_here
   %(prog)s "SELECT 1"
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,

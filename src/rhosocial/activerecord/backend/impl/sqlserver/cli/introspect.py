@@ -80,7 +80,7 @@ def create_parser(subparsers):
   %(prog)s tables --database mydb --schema dbo
 
   # Using environment variables for connection
-  export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa SQLSERVER_PASSWORD=secret
+  export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa
   %(prog)s tables
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,

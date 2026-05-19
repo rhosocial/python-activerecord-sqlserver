@@ -49,7 +49,7 @@ def create_parser(subparsers):
   %(prog)s all --database mydb -o json
 
   # Using environment variables for connection
-  export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa SQLSERVER_PASSWORD=secret
+  export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa SQLSERVER_PASSWORD=your_password_here
   %(prog)s all
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,

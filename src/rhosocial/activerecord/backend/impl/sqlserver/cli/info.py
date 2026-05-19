@@ -108,7 +108,7 @@ def create_parser(subparsers):
   %(prog)s --version 16.0.0
 
   # Show info from actual database connection
-  %(prog)s --host localhost --database mydb --username sa --password secret
+  %(prog)s --host localhost --database mydb
 
   # Output as JSON
   %(prog)s -o json

@@ -91,7 +91,7 @@ Examples use these environment variables with defaults:
 | `SQLSERVER_PORT` | `1433` | Server port |
 | `SQLSERVER_DATABASE` | `test_db` | Database name |
 | `SQLSERVER_USERNAME` | `sa` | Username |
-| `SQLSERVER_PASSWORD` | `Password123!` | Password |
+| `SQLSERVER_PASSWORD` | `""` | Password |
 | `SQLSERVER_DRIVER` | `ODBC Driver 17 for SQL Server` | ODBC driver |
 | `SQLSERVER_ENCRYPT` | `false` | Encrypt connection |
 | `SQLSERVER_TRUST_SERVER_CERTIFICATE` | `true` | Trust server certificate |

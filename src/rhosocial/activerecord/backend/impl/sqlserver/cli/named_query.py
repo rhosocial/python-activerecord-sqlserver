@@ -21,7 +21,7 @@ def create_parser(subparsers):
     local_parent = create_connection_parent_parser()
     nq_epilog = """Examples:
   # Execute named query with connection parameters
-  %(prog)s myapp.queries.orders.high_value_pending --host localhost --database mydb --username sa --password secret
+  %(prog)s myapp.queries.orders.high_value_pending --host localhost --database mydb --username sa
 
   # Override parameters
   %(prog)s myapp.queries.orders.high_value_pending --host localhost --database mydb \\
@@ -37,7 +37,7 @@ def create_parser(subparsers):
   %(prog)s myapp.queries.orders --list
 
   # Using environment variables
-  export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa SQLSERVER_PASSWORD=secret
+  export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa
   %(prog)s myapp.queries.orders --list
 """
     return create_named_query_parser(subparsers, local_parent, epilog=nq_epilog)

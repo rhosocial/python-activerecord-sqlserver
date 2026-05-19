@@ -17,7 +17,7 @@ config = SQLServerConnectionConfig(
     port=int(os.environ.get('SQLSERVER_PORT', '11434')),
     database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
     username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
-    password=os.environ.get('SQLSERVER_PASSWORD', 'Password123!'),
+    password=os.environ.get('SQLSERVER_PASSWORD', ''),
     driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
     encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
     trust_server_certificate=(
