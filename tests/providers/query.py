@@ -85,14 +85,46 @@ from .scenarios import get_enabled_scenarios, get_scenario
 
 class QueryProvider(IQueryProvider, WorkerTestProtocol):
 
+    _FK_DEPENDENCY_MAP = {
+        'users': ['orders', 'order_items', 'posts', 'comments', 'extended_orders', 'extended_order_items'],
+        'posts': ['comments'],
+    }
+
     def __init__(self):
         self._active_backends = []
 
     def get_test_scenarios(self) -> List[str]:
         return list(get_enabled_scenarios().keys())
 
-    def _setup_model(self, model_class: Type[ActiveRecord], scenario_name: str, table_name: str) -> Type[ActiveRecord]:
+    def _drop_table_safely(self, backend, table_name: str) -> None:
         from rhosocial.activerecord.backend.expression.statements import DropTableExpression
+        for child in self._FK_DEPENDENCY_MAP.get(table_name, []):
+            try:
+                expr = DropTableExpression(backend.dialect, child, if_exists=True)
+                backend.execute(*expr.to_sql())
+            except Exception:
+                pass
+        try:
+            expr = DropTableExpression(backend.dialect, table_name, if_exists=True)
+            backend.execute(*expr.to_sql())
+        except Exception:
+            pass
+
+    async def _drop_table_safely_async(self, backend, table_name: str) -> None:
+        from rhosocial.activerecord.backend.expression.statements import DropTableExpression
+        for child in self._FK_DEPENDENCY_MAP.get(table_name, []):
+            try:
+                expr = DropTableExpression(backend.dialect, child, if_exists=True)
+                await backend.execute(*expr.to_sql())
+            except Exception:
+                pass
+        try:
+            expr = DropTableExpression(backend.dialect, table_name, if_exists=True)
+            await backend.execute(*expr.to_sql())
+        except Exception:
+            pass
+
+    def _setup_model(self, model_class: Type[ActiveRecord], scenario_name: str, table_name: str) -> Type[ActiveRecord]:
         backend_class, config = get_scenario(scenario_name)
         model_class.configure(config, backend_class)
 
@@ -100,11 +132,7 @@ class QueryProvider(IQueryProvider, WorkerTestProtocol):
         if backend_instance not in self._active_backends:
             self._active_backends.append(backend_instance)
 
-        try:
-            expr = DropTableExpression(backend_instance.dialect, table_name, if_exists=True)
-            model_class.__backend__.execute(*expr.to_sql())
-        except Exception:
-            pass
+        self._drop_table_safely(backend_instance, table_name)
 
         schema_sql = self._load_sqlserver_schema(f"{table_name}.sql")
         model_class.__backend__.execute(schema_sql)
@@ -120,7 +148,6 @@ class QueryProvider(IQueryProvider, WorkerTestProtocol):
 
     async def _setup_model_async(self, model_class: Type[ActiveRecord], scenario_name: str, table_name: str) -> Type[ActiveRecord]:
         from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
-        from rhosocial.activerecord.backend.expression.statements import DropTableExpression
 
         _, config = get_scenario(scenario_name)
         await model_class.configure(config, AsyncSQLServerBackend)
@@ -129,11 +156,7 @@ class QueryProvider(IQueryProvider, WorkerTestProtocol):
         if backend_instance not in self._active_backends:
             self._active_backends.append(backend_instance)
 
-        try:
-            expr = DropTableExpression(backend_instance.dialect, table_name, if_exists=True)
-            await model_class.__backend__.execute(*expr.to_sql())
-        except Exception:
-            pass
+        await self._drop_table_safely_async(backend_instance, table_name)
 
         schema_sql = self._load_sqlserver_schema(f"{table_name}.sql")
         await model_class.__backend__.execute(schema_sql)

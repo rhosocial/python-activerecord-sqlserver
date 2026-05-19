@@ -11,3 +11,12 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "slow: mark test as slow running"
     )
+    config.addinivalue_line(
+        "markers", "requires_protocol: Mark tests that require specific database protocol support"
+    )
+    config.addinivalue_line(
+        "markers", "requires_functions: Mark tests that require specific database functions"
+    )
+    config.addinivalue_line(
+        "markers", "requires_inner_join: Mark test as requiring INNER JOIN support"
+    )
