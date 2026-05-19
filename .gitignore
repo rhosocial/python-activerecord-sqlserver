@@ -211,3 +211,4 @@ __marimo__/
 .claude/plan/
 .claude/tmp/
 tests/config/
+test_connection.py
