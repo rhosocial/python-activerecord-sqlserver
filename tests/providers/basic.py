@@ -15,7 +15,8 @@ from rhosocial.activerecord.testsuite.feature.basic.fixtures.models import (
     TypeTestModel as TypeTestModelBase, ValidatedUser as ValidatedUserBase,
     TypeAdapterTest as TypeAdapterTestBase, YesOrNoBooleanAdapter,
     MappedUser as MappedUserBase, MappedPost as MappedPostBase, MappedComment as MappedCommentBase,
-    ColumnMappingModel as ColumnMappingModelBase, MixedAnnotationModel as MixedAnnotationModelBase
+    ColumnMappingModel as ColumnMappingModelBase, MixedAnnotationModel as MixedAnnotationModelBase,
+    PydanticValidatedModel as PydanticValidatedModelBase,
 )
 from rhosocial.activerecord.testsuite.feature.basic.fixtures.models import (
     AsyncUser as AsyncUserBase, AsyncTypeCase as AsyncTypeCaseBase,
@@ -23,7 +24,8 @@ from rhosocial.activerecord.testsuite.feature.basic.fixtures.models import (
     AsyncTypeTestModel as AsyncTypeTestModelBase, AsyncTypeAdapterTest as AsyncTypeAdapterTestBase,
     AsyncMappedUser as AsyncMappedUserBase, AsyncMappedPost as AsyncMappedPostBase,
     AsyncMappedComment as AsyncMappedCommentBase,
-    AsyncColumnMappingModel as AsyncColumnMappingModelBase, AsyncMixedAnnotationModel as AsyncMixedAnnotationModelBase
+    AsyncColumnMappingModel as AsyncColumnMappingModelBase, AsyncMixedAnnotationModel as AsyncMixedAnnotationModelBase,
+    AsyncPydanticValidatedModel as AsyncPydanticValidatedModelBase,
 )
 from rhosocial.activerecord.testsuite.feature.basic.fixtures.models import (
     BulkUser as BulkUserBase, AsyncBulkUser as AsyncBulkUserBase
@@ -143,6 +145,8 @@ AsyncColumnMappingModel = _select_model_class(AsyncColumnMappingModelBase, Async
 AsyncMixedAnnotationModel = _select_model_class(AsyncMixedAnnotationModelBase, AsyncMixedAnnotationModel312, AsyncMixedAnnotationModel311, AsyncMixedAnnotationModel310, "AsyncMixedAnnotationModel")
 BulkUser = BulkUserBase
 AsyncBulkUser = AsyncBulkUserBase
+PydanticValidatedModel = PydanticValidatedModelBase
+AsyncPydanticValidatedModel = AsyncPydanticValidatedModelBase
 
 from rhosocial.activerecord.testsuite.feature.basic.interfaces import IBasicProvider
 from rhosocial.activerecord.testsuite.core.protocols import WorkerTestProtocol
@@ -360,6 +364,12 @@ class BasicProvider(IBasicProvider, WorkerTestProtocol):
             scenario_name = self.get_test_scenarios()[0] if self.get_test_scenarios() else "default"
         return await self._setup_async_model(AsyncTypeAdapterTest, scenario_name, "type_adapter_tests")
 
+    def setup_pydantic_validated_model(self, scenario_name: str) -> Type[ActiveRecord]:
+        return self._setup_model(PydanticValidatedModel, scenario_name, "pydantic_validated_models")
+
+    async def setup_async_pydantic_validated_model(self, scenario_name: str) -> Type[ActiveRecord]:
+        return await self._setup_async_model(AsyncPydanticValidatedModel, scenario_name, "pydantic_validated_models")
+
     def setup_bulk_user_model(self, scenario_name: str) -> Type[ActiveRecord]:
         """Sets up the database for the `BulkUser` model tests."""
         return self._setup_model(BulkUser, scenario_name, "bulk_users")
@@ -382,7 +392,8 @@ class BasicProvider(IBasicProvider, WorkerTestProtocol):
         tables_to_drop = [
             'comments', 'posts', 'users', 'type_cases', 'type_tests',
             'validated_field_users', 'validated_users', 'type_adapter_tests',
-            'column_mapping_items', 'mixed_annotation_items', 'bulk_users'
+            'column_mapping_items', 'mixed_annotation_items', 'bulk_users',
+            'pydantic_validated_models'
         ]
         for backend_instance in self._active_backends:
             try:
@@ -404,7 +415,8 @@ class BasicProvider(IBasicProvider, WorkerTestProtocol):
         tables_to_drop = [
             'comments', 'posts', 'users', 'type_cases', 'type_tests',
             'validated_field_users', 'validated_users', 'type_adapter_tests',
-            'column_mapping_items', 'mixed_annotation_items', 'bulk_users'
+            'column_mapping_items', 'mixed_annotation_items', 'bulk_users',
+            'pydantic_validated_models'
         ]
         for backend_instance in self._active_async_backends:
             try:
