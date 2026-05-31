@@ -58,8 +58,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev27#egg=rhosocial-activerecord
-        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev14#egg=rhosocial-activerecord-testsuite
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev28#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev15#egg=rhosocial-activerecord-testsuite
 
     - name: Create test database
       run: |
@@ -147,8 +147,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev27#egg=rhosocial-activerecord
-        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev14#egg=rhosocial-activerecord-testsuite
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev28#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev15#egg=rhosocial-activerecord-testsuite
 
     - name: Create test database
       run: |
@@ -236,8 +236,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev27#egg=rhosocial-activerecord
-        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev14#egg=rhosocial-activerecord-testsuite
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev28#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev15#egg=rhosocial-activerecord-testsuite
 
     - name: Create test database
       run: |
@@ -325,8 +325,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev27#egg=rhosocial-activerecord
-        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev14#egg=rhosocial-activerecord-testsuite
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev28#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev15#egg=rhosocial-activerecord-testsuite
 
     - name: Create test database
       run: |
@@ -414,8 +414,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev27#egg=rhosocial-activerecord
-        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev14#egg=rhosocial-activerecord-testsuite
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev28#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev15#egg=rhosocial-activerecord-testsuite
 
     - name: Create test database
       run: |
@@ -503,8 +503,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev27#egg=rhosocial-activerecord
-        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev14#egg=rhosocial-activerecord-testsuite
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev28#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev15#egg=rhosocial-activerecord-testsuite
 
     - name: Create test database
       run: |
@@ -592,8 +592,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev27#egg=rhosocial-activerecord
-        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev14#egg=rhosocial-activerecord-testsuite
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev28#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev15#egg=rhosocial-activerecord-testsuite
 
     - name: Create test database
       run: |
@@ -681,8 +681,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev27#egg=rhosocial-activerecord
-        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev14#egg=rhosocial-activerecord-testsuite
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev28#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev15#egg=rhosocial-activerecord-testsuite
 
     - name: Create test database
       run: |

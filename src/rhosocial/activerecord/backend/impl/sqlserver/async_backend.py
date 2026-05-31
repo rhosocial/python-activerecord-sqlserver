@@ -465,6 +465,6 @@ class AsyncSQLServerBackend(
     
     def _create_introspector(self):
         """Create a SQL Server introspector."""
-        from .introspection import SyncSQLServerIntrospector
-        from rhosocial.activerecord.backend.introspection.executor import SyncIntrospectorExecutor
-        return SyncSQLServerIntrospector(self, SyncIntrospectorExecutor(self))
+        from .introspection import AsyncSQLServerIntrospector
+        from rhosocial.activerecord.backend.introspection.executor import AsyncIntrospectorExecutor
+        return AsyncSQLServerIntrospector(self, AsyncIntrospectorExecutor(self))

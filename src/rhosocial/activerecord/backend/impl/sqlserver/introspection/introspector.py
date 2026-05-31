@@ -1,333 +1,508 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/introspection/introspector.py
-"""SQL Server schema introspector implementation."""
+"""SQL Server concrete introspectors.
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+Implements SyncAbstractIntrospector and AsyncAbstractIntrospector for SQL Server
+using INFORMATION_SCHEMA and sys.* catalog views.
+"""
 
+import copy
+from typing import Any, Dict, List, Optional, Tuple
 
-@dataclass
-class SQLServerColumnInfo:
-    """Column metadata."""
-    name: str
-    data_type: str
-    is_nullable: bool
-    default_value: Optional[str] = None
-    is_identity: bool = False
-    is_computed: bool = False
-    max_length: Optional[int] = None
-    precision: Optional[int] = None
-    scale: Optional[int] = None
-    collation: Optional[str] = None
-
-
-@dataclass
-class SQLServerIndexInfo:
-    """Index metadata."""
-    name: str
-    table_name: str
-    is_unique: bool
-    is_primary_key: bool
-    is_clustered: bool
-    columns: List[str]
-    is_disabled: bool = False
-
-
-@dataclass
-class SQLServerForeignKeyInfo:
-    """Foreign key metadata."""
-    name: str
-    table_name: str
-    columns: List[str]
-    referenced_table: str
-    referenced_columns: List[str]
-    on_delete: str
-    on_update: str
+from rhosocial.activerecord.backend.introspection.base import (
+    IntrospectorMixin,
+    SyncAbstractIntrospector,
+    AsyncAbstractIntrospector,
+)
+from rhosocial.activerecord.backend.introspection.executor import (
+    SyncIntrospectorExecutor,
+    AsyncIntrospectorExecutor,
+)
+from rhosocial.activerecord.backend.introspection.types import (
+    DatabaseInfo,
+    TableInfo,
+    TableType,
+    ColumnInfo,
+    ColumnNullable,
+    IndexInfo,
+    IndexColumnInfo,
+    IndexType,
+    ForeignKeyInfo,
+    ReferentialAction,
+    ViewInfo,
+    TriggerInfo,
+    IntrospectionScope,
+)
 
 
-class SyncSQLServerIntrospector:
-    """Synchronous SQL Server introspector.
-    
-    Provides methods for querying SQL Server system catalogs
-    to retrieve schema metadata.
-    """
-    
-    def __init__(self, backend, executor):
-        self._backend = backend
-        self._executor = executor
-    
-    def get_tables(self, schema: str = "dbo") -> List[Dict[str, Any]]:
-        """Get all tables in schema.
-        
-        Args:
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of table information dictionaries
-        """
-        sql = """
+class SQLServerIntrospectorMixin(IntrospectorMixin):
+    """Shared non-I/O logic for SQL Server introspectors."""
+
+    def _get_default_schema(self) -> str:
+        return "dbo"
+
+    def _get_version(self) -> tuple:
+        return getattr(self._backend, '_version', (15, 0, 0))
+
+    # ------------------------------------------------------------------
+    # SQL builders
+    # ------------------------------------------------------------------
+
+    def _build_database_info_sql(self) -> Tuple[str, tuple]:
+        return ("""
+            SELECT
+                DB_NAME() AS db_name,
+                CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)) AS version,
+                CAST(SERVERPROPERTY('Collation') AS NVARCHAR(128)) AS collation,
+                CAST(SERVERPROPERTY('Edition') AS NVARCHAR(128)) AS edition
+        """, ())
+
+    def _build_table_list_sql(
+        self, schema: Optional[str], include_system: bool,
+        include_views: bool = True, table_type: Optional[str] = None,
+    ) -> Tuple[str, tuple]:
+        target = schema or self._get_default_schema()
+        conditions = [f"TABLE_SCHEMA = '{target}'"]
+        if table_type:
+            conditions.append(f"TABLE_TYPE = '{table_type}'")
+        elif not include_views:
+            conditions.append("TABLE_TYPE = 'BASE TABLE'")
+        where = " AND ".join(conditions)
+        return (f"""
             SELECT TABLE_NAME, TABLE_TYPE
             FROM INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA = ?
+            WHERE {where}
             ORDER BY TABLE_NAME
+        """, ())
+
+    def _build_column_info_sql(
+        self, table_name: str, schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        target = schema or self._get_default_schema()
+        return (f"""
+            SELECT
+                c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
+                c.COLUMN_DEFAULT, c.CHARACTER_MAXIMUM_LENGTH,
+                c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
+                c.ORDINAL_POSITION, c.COLLATION_NAME,
+                COLUMNPROPERTY(
+                    OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME),
+                    c.COLUMN_NAME, 'IsIdentity'
+                ) AS IS_IDENTITY
+            FROM INFORMATION_SCHEMA.COLUMNS c
+            WHERE c.TABLE_SCHEMA = '{target}' AND c.TABLE_NAME = '{table_name}'
+            ORDER BY c.ORDINAL_POSITION
+        """, ())
+
+    def _build_primary_key_sql(
+        self, table_name: str, schema: str
+    ) -> str:
+        return f"""
+            SELECT ccu.COLUMN_NAME
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+            JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu
+                ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
+                AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
+            WHERE tc.TABLE_SCHEMA = '{schema}'
+              AND tc.TABLE_NAME = '{table_name}'
+              AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
         """
-        return self._executor.execute(sql, (schema,))
-    
-    def get_columns(self, table: str, schema: str = "dbo") -> List[SQLServerColumnInfo]:
-        """Get columns for a table.
-        
-        Args:
-            table: Table name
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of SQLServerColumnInfo objects
-        """
-        sql = """
-            SELECT 
-                COLUMN_NAME,
-                DATA_TYPE,
-                IS_NULLABLE,
-                COLUMN_DEFAULT,
-                COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsComputed') AS IS_COMPUTED,
-                CHARACTER_MAXIMUM_LENGTH,
-                NUMERIC_PRECISION,
-                NUMERIC_SCALE,
-                COLLATION_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-            ORDER BY ORDINAL_POSITION
-        """
-        rows = self._executor.execute(sql, (schema, table))
-        return [SQLServerColumnInfo(
-            name=row.get('COLUMN_NAME', ''),
-            data_type=row.get('DATA_TYPE', ''),
-            is_nullable=row.get('IS_NULLABLE', 'YES') == 'YES',
-            default_value=row.get('COLUMN_DEFAULT'),
-            is_identity=bool(row.get('IS_IDENTITY', 0)),
-            is_computed=bool(row.get('IS_COMPUTED', 0)),
-            max_length=row.get('CHARACTER_MAXIMUM_LENGTH'),
-            precision=row.get('NUMERIC_PRECISION'),
-            scale=row.get('NUMERIC_SCALE'),
-            collation=row.get('COLLATION_NAME')
-        ) for row in rows]
-    
-    def get_indexes(self, table: str, schema: str = "dbo") -> List[SQLServerIndexInfo]:
-        """Get indexes for a table.
-        
-        Args:
-            table: Table name
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of SQLServerIndexInfo objects
-        """
-        sql = """
-            SELECT 
+
+    def _build_index_info_sql(
+        self, table_name: str, schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        target = schema or self._get_default_schema()
+        return (f"""
+            SELECT
                 i.name AS index_name,
                 i.is_unique,
                 i.is_primary_key,
                 i.type_desc AS index_type,
-                i.is_disabled,
-                STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal) AS columns
+                c.name AS column_name,
+                ic.key_ordinal AS column_position,
+                ic.is_descending_key
             FROM sys.indexes i
-            INNER JOIN sys.tables t ON i.object_id = t.object_id
-            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-            INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE s.name = ? AND t.name = ?
-            GROUP BY i.name, i.is_unique, i.is_primary_key, i.type_desc, i.is_disabled
-            ORDER BY i.name
-        """
-        rows = self._executor.execute(sql, (schema, table))
-        return [SQLServerIndexInfo(
-            name=row.get('index_name', ''),
-            table_name=table,
-            is_unique=bool(row.get('is_unique', 0)),
-            is_primary_key=bool(row.get('is_primary_key', 0)),
-            is_clustered=row.get('index_type', '') == 'CLUSTERED',
-            columns=row.get('columns', '').split(',') if row.get('columns') else [],
-            is_disabled=bool(row.get('is_disabled', 0))
-        ) for row in rows]
-    
-    def get_foreign_keys(self, table: str, schema: str = "dbo") -> List[SQLServerForeignKeyInfo]:
-        """Get foreign keys for a table.
-        
-        Args:
-            table: Table name
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of SQLServerForeignKeyInfo objects
-        """
-        sql = """
-            SELECT 
+            JOIN sys.tables t ON i.object_id = t.object_id
+            JOIN sys.schemas s ON t.schema_id = s.schema_id
+            JOIN sys.index_columns ic
+                ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c
+                ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            WHERE s.name = '{target}' AND t.name = '{table_name}'
+              AND i.name IS NOT NULL
+            ORDER BY i.name, ic.key_ordinal
+        """, ())
+
+    def _build_foreign_key_sql(
+        self, table_name: str, schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        target = schema or self._get_default_schema()
+        return (f"""
+            SELECT
                 fk.name AS fk_name,
-                OBJECT_NAME(fk.parent_object_id) AS table_name,
-                STRING_AGG(COL_NAME(fc.parent_object_id, fc.parent_column_id), ',') AS columns,
-                OBJECT_NAME(fk.referenced_object_id) AS referenced_table,
-                STRING_AGG(COL_NAME(fc.referenced_object_id, fc.referenced_column_id), ',') AS referenced_columns,
+                COL_NAME(fc.parent_object_id, fc.parent_column_id) AS col_name,
+                OBJECT_NAME(fk.referenced_object_id) AS ref_table,
+                COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS ref_col,
                 fk.delete_referential_action_desc AS on_delete,
-                fk.update_referential_action_desc AS on_update
+                fk.update_referential_action_desc AS on_update,
+                fc.constraint_column_id AS col_position
             FROM sys.foreign_keys fk
-            INNER JOIN sys.foreign_key_columns fc ON fk.object_id = fc.constraint_object_id
-            INNER JOIN sys.tables t ON fk.parent_object_id = t.object_id
-            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = ? AND t.name = ?
-            GROUP BY fk.name, fk.parent_object_id, fk.referenced_object_id, 
-                     fk.delete_referential_action_desc, fk.update_referential_action_desc
-        """
-        rows = self._executor.execute(sql, (schema, table))
-        return [SQLServerForeignKeyInfo(
-            name=row.get('fk_name', ''),
-            table_name=row.get('table_name', ''),
-            columns=row.get('columns', '').split(',') if row.get('columns') else [],
-            referenced_table=row.get('referenced_table', ''),
-            referenced_columns=row.get('referenced_columns', '').split(',') if row.get('referenced_columns') else [],
-            on_delete=row.get('on_delete', 'NO_ACTION'),
-            on_update=row.get('on_update', 'NO_ACTION')
-        ) for row in rows]
-    
-    def get_constraints(self, table: str, schema: str = "dbo") -> List[Dict[str, Any]]:
-        """Get constraints for a table.
-        
-        Args:
-            table: Table name
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of constraint information dictionaries
-        """
-        sql = """
-            SELECT 
-                tc.CONSTRAINT_NAME,
-                tc.CONSTRAINT_TYPE,
-                tc.IS_DEFERRABLE,
-                tc.INITIALLY_DEFERRED
-            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-            WHERE tc.TABLE_SCHEMA = ? AND tc.TABLE_NAME = ?
-            ORDER BY tc.CONSTRAINT_NAME
-        """
-        return self._executor.execute(sql, (schema, table))
-    
-    def get_views(self, schema: str = "dbo") -> List[Dict[str, Any]]:
-        """Get views in schema.
-        
-        Args:
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of view information dictionaries
-        """
-        sql = """
-            SELECT TABLE_NAME
+            JOIN sys.foreign_key_columns fc
+                ON fk.object_id = fc.constraint_object_id
+            JOIN sys.tables t ON fk.parent_object_id = t.object_id
+            JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = '{target}' AND t.name = '{table_name}'
+            ORDER BY fk.name, fc.constraint_column_id
+        """, ())
+
+    def _build_view_list_sql(
+        self, schema: Optional[str], include_system: bool
+    ) -> Tuple[str, tuple]:
+        target = schema or self._get_default_schema()
+        return (f"""
+            SELECT TABLE_NAME AS view_name
             FROM INFORMATION_SCHEMA.VIEWS
-            WHERE TABLE_SCHEMA = ?
+            WHERE TABLE_SCHEMA = '{target}'
             ORDER BY TABLE_NAME
-        """
-        return self._executor.execute(sql, (schema,))
-    
-    def get_sequences(self, schema: str = "dbo") -> List[Dict[str, Any]]:
-        """Get sequences (SQL Server 2012+).
-        
-        Args:
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of sequence information dictionaries
-        """
-        sql = """
-            SELECT 
-                name,
-                schema_id,
-                start_value,
-                increment,
-                minimum_value,
-                maximum_value,
-                is_cycling,
-                current_value
-            FROM sys.sequences
-            WHERE schema_id = SCHEMA_ID(?)
-        """
-        return self._executor.execute(sql, (schema,))
-    
-    def get_procedures(self, schema: str = "dbo") -> List[Dict[str, Any]]:
-        """Get stored procedures in schema.
-        
-        Args:
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of procedure information dictionaries
-        """
-        sql = """
-            SELECT ROUTINE_NAME
-            FROM INFORMATION_SCHEMA.ROUTINES
-            WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE'
-            ORDER BY ROUTINE_NAME
-        """
-        return self._executor.execute(sql, (schema,))
-    
-    def get_functions(self, schema: str = "dbo") -> List[Dict[str, Any]]:
-        """Get user-defined functions in schema.
-        
-        Args:
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of function information dictionaries
-        """
-        sql = """
-            SELECT ROUTINE_NAME, ROUTINE_TYPE
-            FROM INFORMATION_SCHEMA.ROUTINES
-            WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'FUNCTION'
-            ORDER BY ROUTINE_NAME
-        """
-        return self._executor.execute(sql, (schema,))
-    
-    def get_triggers(self, table: str, schema: str = "dbo") -> List[Dict[str, Any]]:
-        """Get triggers for a table.
-        
-        Args:
-            table: Table name
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            List of trigger information dictionaries
-        """
-        sql = """
-            SELECT 
+        """, ())
+
+    def _build_view_info_sql(
+        self, view_name: str, schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        target = schema or self._get_default_schema()
+        return (f"""
+            SELECT
+                TABLE_NAME AS view_name,
+                VIEW_DEFINITION AS definition,
+                IS_UPDATABLE
+            FROM INFORMATION_SCHEMA.VIEWS
+            WHERE TABLE_SCHEMA = '{target}' AND TABLE_NAME = '{view_name}'
+        """, ())
+
+    def _build_trigger_list_sql(
+        self, table_name: Optional[str], schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        target = schema or self._get_default_schema()
+        table_filter = (
+            f"AND t.name = '{table_name}'" if table_name else ""
+        )
+        return (f"""
+            SELECT
                 tr.name AS trigger_name,
+                t.name AS table_name,
                 tr.is_disabled,
                 tr.is_instead_of_trigger,
-                OBJECT_NAME(tr.parent_id) AS table_name
+                OBJECT_DEFINITION(tr.object_id) AS definition
             FROM sys.triggers tr
-            INNER JOIN sys.tables t ON tr.parent_id = t.object_id
-            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = ? AND t.name = ?
+            JOIN sys.tables t ON tr.parent_id = t.object_id
+            JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = '{target}' {table_filter}
             ORDER BY tr.name
-        """
-        return self._executor.execute(sql, (schema, table))
-    
-    def get_table_size(self, table: str, schema: str = "dbo") -> Dict[str, int]:
-        """Get table size information.
-        
-        Args:
-            table: Table name
-            schema: Schema name (default: dbo)
-        
-        Returns:
-            Dict with size information (reserved_bytes, used_bytes, row_count)
-        """
-        sql = """
-            SELECT 
-                SUM(reserved_page_count) * 8 * 1024 AS reserved_bytes,
-                SUM(used_page_count) * 8 * 1024 AS used_bytes,
-                SUM(row_count) AS row_count
-            FROM sys.dm_db_partition_stats ps
-            INNER JOIN sys.tables t ON ps.object_id = t.object_id
-            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = ? AND t.name = ?
-        """
-        result = self._executor.execute(sql, (schema, table))
-        return result[0] if result else {"reserved_bytes": 0, "used_bytes": 0, "row_count": 0}
+        """, ())
+
+    # ------------------------------------------------------------------
+    # Parse methods — pure Python, no I/O
+    # ------------------------------------------------------------------
+
+    def _parse_database_info(self, rows: List[Dict[str, Any]]) -> DatabaseInfo:
+        row = rows[0] if rows else {}
+        version_str = row.get("version", "Unknown")
+        parts = version_str.split(".")
+        try:
+            version_tuple = tuple(int(p) for p in parts[:3])
+        except (ValueError, IndexError):
+            version_tuple = (0, 0, 0)
+        return DatabaseInfo(
+            name=row.get("db_name", ""),
+            version=version_str,
+            version_tuple=version_tuple,
+            vendor="SQL Server",
+            encoding=None,
+            collation=row.get("collation"),
+        )
+
+    def _parse_tables(
+        self, rows: List[Dict[str, Any]], schema: Optional[str]
+    ) -> List[TableInfo]:
+        target = schema or self._get_default_schema()
+        return [
+            TableInfo(
+                name=row["TABLE_NAME"],
+                schema=target,
+                table_type=(
+                    TableType.VIEW if row.get("TABLE_TYPE") == "VIEW"
+                    else TableType.BASE_TABLE
+                ),
+            )
+            for row in rows
+        ]
+
+    def _parse_columns(
+        self, rows: List[Dict[str, Any]], table_name: str, schema: str,
+        primary_keys: Optional[List[str]] = None,
+    ) -> List[ColumnInfo]:
+        pk_set = set(primary_keys or [])
+        columns: List[ColumnInfo] = []
+        for row in rows:
+            data_type = (row.get("DATA_TYPE") or "").lower()
+            max_len = row.get("CHARACTER_MAXIMUM_LENGTH")
+            precision = row.get("NUMERIC_PRECISION")
+            scale = row.get("NUMERIC_SCALE")
+
+            if max_len and max_len > 0:
+                full_type = f"{data_type}({max_len})"
+            elif precision is not None:
+                if scale:
+                    full_type = f"{data_type}({precision},{scale})"
+                else:
+                    full_type = f"{data_type}({precision})"
+            else:
+                full_type = data_type
+
+            col_name = row.get("COLUMN_NAME", "")
+            columns.append(ColumnInfo(
+                name=col_name,
+                table_name=table_name,
+                schema=schema,
+                ordinal_position=row.get("ORDINAL_POSITION", 0),
+                data_type=data_type,
+                data_type_full=full_type,
+                nullable=(
+                    ColumnNullable.NULLABLE
+                    if row.get("IS_NULLABLE") == "YES"
+                    else ColumnNullable.NOT_NULL
+                ),
+                default_value=row.get("COLUMN_DEFAULT"),
+                is_primary_key=col_name in pk_set,
+                is_unique=False,
+                is_auto_increment=bool(row.get("IS_IDENTITY")),
+                character_maximum_length=max_len,
+                numeric_precision=precision,
+                numeric_scale=scale,
+                charset=None,
+            ))
+        return columns
+
+    def _parse_indexes(
+        self, rows: List[Dict[str, Any]], table_name: str, schema: str
+    ) -> List[IndexInfo]:
+        type_map = {
+            "CLUSTERED": IndexType.BTREE,
+            "NONCLUSTERED": IndexType.BTREE,
+            "HEAP": IndexType.BTREE,
+        }
+        index_map: Dict[str, IndexInfo] = {}
+        for row in rows:
+            idx_name = row.get("index_name", "")
+            if idx_name not in index_map:
+                idx_type_str = (row.get("index_type") or "").upper()
+                index_map[idx_name] = IndexInfo(
+                    name=idx_name,
+                    table_name=table_name,
+                    schema=schema,
+                    is_unique=bool(row.get("is_unique")),
+                    is_primary=bool(row.get("is_primary_key")),
+                    index_type=type_map.get(idx_type_str, IndexType.BTREE),
+                    columns=[],
+                )
+            index_map[idx_name].columns.append(IndexColumnInfo(
+                name=row.get("column_name", ""),
+                ordinal_position=int(row.get("column_position", 1)),
+                is_descending=bool(row.get("is_descending_key")),
+            ))
+        return list(index_map.values())
+
+    def _parse_foreign_keys(
+        self, rows: List[Dict[str, Any]], table_name: str, schema: str
+    ) -> List[ForeignKeyInfo]:
+        action_map = {
+            "NO_ACTION": ReferentialAction.NO_ACTION,
+            "CASCADE": ReferentialAction.CASCADE,
+            "SET_NULL": ReferentialAction.SET_NULL,
+            "SET_DEFAULT": ReferentialAction.SET_DEFAULT,
+        }
+        fk_map: Dict[str, ForeignKeyInfo] = {}
+        for row in rows:
+            fk_name = row.get("fk_name", "")
+            if fk_name not in fk_map:
+                on_del = (row.get("on_delete") or "NO_ACTION").upper()
+                on_upd = (row.get("on_update") or "NO_ACTION").upper()
+                fk_map[fk_name] = ForeignKeyInfo(
+                    name=fk_name,
+                    table_name=table_name,
+                    schema=schema,
+                    referenced_table=row.get("ref_table", ""),
+                    on_delete=action_map.get(
+                        on_del, ReferentialAction.NO_ACTION
+                    ),
+                    on_update=action_map.get(
+                        on_upd, ReferentialAction.NO_ACTION
+                    ),
+                    columns=[],
+                    referenced_columns=[],
+                )
+            fk_map[fk_name].columns.append(row.get("col_name", ""))
+            fk_map[fk_name].referenced_columns.append(
+                row.get("ref_col", "")
+            )
+        return list(fk_map.values())
+
+    def _parse_views(
+        self, rows: List[Dict[str, Any]], schema: str
+    ) -> List[ViewInfo]:
+        return [
+            ViewInfo(
+                name=row.get("view_name", ""),
+                schema=schema,
+                definition=None,
+            )
+            for row in rows
+        ]
+
+    def _parse_view_info(
+        self, rows: List[Dict[str, Any]], view_name: str, schema: str
+    ) -> Optional[ViewInfo]:
+        if not rows:
+            return None
+        row = rows[0]
+        return ViewInfo(
+            name=row.get("view_name", view_name),
+            schema=schema,
+            definition=row.get("definition"),
+            is_updatable=row.get("IS_UPDATABLE") == "YES",
+        )
+
+    def _parse_triggers(
+        self, rows: List[Dict[str, Any]], schema: str
+    ) -> List[TriggerInfo]:
+        return [
+            TriggerInfo(
+                name=row.get("trigger_name", ""),
+                table_name=row.get("table_name", ""),
+                schema=schema,
+                timing=(
+                    "INSTEAD OF" if row.get("is_instead_of_trigger")
+                    else "AFTER"
+                ),
+                events=[],
+                definition=row.get("definition"),
+            )
+            for row in rows
+        ]
+
+
+class SyncSQLServerIntrospector(
+    SQLServerIntrospectorMixin, SyncAbstractIntrospector
+):
+    """Synchronous introspector for SQL Server backends."""
+
+    def __init__(
+        self, backend: Any, executor: SyncIntrospectorExecutor
+    ) -> None:
+        super().__init__(backend, executor)
+
+    def get_table_info(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> Optional[TableInfo]:
+        key = self._make_cache_key(
+            IntrospectionScope.TABLE, table_name, schema=schema
+        )
+        cached = self._get_cached(key)
+        if cached is not None:
+            return cached
+
+        tables = self.list_tables(schema)
+        table = next(
+            (t for t in tables if t.name == table_name), None
+        )
+        if table is None:
+            return None
+
+        table = copy.copy(table)
+        table.columns = self.list_columns(table_name, schema)
+        table.indexes = self.list_indexes(table_name, schema)
+        table.foreign_keys = self.list_foreign_keys(table_name, schema)
+        self._set_cached(key, table)
+        return table
+
+    def list_columns(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> List[ColumnInfo]:
+        target = schema if schema is not None else self._get_default_schema()
+        key = self._make_cache_key(
+            IntrospectionScope.COLUMN, table_name, schema=target
+        )
+        cached = self._get_cached(key)
+        if cached is not None:
+            return cached
+
+        pk_sql = self._build_primary_key_sql(table_name, target)
+        pk_rows = self._executor.execute(pk_sql)
+        primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
+
+        sql, params = self._build_column_info_sql(table_name, schema)
+        rows = self._executor.execute(sql, params)
+        columns = self._parse_columns(
+            rows, table_name, target, primary_keys
+        )
+        self._set_cached(key, columns)
+        return columns
+
+
+class AsyncSQLServerIntrospector(
+    SQLServerIntrospectorMixin, AsyncAbstractIntrospector
+):
+    """Asynchronous introspector for SQL Server backends."""
+
+    def __init__(
+        self, backend: Any, executor: AsyncIntrospectorExecutor
+    ) -> None:
+        super().__init__(backend, executor)
+
+    async def get_table_info(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> Optional[TableInfo]:
+        key = self._make_cache_key(
+            IntrospectionScope.TABLE, table_name, schema=schema
+        )
+        cached = self._get_cached(key)
+        if cached is not None:
+            return cached
+
+        tables = await self.list_tables(schema)
+        table = next(
+            (t for t in tables if t.name == table_name), None
+        )
+        if table is None:
+            return None
+
+        table = copy.copy(table)
+        table.columns = await self.list_columns(table_name, schema)
+        table.indexes = await self.list_indexes(table_name, schema)
+        table.foreign_keys = await self.list_foreign_keys(
+            table_name, schema
+        )
+        self._set_cached(key, table)
+        return table
+
+    async def list_columns(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> List[ColumnInfo]:
+        target = schema if schema is not None else self._get_default_schema()
+        key = self._make_cache_key(
+            IntrospectionScope.COLUMN, table_name, schema=target
+        )
+        cached = self._get_cached(key)
+        if cached is not None:
+            return cached
+
+        pk_sql = self._build_primary_key_sql(table_name, target)
+        pk_rows = await self._executor.execute(pk_sql)
+        primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
+
+        sql, params = self._build_column_info_sql(table_name, schema)
+        rows = await self._executor.execute(sql, params)
+        columns = self._parse_columns(
+            rows, table_name, target, primary_keys
+        )
+        self._set_cached(key, columns)
+        return columns

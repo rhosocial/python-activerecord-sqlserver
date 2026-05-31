@@ -1,0 +1,88 @@
+name: Changelog Fragment Check
+
+on:
+  pull_request:
+    branches: 
+      - main
+      - 'release/v**'
+      - 'maint/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-fragment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Ensure full history is fetched
+
+      - name: Check for changelog fragment
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          # Fetch the base branch explicitly to ensure it's available for comparison
+          git fetch origin ${{ github.base_ref }}
+
+          # --- EXEMPTION FOR RELEASE BRANCH MERGES ---
+          # Release branches already contain changelog fragments from development
+          # Skip fragment check for PRs from release/* branches to main
+          if [[ "$HEAD_REF" =~ ^release/ ]]; then
+            echo "✓ Release branch PR, fragment check skipped (fragments already in branch history)"
+            exit 0
+          fi
+          # --- END RELEASE BRANCH EXEMPTION ---
+
+          # Compare the head of the PR (current HEAD) with the base branch's remote tracking ref
+          # This compares the changes introduced by the PR branch relative to its base.
+          # Use --diff-filter=A to only consider added files for fragment check
+          CHANGED_FILES=$(git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD)
+
+          # Debugging: Print the diff command and its output
+          echo "Executing: git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD"
+          echo "Changed files (added only): $CHANGED_FILES"
+
+          # --- EXEMPTION FOR CHANGELOG BUILD PRS ---
+          # Check if PR title indicates a changelog update (e.g., "docs: update CHANGELOG")
+          # This exempts PRs that are specifically for building the changelog (which remove fragments)
+          if [[ "$PR_TITLE" =~ ^docs:\ update\ CHANGELOG ]]; then
+            echo "✓ PR title indicates changelog update, fragment check skipped"
+            exit 0
+          fi
+          # --- END EXEMPTION ---
+          
+          # Check if any changelog fragment was added
+          if echo "$CHANGED_FILES" | grep -q "^changelog.d/[0-9].*\.md$"; then
+            echo "✓ Changelog fragment found"
+            exit 0
+          fi
+          
+          # Check if this is an internal change (exempt from fragment requirement)
+          if echo "$CHANGED_FILES" | grep -qE "^(tests/|docs/|\.github/)"; then
+            echo "✓ Internal change, fragment not required"
+            exit 0
+          fi
+          
+          # Check if PR is marked as trivial
+          if [[ "$PR_TITLE" =~ \[trivial\] ]]; then
+            echo "✓ PR marked as trivial, fragment not required"
+            exit 0
+          fi
+          
+          echo "✗ Missing changelog fragment"
+          echo "Please add a changelog fragment in changelog.d/"
+          echo "Example: changelog.d/${{ github.event.number }}.fixed.md"
+          echo ""
+          echo "Fragment types:"
+          echo "  - added.md      - New features"
+          echo "  - fixed.md      - Bug fixes"
+          echo "  - changed.md    - Behavior changes"
+          echo "  - deprecated.md - Deprecations"
+          echo "  - removed.md    - Removed features"
+          echo "  - security.md   - Security fixes"
+          echo ""
+          echo "If this PR does not need a changelog entry, add [trivial] to the title."
+          exit 1

@@ -1,7 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/__main__.py
 """SQL Server backend command-line interface.
 
-Provides SQL execution and database introspection capabilities.
+Available commands: info, query, introspect, status,
+named-expression, named-procedure, named-procedure-graph, named-connection.
 """
 
 import argparse
