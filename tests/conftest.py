@@ -1,6 +1,12 @@
 # tests/conftest.py
 """Root conftest for SQL Server backend tests."""
+import os
 import pytest
+
+os.environ.setdefault(
+    'TESTSUITE_PROVIDER_REGISTRY',
+    'providers.registry:provider_registry'
+)
 
 
 def pytest_configure(config):

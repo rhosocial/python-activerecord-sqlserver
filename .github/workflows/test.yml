@@ -103,7 +103,7 @@ jobs:
 
     - name: Run tests
       run: |
-        export PYTHONPATH=src
+        export PYTHONPATH=src:tests
         python -m pytest tests/
 
   test-py310-sqlserver2019:
@@ -192,7 +192,7 @@ jobs:
 
     - name: Run tests
       run: |
-        export PYTHONPATH=src
+        export PYTHONPATH=src:tests
         python -m pytest tests/
 
   test-py311-sqlserver2019:
@@ -281,7 +281,7 @@ jobs:
 
     - name: Run tests
       run: |
-        export PYTHONPATH=src
+        export PYTHONPATH=src:tests
         python -m pytest tests/
 
   test-py312-sqlserver2025:
@@ -370,7 +370,7 @@ jobs:
 
     - name: Run tests
       run: |
-        export PYTHONPATH=src
+        export PYTHONPATH=src:tests
         python -m pytest tests/
 
   test-py313-sqlserver2022:
@@ -459,7 +459,7 @@ jobs:
 
     - name: Run tests
       run: |
-        export PYTHONPATH=src
+        export PYTHONPATH=src:tests
         python -m pytest tests/
 
   test-py313t-sqlserver2019:
@@ -548,7 +548,7 @@ jobs:
 
     - name: Run tests
       run: |
-        export PYTHONPATH=src
+        export PYTHONPATH=src:tests
         python -m pytest tests/
 
   test-py314-sqlserver2025:
@@ -637,7 +637,7 @@ jobs:
 
     - name: Run tests
       run: |
-        export PYTHONPATH=src
+        export PYTHONPATH=src:tests
         python -m pytest tests/
 
   test-py314t-sqlserver2022:
@@ -726,5 +726,5 @@ jobs:
 
     - name: Run tests
       run: |
-        export PYTHONPATH=src
+        export PYTHONPATH=src:tests
         python -m pytest tests/
