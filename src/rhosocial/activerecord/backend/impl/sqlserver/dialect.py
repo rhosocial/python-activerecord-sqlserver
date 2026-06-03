@@ -87,7 +87,7 @@ from .collation import validate_sqlserver_collation_name
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
-    from rhosocial.activerecord.backend.expression.collation import CollationName
+    from rhosocial.activerecord.backend.expression.collation import CollateExpression
     from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation, JSONExpression
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
@@ -278,13 +278,18 @@ class SQLServerDialect(
         """SQL Server supports expression-level COLLATE."""
         return True
 
-    def validate_collation_name(self, collation: "CollationName") -> str:
+    def validate_collation_name(self, expr: "CollateExpression") -> str:
         """Validate SQL Server collation names and return their SQL representation."""
-        if collation.schema is not None:
+        if "schema" in expr.collation_options:
             raise UnsupportedFeatureError(self.name, "schema-qualified COLLATE")
-        if collation.keyword is not None and collation.keyword != "DATABASE_DEFAULT":
-            raise ValueError(f"Unsupported SQL Server collation keyword: {collation.keyword!r}")
-        return validate_sqlserver_collation_name(collation.keyword or collation.name, getattr(self, "version", None))
+        keyword = expr.collation_options.get("keyword", False)
+        unsupported = set(expr.collation_options) - {"keyword", "schema"}
+        if unsupported:
+            options = ", ".join(sorted(unsupported))
+            raise UnsupportedFeatureError(self.name, f"COLLATE options: {options}")
+        if keyword and expr.collation_name != "DATABASE_DEFAULT":
+            raise ValueError(f"Unsupported SQL Server collation keyword: {expr.collation_name!r}")
+        return validate_sqlserver_collation_name(expr.collation_name, getattr(self, "version", None))
 
     def format_identifier(self, identifier: str) -> str:
         """

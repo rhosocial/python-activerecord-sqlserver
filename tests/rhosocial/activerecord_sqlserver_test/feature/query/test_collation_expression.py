@@ -6,7 +6,6 @@ Tests for expression-level COLLATE support on SQL Server.
 import pytest
 
 from rhosocial.activerecord.backend.expression import Column, Literal
-from rhosocial.activerecord.backend.expression.collation import CollationName
 from rhosocial.activerecord.backend.impl.sqlserver import SQLServerCollation, SQLServerDialect
 
 
@@ -52,7 +51,7 @@ class TestSQLServerCollationExpression:
         assert params == ("Alice",)
 
     def test_database_default_keyword_generates_sql(self, dialect):
-        expr = Column(dialect, "name").collate(CollationName.as_keyword("DATABASE_DEFAULT"))
+        expr = Column(dialect, "name").collate("DATABASE_DEFAULT", keyword=True)
 
         sql, params = expr.to_sql()
 
@@ -61,14 +60,14 @@ class TestSQLServerCollationExpression:
 
     def test_rejects_schema_qualified_collation(self, dialect):
         expr = Column(dialect, "name").collate(
-            CollationName(SQLServerCollation.LATIN1_GENERAL_CI_AS.value, schema="dbo")
+            SQLServerCollation.LATIN1_GENERAL_CI_AS.value, schema="dbo"
         )
 
         with pytest.raises(Exception, match="schema-qualified COLLATE"):
             expr.to_sql()
 
     def test_rejects_unsupported_keyword(self, dialect):
-        expr = Column(dialect, "name").collate(CollationName.as_keyword("CATALOG_DEFAULT"))
+        expr = Column(dialect, "name").collate("CATALOG_DEFAULT", keyword=True)
 
         with pytest.raises(ValueError, match="Unsupported SQL Server collation keyword"):
             expr.to_sql()
