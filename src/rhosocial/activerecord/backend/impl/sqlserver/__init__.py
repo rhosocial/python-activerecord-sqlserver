@@ -3,6 +3,7 @@
 
 from .backend import SQLServerBackend
 from .config import SQLServerConnectionConfig
+from .collation import SQLServerCollation
 from .dialect import SQLServerDialect
 from .transaction import SQLServerTransactionManager
 from .adapters import (
@@ -39,6 +40,7 @@ __all__ = [
     "SQLServerBackend",
     "SQLServerConnectionConfig",
     "SQLServerDialect",
+    "SQLServerCollation",
     "SQLServerTransactionManager",
     "SQLServerUUIDAdapter",
     "SQLServerDateTimeAdapter",

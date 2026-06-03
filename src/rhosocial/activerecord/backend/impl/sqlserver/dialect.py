@@ -12,6 +12,7 @@ from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.dialect.protocols import (
+    CollationSupport,
     CTESupport,
     FilterClauseSupport,
     WindowFunctionSupport,
@@ -53,6 +54,7 @@ from .protocols import (
     SQLServerMergeSupport,
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
+    CollationMixin,
     CTEMixin,
     FilterClauseMixin,
     WindowFunctionMixin,
@@ -81,6 +83,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     IntrospectionMixin,
 )
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from .collation import validate_sqlserver_collation_name
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
@@ -143,6 +146,7 @@ _SUGGESTION_LATERAL = "SQL Server uses CROSS APPLY or OUTER APPLY instead of LAT
 
 class SQLServerDialect(
     SQLDialectBase,
+    CollationMixin,
     CTEMixin,
     WindowFunctionMixin,
     JSONMixin,
@@ -169,6 +173,7 @@ class SQLServerDialect(
     ConstraintMixin,
     IntrospectionMixin,
     # Protocols for isinstance() checks
+    CollationSupport,
     CTESupport,
     FilterClauseSupport,
     WindowFunctionSupport,
@@ -267,7 +272,19 @@ class SQLServerDialect(
     def get_server_version(self) -> Tuple[int, int, int]:
         """Return the SQL Server version this dialect is configured for."""
         return self.version
-    
+
+    def supports_collate_expression(self) -> bool:
+        """SQL Server supports expression-level COLLATE."""
+        return True
+
+    def format_collation_name(self, collation) -> str:
+        """Format SQL Server collation names as validated bare tokens."""
+        if collation.schema is not None:
+            raise UnsupportedFeatureError(self.name, "schema-qualified COLLATE")
+        if collation.keyword is not None and collation.keyword != "DATABASE_DEFAULT":
+            raise ValueError(f"Unsupported SQL Server collation keyword: {collation.keyword!r}")
+        return validate_sqlserver_collation_name(collation.keyword or collation.name, getattr(self, "version", None))
+
     def format_identifier(self, identifier: str) -> str:
         """
         Format identifier using SQL Server's brackets.
