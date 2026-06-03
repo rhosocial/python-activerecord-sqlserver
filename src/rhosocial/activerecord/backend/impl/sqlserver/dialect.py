@@ -87,6 +87,7 @@ from .collation import validate_sqlserver_collation_name
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
+    from rhosocial.activerecord.backend.expression.collation import CollationName
     from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation, JSONExpression
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
@@ -277,7 +278,7 @@ class SQLServerDialect(
         """SQL Server supports expression-level COLLATE."""
         return True
 
-    def validate_collation_name(self, collation) -> str:
+    def validate_collation_name(self, collation: "CollationName") -> str:
         """Validate SQL Server collation names and return their SQL representation."""
         if collation.schema is not None:
             raise UnsupportedFeatureError(self.name, "schema-qualified COLLATE")
