@@ -277,8 +277,8 @@ class SQLServerDialect(
         """SQL Server supports expression-level COLLATE."""
         return True
 
-    def format_collation_name(self, collation) -> str:
-        """Format SQL Server collation names as validated bare tokens."""
+    def validate_collation_name(self, collation) -> str:
+        """Validate SQL Server collation names and return their SQL representation."""
         if collation.schema is not None:
             raise UnsupportedFeatureError(self.name, "schema-qualified COLLATE")
         if collation.keyword is not None and collation.keyword != "DATABASE_DEFAULT":
