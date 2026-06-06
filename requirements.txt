@@ -1,6 +1,6 @@
 # requirements.txt
-# Core dependency
-rhosocial-activerecord
+# Backend-specific dependencies only
+# Core dependency (rhosocial-activerecord) is installed via CI workflow from git
 
 # SQL Server driver
 pyodbc>=5.3.0
