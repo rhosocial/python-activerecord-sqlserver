@@ -1,2 +1,6 @@
+# requirements.txt
+# Core dependency
+rhosocial-activerecord
+
+# SQL Server driver
 pyodbc>=5.3.0
-aioodbc>=0.5.0

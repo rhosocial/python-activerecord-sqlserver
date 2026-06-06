@@ -42,6 +42,11 @@ dependencies = [
 rhosocial-activerecord-sqlserver = "rhosocial.activerecord.backend.impl.sqlserver.__main__:main"
 
 [project.optional-dependencies]
+# Async support
+async = [
+    "aioodbc>=0.5.0",
+]
+# Development dependencies
 test = [
     "PyYAML>=6.0",
     "pytest",
@@ -103,7 +108,7 @@ exclude_lines = [
 
 [tool.black]
 line-length = 100
-target-version = ["py38", "py39", "py310", "py311", "py312", "py313", "py314"]
+target-version = ["py39", "py310", "py311", "py312", "py313", "py314"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -113,12 +118,12 @@ line_length = 100
 
 [tool.ruff]
 line-length = 120
-target-version = "py38"
+target-version = "py39"
 select = ["E", "F", "B"]
 ignore = []
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
