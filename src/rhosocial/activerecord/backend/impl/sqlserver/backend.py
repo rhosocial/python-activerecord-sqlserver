@@ -29,12 +29,13 @@ from rhosocial.activerecord.backend.explain import SyncExplainBackendMixin
 from .config import SQLServerConnectionConfig
 from .dialect import SQLServerDialect
 from .transaction import SQLServerTransactionManager
-from .mixins import SQLServerBackendMixin
+from .mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
 
 
 class SQLServerBackend(
     SyncExplainBackendMixin,
     IntrospectorBackendMixin,
+    SQLServerConcurrencyMixin,
     SQLServerBackendMixin,
     StorageBackend
 ):

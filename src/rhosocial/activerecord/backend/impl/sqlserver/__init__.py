@@ -36,6 +36,32 @@ from .expression import (
     SQLServerFreetextPredicate,
 )
 
+from .expression.types import (
+    SQLServerNVarCharType,
+    SQLServerNCharType,
+    SQLServerNVarCharMaxType,
+    SQLServerVarBinaryType,
+    SQLServerVarBinaryMaxType,
+    SQLServerXmlType,
+    SQLServerTinyIntType,
+    SQLServerBitType,
+    SQLServerImageType,
+)
+
+from .mixins import (
+    SQLServerBackendMixin,
+    SQLServerConcurrencyMixin,
+    SQLServerTypeSupportMixin,
+)
+
+from .schema import SQLServerSchemaDiffer
+
+from .type_compatibility import (
+    DIRECT_COMPATIBLE_CASTS,
+    check_cast_compatibility,
+    get_compatible_types,
+)
+
 __all__ = [
     "SQLServerBackend",
     "SQLServerConnectionConfig",
@@ -66,6 +92,26 @@ __all__ = [
     "SQLServerTryConvertExpression",
     "SQLServerContainsPredicate",
     "SQLServerFreetextPredicate",
+    # DDL DataType subclasses
+    "SQLServerNVarCharType",
+    "SQLServerNCharType",
+    "SQLServerNVarCharMaxType",
+    "SQLServerVarBinaryType",
+    "SQLServerVarBinaryMaxType",
+    "SQLServerXmlType",
+    "SQLServerTinyIntType",
+    "SQLServerBitType",
+    "SQLServerImageType",
+    # Mixins
+    "SQLServerBackendMixin",
+    "SQLServerConcurrencyMixin",
+    "SQLServerTypeSupportMixin",
+    # Schema differ
+    "SQLServerSchemaDiffer",
+    # Type compatibility
+    "DIRECT_COMPATIBLE_CASTS",
+    "check_cast_compatibility",
+    "get_compatible_types",
 ]
 
 
