@@ -32,6 +32,7 @@ from rhosocial.activerecord.backend.introspection.types import (
     TriggerInfo,
     IntrospectionScope,
 )
+from rhosocial.activerecord.backend.expression.types._base import DataType
 
 
 class SQLServerIntrospectorMixin(IntrospectorMixin):
@@ -259,6 +260,13 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                 full_type = data_type
 
             col_name = row.get("COLUMN_NAME", "")
+
+            parsed = None
+            try:
+                parsed = DataType.parse_data_type_str(self._backend.dialect, full_type)
+            except Exception:
+                pass
+
             columns.append(ColumnInfo(
                 name=col_name,
                 table_name=table_name,
@@ -266,6 +274,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                 ordinal_position=row.get("ORDINAL_POSITION", 0),
                 data_type=data_type,
                 data_type_full=full_type,
+                parsed_data_type=parsed,
                 nullable=(
                     ColumnNullable.NULLABLE
                     if row.get("IS_NULLABLE") == "YES"

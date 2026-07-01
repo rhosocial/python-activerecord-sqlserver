@@ -16,7 +16,7 @@ def create_parser(subparsers):
     Reuses the shared create_named_procedure_parser, passing a parent parser
     containing only connection and output arguments.
     """
-    from rhosocial.activerecord.backend.named_query.cli_procedure import create_named_procedure_parser
+    from rhosocial.activerecord.backend.named_expression.cli_procedure import create_named_procedure_parser
 
     local_parent = create_connection_parent_parser()
     np_epilog = """Examples:
@@ -43,7 +43,7 @@ def create_parser(subparsers):
 
 def handle(args):
     """Handle the named-procedure subcommand."""
-    from rhosocial.activerecord.backend.named_query.cli_procedure import handle_named_procedure as handle_np
+    from rhosocial.activerecord.backend.named_expression.cli_procedure import handle_named_procedure as handle_np
 
     provider = create_provider(args.output, ascii_borders=args.rich_ascii)
     backend = None

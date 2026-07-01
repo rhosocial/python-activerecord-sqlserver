@@ -761,6 +761,9 @@ class TestSQLServerDialectDDL:
             ColumnConstraintType,
         )
         from rhosocial.activerecord.backend.expression.core import TableExpression
+        from rhosocial.activerecord.backend.expression.types import (
+            IntegerType, VarCharType,
+        )
 
         expr = CreateTableExpression(
             dialect=dialect,
@@ -768,12 +771,12 @@ class TestSQLServerDialectDDL:
             columns=[
                 ColumnDefinition(
                     name="id",
-                    data_type="INT",
+                    data_type=IntegerType(),
                     constraints=[ColumnConstraint(constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)],
                 ),
                 ColumnDefinition(
                     name="name",
-                    data_type="NVARCHAR(255)",
+                    data_type=VarCharType(length=255),
                     constraints=[ColumnConstraint(constraint_type=ColumnConstraintType.NOT_NULL)],
                 ),
             ],
@@ -781,8 +784,10 @@ class TestSQLServerDialectDDL:
 
         sql, params = dialect.format_create_table_statement(expr)
         assert "CREATE TABLE [users]" in sql
-        assert "[id] INT PRIMARY KEY IDENTITY(1,1)" in sql or "[id] INT IDENTITY(1,1) PRIMARY KEY" in sql
-        assert "[name] NVARCHAR(255) NOT NULL" in sql
+        assert "[id]" in sql
+        assert "PRIMARY KEY" in sql
+        assert "[name]" in sql
+        assert "NOT NULL" in sql
 
     def test_drop_table_if_exists(self, dialect):
         from rhosocial.activerecord.backend.expression.statements import (

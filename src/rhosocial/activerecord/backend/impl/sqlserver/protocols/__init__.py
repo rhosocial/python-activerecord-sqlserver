@@ -12,6 +12,7 @@ from .fulltext import SQLServerFullTextSearchSupport
 from .try_cast import SQLServerTryCastSupport
 from .pagination import SQLServerPaginationSupport
 from .merge import SQLServerMergeSupport
+from .partition import SQLServerPartitionSupport
 
 __all__ = [
     "SQLServerIdentitySupport",
@@ -27,4 +28,5 @@ __all__ = [
     "SQLServerTryCastSupport",
     "SQLServerPaginationSupport",
     "SQLServerMergeSupport",
+    "SQLServerPartitionSupport",
 ]

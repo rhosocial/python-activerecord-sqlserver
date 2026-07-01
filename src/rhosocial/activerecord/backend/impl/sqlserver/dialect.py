@@ -52,6 +52,7 @@ from .protocols import (
     SQLServerFullTextSearchSupport,
     SQLServerPaginationSupport,
     SQLServerMergeSupport,
+    SQLServerPartitionSupport,
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
@@ -81,9 +82,20 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     TableMixin,
     ConstraintMixin,
     IntrospectionMixin,
+    IdentifierMixin,
+    PredicateMixin,
+    ExpressionMixin,
+    DateTimeMixin,
+    DQLMixin,
+    DMLMixin,
+    DDLColumnMixin,
+    DDLTypeMixin,
 )
+# SQLServerTypeSupportMixin is imported lazily in _register_type_formatters()
+from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .collation import validate_sqlserver_collation_name
+# SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
@@ -147,6 +159,17 @@ _SUGGESTION_LATERAL = "SQL Server uses CROSS APPLY or OUTER APPLY instead of LAT
 
 class SQLServerDialect(
     SQLDialectBase,
+    # Core infrastructure mixins (provide base implementations
+    # that the dialect overrides as needed)
+    IdentifierMixin,
+    ExpressionMixin,
+    PredicateMixin,
+    DateTimeMixin,
+    DQLMixin,
+    DMLMixin,
+    DDLColumnMixin,
+    DDLTypeMixin,
+    # Feature mixins
     CollationMixin,
     CTEMixin,
     WindowFunctionMixin,
@@ -207,7 +230,8 @@ class SQLServerDialect(
     # SQL Server-specific protocols (removed from MRO to avoid diamond inheritance)
     # SQLServerTableSupport, SQLServerLockingSupport, SQLServerJSONSupport,
     # SQLServerTemporalTableSupport, SQLServerSequenceSupport,
-    # SQLServerFullTextSearchSupport, SQLServerPaginationSupport, SQLServerMergeSupport,
+    #     SQLServerFullTextSearchSupport, SQLServerPaginationSupport, SQLServerMergeSupport,
+    PartitionSupport,
 ):
     """
     SQL Server dialect implementation that adapts to the SQL Server version.
@@ -1127,12 +1151,24 @@ class SQLServerDialect(
 
         parts.append(f"({', '.join(column_parts)})")
 
+        # Handle table partitioning clause
+        if expr.partition is not None:
+            partition_sql, partition_params = expr.partition.to_sql()
+            parts.append(partition_sql)
+            all_params.extend(partition_params)
+
         return ' '.join(parts), tuple(all_params)
 
     def _format_column_definition(self, col_def: "ColumnDefinition", ColumnConstraintType) -> Tuple[str, List[Any]]:
         """Format a column definition for SQL Server."""
-        parts = [self.format_identifier(col_def.name), col_def.data_type]
-        params: List[Any] = []
+        from rhosocial.activerecord.backend.expression.types._base import DataType
+        if isinstance(col_def.data_type, DataType):
+            type_sql, type_params = col_def.data_type.to_sql(self)
+            parts = [self.format_identifier(col_def.name), type_sql]
+            params: List[Any] = list(type_params)
+        else:
+            parts = [self.format_identifier(col_def.name), str(col_def.data_type)]
+            params: List[Any] = []
 
         constraint_parts = []
         for constraint in col_def.constraints:
@@ -1612,3 +1648,34 @@ class SQLServerDialect(
         if percentage:
             return f"TOP {n} PERCENT"
         return f"TOP {n}"
+
+
+# Lazy import to avoid circular dependency (backend → dialect → mixins.types → backend)
+def _register_type_formatters():
+    from .mixins.types import SQLServerTypeSupportMixin
+
+    if not hasattr(SQLServerDialect, "_type_formatters"):
+        SQLServerDialect._type_formatters = {}
+    for member_name in dir(SQLServerTypeSupportMixin):
+        member = getattr(SQLServerTypeSupportMixin, member_name, None)
+        handles_types = getattr(member, "_handles_types", None)
+        if handles_types is not None:
+            for dt_cls in handles_types:
+                SQLServerDialect._type_formatters[dt_cls] = member_name
+            setattr(SQLServerDialect, member_name, member)
+        elif member_name == "parse_type" and callable(member):
+            setattr(SQLServerDialect, member_name, member)
+
+
+def _register_partition_formatters():
+    from .mixins.partition import SQLServerPartitionMixin
+
+    for member_name in dir(SQLServerPartitionMixin):
+        if member_name.startswith(("supports_", "format_")):
+            member = getattr(SQLServerPartitionMixin, member_name)
+            if callable(member):
+                setattr(SQLServerDialect, member_name, member)
+
+
+_register_type_formatters()
+_register_partition_formatters()

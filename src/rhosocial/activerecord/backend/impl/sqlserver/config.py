@@ -165,7 +165,7 @@ class SQLServerConnectionConfig(ConnectionConfig):
     
     def __repr__(self) -> str:
         """Return safe string representation (password masked)."""
-        safe_dict = self.model_dump()
+        safe_dict = self.to_dict()
         if safe_dict.get("password"):
             safe_dict["password"] = "***MASKED***"
         return f"SQLServerConnectionConfig({safe_dict})"

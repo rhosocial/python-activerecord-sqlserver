@@ -12,7 +12,6 @@ class TestCLIParseArgs:
         assert "query" in COMMAND_NAMES
         assert "introspect" in COMMAND_NAMES
         assert "status" in COMMAND_NAMES
-        assert "named-query" in COMMAND_NAMES
         assert "named-procedure" in COMMAND_NAMES
         assert "named-connection" in COMMAND_NAMES
 
@@ -153,16 +152,6 @@ class TestCLIDisplayFunctions:
         finally:
             sys.stdout = old_stdout
 
-
-class TestCLINamedQueryArgs:
-    def test_named_query_parser_has_expected_args(self):
-        parser = argparse.ArgumentParser(prog="sqlserver-backend")
-        subparsers = parser.add_subparsers(dest="command")
-        register_commands(subparsers)
-        nq_parser = TestCLIParseArgs._get_subparser(parser, 'named-query')
-        assert nq_parser is not None, "named-query subparser not found"
-        dests = {a.dest for a in nq_parser._actions}
-        assert "qualified_name" in dests or "name" in dests or "query_name" in dests
 
 
 class TestCLINamedProcedureArgs:

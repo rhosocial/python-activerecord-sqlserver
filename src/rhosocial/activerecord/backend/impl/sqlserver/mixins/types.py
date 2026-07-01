@@ -140,7 +140,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
                 return TextType()
             length_match = re.search(r"\((\d+)", stripped)
             length = int(length_match.group(1)) if length_match else None
-            if "NCHAR" in upper or "NVARCHAR" in upper:
+            if "VARCHAR" in upper or "NVARCHAR" in upper:
                 return VarCharType(length or 255)
             return (CharType(length) if length_match else VarCharType(255))
 
