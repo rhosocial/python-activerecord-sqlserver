@@ -235,6 +235,13 @@ class QueryProvider(IQueryProvider, WorkerTestProtocol):
             (MappedComment, "comments")
         ], scenario_name)
 
+    def setup_profile_fixtures(self, scenario_name: str) -> Tuple[Type[ActiveRecord], Type[ActiveRecord]]:
+        Profile = User.get_relation('profile').get_related_model(User)
+        return self._setup_multiple_models([
+            (User, "users"),
+            (Profile, "profiles"),
+        ], scenario_name)
+
     async def setup_async_order_fixtures(self, scenario_name: str) -> Tuple[Type[ActiveRecord], Type[ActiveRecord], Type[ActiveRecord]]:
         from rhosocial.activerecord.testsuite.feature.query.fixtures.async_models import AsyncUser, AsyncOrder, AsyncOrderItem
         return await self._setup_multiple_models_async([
@@ -302,6 +309,13 @@ class QueryProvider(IQueryProvider, WorkerTestProtocol):
             (AsyncMappedComment, "comments")
         ], scenario_name)
 
+    async def setup_async_profile_fixtures(self, scenario_name: str) -> Tuple[Type[ActiveRecord], Type[ActiveRecord]]:
+        from rhosocial.activerecord.testsuite.feature.query.fixtures.async_models import AsyncUser, AsyncProfile
+        return await self._setup_multiple_models_async([
+            (AsyncUser, "users"),
+            (AsyncProfile, "profiles"),
+        ], scenario_name)
+
     async def cleanup_after_test_async(self, scenario_name: str) -> None:
         from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
         from rhosocial.activerecord.backend.expression.statements import DropTableExpression
@@ -311,7 +325,7 @@ class QueryProvider(IQueryProvider, WorkerTestProtocol):
             if not is_async:
                 continue
             try:
-                for table_name in ['comments', 'order_items', 'posts', 'orders', 'users', 'json_users', 'nodes', 'extended_order_items', 'extended_orders', 'searchable_items']:
+                for table_name in ['comments', 'order_items', 'posts', 'orders', 'users', 'json_users', 'nodes', 'extended_order_items', 'extended_orders', 'searchable_items', 'profiles']:
                     try:
                         expr = DropTableExpression(backend_instance.dialect, table_name, if_exists=True)
                         await backend_instance.execute(*expr.to_sql())
@@ -336,7 +350,7 @@ class QueryProvider(IQueryProvider, WorkerTestProtocol):
         from rhosocial.activerecord.backend.expression.statements import DropTableExpression
         for backend_instance in self._active_backends:
             try:
-                for table_name in ['comments', 'order_items', 'posts', 'orders', 'users', 'json_users', 'nodes', 'extended_order_items', 'extended_orders', 'searchable_items']:
+                for table_name in ['comments', 'order_items', 'posts', 'orders', 'users', 'json_users', 'nodes', 'extended_order_items', 'extended_orders', 'searchable_items', 'profiles']:
                     try:
                         expr = DropTableExpression(backend_instance.dialect, table_name, if_exists=True)
                         backend_instance.execute(*expr.to_sql())
