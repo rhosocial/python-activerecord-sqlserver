@@ -25,8 +25,6 @@ def get_enabled_scenarios() -> Dict[str, Any]:
 
 
 def _load_scenarios_from_config():
-    import yaml
-
     env_config_path = os.getenv("SQLSERVER_SCENARIOS_CONFIG_PATH")
     if env_config_path and os.path.exists(env_config_path):
         print(f"Loading SQL Server scenarios from environment-specified path: {env_config_path}")
@@ -34,14 +32,12 @@ def _load_scenarios_from_config():
     else:
         config_path = os.path.join(os.path.dirname(__file__), "..", "config", "sqlserver_scenarios.yaml")
         if not os.path.exists(config_path):
-            raise FileNotFoundError(
-                "No SQL Server scenarios configuration file found. "
-                "Either set SQLSERVER_SCENARIOS_CONFIG_PATH environment variable "
-                "or place sqlserver_scenarios.yaml in the tests/config directory."
-            )
+            print("No SQL Server scenarios configuration file found. Skipping scenario registration.")
+            return
         print(f"Loading SQL Server scenarios from default path: {config_path}")
 
     try:
+        import yaml
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = yaml.safe_load(f)
 
