@@ -5,3 +5,5 @@ from rhosocial.activerecord.testsuite.feature.query.conftest import (
     async_tree_fixtures,
 )
 from rhosocial.activerecord.testsuite.feature.query.test_cte_query_active_query import *
+from rhosocial.activerecord.testsuite.feature.query.test_cte_query_active_query_async import *  # noqa: F403
+

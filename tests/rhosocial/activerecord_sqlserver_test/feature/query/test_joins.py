@@ -3,3 +3,5 @@ from rhosocial.activerecord.testsuite.feature.query.conftest import (
     blog_fixtures,
 )
 from rhosocial.activerecord.testsuite.feature.query.test_joins import *
+from rhosocial.activerecord.testsuite.feature.query.test_joins_async import *  # noqa: F403
+

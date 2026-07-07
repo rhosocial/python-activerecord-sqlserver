@@ -7,3 +7,5 @@ from rhosocial.activerecord.testsuite.feature.query.conftest import (
     async_combined_fixtures,
 )
 from rhosocial.activerecord.testsuite.feature.query.test_relations_with import *
+from rhosocial.activerecord.testsuite.feature.query.test_relations_with_async import *  # noqa: F403
+

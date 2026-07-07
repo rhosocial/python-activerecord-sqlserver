@@ -8,3 +8,5 @@ from rhosocial.activerecord.testsuite.feature.basic.conftest import (
     async_validated_user_class,
 )
 from rhosocial.activerecord.testsuite.feature.basic.test_crud import *
+from rhosocial.activerecord.testsuite.feature.basic.test_crud_async import *  # noqa: F403
+

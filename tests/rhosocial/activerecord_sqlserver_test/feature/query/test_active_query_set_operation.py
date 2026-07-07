@@ -3,3 +3,5 @@ from rhosocial.activerecord.testsuite.feature.query.conftest import (
     async_order_fixtures,
 )
 from rhosocial.activerecord.testsuite.feature.query.test_active_query_set_operation import *
+from rhosocial.activerecord.testsuite.feature.query.test_active_query_set_operation_async import *  # noqa: F403
+

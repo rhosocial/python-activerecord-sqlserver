@@ -4,3 +4,5 @@ from rhosocial.activerecord.testsuite.feature.query.conftest import (
     annotated_query_fixtures,
 )
 from rhosocial.activerecord.testsuite.feature.query.test_cross_database_compatibility import *
+from rhosocial.activerecord.testsuite.feature.query.test_cross_database_compatibility_async import *  # noqa: F403
+
