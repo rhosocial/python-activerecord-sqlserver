@@ -324,6 +324,11 @@ from rhosocial.activerecord.testsuite.feature.basic.fixtures.models import (  # 
 
 from .scenarios import get_enabled_scenarios, get_scenario  # noqa: E402
 
+from providers.fixtures._common import (
+    safe_drop_table, safe_drop_table_async,
+    disable_fk_checks, enable_fk_checks,
+    disable_fk_checks_async, enable_fk_checks_async,
+)
 
 class BasicProviderBase:
     def __init__(self):
@@ -374,19 +379,7 @@ class BasicSyncProvider(BasicProviderBase, IBasicSyncProvider, WorkerTestProtoco
 
         options = ExecutionOptions(stmt_type=StatementType.DDL)
         backend = model_class.__backend__
-        try:
-            backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-            try:
-                drop_expr = DropTableExpression(
-                    dialect=backend.dialect,
-                    table=TableExpression(backend.dialect, table_name),
-                    if_exists=True,
-                )
-                backend.execute(*drop_expr.to_sql(), options=options)
-            except Exception:
-                backend.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-        finally:
-            backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+        safe_drop_table(backend, backend.dialect, table_name)
         if fn := TABLE_EXPRESSIONS.get(table_name):
             create_expr = fn(backend.dialect, table_name)
             create_sql, params = to_sqlserver_ddl_sql(create_expr)
@@ -533,20 +526,15 @@ class BasicSyncProvider(BasicProviderBase, IBasicSyncProvider, WorkerTestProtoco
 
     def cleanup_after_test(self, scenario_name: str):
         for backend_instance in self._active_backends:
-            try:
-                if self._created_tables:
-                    backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-                    for table_name in list(self._created_tables):
-                        try:
-                            backend_instance.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-                        except Exception:
-                            pass
-                    backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
-            finally:
+            for table_name in list(self._created_tables):
                 try:
-                    backend_instance.disconnect()
+                    safe_drop_table(backend_instance, backend_instance.dialect, table_name)
                 except Exception:
                     pass
+            try:
+                backend_instance.disconnect()
+            except Exception:
+                pass
         self._active_backends.clear()
         self._created_tables.clear()
 
@@ -577,19 +565,7 @@ class BasicAsyncProvider(BasicProviderBase, IBasicAsyncProvider):
 
         options = ExecutionOptions(stmt_type=StatementType.DDL)
         backend = model_class.__backend__
-        try:
-            await backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-            try:
-                drop_expr = DropTableExpression(
-                    dialect=backend.dialect,
-                    table=TableExpression(backend.dialect, table_name),
-                    if_exists=True,
-                )
-                await backend.execute(*drop_expr.to_sql(), options=options)
-            except Exception:
-                await backend.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-        finally:
-            await backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+        await safe_drop_table_async(backend, backend.dialect, table_name)
         if fn := TABLE_EXPRESSIONS.get(table_name):
             create_expr = fn(backend.dialect, table_name)
             create_sql, params = to_sqlserver_ddl_sql(create_expr)
@@ -692,22 +668,14 @@ class BasicAsyncProvider(BasicProviderBase, IBasicAsyncProvider):
 
     async def cleanup_after_test(self, scenario_name: str):
         for backend_instance in self._active_async_backends:
+            for table_name in list(self._created_tables):
+                try:
+                    await safe_drop_table_async(backend_instance, backend_instance.dialect, table_name)
+                except Exception:
+                    pass
             try:
-                try:
-                    if self._created_tables:
-                        await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-                        for table_name in list(self._created_tables):
-                            try:
-                                await backend_instance.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-                            except Exception:
-                                pass
-                        await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
-                except Exception:
-                    pass
-            finally:
-                try:
-                    await backend_instance.disconnect()
-                except Exception:
-                    pass
+                await backend_instance.disconnect()
+            except Exception:
+                pass
         self._active_async_backends.clear()
         self._created_tables.clear()

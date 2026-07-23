@@ -10,6 +10,7 @@ from rhosocial.activerecord.backend.dialect.mixins import DDLTypeMixin
 from rhosocial.activerecord.backend.dialect.protocols import DDLTypeSupport
 from rhosocial.activerecord.backend.expression.types import (
     BigIntType,
+    BlobType,
     BooleanType,
     CharType,
     CustomType,
@@ -99,6 +100,10 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
     @DDLTypeMixin.handles(JsonType)
     def format_data_type_json(self, data_type: JsonType) -> Tuple[str, tuple]:
         return "NVARCHAR(MAX)", ()
+
+    @DDLTypeMixin.handles(BlobType)
+    def format_data_type_blob(self, data_type: BlobType) -> Tuple[str, tuple]:
+        return "VARBINARY(MAX)", ()
 
     # --- Parsing ---
 

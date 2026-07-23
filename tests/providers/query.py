@@ -120,6 +120,11 @@ from rhosocial.activerecord.testsuite.feature.basic.fixtures.models import (  # 
 
 from .scenarios import get_enabled_scenarios, get_scenario  # noqa: E402
 
+from providers.fixtures._common import (
+    safe_drop_table, safe_drop_table_async,
+    disable_fk_checks, enable_fk_checks,
+    disable_fk_checks_async, enable_fk_checks_async,
+)
 
 class QueryProviderBase:
     def __init__(self):
@@ -157,26 +162,7 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
         if backend_instance not in self._active_backends:
             self._active_backends.append(backend_instance)
         options = ExecutionOptions(stmt_type=StatementType.DDL)
-        try:
-            backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-            try:
-                drop_expr = DropTableExpression(
-                    dialect=backend_instance.dialect,
-                    table=TableExpression(backend_instance.dialect, table_name),
-                    if_exists=True,
-                )
-                backend_instance.execute(*drop_expr.to_sql(), options=options)
-            except Exception:
-                backend_instance.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-        except Exception:
-            try:
-                backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
-            except Exception:
-                pass
-        try:
-            backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
-        except Exception:
-            pass
+        safe_drop_table(backend_instance, backend_instance.dialect, table_name)
         if fn := TABLE_EXPRESSIONS.get(table_name):
             create_expr = fn(backend_instance.dialect, table_name)
             create_sql, params = to_sqlserver_ddl_sql(create_expr)
@@ -215,19 +201,7 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
         options = ExecutionOptions(stmt_type=StatementType.DDL)
         if backend_instance not in self._active_backends:
             self._active_backends.append(backend_instance)
-        try:
-            backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-            try:
-                drop_expr = DropTableExpression(
-                    dialect=backend_instance.dialect,
-                    table=TableExpression(backend_instance.dialect, table_name),
-                    if_exists=True,
-                )
-                backend_instance.execute(*drop_expr.to_sql(), options=options)
-            except Exception:
-                backend_instance.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-        finally:
-            backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
+        safe_drop_table(backend_instance, backend_instance.dialect, table_name)
         if fn := TABLE_EXPRESSIONS.get(table_name):
             create_expr = fn(backend_instance.dialect, table_name)
             create_sql, params = to_sqlserver_ddl_sql(create_expr)
@@ -313,23 +287,7 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
         if backend_instance not in self._active_backends:
             self._active_backends.append(backend_instance)
         options = ExecutionOptions(stmt_type=StatementType.DDL)
-        try:
-            backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-            try:
-                drop_expr = DropTableExpression(
-                    dialect=backend_instance.dialect,
-                    table=TableExpression(backend_instance.dialect, "order_items"),
-                    if_exists=True,
-                )
-                backend_instance.execute(*drop_expr.to_sql(), options=options)
-            except Exception:
-                backend_instance.execute("DROP TABLE IF EXISTS `order_items`")
-        except Exception:
-            pass
-        try:
-            backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
-        except Exception:
-            pass
+        safe_drop_table(backend_instance, backend_instance.dialect, "order_items")
         if fn := BASIC_EXPRS.get("order_items"):
             create_expr = fn(backend_instance.dialect, "order_items")
             create_sql, params = to_sqlserver_ddl_sql(create_expr)
@@ -338,36 +296,27 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
 
     def cleanup_after_test(self, scenario_name: str):
         for backend_instance in self._active_backends:
+            for table_name in [
+                "users",
+                "orders",
+                "order_items",
+                "posts",
+                "comments",
+                "json_users",
+                "nodes",
+                "extended_orders",
+                "extended_order_items",
+                "searchable_items",
+                "profiles",
+            ]:
+                try:
+                    safe_drop_table(backend_instance, backend_instance.dialect, table_name)
+                except Exception:
+                    pass
             try:
-                backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-                for table_name in [
-                    "users",
-                    "orders",
-                    "order_items",
-                    "posts",
-                    "comments",
-                    "json_users",
-                    "nodes",
-                    "extended_orders",
-                    "extended_order_items",
-                    "searchable_items",
-                    "profiles",
-                ]:
-                    try:
-                        backend_instance.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-                    except Exception:
-                        pass
-                backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
+                backend_instance.disconnect()
             except Exception:
-                try:
-                    backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
-                except Exception:
-                    pass
-            finally:
-                try:
-                    backend_instance.disconnect()
-                except Exception:
-                    pass
+                pass
         self._active_backends.clear()
 
     def get_worker_connection_params(self, scenario_name: str, fixture_type: str = "order") -> dict:
@@ -454,19 +403,7 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
         if backend_instance not in self._active_async_backends:
             self._active_async_backends.append(backend_instance)
         options = ExecutionOptions(stmt_type=StatementType.DDL)
-        try:
-            await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-            try:
-                drop_expr = DropTableExpression(
-                    dialect=backend_instance.dialect,
-                    table=TableExpression(backend_instance.dialect, table_name),
-                    if_exists=True,
-                )
-                await backend_instance.execute(*drop_expr.to_sql(), options=options)
-            except Exception:
-                await backend_instance.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-        finally:
-            await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
+        await safe_drop_table_async(backend_instance, backend_instance.dialect, table_name)
         if fn := TABLE_EXPRESSIONS.get(table_name):
             create_expr = fn(backend_instance.dialect, table_name)
             create_sql, params = to_sqlserver_ddl_sql(create_expr)
@@ -616,23 +553,7 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
         if backend_instance not in self._active_async_backends:
             self._active_async_backends.append(backend_instance)
         options = ExecutionOptions(stmt_type=StatementType.DDL)
-        try:
-            await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-            try:
-                drop_expr = DropTableExpression(
-                    dialect=backend_instance.dialect,
-                    table=TableExpression(backend_instance.dialect, "order_items"),
-                    if_exists=True,
-                )
-                await backend_instance.execute(*drop_expr.to_sql(), options=options)
-            except Exception:
-                await backend_instance.execute("DROP TABLE IF EXISTS `order_items`")
-        except Exception:
-            pass
-        try:
-            await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
-        except Exception:
-            pass
+        await safe_drop_table_async(backend_instance, backend_instance.dialect, "order_items")
         if fn := BASIC_EXPRS.get("order_items"):
             create_expr = fn(backend_instance.dialect, "order_items")
             create_sql, params = to_sqlserver_ddl_sql(create_expr)
@@ -641,34 +562,25 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
 
     async def cleanup_after_test(self, scenario_name: str) -> None:
         for backend_instance in self._active_async_backends:
+            for table_name in [
+                "users",
+                "orders",
+                "order_items",
+                "posts",
+                "comments",
+                "json_users",
+                "nodes",
+                "extended_orders",
+                "extended_order_items",
+                "searchable_items",
+                "profiles",
+            ]:
+                try:
+                    await safe_drop_table_async(backend_instance, backend_instance.dialect, table_name)
+                except Exception:
+                    pass
             try:
-                await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 0")
-                for table_name in [
-                    "users",
-                    "orders",
-                    "order_items",
-                    "posts",
-                    "comments",
-                    "json_users",
-                    "nodes",
-                    "extended_orders",
-                    "extended_order_items",
-                    "searchable_items",
-                    "profiles",
-                ]:
-                    try:
-                        await backend_instance.execute(f"DROP TABLE IF EXISTS `{table_name}`")
-                    except Exception:
-                        pass
-                await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
+                await backend_instance.disconnect()
             except Exception:
-                try:
-                    await backend_instance.execute("SET FOREIGN_KEY_CHECKS = 1")
-                except Exception:
-                    pass
-            finally:
-                try:
-                    await backend_instance.disconnect()
-                except Exception:
-                    pass
+                pass
         self._active_async_backends.clear()

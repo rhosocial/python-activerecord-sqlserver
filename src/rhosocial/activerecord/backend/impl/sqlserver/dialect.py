@@ -1569,7 +1569,8 @@ class SQLServerDialect(
         base_sql = f"{left_sql} {operation}{all_str} {right_sql}"
 
         all_params = list(left_params + right_params)
-        sql_parts = [f"({base_sql})"]
+
+        sql_parts = [base_sql]
 
         if alias:
             sql_parts.append(f"AS {self.format_identifier(alias)}")

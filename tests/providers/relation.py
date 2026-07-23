@@ -29,16 +29,22 @@ from rhosocial.activerecord.testsuite.feature.relation.fixtures.models import (
 )
 from .scenarios import get_enabled_scenarios, get_scenario
 
+from providers.fixtures._common import (
+    safe_drop_table, safe_drop_table_async,
+    disable_fk_checks, enable_fk_checks,
+    disable_fk_checks_async, enable_fk_checks_async,
+)
+
 
 EMPLOYEE_DEPARTMENT_SCHEMA = """
     CREATE TABLE IF NOT EXISTS departments (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        name NVARCHAR(255) NOT NULL,
+        description NVARCHAR(MAX)
     );
     CREATE TABLE IF NOT EXISTS employees (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(255) NOT NULL,
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        username NVARCHAR(255) NOT NULL,
         department_id INT NOT NULL
     );
     DELETE FROM employees;
@@ -47,22 +53,22 @@ EMPLOYEE_DEPARTMENT_SCHEMA = """
 
 AUTHOR_BOOK_SCHEMA = """
     CREATE TABLE IF NOT EXISTS authors (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        name NVARCHAR(255) NOT NULL
     );
     CREATE TABLE IF NOT EXISTS books (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        title NVARCHAR(255) NOT NULL,
         author_id INT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS chapters (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        title NVARCHAR(255) NOT NULL,
         book_id INT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS profiles (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        bio TEXT NOT NULL,
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        bio NVARCHAR(MAX) NOT NULL,
         author_id INT NOT NULL
     );
     DELETE FROM chapters;
@@ -73,24 +79,24 @@ AUTHOR_BOOK_SCHEMA = """
 
 USER_POST_COMMENT_SCHEMA = """
     CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255),
-        settings JSON
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        name NVARCHAR(255) NOT NULL,
+        email NVARCHAR(255),
+        settings NVARCHAR(MAX)
     );
     CREATE TABLE IF NOT EXISTS posts (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        body TEXT NOT NULL,
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        title NVARCHAR(255) NOT NULL,
+        body NVARCHAR(MAX) NOT NULL,
         user_id INT NOT NULL,
         view_count INT NOT NULL DEFAULT 0,
-        metadata JSON
+        metadata NVARCHAR(MAX)
     );
     CREATE TABLE IF NOT EXISTS comments (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        body TEXT NOT NULL,
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        body NVARCHAR(MAX) NOT NULL,
         post_id INT NOT NULL,
-        meta JSON
+        meta NVARCHAR(MAX)
     );
     DELETE FROM comments;
     DELETE FROM posts;
@@ -99,17 +105,17 @@ USER_POST_COMMENT_SCHEMA = """
 
 RELATION_BOUNDARY_SCHEMA = """
     CREATE TABLE IF NOT EXISTS relation_boundary_owners (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        name NVARCHAR(255) NOT NULL
     );
     CREATE TABLE IF NOT EXISTS relation_boundary_profiles (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        bio TEXT NOT NULL,
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        bio NVARCHAR(MAX) NOT NULL,
         owner_id INT NULL
     );
     CREATE TABLE IF NOT EXISTS relation_boundary_posts (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        title NVARCHAR(255) NOT NULL,
         owner_id INT NULL
     );
     DELETE FROM relation_boundary_posts;
@@ -304,25 +310,15 @@ class RelationSyncProvider(RelationProviderBase, IRelationSyncProvider):
 
     def cleanup_after_test(self, scenario_name: str) -> None:
         for backend in self._active_backends:
+            for table in list(self._created_tables):
+                try:
+                    safe_drop_table(backend, backend.dialect, table)
+                except Exception:
+                    pass
             try:
-                if self._created_tables:
-                    backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-                    for table in list(self._created_tables):
-                        try:
-                            backend.execute(f"DROP TABLE IF EXISTS `{table}`")
-                        except Exception:
-                            pass
-                    backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+                backend.disconnect()
             except Exception:
-                try:
-                    backend.execute("SET FOREIGN_KEY_CHECKS = 1")
-                except Exception:
-                    pass
-            finally:
-                try:
-                    backend.disconnect()
-                except Exception:
-                    pass
+                pass
         self._active_backends.clear()
         self._created_tables.clear()
         self._reset_sync_setup_state()
@@ -494,26 +490,15 @@ class RelationAsyncProvider(RelationProviderBase, IRelationAsyncProvider):
 
     async def cleanup_after_test(self, scenario_name: str):
         for backend in self._active_async_backends:
-            try:
+            for table in list(self._created_tables):
                 try:
-                    if self._created_tables:
-                        await backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-                        for table in list(self._created_tables):
-                            try:
-                                await backend.execute(f"DROP TABLE IF EXISTS `{table}`")
-                            except Exception:
-                                pass
-                        await backend.execute("SET FOREIGN_KEY_CHECKS = 1")
-                except Exception:
-                    try:
-                        await backend.execute("SET FOREIGN_KEY_CHECKS = 1")
-                    except Exception:
-                        pass
-            finally:
-                try:
-                    await backend.disconnect()
+                    await safe_drop_table_async(backend, backend.dialect, table)
                 except Exception:
                     pass
+            try:
+                await backend.disconnect()
+            except Exception:
+                pass
         self._active_async_backends.clear()
         self._created_tables.clear()
         self._reset_async_setup_state()
