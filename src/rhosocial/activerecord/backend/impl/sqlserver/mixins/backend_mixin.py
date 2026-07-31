@@ -26,7 +26,7 @@ class SQLServerBackendMixin:
 
     def get_scope_identity(self) -> Optional[int]:
         cursor = self._get_cursor()
-        cursor.execute("SELECT SCOPE_IDENTITY()")
+        cursor.execute("SELECT @@IDENTITY")
         row = cursor.fetchone()
         cursor.close()
         if row and row[0] is not None:

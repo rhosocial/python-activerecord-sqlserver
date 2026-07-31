@@ -65,21 +65,22 @@ class SQLServerTransactionManager(TransactionManager):
     ) -> None:
         """
         Begin a new transaction.
-        
+
+        Nested calls create a savepoint on the outer transaction via the
+        base implementation, matching the contract of the core
+        TransactionManager. SQL Server-specific options (name, snapshot,
+        isolation level) are resolved here and consumed by _do_begin().
+
         Args:
             isolation_level: Transaction isolation level
             mode: Transaction mode (READ ONLY not supported)
             name: Optional transaction name (SQL Server-specific)
             snapshot: If True, use SNAPSHOT isolation level
             **kwargs: Additional options
-        
+
         Raises:
             UnsupportedTransactionModeError: If READ ONLY mode requested
-            TransactionError: If transaction already active
         """
-        if self._state == TransactionState.ACTIVE:
-            raise TransactionError("Transaction already active")
-        
         if mode == TransactionMode.READ_ONLY:
             raise UnsupportedTransactionModeError(
                 feature="READ ONLY transactions",
@@ -99,16 +100,25 @@ class SQLServerTransactionManager(TransactionManager):
             self._sqlserver_isolation_level = SQLServerIsolationLevel.SNAPSHOT
         elif effective_iso:
             self._sqlserver_isolation_level = ISOLATION_LEVEL_MAP.get(effective_iso)
+        else:
+            self._sqlserver_isolation_level = None
 
-        self._do_begin()
+        # Base begin() increments _transaction_level first (so is_active is
+        # already True while _do_begin() executes, preventing auto-commit),
+        # issues a real BEGIN at level 1 and a savepoint for nested levels.
+        super().begin()
 
-        self._state = TransactionState.ACTIVE
-        self._savepoints = []
+        if self._transaction_level == 1:
+            self._savepoints = []
 
         self.log(logging.DEBUG, f"Transaction started (isolation={self._sqlserver_isolation_level})")
     
     def _do_begin(self) -> None:
-        """Execute the BEGIN TRANSACTION statement."""
+        """Execute the SET TRANSACTION ISOLATION LEVEL (if any) and BEGIN TRANSACTION."""
+        if self._sqlserver_isolation_level:
+            set_iso_sql = f"SET TRANSACTION ISOLATION LEVEL {self._sqlserver_isolation_level.value}"
+            self._backend.execute(set_iso_sql)
+        
         parts = ["BEGIN TRANSACTION"]
         
         if self._name:
@@ -116,27 +126,6 @@ class SQLServerTransactionManager(TransactionManager):
         
         sql = " ".join(parts)
         self._backend.execute(sql)
-        
-        if self._sqlserver_isolation_level:
-            set_iso_sql = f"SET TRANSACTION ISOLATION LEVEL {self._sqlserver_isolation_level.value}"
-            self._backend.execute(set_iso_sql)
-    
-    def commit(self) -> None:
-        """Commit the current transaction."""
-        if self._state != TransactionState.ACTIVE:
-            raise TransactionError("No active transaction to commit")
-        
-        self.log(logging.DEBUG, "Committing transaction")
-        
-        try:
-            self._do_commit()
-            self._state = TransactionState.COMMITTED
-            self._savepoints = []
-            
-        except Exception as e:
-            self._state = TransactionState.FAILED
-            self.log(logging.ERROR, f"Failed to commit transaction: {str(e)}")
-            raise
     
     def _do_commit(self) -> None:
         """Execute the COMMIT TRANSACTION statement."""
@@ -145,6 +134,19 @@ class SQLServerTransactionManager(TransactionManager):
             sql += f" {self._name}"
         self._backend.execute(sql)
     
+    def commit(self) -> None:
+        """Commit the current transaction."""
+        if not self.is_active:
+            raise TransactionError("No active transaction to commit")
+        
+        self.log(logging.DEBUG, "Committing transaction")
+        
+        try:
+            super().commit()
+        except Exception as e:
+            self.log(logging.ERROR, f"Failed to commit transaction: {str(e)}")
+            raise
+    
     def rollback(self, savepoint: Optional[str] = None) -> None:
         """
         Rollback the transaction or to a savepoint.
@@ -152,21 +154,41 @@ class SQLServerTransactionManager(TransactionManager):
         Args:
             savepoint: If provided, rollback to this savepoint instead of full rollback
         """
-        if self._state != TransactionState.ACTIVE:
+        if not self.is_active:
             raise TransactionError("No active transaction to rollback")
         
         if savepoint:
             self._rollback_to_savepoint(savepoint)
         else:
-            self._do_rollback()
-            self._state = TransactionState.ROLLED_BACK
-            self._savepoints = []
+            self.log(logging.DEBUG, "Rolling back transaction")
+            try:
+                super().rollback()
+            except Exception as e:
+                self.log(logging.ERROR, f"Failed to rollback transaction: {str(e)}")
+                raise
     
     def _do_rollback(self) -> None:
         """Execute the ROLLBACK TRANSACTION statement."""
         sql = "ROLLBACK TRANSACTION"
         if self._name:
             sql += f" {self._name}"
+        self._backend.execute(sql)
+    
+    def _do_create_savepoint(self, name: str) -> None:
+        """Create a savepoint using SQL Server's SAVE TRANSACTION syntax."""
+        quoted = self._backend.dialect.format_identifier(name)
+        sql = f"SAVE TRANSACTION {quoted}"
+        self._backend.execute(sql)
+    
+    def _do_release_savepoint(self, name: str) -> None:
+        """Release a savepoint (no-op in SQL Server)."""
+        if name in self._savepoints:
+            self._savepoints.remove(name)
+    
+    def _do_rollback_savepoint(self, name: str) -> None:
+        """Rollback to a savepoint using SQL Server's ROLLBACK TRANSACTION syntax."""
+        quoted = self._backend.dialect.format_identifier(name)
+        sql = f"ROLLBACK TRANSACTION {quoted}"
         self._backend.execute(sql)
     
     def savepoint(self, name: Optional[str] = None) -> str:
@@ -188,9 +210,11 @@ class SQLServerTransactionManager(TransactionManager):
         if name in self._savepoints:
             self.log(logging.WARNING, f"Savepoint '{name}' already exists, will be overwritten")
 
-        sql = f"SAVE TRANSACTION {name}"
+        quoted = self._backend.dialect.format_identifier(name)
+        sql = f"SAVE TRANSACTION {quoted}"
         self._backend.execute(sql)
         self._savepoints.append(name)
+        self._active_savepoints.append(name)
 
         self.log(logging.DEBUG, f"Savepoint created: {name}")
         return name
@@ -200,11 +224,14 @@ class SQLServerTransactionManager(TransactionManager):
         if name not in self._savepoints:
             raise TransactionError(f"Savepoint '{name}' not found")
         
-        sql = f"ROLLBACK TRANSACTION {name}"
+        quoted = self._backend.dialect.format_identifier(name)
+        sql = f"ROLLBACK TRANSACTION {quoted}"
         self._backend.execute(sql)
         
         idx = self._savepoints.index(name) + 1
         self._savepoints = self._savepoints[:idx]
+        active_idx = self._active_savepoints.index(name) + 1 if name in self._active_savepoints else 0
+        self._active_savepoints = self._active_savepoints[:active_idx]
         
         self.log(logging.DEBUG, f"Rolled back to savepoint: {name}")
     
@@ -220,12 +247,9 @@ class SQLServerTransactionManager(TransactionManager):
         """
         if name in self._savepoints:
             self._savepoints.remove(name)
+            if name in self._active_savepoints:
+                self._active_savepoints.remove(name)
             self.log(logging.DEBUG, f"Savepoint released (marked): {name}")
-    
-    @property
-    def is_active(self) -> bool:
-        """Check if a transaction is currently active."""
-        return self._state == TransactionState.ACTIVE
     
     def savepoints(self) -> List[str]:
         """Get list of current savepoints."""
@@ -282,6 +306,7 @@ class SQLServerNestedTransactionManager(SQLServerTransactionManager):
         """Begin a transaction, potentially nested."""
         if self._state == TransactionState.ACTIVE:
             self._nest_level += 1
+            self._transaction_level += 1
             self.log(logging.DEBUG, f"Nested transaction begin (level={self._nest_level})")
             
             sql = "BEGIN TRANSACTION"
@@ -294,6 +319,9 @@ class SQLServerNestedTransactionManager(SQLServerTransactionManager):
         """Commit transaction, handling nesting."""
         if self._nest_level > 1:
             self._nest_level -= 1
+            self._transaction_level -= 1
+            if self._transaction_level == 0:
+                self._state = TransactionState.INACTIVE
             self.log(logging.DEBUG, f"Nested transaction commit (level={self._nest_level})")
             self._backend.execute("COMMIT TRANSACTION")
         else:
@@ -306,6 +334,9 @@ class SQLServerNestedTransactionManager(SQLServerTransactionManager):
             self._rollback_to_savepoint(savepoint)
         elif self._nest_level > 1:
             self._nest_level -= 1
+            self._transaction_level -= 1
+            if self._transaction_level == 0:
+                self._state = TransactionState.INACTIVE
             self.log(logging.DEBUG, f"Nested transaction rollback (level={self._nest_level})")
             self._backend.execute("ROLLBACK TRANSACTION")
         else:

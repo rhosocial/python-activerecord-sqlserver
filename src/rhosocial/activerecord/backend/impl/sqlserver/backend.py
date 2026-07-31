@@ -285,19 +285,39 @@ class SQLServerBackend(
             DatabaseError: For other database errors
         """
         from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
-        
+
+        sql_upper = sql.strip().upper()
+
         if options is None:
-            sql_upper = sql.strip().upper()
             if sql_upper.startswith(("SELECT", "WITH", "EXEC", "EXECUTE")):
                 stmt_type = StatementType.DQL
             elif sql_upper.startswith(("INSERT", "UPDATE", "DELETE", "MERGE")):
                 stmt_type = StatementType.DML
             else:
                 stmt_type = StatementType.DDL
-            
-            options = ExecutionOptions(stmt_type=stmt_type)
-        
-        return super().execute(sql, params, options=options)
+
+            column_mapping = kwargs.get("column_mapping")
+            column_adapters = kwargs.get("column_adapters")
+
+            options = ExecutionOptions(
+                stmt_type=stmt_type,
+                column_adapters=column_adapters,
+                column_mapping=column_mapping,
+            )
+        else:
+            if "column_mapping" in kwargs:
+                options.column_mapping = kwargs["column_mapping"]
+            if "column_adapters" in kwargs:
+                options.column_adapters = kwargs["column_adapters"]
+
+        result = super().execute(sql, params, options=options)
+
+        if options.stmt_type == StatementType.DML and sql_upper.startswith("INSERT"):
+            scope_id = self.get_scope_identity()
+            if scope_id is not None:
+                result.last_insert_id = scope_id
+
+        return result
     
     def execute_many(self, sql: str, params_list: List[Tuple]) -> QueryResult:
         """Execute the same SQL statement multiple times with different parameters.
