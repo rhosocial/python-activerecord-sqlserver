@@ -20,7 +20,7 @@ class TestSQLServerSetTypeBackend:
         """Test creating table with SET column type."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_set_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 tags SET('red', 'green', 'blue', 'yellow'),
                 status SET('active', 'pending', 'archived')
             )
@@ -44,7 +44,7 @@ class TestSQLServerSetTypeBackend:
         """Test inserting and querying SET values."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_set_insert (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 colors SET('red', 'green', 'blue')
             )
         """)
@@ -75,7 +75,7 @@ class TestSQLServerSetTypeBackend:
         """Test FIND_IN_SET function for SET columns."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_find_in_set (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 tags SET('sqlserver', 'python', 'database', 'backend')
             )
         """)
@@ -104,7 +104,7 @@ class TestSQLServerSetTypeBackend:
         """Test format_set_literal with database execution."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_set_literal (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 colors SET('red', 'green', 'blue')
             )
         """)
@@ -129,7 +129,7 @@ class TestSQLServerSetTypeBackend:
         """Test format_find_in_set with database execution."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_find_format (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 tags SET('a', 'b', 'c', 'd')
             )
         """)
@@ -157,7 +157,7 @@ class TestSQLServerSetTypeBackend:
         """Test format_set_contains with database execution."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_contains_format (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 permissions SET('read', 'write', 'execute', 'admin')
             )
         """)
@@ -185,7 +185,7 @@ class TestSQLServerSetTypeBackend:
         """Test SET column with NULL values."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_set_null (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 tags SET('a', 'b', 'c') NULL
             )
         """)
@@ -206,7 +206,7 @@ class TestSQLServerSetTypeBackend:
         """Test counting SET values."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_set_count (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 tags SET('a', 'b', 'c', 'd')
             )
         """)
@@ -238,7 +238,7 @@ class TestAsyncSQLServerSetTypeBackend:
         """Test creating table with SET column type (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_set_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 categories SET('news', 'sports', 'tech', 'entertainment')
             )
         """)
@@ -261,7 +261,7 @@ class TestAsyncSQLServerSetTypeBackend:
         """Test inserting and querying SET values (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_set_insert (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 colors SET('red', 'green', 'blue')
             )
         """)
@@ -288,7 +288,7 @@ class TestAsyncSQLServerSetTypeBackend:
         """Test FIND_IN_SET function for SET columns (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_find (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 tags SET('sqlserver', 'python', 'database')
             )
         """)
@@ -314,7 +314,7 @@ class TestAsyncSQLServerSetTypeBackend:
         """Test format_set_literal with database execution (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_set_literal (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 colors SET('red', 'green', 'blue')
             )
         """)
@@ -340,7 +340,7 @@ class TestAsyncSQLServerSetTypeBackend:
         """Test format_find_in_set with database execution (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_find_format (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 tags SET('x', 'y', 'z')
             )
         """)
@@ -366,7 +366,7 @@ class TestAsyncSQLServerSetTypeBackend:
         """Test format_set_contains with database execution (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_contains (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 roles SET('admin', 'user', 'guest', 'moderator')
             )
         """)
@@ -395,7 +395,7 @@ class TestAsyncSQLServerSetTypeBackend:
         """Test SET column with NULL values (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_set_null (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 status SET('active', 'inactive') NULL
             )
         """)

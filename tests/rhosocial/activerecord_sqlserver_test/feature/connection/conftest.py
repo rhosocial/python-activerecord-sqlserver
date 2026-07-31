@@ -219,7 +219,7 @@ def mysql_pool_with_tables(mysql_pool: BackendPool) -> Generator[BackendPool, No
         backend.execute("DROP TABLE IF EXISTS concurrent_test_posts")
         backend.execute("""
             CREATE TABLE concurrent_test_users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 thread_id INTEGER,
                 name VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -227,7 +227,7 @@ def mysql_pool_with_tables(mysql_pool: BackendPool) -> Generator[BackendPool, No
         """)
         backend.execute("""
             CREATE TABLE concurrent_test_posts (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 thread_id INTEGER,
                 user_id INTEGER,
                 title VARCHAR(255),
@@ -250,7 +250,7 @@ async def async_mysql_pool_with_tables(async_mysql_pool: AsyncBackendPool) -> As
         await backend.execute("DROP TABLE IF EXISTS concurrent_test_posts")
         await backend.execute("""
             CREATE TABLE concurrent_test_users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 task_id INTEGER,
                 name VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -258,7 +258,7 @@ async def async_mysql_pool_with_tables(async_mysql_pool: AsyncBackendPool) -> As
         """)
         await backend.execute("""
             CREATE TABLE concurrent_test_posts (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 task_id INTEGER,
                 user_id INTEGER,
                 title VARCHAR(255),

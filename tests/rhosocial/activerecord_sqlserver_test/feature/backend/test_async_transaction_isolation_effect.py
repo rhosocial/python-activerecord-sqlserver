@@ -21,7 +21,7 @@ async def async_isolation_test_table(async_sqlserver_backend):
     await async_sqlserver_backend.execute("drop table if exists async_isolation_test")
     await async_sqlserver_backend.execute("""
         create table async_isolation_test (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id INT IDENTITY(1,1) PRIMARY KEY,
             name VARCHAR(255),
             balance DECIMAL(10, 2),
             version INT DEFAULT 1
@@ -41,7 +41,7 @@ async def async_mode_test_table(async_sqlserver_backend):
     await async_sqlserver_backend.execute("drop table if exists async_mode_test")
     await async_sqlserver_backend.execute("""
         create table async_mode_test (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id INT IDENTITY(1,1) PRIMARY KEY,
             name VARCHAR(255),
             balance DECIMAL(10, 2)
         )
@@ -60,7 +60,7 @@ async def async_combo_test_table(async_sqlserver_backend):
     await async_sqlserver_backend.execute("drop table if exists async_combo_test")
     await async_sqlserver_backend.execute("""
         create table async_combo_test (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id INT IDENTITY(1,1) PRIMARY KEY,
             name VARCHAR(255),
             balance DECIMAL(10, 2)
         )
@@ -79,7 +79,7 @@ async def async_nested_test_table(async_sqlserver_backend):
     await async_sqlserver_backend.execute("drop table if exists async_nested_test")
     await async_sqlserver_backend.execute("""
         create table async_nested_test (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id INT IDENTITY(1,1) PRIMARY KEY,
             name VARCHAR(255),
             value INT
         )

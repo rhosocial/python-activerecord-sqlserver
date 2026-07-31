@@ -67,7 +67,7 @@ class ConcurrentTask(AsyncActiveRecord):
 
 USERS_SCHEMA = """
 CREATE TABLE `concurrent_users` (
-    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `id` INT IDENTITY(1,1) PRIMARY KEY,
     `username` VARCHAR(191) NOT NULL UNIQUE,
     `email` VARCHAR(191) NOT NULL,
     `value` INT NOT NULL DEFAULT 0,
@@ -77,7 +77,7 @@ CREATE TABLE `concurrent_users` (
 
 TASKS_SCHEMA = """
 CREATE TABLE `concurrent_tasks` (
-    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `id` INT IDENTITY(1,1) PRIMARY KEY,
     `task_name` VARCHAR(191) NOT NULL,
     `status` VARCHAR(50) NOT NULL DEFAULT 'pending',
     `worker_id` INT,

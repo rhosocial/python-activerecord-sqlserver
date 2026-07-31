@@ -19,7 +19,7 @@ class TestMySQLCRUDBackend:
         sqlserver_backend.execute("DROP TABLE IF EXISTS test_crud_table")
         sqlserver_backend.execute("""
             CREATE TABLE test_crud_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(255),
                 age INT,
                 balance DECIMAL(10, 2)
@@ -133,7 +133,7 @@ class TestAsyncMySQLCRUDBackend:
         await async_sqlserver_backend.execute("DROP TABLE IF EXISTS test_crud_table")
         await async_sqlserver_backend.execute("""
             CREATE TABLE test_crud_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(255),
                 age INT,
                 balance DECIMAL(10, 2)

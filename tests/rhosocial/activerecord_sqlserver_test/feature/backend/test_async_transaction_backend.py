@@ -8,7 +8,7 @@ async def setup_test_table(async_sqlserver_backend):
     await async_sqlserver_backend.execute("DROP TABLE IF EXISTS test_table")
     await async_sqlserver_backend.execute("""
         CREATE TABLE test_table (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id INT IDENTITY(1,1) PRIMARY KEY,
             name VARCHAR(255),
             age INT
         )
@@ -21,10 +21,10 @@ async def setup_test_table(async_sqlserver_backend):
 async def test_transaction_commit(async_sqlserver_backend, setup_test_table):
     """Test transaction commit"""
     async with async_sqlserver_backend.transaction():
-        sql = "INSERT INTO test_table (name, age) VALUES (%s, %s)"
+        sql = "INSERT INTO test_table (name, age) VALUES (?, ?)"
         params = ("test", 20)
         await async_sqlserver_backend.execute(sql, params)
-    row = await async_sqlserver_backend.fetch_one("SELECT * FROM test_table WHERE name = %s", ("test",))
+    row = await async_sqlserver_backend.fetch_one("SELECT * FROM test_table WHERE name = ?", ("test",))
     assert row is not None
 
 
@@ -33,13 +33,13 @@ async def test_transaction_rollback(async_sqlserver_backend, setup_test_table):
     """Test transaction rollback"""
     try:
         async with async_sqlserver_backend.transaction():
-            sql = "INSERT INTO test_table (name, age) VALUES (%s, %s)"
+            sql = "INSERT INTO test_table (name, age) VALUES (?, ?)"
             params = ("test", 20)
             await async_sqlserver_backend.execute(sql, params)
             raise Exception("Force rollback")
     except Exception:
         pass
-    row = await async_sqlserver_backend.fetch_one("SELECT * FROM test_table WHERE name = %s", ("test",))
+    row = await async_sqlserver_backend.fetch_one("SELECT * FROM test_table WHERE name = ?", ("test",))
     assert row is None
 
 
@@ -47,11 +47,11 @@ async def test_transaction_rollback(async_sqlserver_backend, setup_test_table):
 async def test_nested_transaction(async_sqlserver_backend, setup_test_table):
     """Test nested transactions"""
     async with async_sqlserver_backend.transaction():
-        sql_outer = "INSERT INTO test_table (name, age) VALUES (%s, %s)"
+        sql_outer = "INSERT INTO test_table (name, age) VALUES (?, ?)"
         params_outer = ("outer", 20)
         await async_sqlserver_backend.execute(sql_outer, params_outer)
         async with async_sqlserver_backend.transaction():
-            sql_inner = "INSERT INTO test_table (name, age) VALUES (%s, %s)"
+            sql_inner = "INSERT INTO test_table (name, age) VALUES (?, ?)"
             params_inner = ("inner", 30)
             await async_sqlserver_backend.execute(sql_inner, params_inner)
     rows = await async_sqlserver_backend.fetch_all("SELECT * FROM test_table ORDER BY age")

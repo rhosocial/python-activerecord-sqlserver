@@ -44,7 +44,7 @@ class TestSQLServerSpatialTypeBackend:
         """Test format_spatial_literal generates correct SQL without SRID."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_spatial_literal (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 location GEOMETRY
             )
         """)
@@ -69,7 +69,7 @@ class TestSQLServerSpatialTypeBackend:
         """Test format_spatial_literal generates correct SQL with SRID."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_spatial_srid (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 location GEOMETRY
             )
         """)
@@ -119,7 +119,7 @@ class TestSQLServerSpatialTypeBackend:
         """Test format_st_as_text generates correct SQL."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_astext (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 location GEOMETRY
             )
         """)
@@ -148,7 +148,7 @@ class TestSQLServerSpatialTypeBackend:
 
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_geojson (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 location GEOMETRY
             )
         """)
@@ -230,7 +230,7 @@ class TestSQLServerSpatialTypeBackend:
 
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_spatial_idx (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(100),
                 location GEOMETRY NOT NULL
             )
@@ -277,7 +277,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
         """Test format_spatial_literal generates correct SQL (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_spatial (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 location GEOMETRY
             )
         """)
@@ -356,7 +356,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
 
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_geojson (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 location GEOMETRY
             )
         """)
@@ -386,7 +386,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
 
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_idx (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 location GEOMETRY NOT NULL
             )
         """)

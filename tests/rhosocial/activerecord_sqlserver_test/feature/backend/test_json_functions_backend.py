@@ -27,7 +27,7 @@ class TestSQLServerJSONFunctionBackend:
 
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_json_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 data JSON
             )
             """)
@@ -52,7 +52,7 @@ class TestSQLServerJSONFunctionBackend:
 
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_json_extract (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 data JSON
             )
             """)
@@ -100,7 +100,7 @@ class TestSQLServerJSONFunctionBackend:
 
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_json_contains (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 data JSON
             )
             """)
@@ -124,7 +124,7 @@ class TestSQLServerJSONFunctionBackend:
 
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_format_json_extract (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 data JSON
             )
             """)
@@ -166,7 +166,7 @@ class TestAsyncSQLServerJSONFunctionBackend:
 
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_json_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 data JSON
             )
             """)
@@ -192,7 +192,7 @@ class TestAsyncSQLServerJSONFunctionBackend:
 
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_json_extract (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 data JSON
             )
             """)
@@ -243,7 +243,7 @@ class TestAsyncSQLServerJSONFunctionBackend:
 
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_json_contains (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 data JSON
             )
             """)
@@ -268,7 +268,7 @@ class TestAsyncSQLServerJSONFunctionBackend:
 
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_format_json_extract (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 data JSON
             )
             """)

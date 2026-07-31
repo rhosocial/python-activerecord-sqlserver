@@ -13,12 +13,12 @@ async def setup_mapped_users_table(async_sqlserver_backend):
     await async_sqlserver_backend.execute("DROP TABLE IF EXISTS mapped_users")
     await async_sqlserver_backend.execute("""
         CREATE TABLE mapped_users (
-            user_id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT IDENTITY(1,1) PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             email VARCHAR(255) NOT NULL UNIQUE,
             created_at DATETIME NOT NULL,
             user_uuid VARCHAR(36),
-            is_active TINYINT(1)
+            is_active TINYINT
         )
     """)
     yield
@@ -34,7 +34,7 @@ async def test_async_insert_with_mapping(async_sqlserver_backend, setup_mapped_u
     now = datetime.now()
     now_str = now.strftime('%Y-%m-%d %H:%M:%S')
 
-    sql = "INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (%s, %s, %s, %s, %s)"
+    sql = "INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (?, ?, ?, ?, ?)"
     params = ("John Doe Async", "john.doe.async@example.com", now_str, str(uuid.uuid4()), 1)
 
     result = await backend.execute(sql=sql, params=params)
@@ -51,10 +51,10 @@ async def test_async_update_with_backend(async_sqlserver_backend, setup_mapped_u
     backend = async_sqlserver_backend
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    await backend.execute("INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (%s, %s, %s, %s, %s)",
+    await backend.execute("INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (?, ?, ?, ?, ?)",
                           ("Jane Doe Async", "jane.doe.async@example.com", now_str, str(uuid.uuid4()), 1))
 
-    sql = "UPDATE mapped_users SET name = %s WHERE user_id = %s"
+    sql = "UPDATE mapped_users SET name = ? WHERE user_id = ?"
     params = ("Jane Smith Async", 1)
     result = await backend.execute(sql, params)
 
@@ -89,7 +89,7 @@ async def test_async_fetch_with_combined_mapping_and_adapters(async_sqlserver_ba
     }
 
     await backend.execute(
-        "INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (%s, %s, %s, %s, %s)",
+        "INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (?, ?, ?, ?, ?)",
         ("Async Combined", "asynccombined@example.com", now_str, str(test_uuid), 1)
     )
 

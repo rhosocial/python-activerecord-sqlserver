@@ -1,6 +1,6 @@
 -- tests/rhosocial/activerecord_sqlserver_test/feature/query/schema/profiles.sql
 CREATE TABLE `profiles` (
-    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `id` INT IDENTITY(1,1) PRIMARY KEY,
     `user_id` INT NOT NULL,
     `bio` TEXT,
     `avatar_url` VARCHAR(512),

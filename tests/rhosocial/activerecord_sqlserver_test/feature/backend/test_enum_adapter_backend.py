@@ -68,7 +68,7 @@ class TestSQLServerEnumAdapterBackend:
         """Test enum handling in actual SQL execution."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_enum_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 status VARCHAR(20),
                 priority INT
             )
@@ -93,7 +93,7 @@ class TestSQLServerEnumAdapterBackend:
         """Test NULL enum handling with database."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_enum_null (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 status VARCHAR(20) NULL
             )
         """)
@@ -115,7 +115,7 @@ class TestSQLServerEnumAdapterBackend:
         """Test integration with SQLServer native ENUM column type."""
         sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_native_enum (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 status ENUM('draft', 'published', 'archived')
             )
         """)
@@ -190,7 +190,7 @@ class TestAsyncSQLServerEnumAdapterBackend:
         """Test enum handling in actual SQL execution (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_enum_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 status VARCHAR(20),
                 priority INT
             )
@@ -216,7 +216,7 @@ class TestAsyncSQLServerEnumAdapterBackend:
         """Test NULL enum handling with database (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TEMPORARY TABLE test_async_enum_null (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 status VARCHAR(20) NULL
             )
         """)

@@ -56,7 +56,7 @@ class QueryConnectionProvider(IQueryConnectionProvider):
 
         backend.execute("""
             CREATE TABLE test_users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
                 email VARCHAR(255) NOT NULL
             )
@@ -71,7 +71,7 @@ class QueryConnectionProvider(IQueryConnectionProvider):
 
         await backend.execute("""
             CREATE TABLE test_users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
                 email VARCHAR(255) NOT NULL
             )

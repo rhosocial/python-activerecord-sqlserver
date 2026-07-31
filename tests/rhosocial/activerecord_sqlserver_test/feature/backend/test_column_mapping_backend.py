@@ -14,12 +14,12 @@ def setup_mapped_users_table(sqlserver_backend):
     sqlserver_backend.execute("DROP TABLE IF EXISTS mapped_users")
     sqlserver_backend.execute("""
         CREATE TABLE mapped_users (
-            user_id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT IDENTITY(1,1) PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             email VARCHAR(255) NOT NULL UNIQUE,
             created_at DATETIME NOT NULL,
             user_uuid VARCHAR(36),
-            is_active TINYINT(1)
+            is_active TINYINT
         )
     """)
     yield
@@ -36,7 +36,7 @@ def test_insert_with_mapping(sqlserver_backend, setup_mapped_users_table):
     now_str = now.strftime('%Y-%m-%d %H:%M:%S')
 
     # Data for insertion must use database column names and compatible types
-    sql = "INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (%s, %s, %s, %s, %s)"
+    sql = "INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (?, ?, ?, ?, ?)"
     params = ("John Doe", "john.doe@example.com", now_str, str(uuid.uuid4()), 1)
 
     result = backend.execute(sql=sql, params=params)
@@ -52,10 +52,10 @@ def test_update_with_backend(sqlserver_backend, setup_mapped_users_table):
     backend = sqlserver_backend
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    backend.execute("INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (%s, %s, %s, %s, %s)",
+    backend.execute("INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (?, ?, ?, ?, ?)",
                     ("Jane Doe", "jane.doe@example.com", now_str, str(uuid.uuid4()), 1))
 
-    sql = "UPDATE mapped_users SET name = %s WHERE user_id = %s"
+    sql = "UPDATE mapped_users SET name = ? WHERE user_id = ?"
     params = ("Jane Smith", 1)
     result = backend.execute(sql, params)
 
@@ -92,7 +92,7 @@ def test_fetch_with_combined_mapping_and_adapters(sqlserver_backend, setup_mappe
 
     # Insert data in DB-compatible format
     backend.execute(
-        "INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (%s, %s, %s, %s, %s)",
+        "INSERT INTO mapped_users (name, email, created_at, user_uuid, is_active) VALUES (?, ?, ?, ?, ?)",
         ("Combined Test", "combined@example.com", now_str, str(test_uuid), 1)
     )
 

@@ -31,7 +31,7 @@ class TestIsolationLevelEffects:
         sqlserver_backend.execute("DROP TABLE IF EXISTS isolation_test")
         sqlserver_backend.execute("""
             CREATE TABLE isolation_test (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(255),
                 balance DECIMAL(10, 2),
                 version INT DEFAULT 1
@@ -298,7 +298,7 @@ class TestTransactionModeEffects:
         sqlserver_backend.execute("DROP TABLE IF EXISTS mode_test")
         sqlserver_backend.execute("""
             CREATE TABLE mode_test (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(255),
                 value INT
             )
@@ -373,7 +373,7 @@ class TestIsolationModeCombination:
         sqlserver_backend.execute("DROP TABLE IF EXISTS combo_test")
         sqlserver_backend.execute("""
             CREATE TABLE combo_test (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(255),
                 balance DECIMAL(10, 2)
             )
@@ -556,7 +556,7 @@ class TestNestedTransactionsWithIsolation:
         sqlserver_backend.execute("DROP TABLE IF EXISTS nested_test")
         sqlserver_backend.execute("""
             CREATE TABLE nested_test (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id INT IDENTITY(1,1) PRIMARY KEY,
                 name VARCHAR(255),
                 value INT
             )
