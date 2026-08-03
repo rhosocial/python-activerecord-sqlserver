@@ -14,8 +14,8 @@ import pytest
 import pytest_asyncio
 import yaml
 
-from rhosocial.activerecord.backend.impl.mysql import SQLServerBackend, AsyncSQLServerBackend
-from rhosocial.activerecord.backend.impl.mysql.config import SQLServerConnectionConfig
+from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend, AsyncSQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.connection.pool import (
     PoolConfig,
     BackendPool,
@@ -46,22 +46,22 @@ def register_scenario(name: str, config: Dict[str, Any]):
 def _load_scenarios_from_config():
     """Load scenarios from a configuration file."""
     config_path = None
-    env_config_path = os.getenv("MYSQL_SCENARIOS_CONFIG_PATH")
+    env_config_path = os.getenv("SQLSERVER_SCENARIOS_CONFIG_PATH")
 
     if env_config_path and os.path.exists(env_config_path):
         config_path = env_config_path
     else:
-        default_path = os.path.join(os.path.dirname(__file__), "../../../../config", "mysql_scenarios.yaml")
+        default_path = os.path.join(os.path.dirname(__file__), "../../../../config", "sqlserver_scenarios.yaml")
         if os.path.exists(default_path):
             config_path = default_path
         elif env_config_path:
-            print(f"Warning: Scenario file specified in MYSQL_SCENARIOS_CONFIG_PATH not found: {env_config_path}")
+            print(f"Warning: Scenario file specified in SQLSERVER_SCENARIOS_CONFIG_PATH not found: {env_config_path}")
             return
 
     if not config_path:
         raise FileNotFoundError(
             "No SQLServer scenarios configuration file found. "
-            "Set MYSQL_SCENARIOS_CONFIG_PATH or place mysql_scenarios.yaml in tests/config."
+            "Set SQLSERVER_SCENARIOS_CONFIG_PATH or place sqlserver_scenarios.yaml in tests/config."
         )
 
     try:
