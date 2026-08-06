@@ -95,6 +95,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
 from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .collation import validate_sqlserver_collation_name
+from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
 if TYPE_CHECKING:
@@ -167,6 +168,7 @@ class SQLServerDialect(
     DateTimeMixin,
     DQLMixin,
     DMLMixin,
+    SQLServerAlterColumnModifierMixin,  # Before DDLColumnMixin to override format_*_action
     DDLColumnMixin,
     DDLTypeMixin,
     # Feature mixins
