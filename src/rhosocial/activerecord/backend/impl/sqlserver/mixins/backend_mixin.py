@@ -1,14 +1,12 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/backend_mixin.py
-import logging
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple, Type, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.type_adapter import SQLTypeAdapter
-
-from ..dialect import SQLServerDialect
+if TYPE_CHECKING:
+    from ..dialect import SQLServerDialect
 
 
 class SQLServerBackendMixin:
-    _dialect: SQLServerDialect
+    _dialect: "SQLServerDialect"
     _connection: Optional[object]
 
     def set_nocount(self, on: bool = True) -> None:
@@ -225,7 +223,6 @@ class SQLServerBackendMixin:
             DeadlockError,
             IntegrityError,
             OperationalError,
-            QueryError,
         )
 
         error_msg = str(error)

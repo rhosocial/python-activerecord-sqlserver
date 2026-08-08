@@ -1,7 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/protocols/try_cast.py
-from typing import Protocol, Tuple, Optional
+from typing import Protocol, Tuple, Optional, runtime_checkable
 
 
+@runtime_checkable
 class SQLServerTryCastSupport(Protocol):
     def supports_try_cast(self) -> bool: ...
     def supports_try_convert(self) -> bool: ...

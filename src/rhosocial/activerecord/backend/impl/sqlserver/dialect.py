@@ -53,6 +53,11 @@ from .protocols import (
     SQLServerPaginationSupport,
     SQLServerMergeSupport,
     SQLServerPartitionSupport,
+    SQLServerOutputSupport,
+    SQLServerTableHintSupport,
+    SQLServerTryCastSupport,
+    SQLServerIdentitySupport,
+    SQLServerIndexedViewSupport,
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
@@ -96,6 +101,8 @@ from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
+from .mixins.sequence import SQLServerSequenceMixin
+from .mixins.protocol_support import SQLServerProtocolSupportMixin
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
 if TYPE_CHECKING:
@@ -169,6 +176,8 @@ class SQLServerDialect(
     DQLMixin,
     DMLMixin,
     SQLServerAlterColumnModifierMixin,  # Before DDLColumnMixin to override format_*_action
+    SQLServerProtocolSupportMixin,  # SQL Server protocol contract implementations
+    SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
     DDLColumnMixin,
     DDLTypeMixin,
     # Feature mixins
@@ -203,12 +212,14 @@ class SQLServerDialect(
     CTESupport,
     FilterClauseSupport,
     WindowFunctionSupport,
+    SQLServerJSONSupport,  # Before JSONSupport (subclass must precede its base)
     JSONSupport,
     ReturningSupport,
     AdvancedGroupingSupport,
     ArraySupport,
     ExplainSupport,
     GraphSupport,
+    SQLServerLockingSupport,  # Before LockingSupport
     LockingSupport,
     MergeSupport,
     OrderedSetAggregationSupport,
@@ -224,15 +235,25 @@ class SQLServerDialect(
     SchemaSupport,
     IndexSupport,
     SequenceSupport,
+    SQLServerTableSupport,  # Before TableSupport
     TableSupport,
     ConstraintSupport,
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
-    # SQL Server-specific protocols (removed from MRO to avoid diamond inheritance)
-    # SQLServerTableSupport, SQLServerLockingSupport, SQLServerJSONSupport,
-    # SQLServerTemporalTableSupport, SQLServerSequenceSupport,
-    #     SQLServerFullTextSearchSupport, SQLServerPaginationSupport, SQLServerMergeSupport,
+    # SQL Server-specific protocols (marker classes for isinstance() checks;
+    # implementations live in SQLServerProtocolSupportMixin / SQLServerSequenceMixin)
+    SQLServerOutputSupport,
+    SQLServerPaginationSupport,
+    SQLServerFullTextSearchSupport,
+    SQLServerTryCastSupport,
+    SQLServerTableHintSupport,
+    SQLServerTemporalTableSupport,
+    SQLServerMergeSupport,
+    SQLServerSequenceSupport,
+    SQLServerIdentitySupport,
+    SQLServerIndexedViewSupport,
+    SQLServerPartitionSupport,  # Before PartitionSupport
     PartitionSupport,
 ):
     """
@@ -1434,11 +1455,19 @@ class SQLServerDialect(
         on_sql, on_params = expr.on_condition.to_sql()
         all_params.extend(on_params)
 
+        dialect_options = getattr(expr, "dialect_options", {}) or {}
+        output_columns = dialect_options.get("output")
+        output_action = dialect_options.get("output_action", False)
+        holdlock = dialect_options.get("holdlock", False)
+
         parts = [
             f"MERGE INTO {target_sql}",
             f"USING {source_sql}",
             f"ON {on_sql}",
         ]
+
+        if holdlock and self.supports_merge_holdlock():
+            parts[0] = f"MERGE INTO {target_sql} WITH (HOLDLOCK)"
 
         for action in expr.when_matched:
             action_parts = []
@@ -1483,6 +1512,14 @@ class SQLServerDialect(
                 else:
                     action_parts.append("THEN INSERT DEFAULT VALUES")
             parts.append(" ".join(action_parts))
+
+        if output_columns and self.supports_merge_output():
+            action_type = "$action" if output_action else None
+            output_sql, output_params = self.format_merge_output_clause(
+                list(output_columns), action_type=action_type
+            )
+            parts.append(output_sql)
+            all_params.extend(output_params)
 
         return " ".join(parts), tuple(all_params)
 

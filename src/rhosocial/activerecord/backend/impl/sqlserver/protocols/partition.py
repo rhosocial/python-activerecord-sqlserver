@@ -10,9 +10,15 @@ Version Requirements:
 - SQL Server 2008+ (basic partitioning)
 """
 
-from typing import Any, Protocol, Sequence, Tuple, runtime_checkable
+from typing import Protocol, Sequence, Tuple, runtime_checkable, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
+
+if TYPE_CHECKING:
+    from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
+        SQLServerPartitionFunctionExpression,
+        SQLServerPartitionSchemeExpression,
+    )
 
 
 @runtime_checkable
@@ -51,10 +57,10 @@ class SQLServerPartitionSupport(PartitionSupport, Protocol):
         """Whether ALTER PARTITION FUNCTION ... MERGE RANGE is supported."""
         ...
 
-    def format_sqlserver_partition_function(self, expr: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_partition_function(self, expr: "SQLServerPartitionFunctionExpression") -> Tuple[str, tuple]:
         """Format CREATE PARTITION FUNCTION statement."""
         ...
 
-    def format_sqlserver_partition_scheme(self, expr: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_partition_scheme(self, expr: "SQLServerPartitionSchemeExpression") -> Tuple[str, tuple]:
         """Format CREATE PARTITION SCHEME statement."""
         ...

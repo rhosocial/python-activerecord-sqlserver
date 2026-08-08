@@ -5,6 +5,7 @@ from .output import SQLServerOutputInsertedExpression, SQLServerOutputDeletedExp
 from .locking import SQLServerTableHintClause, SQLServerTableHint, SQLServerReadPastHint
 from .temporal import SQLServerTemporalPeriodDefinition, SQLServerSystemVersioningClause
 from .openjson import SQLServerOpenJsonExpression, OpenJsonColumn
+from .sequence import SQLServerNextValueForExpression
 from .functions import (
     SQLServerTryCastExpression,
     SQLServerTryConvertExpression,
@@ -22,6 +23,7 @@ __all__ = [
     "SQLServerSystemVersioningClause",
     "SQLServerOpenJsonExpression",
     "OpenJsonColumn",
+    "SQLServerNextValueForExpression",
     "SQLServerTryCastExpression",
     "SQLServerTryConvertExpression",
     "SQLServerContainsPredicate",

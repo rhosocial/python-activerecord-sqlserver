@@ -1,7 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/protocols/temporal.py
-from typing import Protocol, Tuple
+from typing import Protocol, Tuple, runtime_checkable
 
 
+@runtime_checkable
 class SQLServerTemporalTableSupport(Protocol):
     def supports_system_versioning(self) -> bool: ...
     def format_create_temporal_table_statement(self, expr) -> Tuple[str, tuple]: ...

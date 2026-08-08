@@ -1,7 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/protocols/fulltext.py
-from typing import Protocol, Tuple, Optional
+from typing import Protocol, Tuple, Optional, runtime_checkable
 
 
+@runtime_checkable
 class SQLServerFullTextSearchSupport(Protocol):
     def supports_fulltext_catalog(self) -> bool: ...
     def format_create_fulltext_catalog_statement(self, catalog_name: str) -> str: ...
