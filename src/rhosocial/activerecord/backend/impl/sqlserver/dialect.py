@@ -1555,7 +1555,8 @@ class SQLServerDialect(
             parts.append(output_sql)
             all_params.extend(output_params)
 
-        return " ".join(parts), tuple(all_params)
+        # T-SQL requires a MERGE statement to be terminated by a semi-colon.
+        return " ".join(parts) + ";", tuple(all_params)
 
     def format_set_transaction(self, expr: "SetTransactionExpression") -> Tuple[str, tuple]:
         """Format SET TRANSACTION for SQL Server.
