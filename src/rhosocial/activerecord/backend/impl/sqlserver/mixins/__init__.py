@@ -4,6 +4,8 @@ from .concurrency import SQLServerConcurrencyMixin
 from .backend_mixin import SQLServerBackendMixin
 from .partition import SQLServerPartitionMixin
 from .sequence import SQLServerSequenceMixin
+from .pivot import SQLServerPivotMixin
+from .columnstore import SQLServerColumnstoreIndexMixin
 from .protocol_support import SQLServerProtocolSupportMixin
 
 __all__ = [
@@ -12,5 +14,7 @@ __all__ = [
     "SQLServerBackendMixin",
     "SQLServerPartitionMixin",
     "SQLServerSequenceMixin",
+    "SQLServerPivotMixin",
+    "SQLServerColumnstoreIndexMixin",
     "SQLServerProtocolSupportMixin",
 ]

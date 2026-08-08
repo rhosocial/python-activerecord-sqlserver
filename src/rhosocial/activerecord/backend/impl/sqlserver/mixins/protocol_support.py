@@ -139,21 +139,79 @@ class SQLServerProtocolSupportMixin:
         return True
 
     def supports_tablesample(self) -> bool:
-        """SQL Server supports TABLESAMPLE (2012+)."""
-        return self.version >= (11, 0, 0)
+        """SQL Server supports TABLESAMPLE since 2005."""
+        return self.version >= (9, 0, 0)
+
+    def format_tablesample_clause(
+        self,
+        sample: int,
+        percentage: bool = False,
+        repeatable: Optional[int] = None,
+    ) -> str:
+        """Format a TABLESAMPLE clause (SQL Server 2005+).
+
+        SQL Syntax:
+            TABLESAMPLE (n ROWS | n PERCENT) [REPEATABLE (seed)]
+
+        Args:
+            sample: Row count or percent value.
+            percentage: If True, emit ``PERCENT`` instead of ``ROWS``.
+            repeatable: Optional REPEATABLE seed for reproducible sampling.
+
+        Returns:
+            The TABLESAMPLE clause, e.g.
+            ``TABLESAMPLE (10 ROWS) REPEATABLE (42)``.
+        """
+        unit = "PERCENT" if percentage else "ROWS"
+        clause = f"TABLESAMPLE ({sample} {unit})"
+        if repeatable is not None:
+            clause += f" REPEATABLE ({repeatable})"
+        return clause
 
     def format_select_into_statement(self, expr: Any) -> Tuple[str, tuple]:
-        """Format SELECT INTO statement.
+        """Format a SELECT INTO statement (all SQL Server versions).
 
-        Not yet implemented: producing valid SELECT INTO requires inserting
-        the INTO clause after the select list, which cannot be derived from
-        a fully-rendered SELECT statement.
+        SQL Syntax:
+            SELECT ... INTO [new_table] FROM ... WHERE ...
+
+        The target table is taken from ``expr.dialect_options["select_into_table"]``.
+        The INTO clause is inserted between the select list and the FROM
+        clause of the fully rendered query.
         """
-        raise UnsupportedFeatureError(
-            self.name,
-            "SELECT INTO statement formatting",
-            "SELECT INTO requires dialect-aware restructuring of the SELECT statement.",
-        )
+        dialect_options = getattr(expr, "dialect_options", None) or {}
+        into_table = dialect_options.get("select_into_table")
+        if not into_table:
+            raise ValueError(
+                "dialect_options['select_into_table'] is required for SELECT INTO"
+            )
+
+        full_sql, params = expr.to_sql()
+        select_head = self._format_select_head(expr)
+        if full_sql.startswith(select_head):
+            tail = full_sql[len(select_head):]
+        else:
+            from_index = full_sql.find(" FROM ")
+            if from_index == -1:
+                raise UnsupportedFeatureError(
+                    self.name,
+                    "SELECT INTO without FROM clause",
+                    "SELECT INTO requires a FROM source.",
+                )
+            select_head = full_sql[:from_index]
+            tail = full_sql[from_index:]
+
+        into_sql = f"INTO {self.format_identifier(into_table)}"
+        return f"{select_head} {into_sql}{tail}", tuple(params)
+
+    def _format_select_head(self, expr: Any) -> str:
+        """Render the SELECT head (modifier + select list) of a query.
+
+        Mirrors the core ``DQLMixin.format_query_statement`` head so the
+        rendered statement can be split at the same boundary.
+        """
+        select_parts = [item.to_sql()[0] for item in expr.select]
+        modifier = f" {expr.select_modifier.value}" if expr.select_modifier else ""
+        return f"SELECT{modifier} " + ", ".join(select_parts)
 
     def format_openjson_expression(
         self,

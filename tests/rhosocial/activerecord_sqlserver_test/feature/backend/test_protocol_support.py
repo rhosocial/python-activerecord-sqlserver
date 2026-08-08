@@ -395,11 +395,23 @@ class TestDelegatedFormatters:
     def test_supports_tablesample(self, dialect):
         assert dialect.supports_tablesample() is True
 
-    def test_format_select_into_not_implemented(self, dialect):
+    def test_format_select_into_statement(self, dialect):
+        from rhosocial.activerecord.backend.expression import Column, QueryExpression
+
+        query = QueryExpression(
+            dialect=dialect,
+            select=[Column(dialect, "a"), Column(dialect, "b")],
+            dialect_options={"select_into_table": "new_table"},
+        )
+        sql, params = dialect.format_select_into_statement(query)
+        assert sql == "SELECT [a], [b] INTO [new_table]"
+        assert params == ()
+
+    def test_format_select_into_requires_target_table(self, dialect):
         from rhosocial.activerecord.backend.expression import Column, QueryExpression
 
         query = QueryExpression(dialect=dialect, select=[Column(dialect, "id")])
-        with pytest.raises(UnsupportedFeatureError):
+        with pytest.raises(ValueError):
             dialect.format_select_into_statement(query)
 
     def test_format_openjson_expression(self, dialect):

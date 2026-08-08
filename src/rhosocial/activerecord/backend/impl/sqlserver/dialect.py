@@ -102,6 +102,8 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.sequence import SQLServerSequenceMixin
+from .mixins.pivot import SQLServerPivotMixin
+from .mixins.columnstore import SQLServerColumnstoreIndexMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
@@ -178,6 +180,8 @@ class SQLServerDialect(
     SQLServerAlterColumnModifierMixin,  # Before DDLColumnMixin to override format_*_action
     SQLServerProtocolSupportMixin,  # SQL Server protocol contract implementations
     SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
+    SQLServerPivotMixin,  # PIVOT / UNPIVOT formatters (2005+)
+    SQLServerColumnstoreIndexMixin,  # columnstore index DDL (2012+/2014+/2022+)
     DDLColumnMixin,
     DDLTypeMixin,
     # Feature mixins
@@ -1688,6 +1692,20 @@ class SQLServerDialect(
         if percentage:
             return f"TOP {n} PERCENT"
         return f"TOP {n}"
+
+    def format_query_option_clause(self, clause) -> Tuple[str, tuple]:
+        """Format an OPTION query hint clause.
+
+        SQL Server exposes optimizer hints through the query-level OPTION
+        clause (available in all versions):
+
+            OPTION (hint1, hint2, ...)
+
+        The clause holds pre-rendered hint strings (see
+        ``expression.option_hint`` factories such as ``recompile_hint``,
+        ``maxdop_hint``, and ``optimize_for_hint``).
+        """
+        return f"OPTION ({', '.join(clause.hints)})", ()
 
 
 # Lazy import to avoid circular dependency (backend → dialect → mixins.types → backend)
