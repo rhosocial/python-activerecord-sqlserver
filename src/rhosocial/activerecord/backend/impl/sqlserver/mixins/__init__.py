@@ -6,6 +6,9 @@ from .partition import SQLServerPartitionMixin
 from .sequence import SQLServerSequenceMixin
 from .pivot import SQLServerPivotMixin
 from .columnstore import SQLServerColumnstoreIndexMixin
+from .memory_optimized import SQLServerMemoryOptimizedMixin
+from .routine import SQLServerRoutineMixin
+from .trigger import SQLServerTriggerDdlMixin
 from .protocol_support import SQLServerProtocolSupportMixin
 
 __all__ = [
@@ -16,5 +19,8 @@ __all__ = [
     "SQLServerSequenceMixin",
     "SQLServerPivotMixin",
     "SQLServerColumnstoreIndexMixin",
+    "SQLServerMemoryOptimizedMixin",
+    "SQLServerRoutineMixin",
+    "SQLServerTriggerDdlMixin",
     "SQLServerProtocolSupportMixin",
 ]

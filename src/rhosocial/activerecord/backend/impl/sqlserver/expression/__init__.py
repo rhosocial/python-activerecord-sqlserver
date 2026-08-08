@@ -17,6 +17,19 @@ from .option_hint import (
 )
 from .pivot import SQLServerPivotExpression, SQLServerUnpivotExpression
 from .columnstore import SQLServerColumnstoreIndexExpression
+from .fulltext import (
+    SQLServerCreateFullTextCatalogExpression,
+    SQLServerDropFullTextCatalogExpression,
+    SQLServerCreateFullTextIndexExpression,
+    SQLServerDropFullTextIndexExpression,
+)
+from .ddl import (
+    SQLServerCreateProcedureExpression,
+    SQLServerCreateFunctionExpression,
+    SQLServerDropRoutineExpression,
+    SQLServerCreateTriggerExpression,
+    SQLServerDropTriggerExpression,
+)
 from .functions import (
     SQLServerTryCastExpression,
     SQLServerTryConvertExpression,
@@ -45,6 +58,15 @@ __all__ = [
     "SQLServerPivotExpression",
     "SQLServerUnpivotExpression",
     "SQLServerColumnstoreIndexExpression",
+    "SQLServerCreateFullTextCatalogExpression",
+    "SQLServerDropFullTextCatalogExpression",
+    "SQLServerCreateFullTextIndexExpression",
+    "SQLServerDropFullTextIndexExpression",
+    "SQLServerCreateProcedureExpression",
+    "SQLServerCreateFunctionExpression",
+    "SQLServerDropRoutineExpression",
+    "SQLServerCreateTriggerExpression",
+    "SQLServerDropTriggerExpression",
     "SQLServerTryCastExpression",
     "SQLServerTryConvertExpression",
     "SQLServerContainsPredicate",

@@ -451,12 +451,26 @@ class TestDelegatedFormatters:
     def test_supports_indexed_view(self, dialect):
         assert dialect.supports_indexed_view() is True
 
-    def test_format_create_indexed_view_not_implemented(self, dialect):
-        from rhosocial.activerecord.backend.expression import Column, QueryExpression
+    def test_format_create_indexed_view_statement(self, dialect):
+        from rhosocial.activerecord.backend.expression import (
+            Column,
+            CreateViewExpression,
+            QueryExpression,
+            TableExpression,
+        )
 
-        query = QueryExpression(dialect=dialect, select=[Column(dialect, "id")])
-        with pytest.raises(UnsupportedFeatureError):
-            dialect.format_create_indexed_view_statement(query)
+        query = QueryExpression(
+            dialect=dialect,
+            select=[Column(dialect, "id"), Column(dialect, "name")],
+            from_=TableExpression(dialect, "users"),
+        )
+        view = CreateViewExpression(dialect, "user_ids", query)
+        sql, params = dialect.format_create_indexed_view_statement(view)
+        assert sql == (
+            "CREATE VIEW [user_ids] WITH SCHEMABINDING AS "
+            "SELECT [id], [name] FROM [users]"
+        )
+        assert params == ()
 
     def test_format_create_temporal_table_not_implemented(self, dialect):
         from rhosocial.activerecord.backend.expression import Column, QueryExpression

@@ -104,6 +104,9 @@ from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
 from .mixins.columnstore import SQLServerColumnstoreIndexMixin
+from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
+from .mixins.routine import SQLServerRoutineMixin
+from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
@@ -150,6 +153,8 @@ if TYPE_CHECKING:
     )
 
 
+SQL_SERVER_2005 = (9, 0, 0)
+SQL_SERVER_2008 = (10, 0, 0)
 SQL_SERVER_2012 = (11, 0, 0)
 SQL_SERVER_2014 = (12, 0, 0)
 SQL_SERVER_2016 = (13, 0, 0)
@@ -182,6 +187,9 @@ class SQLServerDialect(
     SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
     SQLServerPivotMixin,  # PIVOT / UNPIVOT formatters (2005+)
     SQLServerColumnstoreIndexMixin,  # columnstore index DDL (2012+/2014+/2022+)
+    SQLServerMemoryOptimizedMixin,  # In-Memory OLTP table options (2014+)
+    SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
+    SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
     DDLColumnMixin,
     DDLTypeMixin,
     # Feature mixins
@@ -792,7 +800,7 @@ class SQLServerDialect(
     
     def supports_indexed_view(self) -> bool:
         """SQL Server supports indexed views (similar to materialized views)."""
-        return True
+        return self.version >= SQL_SERVER_2005
     
     def supports_if_exists_view(self) -> bool:
         """SQL Server supports DROP VIEW IF EXISTS (2016+)."""
@@ -822,7 +830,10 @@ class SQLServerDialect(
             parts.append(f"({cols})")
         
         query_sql, query_params = expr.query.to_sql()
-        parts.append(f"AS {query_sql}")
+        as_sql = f"AS {query_sql}"
+        if expr.options and getattr(expr.options, "schemabinding", False):
+            as_sql = f"WITH SCHEMABINDING {as_sql}"
+        parts.append(as_sql)
         
         if expr.options and hasattr(expr.options, 'check_option') and expr.options.check_option:
             parts.append(f"WITH {expr.options.check_option.value} CHECK OPTION")
@@ -849,16 +860,16 @@ class SQLServerDialect(
         raise UnsupportedFeatureError(self.name, "CREATE MATERIALIZED VIEW", _SUGGESTION_MATERIALIZED_VIEW)
     
     def supports_trigger(self) -> bool:
-        """SQL Server supports triggers."""
-        return True
-    
+        """SQL Server supports triggers (since 2005)."""
+        return self.version >= SQL_SERVER_2005
+
     def supports_create_trigger(self) -> bool:
-        """SQL Server supports CREATE TRIGGER."""
-        return True
-    
+        """SQL Server supports CREATE TRIGGER (since 2005)."""
+        return self.version >= SQL_SERVER_2005
+
     def supports_drop_trigger(self) -> bool:
-        """SQL Server supports DROP TRIGGER."""
-        return True
+        """SQL Server supports DROP TRIGGER (since 2005)."""
+        return self.version >= SQL_SERVER_2005
     
     def supports_instead_of_trigger(self) -> bool:
         """SQL Server supports INSTEAD OF triggers."""
@@ -1184,6 +1195,12 @@ class SQLServerDialect(
             parts.append(partition_sql)
             all_params.extend(partition_params)
 
+        # Handle In-Memory OLTP table options (2014+)
+        dialect_options = getattr(expr, "dialect_options", {}) or {}
+        if dialect_options.get("memory_optimized"):
+            durability = dialect_options.get("durability", "SCHEMA_ONLY")
+            parts.append(self.format_memory_optimized_option(durability))
+
         return ' '.join(parts), tuple(all_params)
 
     def _format_column_definition(self, col_def: "ColumnDefinition", ColumnConstraintType) -> Tuple[str, List[Any]]:
@@ -1284,7 +1301,20 @@ class SQLServerDialect(
         parts.append(self.format_identifier(idx_def.name))
 
         cols_str = ', '.join(self.format_identifier(c) for c in idx_def.columns)
-        parts.append(f"({cols_str})")
+
+        idx_options = getattr(idx_def, "dialect_options", None) or {}
+        if idx_options.get("hash_index"):
+            self.check_feature_support(
+                "supports_memory_optimized_tables",
+                "NONCLUSTERED HASH index",
+                "requires SQL Server 2014+ (memory-optimized tables).",
+            )
+            bucket_count = idx_options.get("bucket_count")
+            if bucket_count is None:
+                raise ValueError("bucket_count is required for a NONCLUSTERED HASH index")
+            parts.append(f"NONCLUSTERED HASH ({cols_str}) WITH (BUCKET_COUNT = {bucket_count})")
+        else:
+            parts.append(f"({cols_str})")
 
         return ' '.join(parts)
 

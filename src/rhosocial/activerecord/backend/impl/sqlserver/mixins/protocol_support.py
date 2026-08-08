@@ -53,12 +53,85 @@ class SQLServerProtocolSupportMixin:
         return self.version >= (11, 0, 0)
 
     def supports_fulltext_catalog(self) -> bool:
-        """SQL Server supports FULLTEXT catalogs."""
-        return True
+        """FULLTEXT catalogs require SQL Server 2005+."""
+        return self.version >= (9, 0, 0)
 
-    def format_create_fulltext_catalog_statement(self, catalog_name: str) -> str:
-        """Format CREATE FULLTEXT CATALOG statement."""
-        return f"CREATE FULLTEXT CATALOG {self.format_identifier(catalog_name)}"
+    def format_create_fulltext_catalog_statement(
+        self, catalog_name: str, as_default: bool = False
+    ) -> str:
+        """Format CREATE FULLTEXT CATALOG statement (2005+).
+
+        SQL Syntax:
+            CREATE FULLTEXT CATALOG catalog_name [AS DEFAULT]
+
+        Args:
+            catalog_name: Name of the full-text catalog.
+            as_default: If True, append ``AS DEFAULT`` to make the catalog the
+                database default.
+
+        Returns:
+            The CREATE FULLTEXT CATALOG statement.
+        """
+        self.check_feature_support(
+            "supports_fulltext_catalog",
+            "FULLTEXT catalogs",
+            "requires SQL Server 2005+.",
+        )
+        sql = f"CREATE FULLTEXT CATALOG {self.format_identifier(catalog_name)}"
+        if as_default:
+            sql += " AS DEFAULT"
+        return sql
+
+    def format_drop_fulltext_catalog_statement(self, catalog_name: str) -> str:
+        """Format DROP FULLTEXT CATALOG statement (2005+).
+
+        SQL Syntax:
+            DROP FULLTEXT CATALOG catalog_name
+        """
+        self.check_feature_support(
+            "supports_fulltext_catalog",
+            "FULLTEXT catalogs",
+            "requires SQL Server 2005+.",
+        )
+        return f"DROP FULLTEXT CATALOG {self.format_identifier(catalog_name)}"
+
+    def format_create_fulltext_index_statement(
+        self,
+        table: str,
+        columns: List[str],
+        key_index: str,
+        catalog_name: str,
+    ) -> str:
+        """Format CREATE FULLTEXT INDEX statement (2005+).
+
+        SQL Syntax:
+            CREATE FULLTEXT INDEX ON table (column, ...)
+            KEY INDEX unique_index ON catalog_name
+        """
+        self.check_feature_support(
+            "supports_fulltext_catalog",
+            "FULLTEXT indexes",
+            "requires SQL Server 2005+.",
+        )
+        columns_str = ", ".join(self.format_identifier(col) for col in columns)
+        return (
+            f"CREATE FULLTEXT INDEX ON {self.format_identifier(table)} "
+            f"({columns_str}) KEY INDEX {self.format_identifier(key_index)} "
+            f"ON {self.format_identifier(catalog_name)}"
+        )
+
+    def format_drop_fulltext_index_statement(self, table: str) -> str:
+        """Format DROP FULLTEXT INDEX statement (2005+).
+
+        SQL Syntax:
+            DROP FULLTEXT INDEX ON table
+        """
+        self.check_feature_support(
+            "supports_fulltext_catalog",
+            "FULLTEXT indexes",
+            "requires SQL Server 2005+.",
+        )
+        return f"DROP FULLTEXT INDEX ON {self.format_identifier(table)}"
 
     def format_contains_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a CONTAINS predicate delegating to format_fulltext_match."""
@@ -294,9 +367,35 @@ class SQLServerProtocolSupportMixin:
         return f"SET IDENTITY_INSERT {self.format_identifier(table)} {state}"
 
     def format_create_indexed_view_statement(self, expr: Any) -> Tuple[str, tuple]:
-        """Format CREATE VIEW WITH SCHEMABINDING (indexed view) - not yet implemented."""
-        raise UnsupportedFeatureError(
-            self.name,
-            "CREATE VIEW WITH SCHEMABINDING (indexed view)",
-            "Indexed view DDL is not yet implemented.",
+        """Format CREATE VIEW WITH SCHEMABINDING (indexed view) (2005+).
+
+        SQL Server has no materialized views; the official equivalent is an
+        indexed view: a ``WITH SCHEMABINDING`` view backed by a unique
+        clustered index.
+
+        SQL Syntax:
+            CREATE VIEW view_name [(column_aliases)]
+            WITH SCHEMABINDING AS <query>
+
+        Args:
+            expr: A ``CreateViewExpression`` whose ``query`` supplies the
+                select statement.
+
+        Returns:
+            Tuple of (SQL string, params tuple).
+        """
+        self.check_feature_support(
+            "supports_indexed_view",
+            "indexed views",
+            "requires SQL Server 2005+.",
         )
+        parts = ["CREATE VIEW"]
+        parts.append(self.format_identifier(expr.view_name))
+
+        if expr.column_aliases:
+            cols = ", ".join(self.format_identifier(c) for c in expr.column_aliases)
+            parts.append(f"({cols})")
+
+        query_sql, query_params = expr.query.to_sql()
+        parts.append(f"WITH SCHEMABINDING AS {query_sql}")
+        return " ".join(parts), query_params
