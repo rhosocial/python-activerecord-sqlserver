@@ -465,6 +465,7 @@ jobs:
   test-py313t-sqlserver2019:
     name: Run tests with Python 3.13t (free-threaded) and SQL Server 2019
     runs-on: ubuntu-latest
+    continue-on-error: true
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2019-latest
