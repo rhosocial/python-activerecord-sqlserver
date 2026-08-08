@@ -1,4 +1,4 @@
-# tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_alter_table_if_exists.py
+# tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_alter_table_if_exists_backend.py
 """Tests for SQL Server ALTER TABLE IF [NOT] EXISTS handling.
 
 SQL Server supports ``DROP COLUMN IF EXISTS`` and ``DROP CONSTRAINT
