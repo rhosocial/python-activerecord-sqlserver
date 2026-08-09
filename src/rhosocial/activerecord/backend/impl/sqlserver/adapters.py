@@ -13,6 +13,32 @@ from datetime import date, datetime, time, timezone
 from typing import Any, Dict, List, Type, Union
 
 
+def _parse_sql_datetime(value: str) -> datetime:
+    """Parse a SQL Server datetime string into a timezone-aware datetime.
+
+    ODBC/older Python runtimes deliver datetime2 values as strings without a
+    ``T`` separator and often carry seven fractional digits (100ns precision),
+    e.g. ``'2026-08-09 05:25:26.5205700'``. Python's ``datetime.fromisoformat``
+    rejects values with more than six fractional digits on Python < 3.13, so
+    normalize the string first: normalize the separator, then drop any
+    fractional component beyond six digits.
+    """
+    normalized = value.replace('Z', '+00:00')
+    if 'T' not in normalized:
+        head, sep, rest = normalized.partition(' ')
+        if sep:
+            normalized = f"{head}T{rest}"
+    if '.' in normalized:
+        head, sep, frac = normalized.rpartition('.')
+        frac = frac.rstrip('0')[:6]
+        if frac:
+            normalized = f"{head}.{frac}"
+    result = datetime.fromisoformat(normalized)
+    if result.tzinfo is None:
+        return result.replace(tzinfo=timezone.utc)
+    return result
+
+
 class TypeAdapter(ABC):
     """Base class for type adapters."""
     
@@ -114,10 +140,7 @@ class SQLServerDateTimeAdapter(TypeAdapter):
             return value
         
         if isinstance(value, str):
-            result = datetime.fromisoformat(value.replace('Z', '+00:00'))
-            if result.tzinfo is None:
-                return result.replace(tzinfo=timezone.utc)
-            return result
+            return _parse_sql_datetime(value)
         
         raise TypeError(f"Cannot convert {type(value)} to datetime")
 
@@ -155,7 +178,7 @@ class SQLServerDateTimeOffsetAdapter(TypeAdapter):
             return value
         
         if isinstance(value, str):
-            return datetime.fromisoformat(value)
+            return _parse_sql_datetime(value)
         
         raise TypeError(f"Cannot convert {type(value)} to datetime")
 
