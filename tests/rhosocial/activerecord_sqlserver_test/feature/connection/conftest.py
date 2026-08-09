@@ -8,7 +8,6 @@ This module provides fixtures for testing connection pools with SQL Server backe
 import asyncio
 import sys
 import os
-import time
 from typing import Dict, Any, Generator
 
 import pytest
@@ -81,35 +80,6 @@ def _load_scenarios_from_config():
 
 
 _load_scenarios_from_config()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _enable_read_committed_snapshot():
-    """Enable READ_COMMITTED_SNAPSHOT so plain SELECTs use row versioning.
-
-    SQL Server's default READ COMMITTED takes shared locks, so a transaction
-    that updates a row and then reads the full table blocks on other
-    transactions' uncommitted rows (deadlock). MySQL/InnoDB instead uses
-    MVCC consistent reads. Enabling READ_COMMITTED_SNAPSHOT aligns SQL Server
-    with that behavior, which the concurrent-pool tests rely on.
-    """
-    if not SCENARIO_MAP:
-        return
-    config = get_scenario_config(next(iter(SCENARIO_MAP)))
-    db_name = config.get("database", "test_db_c")
-    backend = SQLServerBackend(connection_config=SQLServerConnectionConfig(**config))
-    backend.connect()
-    try:
-        for _ in range(5):
-            try:
-                backend.execute(f"ALTER DATABASE [{db_name}] SET READ_COMMITTED_SNAPSHOT ON")
-                break
-            except Exception:
-                time.sleep(0.5)
-    except Exception:
-        pass
-    finally:
-        backend.disconnect()
 
 
 def get_scenario_config(name: str) -> Dict[str, Any]:
