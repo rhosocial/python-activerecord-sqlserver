@@ -76,27 +76,27 @@ class TestSupportsFunctions:
 
     def test_supports_functions_returns_dict(self):
         """Test that supports_functions returns a dictionary."""
-        dialect = SQLServerDialect(version=(10, 6, 0))
+        dialect = SQLServerDialect(version=(16, 0, 0))
         result = dialect.supports_functions()
         assert isinstance(result, dict)
 
     def test_supports_functions_all_values_are_bool(self):
         """Test that all values in supports_functions are booleans."""
-        dialect = SQLServerDialect(version=(10, 6, 0))
+        dialect = SQLServerDialect(version=(16, 0, 0))
         result = dialect.supports_functions()
         for key, value in result.items():
             assert isinstance(value, bool), f"Non-bool value for {key}: {value}"
 
     def test_supports_functions_json_functions(self):
-        """Test JSON functions are supported on modern SQLServer."""
-        dialect = SQLServerDialect(version=(10, 6, 0))
+        """Test JSON functions are supported on SQL Server 2016+."""
+        dialect = SQLServerDialect(version=(13, 0, 0))
         result = dialect.supports_functions()
         json_funcs = ["json_extract", "json_type", "json_valid", "json_search"]
         for func in json_funcs:
             assert result.get(func) is True, f"{func} should be True"
 
     def test_supports_functions_spatial_functions(self):
-        """Test spatial functions are supported on modern SQLServer."""
+        """Test spatial functions are supported on SQL Server 2008+."""
         dialect = SQLServerDialect(version=(10, 2, 0))
         result = dialect.supports_functions()
         spatial_funcs = ["st_geom_from_text", "st_distance", "st_contains"]
@@ -104,11 +104,11 @@ class TestSupportsFunctions:
             assert result.get(func) is True, f"{func} should be True on 10.2+"
 
     def test_supports_functions_old_version(self):
-        """Test functions are not supported on old SQLServer versions."""
-        dialect_old = SQLServerDialect(version=(10, 1, 0))
+        """Test JSON functions are not supported on SQL Server 2014."""
+        dialect_old = SQLServerDialect(version=(12, 0, 0))
         result_old = dialect_old.supports_functions()
 
-        dialect_new = SQLServerDialect(version=(10, 6, 0))
+        dialect_new = SQLServerDialect(version=(13, 0, 0))
         result_new = dialect_new.supports_functions()
 
         assert result_old.get("json_extract") is False
@@ -116,14 +116,14 @@ class TestSupportsFunctions:
 
     def test_supports_functions_version_boundaries(self):
         """Test version boundary checks."""
-        dialect_10_2_3 = SQLServerDialect(version=(10, 2, 3))
-        dialect_10_2_2 = SQLServerDialect(version=(10, 2, 2))
+        dialect_2016 = SQLServerDialect(version=(13, 0, 0))
+        dialect_2014 = SQLServerDialect(version=(12, 6, 0))
 
-        result_10_2_3 = dialect_10_2_3.supports_functions()
-        result_10_2_2 = dialect_10_2_2.supports_functions()
+        result_2016 = dialect_2016.supports_functions()
+        result_2014 = dialect_2014.supports_functions()
 
-        assert result_10_2_3.get("json_extract") is True
-        assert result_10_2_2.get("json_extract") is False
+        assert result_2016.get("json_extract") is True
+        assert result_2014.get("json_extract") is False
 
     def test_supports_functions_math_functions(self):
         """Test math functions are available on all versions."""
@@ -140,7 +140,7 @@ class TestFunctionFactories:
     @pytest.fixture
     def dialect(self):
         """Create a dialect instance for testing."""
-        return SQLServerDialect(version=(10, 6, 0))
+        return SQLServerDialect(version=(16, 0, 0))
 
     def test_json_extract(self, dialect):
         """Test json_extract factory."""

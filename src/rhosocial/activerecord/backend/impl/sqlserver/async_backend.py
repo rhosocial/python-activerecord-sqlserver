@@ -9,7 +9,7 @@ using aioodbc as the async driver wrapper.
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from rhosocial.activerecord.backend.base import AsyncStorageBackend
 from rhosocial.activerecord.backend.base.operations import AsyncSQLOperationsMixin
@@ -27,6 +27,7 @@ from rhosocial.activerecord.backend.introspection.backend_mixin import Introspec
 from .config import SQLServerConnectionConfig
 from .dialect import SQLServerDialect
 from .async_transaction import AsyncSQLServerTransactionManager
+from .backend import SQLServerUnicodeDialect
 from .mixins import SQLServerBackendMixin
 
 try:
@@ -114,16 +115,63 @@ class AsyncSQLServerBackend(
         super().__init__(**kwargs)
         
         self._version = version
-        self._dialect = SQLServerDialect(version)
+        self._dialect = SQLServerUnicodeDialect(version)
         self._connection = None
         self._transaction_manager = None
-        
+        self._default_suggestions_cache = None
+
+        self._register_sqlserver_adapters()
+
         self.log(logging.INFO, f"AsyncSQLServerBackend initialized (version {version})")
     
     @property
     def dialect(self) -> SQLServerDialect:
         """Get the SQL Server dialect instance."""
         return self._dialect
+    
+    def _register_sqlserver_adapters(self) -> None:
+        """Register SQL Server-specific type adapters (async mirror)."""
+        from .adapters import (
+            SQLServerUUIDAdapter,
+            SQLServerDateTimeAdapter,
+            SQLServerDateTimeOffsetAdapter,
+            SQLServerDateAdapter,
+            SQLServerTimeAdapter,
+            SQLServerJSONAdapter,
+            SQLServerXMLAdapter,
+            SQLServerDecimalAdapter,
+        )
+        sqlserver_adapters = [
+            SQLServerUUIDAdapter(),
+            SQLServerDateTimeAdapter(),
+            SQLServerDateTimeOffsetAdapter(),
+            SQLServerDateAdapter(),
+            SQLServerTimeAdapter(),
+            SQLServerJSONAdapter(),
+            SQLServerXMLAdapter(),
+            SQLServerDecimalAdapter(),
+        ]
+        for adapter in sqlserver_adapters:
+            for py_type, db_types in adapter.supported_types.items():
+                for db_type in db_types:
+                    self.adapter_registry.register(adapter, py_type, db_type, allow_override=True)
+
+        import datetime as dt
+        import decimal
+        import uuid
+
+        type_map = [
+            (SQLServerDateTimeAdapter(),      dt.datetime, dt.datetime),
+            (SQLServerDateTimeOffsetAdapter(), dt.datetime, "datetimeoffset"),
+            (SQLServerDateAdapter(),           dt.date,     dt.date),
+            (SQLServerTimeAdapter(),           dt.time,     dt.time),
+            (SQLServerDecimalAdapter(),        decimal.Decimal, decimal.Decimal),
+            (SQLServerUUIDAdapter(),           uuid.UUID,   str),
+        ]
+        for adapter, py_type, db_type in type_map:
+            self.adapter_registry.register(adapter, py_type, db_type, allow_override=True)
+
+        self.log(logging.DEBUG, "Registered SQL Server-specific type adapters (async).")
     
     @property
     def transaction_manager(self) -> "AsyncSQLServerTransactionManager":
@@ -193,6 +241,34 @@ class AsyncSQLServerBackend(
         if row and row[0] is not None:
             return int(row[0])
         return None
+
+    async def set_identity_insert(self, table: str, on: bool = True) -> None:
+        """Enable or disable IDENTITY_INSERT for a table (async)."""
+        state = "ON" if on else "OFF"
+        sql = f"SET IDENTITY_INSERT {self.dialect.format_identifier(table)} {state}"
+        async with await self._get_cursor() as cursor:
+            await cursor.execute(sql)
+
+    async def _get_identity_columns_async(self, table_name: str) -> Set[str]:
+        """Return the set of identity column names for a table (async, cached)."""
+        cache_key = table_name.lower()
+        if cache_key in self._identity_columns_cache:
+            return self._identity_columns_cache[cache_key]
+        columns: Set[str] = set()
+        try:
+            async with await self._get_cursor() as cursor:
+                await cursor.execute(
+                    "SELECT c.name FROM sys.identity_columns c "
+                    "JOIN sys.tables t ON c.object_id = t.object_id "
+                    "WHERE t.name = ? AND SCHEMA_NAME(t.schema_id) = 'dbo'",
+                    (table_name,),
+                )
+                for row in await cursor.fetchall():
+                    columns.add(str(row[0]).lower())
+        except Exception:
+            columns = set()
+        self._identity_columns_cache[cache_key] = columns
+        return columns
     
     async def execute(
         self,
@@ -239,10 +315,31 @@ class AsyncSQLServerBackend(
             if "column_adapters" in kwargs:
                 options.column_adapters = kwargs["column_adapters"]
         
+        explain_split = self._split_explain_statement(sql)
+        if explain_split is not None:
+            set_clause, statement = explain_split
+            async with await self._get_cursor() as cursor:
+                await cursor.execute(f"SET {set_clause} ON")
+            try:
+                return await self._execute_statement(statement, params, options)
+            finally:
+                async with await self._get_cursor() as cursor:
+                    await cursor.execute(f"SET {set_clause} OFF")
+        
+        return await self._execute_statement(sql, params, options)
+    
+    async def _execute_statement(
+        self, sql: str, params: Optional[Tuple], options, start_time: Optional[float] = None
+    ) -> QueryResult:
+        from rhosocial.activerecord.backend.options import StatementType
+
+        sql_upper = sql.strip().upper()
+        
         if not self._connection:
             await self.connect()
         
-        start_time = time.perf_counter()
+        if start_time is None:
+            start_time = time.perf_counter()
         
         try:
             # Prepare parameters using adapter suggestions
@@ -257,7 +354,21 @@ class AsyncSQLServerBackend(
                 prepared_params = self.prepare_parameters(params, param_adapters)
             
             async with await self._get_cursor() as cursor:
-                await cursor.execute(sql, prepared_params or ())
+                final_sql, final_params = self._prepare_sql_and_params(sql, prepared_params)
+                identity_columns = None
+                table_name = self._insert_table_name(final_sql)
+                if table_name is not None:
+                    identity_columns = await self._get_identity_columns_async(table_name)
+                identity_table = self._identity_insert_info(
+                    final_sql, final_params, identity_columns
+                )
+                if identity_table is not None:
+                    await self.set_identity_insert(identity_table, True)
+                try:
+                    await cursor.execute(final_sql, final_params or ())
+                finally:
+                    if identity_table is not None:
+                        await self.set_identity_insert(identity_table, False)
                 
                 is_select = options.process_result_set if options.process_result_set is not None else options.stmt_type == StatementType.DQL
                 data = None
@@ -417,7 +528,7 @@ class AsyncSQLServerBackend(
         actual_version = await self.get_server_version()
         if self._version != actual_version:
             self._version = actual_version
-            self._dialect = SQLServerDialect(actual_version)
+            self._dialect = SQLServerUnicodeDialect(actual_version)
             self.log(logging.INFO, f"Adapted to SQL Server version {actual_version}")
     
     async def executescript(self, sql_script: str) -> None:
@@ -460,7 +571,12 @@ class AsyncSQLServerBackend(
         """
         error_msg = str(error).lower()
         
-        if 'integrity' in error_msg or 'constraint' in error_msg:
+        if (
+            'integrity' in error_msg
+            or 'constraint' in error_msg
+            or 'does not allow nulls' in error_msg
+            or 'cannot insert the value null' in error_msg
+        ):
             if "duplicate" in error_msg or "unique" in error_msg:
                 self.log(logging.ERROR, f"Unique constraint violation: {str(error)}")
                 raise IntegrityError(f"Unique constraint violation: {str(error)}")
@@ -468,7 +584,7 @@ class AsyncSQLServerBackend(
                 self.log(logging.ERROR, f"Foreign key constraint violation: {str(error)}")
                 raise IntegrityError(f"Foreign key constraint violation: {str(error)}")
             self.log(logging.ERROR, f"Integrity error: {str(error)}")
-            raise IntegrityError(str(error))
+            raise IntegrityError(self._normalize_integrity_message(str(error)))
         
         if 'deadlock' in error_msg or '1205' in error_msg:
             self.log(logging.ERROR, f"Deadlock detected: {str(error)}")

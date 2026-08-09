@@ -8,6 +8,7 @@ This module provides fixtures for testing connection pools with SQL Server backe
 import asyncio
 import sys
 import os
+import time
 from typing import Dict, Any, Generator
 
 import pytest
@@ -82,6 +83,35 @@ def _load_scenarios_from_config():
 _load_scenarios_from_config()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _enable_read_committed_snapshot():
+    """Enable READ_COMMITTED_SNAPSHOT so plain SELECTs use row versioning.
+
+    SQL Server's default READ COMMITTED takes shared locks, so a transaction
+    that updates a row and then reads the full table blocks on other
+    transactions' uncommitted rows (deadlock). MySQL/InnoDB instead uses
+    MVCC consistent reads. Enabling READ_COMMITTED_SNAPSHOT aligns SQL Server
+    with that behavior, which the concurrent-pool tests rely on.
+    """
+    if not SCENARIO_MAP:
+        return
+    config = get_scenario_config(next(iter(SCENARIO_MAP)))
+    db_name = config.get("database", "test_db_c")
+    backend = SQLServerBackend(connection_config=SQLServerConnectionConfig(**config))
+    backend.connect()
+    try:
+        for _ in range(5):
+            try:
+                backend.execute(f"ALTER DATABASE [{db_name}] SET READ_COMMITTED_SNAPSHOT ON")
+                break
+            except Exception:
+                time.sleep(0.5)
+    except Exception:
+        pass
+    finally:
+        backend.disconnect()
+
+
 def get_scenario_config(name: str) -> Dict[str, Any]:
     if name not in SCENARIO_MAP:
         if SCENARIO_MAP:
@@ -98,7 +128,7 @@ def get_scenario_names():
 # --- Pool Fixtures ---
 
 
-def create_mysql_backend_factory(config_dict: Dict[str, Any]):
+def create_sqlserver_backend_factory(config_dict: Dict[str, Any]):
     """Create a factory function that produces SQLServerBackend instances."""
 
     def factory():
@@ -114,7 +144,7 @@ def create_mysql_backend_factory(config_dict: Dict[str, Any]):
     return factory
 
 
-def create_async_mysql_backend_factory(config_dict: Dict[str, Any]):
+def create_async_sqlserver_backend_factory(config_dict: Dict[str, Any]):
     """Create a factory function that produces AsyncSQLServerBackend instances."""
 
     def factory():
@@ -131,7 +161,7 @@ def create_async_mysql_backend_factory(config_dict: Dict[str, Any]):
 
 
 @pytest.fixture(scope="function", params=get_scenario_names())
-def mysql_pool(request) -> Generator[BackendPool, None, None]:
+def sqlserver_pool(request) -> Generator[BackendPool, None, None]:
     """Create a BackendPool with SQL Server backends for testing."""
     scenario_name = request.param
     config_dict = get_scenario_config(scenario_name).copy()
@@ -142,7 +172,7 @@ def mysql_pool(request) -> Generator[BackendPool, None, None]:
         timeout=30.0,
         validate_on_borrow=True,
         validation_query="SELECT 1",
-        backend_factory=create_mysql_backend_factory(config_dict),
+        backend_factory=create_sqlserver_backend_factory(config_dict),
     )
 
     pool = BackendPool.create(pool_config)
@@ -151,7 +181,7 @@ def mysql_pool(request) -> Generator[BackendPool, None, None]:
 
 
 @pytest_asyncio.fixture(scope="function", params=get_scenario_names())
-async def async_mysql_pool(request) -> AsyncBackendPool:
+async def async_sqlserver_pool(request) -> AsyncBackendPool:
     """Create an AsyncBackendPool with SQL Server backends for testing."""
     scenario_name = request.param
     config_dict = get_scenario_config(scenario_name).copy()
@@ -162,7 +192,7 @@ async def async_mysql_pool(request) -> AsyncBackendPool:
         timeout=30.0,
         validate_on_borrow=True,
         validation_query="SELECT 1",
-        backend_factory=create_async_mysql_backend_factory(config_dict),
+        backend_factory=create_async_sqlserver_backend_factory(config_dict),
     )
 
     pool = await AsyncBackendPool.create(pool_config)
@@ -171,7 +201,7 @@ async def async_mysql_pool(request) -> AsyncBackendPool:
 
 
 @pytest.fixture(scope="function", params=get_scenario_names())
-def mysql_pool_large(request) -> Generator[BackendPool, None, None]:
+def sqlserver_pool_large(request) -> Generator[BackendPool, None, None]:
     """Create a larger BackendPool for stress testing."""
     scenario_name = request.param
     config_dict = get_scenario_config(scenario_name).copy()
@@ -181,7 +211,7 @@ def mysql_pool_large(request) -> Generator[BackendPool, None, None]:
         max_size=5,
         timeout=60.0,
         validate_on_borrow=False,  # Faster for stress tests
-        backend_factory=create_mysql_backend_factory(config_dict),
+        backend_factory=create_sqlserver_backend_factory(config_dict),
     )
 
     pool = BackendPool.create(pool_config)
@@ -190,7 +220,7 @@ def mysql_pool_large(request) -> Generator[BackendPool, None, None]:
 
 
 @pytest_asyncio.fixture(scope="function", params=get_scenario_names())
-async def async_mysql_pool_large(request) -> AsyncBackendPool:
+async def async_sqlserver_pool_large(request) -> AsyncBackendPool:
     """Create a larger AsyncBackendPool for stress testing."""
     scenario_name = request.param
     config_dict = get_scenario_config(scenario_name).copy()
@@ -200,7 +230,7 @@ async def async_mysql_pool_large(request) -> AsyncBackendPool:
         max_size=5,
         timeout=60.0,
         validate_on_borrow=False,
-        backend_factory=create_async_mysql_backend_factory(config_dict),
+        backend_factory=create_async_sqlserver_backend_factory(config_dict),
     )
 
     pool = await AsyncBackendPool.create(pool_config)
@@ -212,9 +242,9 @@ async def async_mysql_pool_large(request) -> AsyncBackendPool:
 
 
 @pytest.fixture(scope="function")
-def mysql_pool_with_tables(mysql_pool: BackendPool) -> Generator[BackendPool, None, None]:
+def sqlserver_pool_with_tables(sqlserver_pool: BackendPool) -> Generator[BackendPool, None, None]:
     """Create a pool with test tables initialized."""
-    with mysql_pool.connection() as backend:
+    with sqlserver_pool.connection() as backend:
         backend.execute("DROP TABLE IF EXISTS concurrent_test_users")
         backend.execute("DROP TABLE IF EXISTS concurrent_test_posts")
         backend.execute("""
@@ -222,7 +252,7 @@ def mysql_pool_with_tables(mysql_pool: BackendPool) -> Generator[BackendPool, No
                 id INT IDENTITY(1,1) PRIMARY KEY,
                 thread_id INTEGER,
                 name VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
         backend.execute("""
@@ -231,21 +261,21 @@ def mysql_pool_with_tables(mysql_pool: BackendPool) -> Generator[BackendPool, No
                 thread_id INTEGER,
                 user_id INTEGER,
                 title VARCHAR(255),
-                content TEXT
+                content NVARCHAR(MAX)
             )
         """)
 
-    yield mysql_pool
+    yield sqlserver_pool
 
-    with mysql_pool.connection() as backend:
+    with sqlserver_pool.connection() as backend:
         backend.execute("DROP TABLE IF EXISTS concurrent_test_posts")
         backend.execute("DROP TABLE IF EXISTS concurrent_test_users")
 
 
 @pytest_asyncio.fixture(scope="function")
-async def async_mysql_pool_with_tables(async_mysql_pool: AsyncBackendPool) -> AsyncBackendPool:
+async def async_sqlserver_pool_with_tables(async_sqlserver_pool: AsyncBackendPool) -> AsyncBackendPool:
     """Create an async pool with test tables initialized."""
-    async with async_mysql_pool.connection() as backend:
+    async with async_sqlserver_pool.connection() as backend:
         await backend.execute("DROP TABLE IF EXISTS concurrent_test_users")
         await backend.execute("DROP TABLE IF EXISTS concurrent_test_posts")
         await backend.execute("""
@@ -253,7 +283,7 @@ async def async_mysql_pool_with_tables(async_mysql_pool: AsyncBackendPool) -> As
                 id INT IDENTITY(1,1) PRIMARY KEY,
                 task_id INTEGER,
                 name VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
         await backend.execute("""
@@ -262,12 +292,12 @@ async def async_mysql_pool_with_tables(async_mysql_pool: AsyncBackendPool) -> As
                 task_id INTEGER,
                 user_id INTEGER,
                 title VARCHAR(255),
-                content TEXT
+                content NVARCHAR(MAX)
             )
         """)
 
-    yield async_mysql_pool
+    yield async_sqlserver_pool
 
-    async with async_mysql_pool.connection() as backend:
+    async with async_sqlserver_pool.connection() as backend:
         await backend.execute("DROP TABLE IF EXISTS concurrent_test_posts")
         await backend.execute("DROP TABLE IF EXISTS concurrent_test_users")

@@ -66,23 +66,23 @@ class ConcurrentTask(AsyncActiveRecord):
 # --- Schema Definitions ---
 
 USERS_SCHEMA = """
-CREATE TABLE `concurrent_users` (
-    `id` INT IDENTITY(1,1) PRIMARY KEY,
-    `username` VARCHAR(191) NOT NULL UNIQUE,
-    `email` VARCHAR(191) NOT NULL,
-    `value` INT NOT NULL DEFAULT 0,
-    `created_at` TEXT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE concurrent_users (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    username VARCHAR(191) NOT NULL UNIQUE,
+    email VARCHAR(191) NOT NULL,
+    value INT NOT NULL DEFAULT 0,
+    created_at VARCHAR(MAX)
+)
 """
 
 TASKS_SCHEMA = """
-CREATE TABLE `concurrent_tasks` (
-    `id` INT IDENTITY(1,1) PRIMARY KEY,
-    `task_name` VARCHAR(191) NOT NULL,
-    `status` VARCHAR(50) NOT NULL DEFAULT 'pending',
-    `worker_id` INT,
-    `result` TEXT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE concurrent_tasks (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    task_name VARCHAR(191) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    worker_id INT,
+    result VARCHAR(MAX)
+)
 """
 
 
@@ -94,9 +94,7 @@ async def concurrent_user_model(async_sqlserver_backend_single):
     backend = async_sqlserver_backend_single
 
     # Create schema
-    await backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-    await backend.execute("DROP TABLE IF EXISTS `concurrent_users`")
-    await backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+    await backend.execute("DROP TABLE IF EXISTS concurrent_users")
     await backend.execute(USERS_SCHEMA)
 
     # Configure model
@@ -107,9 +105,7 @@ async def concurrent_user_model(async_sqlserver_backend_single):
 
     # Cleanup
     try:
-        await backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-        await backend.execute("DROP TABLE IF EXISTS `concurrent_users`")
-        await backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+        await backend.execute("DROP TABLE IF EXISTS concurrent_users")
     except Exception:
         pass
 
@@ -120,9 +116,7 @@ async def concurrent_task_model(async_sqlserver_backend_single):
     backend = async_sqlserver_backend_single
 
     # Create schema
-    await backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-    await backend.execute("DROP TABLE IF EXISTS `concurrent_tasks`")
-    await backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+    await backend.execute("DROP TABLE IF EXISTS concurrent_tasks")
     await backend.execute(TASKS_SCHEMA)
 
     # Configure model
@@ -133,9 +127,7 @@ async def concurrent_task_model(async_sqlserver_backend_single):
 
     # Cleanup
     try:
-        await backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-        await backend.execute("DROP TABLE IF EXISTS `concurrent_tasks`")
-        await backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+        await backend.execute("DROP TABLE IF EXISTS concurrent_tasks")
     except Exception:
         pass
 
@@ -153,12 +145,14 @@ async def test_shared_backend_concurrent_reads_behavior(concurrent_user_model):
     """
     Test concurrent read behavior on shared backend.
 
-    mysql-connector-python's async connection raises:
-    "read() called while another coroutine is already waiting for incoming data"
+    aioodbc wraps pyodbc, and the underlying ODBC driver does NOT support
+    concurrent commands on a single connection: issuing a second statement
+    while one is still streaming results raises
+    "Connection is busy with results for another command (0) (SQLExecDirectW)".
 
-    The sqlserver driver does NOT raise such errors — concurrent reads
-    on a shared connection succeed without errors. This test documents
-    the actual behavior of the sqlserver async driver.
+    This test documents that a shared async connection is NOT safe for
+    concurrent reads either - concurrent tasks MUST use their own backend
+    instances (see the recommended pattern below).
     """
     # Setup: Insert test data first (sequentially)
     for i in range(10):
@@ -187,16 +181,17 @@ async def test_shared_backend_concurrent_reads_behavior(concurrent_user_model):
     ]
 
     # Wait for all tasks to complete
-    results = await asyncio.gather(*tasks)
+    await asyncio.gather(*tasks)
 
-    # sqlserver driver: concurrent reads succeed without errors
-    assert len(errors) == 0, f"Unexpected errors with sqlserver async driver: {errors}"
+    # sqlserver/pyodbc driver: concurrent commands on a shared connection
+    # raise "Connection is busy with results for another command"
+    assert len(errors) > 0, (
+        "Shared backend concurrent reads should fail with 'Connection is busy' "
+        "on the pyodbc/ODBC driver"
+    )
 
-    # Verify all reads returned valid results
-    successful = [r for r in results if r is not None]
-    assert len(successful) == 20, f"Expected 20 successful reads, got {len(successful)}"
-
-    print(f"\nDocumented: Shared backend concurrent reads SUCCEED with sqlserver async driver ({len(successful)} reads)")
+    print(f"\nDocumented: Shared backend concurrent reads FAIL with pyodbc/ODBC "
+          f"('Connection is busy', {len(errors)} errors out of 20)")
 
 
 # --- Test 2: Sequential Operations Work (SANITY CHECK) ---
@@ -257,9 +252,7 @@ async def test_recommended_pattern_independent_backends(mysql_config):
     # First, create the table using a separate backend
     setup_backend = AsyncSQLServerBackend(connection_config=config)
     await setup_backend.connect()
-    await setup_backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-    await setup_backend.execute("DROP TABLE IF EXISTS `concurrent_users`")
-    await setup_backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+    await setup_backend.execute("DROP TABLE IF EXISTS concurrent_users")
     await setup_backend.execute(USERS_SCHEMA)
     await setup_backend.disconnect()
 
@@ -352,9 +345,7 @@ async def test_transaction_isolation_with_independent_backends(mysql_config):
     # Setup table
     setup_backend = AsyncSQLServerBackend(connection_config=config)
     await setup_backend.connect()
-    await setup_backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-    await setup_backend.execute("DROP TABLE IF EXISTS `concurrent_users`")
-    await setup_backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+    await setup_backend.execute("DROP TABLE IF EXISTS concurrent_users")
     await setup_backend.execute(USERS_SCHEMA)
     await setup_backend.disconnect()
 
@@ -467,9 +458,7 @@ async def test_sequential_vs_concurrent_comparison(mysql_config):
     # Setup table
     setup_backend = AsyncSQLServerBackend(connection_config=config)
     await setup_backend.connect()
-    await setup_backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-    await setup_backend.execute("DROP TABLE IF EXISTS `concurrent_users`")
-    await setup_backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+    await setup_backend.execute("DROP TABLE IF EXISTS concurrent_users")
     await setup_backend.execute(USERS_SCHEMA)
     await setup_backend.disconnect()
 
@@ -580,9 +569,7 @@ async def test_concurrency_best_practices_documentation(mysql_config):
     # Setup table
     setup_backend = AsyncSQLServerBackend(connection_config=config)
     await setup_backend.connect()
-    await setup_backend.execute("SET FOREIGN_KEY_CHECKS = 0")
-    await setup_backend.execute("DROP TABLE IF EXISTS `concurrent_users`")
-    await setup_backend.execute("SET FOREIGN_KEY_CHECKS = 1")
+    await setup_backend.execute("DROP TABLE IF EXISTS concurrent_users")
     await setup_backend.execute(USERS_SCHEMA)
     await setup_backend.disconnect()
 

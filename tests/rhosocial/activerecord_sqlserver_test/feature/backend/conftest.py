@@ -167,3 +167,22 @@ def sqlserver_dialect():
     """Fixture providing SQLServerDialect instance for testing."""
     from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
     return SQLServerDialect(version=(16, 0, 0))
+
+
+@pytest.fixture(scope="module")
+def json_column_adapter():
+    """
+    Module-scoped fixture providing the SQL Server JSON string adapter.
+
+    This adapter can be used with column_adapters parameter to automatically
+    parse JSON values returned as strings by pyodbc.
+
+    Usage:
+        result = sqlserver_backend.execute(
+            "SELECT data FROM table",
+            column_adapters={'data': (json_column_adapter, dict)}
+        )
+    """
+    from rhosocial.activerecord.backend.impl.sqlserver.adapters import SQLServerJSONAdapter
+
+    return SQLServerJSONAdapter()

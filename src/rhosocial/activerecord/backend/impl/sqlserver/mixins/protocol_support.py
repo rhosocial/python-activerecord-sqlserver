@@ -399,3 +399,304 @@ class SQLServerProtocolSupportMixin:
         query_sql, query_params = expr.query.to_sql()
         parts.append(f"WITH SCHEMABINDING AS {query_sql}")
         return " ".join(parts), query_params
+
+    # ========== JSON Function Support ==========
+
+    _JSON_FUNCTION_MIN_VERSION = (13, 0, 0)
+    _JSON_FUNCTION_2022 = {"JSON_PATH_EXISTS", "JSON_OBJECT", "JSON_ARRAY"}
+    _JSON_FUNCTION_UNSUPPORTED = {"JSON_TABLE"}
+
+    def supports_json_function(self, function_name: str) -> bool:
+        """Check whether a JSON function is supported based on version.
+
+        SQL Server JSON support begins with 2016 (13.0): JSON_VALUE,
+        JSON_QUERY, ISJSON, JSON_MODIFY, OPENJSON. JSON_OBJECT, JSON_ARRAY
+        and JSON_PATH_EXISTS require 2022 (16.0). JSON_TABLE is never
+        supported (SQL Server uses OPENJSON).
+        """
+        name = function_name.upper()
+        if name in self._JSON_FUNCTION_UNSUPPORTED:
+            return False
+        if name in self._JSON_FUNCTION_2022:
+            return self.version >= (16, 0, 0)
+        return self.version >= self._JSON_FUNCTION_MIN_VERSION
+
+    def format_json_extract(
+        self, json_doc: str, path: str, paths: Optional[List[str]] = None
+    ) -> Tuple[str, tuple]:
+        """Format a JSON extraction as JSON_VALUE (single path only).
+
+        SQL Server's JSON_VALUE returns the scalar value at the path, already
+        unquoted. Multi-path extraction has no direct T-SQL equivalent.
+        """
+        if paths:
+            raise UnsupportedFeatureError(
+                self.name,
+                "JSON_EXTRACT with multiple paths",
+                "SQL Server's JSON_VALUE extracts a single scalar path only.",
+            )
+        return f"JSON_VALUE({json_doc}, {self.get_parameter_placeholder()})", (path,)
+
+    def format_json_unquote(self, json_val: str) -> Tuple[str, tuple]:
+        """Format JSON_UNQUOTE - not needed in SQL Server.
+
+        JSON_VALUE already returns scalar values without surrounding quotes,
+        so there is no T-SQL equivalent of JSON_UNQUOTE.
+        """
+        raise UnsupportedFeatureError(
+            self.name,
+            "JSON_UNQUOTE",
+            "SQL Server's JSON_VALUE returns scalar values already unquoted.",
+        )
+
+    def format_json_object(self, key_value_pairs: List[Tuple[str, Any]]) -> Tuple[str, tuple]:
+        """Format a JSON_OBJECT function (SQL Server 2022+).
+
+        SQL Syntax:
+            JSON_OBJECT('key1' : value1, 'key2' : value2, ...)
+        """
+        if not key_value_pairs:
+            return "JSON_OBJECT()", ()
+
+        parts = []
+        params: List[Any] = []
+        placeholder = self.get_parameter_placeholder()
+        for key, value in key_value_pairs:
+            parts.append(f"{placeholder} : {placeholder}")
+            params.append(key)
+            params.append(value)
+
+        return f"JSON_OBJECT({', '.join(parts)})", tuple(params)
+
+    def format_json_array(self, values: List[Any]) -> Tuple[str, tuple]:
+        """Format a JSON_ARRAY function (SQL Server 2022+)."""
+        if not values:
+            return "JSON_ARRAY()", ()
+        placeholder = self.get_parameter_placeholder()
+        return f"JSON_ARRAY({', '.join([placeholder] * len(values))})", tuple(values)
+
+    def format_json_contains(
+        self, target: str, candidate: str, path: Optional[str] = None
+    ) -> Tuple[str, tuple]:
+        """Format a JSON containment check using OPENJSON (2016+).
+
+        SQL Server has no JSON_CONTAINS; membership of ``candidate`` in the
+        JSON array/object at ``path`` is checked with an OPENJSON predicate.
+        """
+        placeholder = self.get_parameter_placeholder()
+        json_path = path if path is not None else "$"
+        sql = (
+            f"EXISTS (SELECT 1 FROM OPENJSON({target}, {placeholder}) "
+            f"WHERE value = {placeholder})"
+        )
+        return sql, (json_path, candidate)
+
+    def format_json_set(
+        self,
+        json_doc: str,
+        path: str,
+        value: Any,
+        path_value_pairs: Optional[List[Tuple[str, Any]]] = None,
+    ) -> Tuple[str, tuple]:
+        """Format a JSON_MODIFY function (single path-value pair only).
+
+        SQL Server's JSON_MODIFY accepts exactly one path-value pair.
+        """
+        if path_value_pairs:
+            raise UnsupportedFeatureError(
+                self.name,
+                "JSON_SET with multiple path-value pairs",
+                "SQL Server's JSON_MODIFY accepts a single path-value pair.",
+            )
+        placeholder = self.get_parameter_placeholder()
+        return f"JSON_MODIFY({json_doc}, {placeholder}, {placeholder})", (path, value)
+
+    def format_json_remove(
+        self, json_doc: str, path: str, paths: Optional[List[str]] = None
+    ) -> Tuple[str, tuple]:
+        """Format a JSON property removal using JSON_MODIFY (single path only).
+
+        SQL Server removes a property by setting it to NULL with JSON_MODIFY.
+        """
+        if paths:
+            raise UnsupportedFeatureError(
+                self.name,
+                "JSON_REMOVE with multiple paths",
+                "SQL Server's JSON_MODIFY accepts a single path.",
+            )
+        placeholder = self.get_parameter_placeholder()
+        return f"JSON_MODIFY({json_doc}, {placeholder}, NULL)", (path,)
+
+    def format_json_type(self, json_val: str) -> Tuple[str, tuple]:
+        """Format JSON_TYPE - not supported by SQL Server."""
+        raise UnsupportedFeatureError(
+            self.name,
+            "JSON_TYPE",
+            "SQL Server has no JSON_TYPE; classify values via OPENJSON.",
+        )
+
+    def format_json_valid(self, json_val: str) -> Tuple[str, tuple]:
+        """Format an ISJSON function (SQL Server equivalent of JSON_VALID)."""
+        return f"ISJSON({json_val})", ()
+
+    def format_json_search(
+        self, json_doc: str, search_str: str, path: Optional[str] = None, all_: bool = False
+    ) -> Tuple[str, tuple]:
+        """Format JSON_SEARCH - not supported by SQL Server."""
+        raise UnsupportedFeatureError(
+            self.name,
+            "JSON_SEARCH",
+            "SQL Server has no JSON_SEARCH; use OPENJSON with a LIKE predicate.",
+        )
+
+    # ========== SET Type Support ==========
+
+    def supports_set_type(self) -> bool:
+        """SQL Server has no MySQL-style SET column type."""
+        return False
+
+    def format_set_literal(
+        self, values: List[str], column_values: Optional[List[str]] = None
+    ) -> Tuple[str, tuple]:
+        """Format a comma-separated value as a bind parameter.
+
+        SQL Server stores comma-separated values in VARCHAR columns; the
+        literal is passed as a single parameter.
+        """
+        if len(values) > 64:
+            raise ValueError("SQL Server SET approximation supports maximum 64 members")
+
+        if column_values is not None:
+            invalid_values = [v for v in values if v not in column_values]
+            if invalid_values:
+                raise ValueError(
+                    f"Invalid SET values: {invalid_values}. Allowed values: {column_values}"
+                )
+
+        if not values:
+            return self.get_parameter_placeholder(), ("",)
+
+        sorted_values = sorted(values)
+        return self.get_parameter_placeholder(), (",".join(sorted_values),)
+
+    def format_find_in_set(self, value: str, set_column: str) -> Tuple[str, tuple]:
+        """Format a comma-separated membership check.
+
+        SQL Server has no FIND_IN_SET; membership is checked with a LIKE
+        predicate over the comma-delimited column value.
+        """
+        placeholder = self.get_parameter_placeholder()
+        col_sql = self.format_identifier(set_column)
+        return f"(',' + {col_sql} + ',' LIKE '%,' + {placeholder} + ',%')", (value,)
+
+    def format_set_contains(self, column: str, values: List[str]) -> Tuple[str, tuple]:
+        """Format a set-containment predicate as AND-ed membership checks."""
+        conditions = []
+        params: List[str] = []
+        for value in values:
+            condition, value_params = self.format_find_in_set(value, column)
+            conditions.append(condition)
+            params.extend(value_params)
+        return " AND ".join(conditions), tuple(params)
+
+    # ========== Spatial Type Support ==========
+
+    _SPATIAL_TYPES = {
+        "GEOMETRY",
+        "GEOGRAPHY",
+        "POINT",
+        "LINESTRING",
+        "POLYGON",
+        "MULTIPOINT",
+        "MULTILINESTRING",
+        "MULTIPOLYGON",
+        "GEOMETRYCOLLECTION",
+    }
+
+    def supports_spatial_type(self, type_name: str) -> bool:
+        """SQL Server supports geometry/geography since 2008 (10.0)."""
+        return self.version >= (10, 0, 0) and type_name.upper() in self._SPATIAL_TYPES
+
+    def supports_spatial_index(self) -> bool:
+        """SQL Server supports spatial indexes since 2008 (10.0)."""
+        return self.version >= (10, 0, 0)
+
+    def supports_geojson(self) -> bool:
+        """STAsGeoJSON is not available in the installed SQL Server types assembly."""
+        return False
+
+    def format_spatial_literal(
+        self, wkt: str, srid: Optional[int] = None
+    ) -> Tuple[str, tuple]:
+        """Format a WKT literal using geometry::STGeomFromText."""
+        return self.format_st_geom_from_text(wkt, srid)
+
+    def format_st_geom_from_text(
+        self, wkt: str, srid: Optional[int] = None
+    ) -> Tuple[str, tuple]:
+        """Format a geometry::STGeomFromText call.
+
+        SQL Server requires the SRID argument; it defaults to 0.
+
+        SQL Syntax:
+            geometry::STGeomFromText(?, ?)
+        """
+        placeholder = self.get_parameter_placeholder()
+        if srid is None:
+            srid = 0
+        return f"geometry::STGeomFromText({placeholder}, {placeholder})", (wkt, srid)
+
+    def format_st_as_text(self, geom: str) -> Tuple[str, tuple]:
+        """Format a geometry STAsText method call: ``geom.STAsText()``."""
+        return f"{geom}.STAsText()", ()
+
+    def format_st_as_geojson(self, geom: str) -> Tuple[str, tuple]:
+        """Format a geometry STAsGeoJSON method call: ``geom.STAsGeoJSON()``."""
+        return f"{geom}.STAsGeoJSON()", ()
+
+    def format_st_distance(self, geom1: str, geom2: str) -> Tuple[str, tuple]:
+        """Format a geometry STDistance method call: ``g1.STDistance(g2)``."""
+        return f"{geom1}.STDistance({geom2})", ()
+
+    def format_st_within(self, geom1: str, geom2: str) -> Tuple[str, tuple]:
+        """Format a geometry STWithin method call: ``g1.STWithin(g2)``."""
+        return f"{geom1}.STWithin({geom2})", ()
+
+    def format_st_contains(self, geom1: str, geom2: str) -> Tuple[str, tuple]:
+        """Format a geometry STContains method call: ``g1.STContains(g2)``."""
+        return f"{geom1}.STContains({geom2})", ()
+
+    def format_st_distance_sphere(self, geom1: str, geom2: str) -> Tuple[str, tuple]:
+        """Format a spherical distance check.
+
+        SQL Server has no ST_Distance_Sphere; STDistance is used for the
+        planar distance between the two geometries.
+        """
+        return f"{geom1}.STDistance({geom2})", ()
+
+    def format_st_intersects(self, geom1: str, geom2: str) -> Tuple[str, tuple]:
+        """Format a geometry STIntersects method call: ``g1.STIntersects(g2)``."""
+        return f"{geom1}.STIntersects({geom2})", ()
+
+    def format_create_spatial_index(
+        self, index_name: str, table_name: str, column: str
+    ) -> Tuple[str, tuple]:
+        """Format a CREATE SPATIAL INDEX statement.
+
+        SQL Syntax:
+            CREATE SPATIAL INDEX idx ON table (column)
+            WITH (BOUNDING_BOX = (0, 0, 100, 100))
+
+        A BOUNDING_BOX is required for geometry columns.
+        """
+        self.check_feature_support(
+            "supports_spatial_index",
+            "spatial indexes",
+            "requires SQL Server 2008+.",
+        )
+        sql = (
+            f"CREATE SPATIAL INDEX {self.format_identifier(index_name)} "
+            f"ON {self.format_identifier(table_name)} ({self.format_identifier(column)}) "
+            f"WITH (BOUNDING_BOX = (0, 0, 100, 100))"
+        )
+        return sql, ()

@@ -3,6 +3,7 @@ pydantic[email]
 pytest
 pytest-asyncio
 pytest-cov
+pytest-benchmark
 coverage>=7.0.0
 black>=23.0.0
 isort>=5.0.0

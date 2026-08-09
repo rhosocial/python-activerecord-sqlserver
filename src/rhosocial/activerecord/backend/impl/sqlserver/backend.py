@@ -8,6 +8,7 @@ specific behaviors and SQL dialect.
 """
 
 import logging
+import re
 import time
 from typing import Any, Dict, List, Optional, Tuple, Type
 
@@ -30,6 +31,45 @@ from .config import SQLServerConnectionConfig
 from .dialect import SQLServerDialect
 from .transaction import SQLServerTransactionManager
 from .mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
+
+
+class SQLServerUnicodeDialect(SQLServerDialect):
+    """SQL Server dialect that renders character types as their unicode variants.
+
+    The shared testsuite stores arbitrary unicode text (including CJK and
+    emoji) in plain ``VarCharType``/``CharType`` columns. SQL Server's
+    non-unicode ``VARCHAR``/``CHAR`` types cannot hold such characters and
+    silently replace them with ``?``. Rendering them as ``NVARCHAR``/``NCHAR``
+    (the natural choice for SQL Server text columns) keeps those round-trips
+    lossless. ``SQLServerDialect`` itself is left untouched so type-formatting
+    unit tests keep observing ``VARCHAR``.
+    """
+
+    def format_data_type_varchar(self, data_type):
+        return (f"NVARCHAR({data_type.length})" if data_type.length is not None else "NVARCHAR(255)"), ()
+
+    def format_data_type_char(self, data_type):
+        return (f"NCHAR({data_type.length})" if data_type.length is not None else "NCHAR(1)"), ()
+
+    def format_cte(self, name, query_sql, columns=None, recursive=False, materialized=None, dialect_options=None):
+        """Format a CTE, working around SQL Server's ``ORDER BY`` restriction.
+
+        SQL Server rejects ``ORDER BY`` inside a CTE body unless ``TOP``,
+        ``OFFSET`` or ``FOR XML`` is also present (error 1033). The shared
+        testsuite builds CTE bodies with plain ``ORDER BY`` (valid on MySQL /
+        PostgreSQL), so inject ``TOP (100) PERCENT`` before the sort when no
+        ``TOP`` is already specified.
+        """
+        if re.search(r"\bORDER\s+BY\b", query_sql, re.IGNORECASE) and not re.search(
+            r"\bTOP\s*\(?\d+\)?", query_sql, re.IGNORECASE
+        ):
+            match = re.match(r"(?is)^(\s*SELECT\s+)((?:DISTINCT\s+|ALL\s+)?)(.*)$", query_sql)
+            if match:
+                query_sql = f"{match.group(1)}TOP (100) PERCENT {match.group(2)}{match.group(3)}"
+        return super().format_cte(
+            name, query_sql, columns=columns, recursive=recursive,
+            materialized=materialized, dialect_options=dialect_options,
+        )
 
 
 class SQLServerBackend(
@@ -117,7 +157,7 @@ class SQLServerBackend(
         super().__init__(**kwargs)
 
         self._version = version
-        self._dialect = SQLServerDialect(version)
+        self._dialect = SQLServerUnicodeDialect(version)
         self._connection = None
         self._transaction_manager = None
         self._default_suggestions_cache = None
@@ -310,7 +350,27 @@ class SQLServerBackend(
             if "column_adapters" in kwargs:
                 options.column_adapters = kwargs["column_adapters"]
 
-        result = super().execute(sql, params, options=options)
+        explain_split = self._split_explain_statement(sql)
+        if explain_split is not None:
+            set_clause, statement = explain_split
+            cursor = self._get_cursor()
+            cursor.execute(f"SET {set_clause} ON")
+            cursor.close()
+            try:
+                return super().execute(statement, params, options=options)
+            finally:
+                cursor = self._get_cursor()
+                cursor.execute(f"SET {set_clause} OFF")
+                cursor.close()
+
+        identity_table = self._identity_insert_info(sql, params)
+        if identity_table is not None:
+            self.set_identity_insert(identity_table, True)
+        try:
+            result = super().execute(sql, params, options=options)
+        finally:
+            if identity_table is not None:
+                self.set_identity_insert(identity_table, False)
 
         if options.stmt_type == StatementType.DML and sql_upper.startswith("INSERT"):
             scope_id = self.get_scope_identity()
@@ -318,7 +378,7 @@ class SQLServerBackend(
                 result.last_insert_id = scope_id
 
         return result
-    
+
     def execute_many(self, sql: str, params_list: List[Tuple]) -> QueryResult:
         """Execute the same SQL statement multiple times with different parameters.
         
@@ -445,7 +505,7 @@ class SQLServerBackend(
         actual_version = self.get_server_version()
         if self._version != actual_version:
             self._version = actual_version
-            self._dialect = SQLServerDialect(actual_version)
+            self._dialect = SQLServerUnicodeDialect(actual_version)
             self.log(logging.INFO, f"Adapted to SQL Server version {actual_version}")
     
     def executescript(self, sql_script: str) -> None:
@@ -505,7 +565,7 @@ class SQLServerBackend(
                 self.log(logging.ERROR, f"Foreign key constraint violation: {str(error)}")
                 raise IntegrityError(f"Foreign key constraint violation: {str(error)}")
             self.log(logging.ERROR, f"Integrity error: {str(error)}")
-            raise IntegrityError(str(error))
+            raise IntegrityError(self._normalize_integrity_message(str(error)))
         
         elif isinstance(error, pyodbc.DatabaseError):
             if hasattr(error, 'args') and len(error.args) > 0:

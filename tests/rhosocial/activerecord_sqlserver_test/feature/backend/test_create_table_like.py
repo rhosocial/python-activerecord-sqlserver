@@ -1,21 +1,24 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_create_table_like.py
 """
-MySQL CREATE TABLE ... LIKE syntax tests.
+SQL Server CREATE TABLE behavior tests.
 
-This module tests the SQLServer-specific LIKE syntax for CREATE TABLE statements.
+SQL Server has no CREATE TABLE ... LIKE syntax and no TEMPORARY keyword.
+This module verifies that ``like_table`` raises ``UnsupportedFeatureError``,
+temporary tables render ``#``-prefixed names, and identifiers use brackets.
 """
 import pytest
+from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression import CreateTableExpression, ColumnDefinition
 from rhosocial.activerecord.backend.expression.statements import ColumnConstraint, ColumnConstraintType
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
 
-class TestMySQLCreateTableLike:
-    """Tests for MySQL CREATE TABLE ... LIKE syntax."""
+class TestSQLServerCreateTableLike:
+    """Tests for CREATE TABLE behavior on SQL Server."""
 
-    def test_basic_like_syntax(self):
-        """Test basic CREATE TABLE ... LIKE syntax."""
+    def test_basic_like_raises(self):
+        """Test that CREATE TABLE ... LIKE raises UnsupportedFeatureError."""
         dialect = SQLServerDialect()
         create_expr = CreateTableExpression(
             dialect=dialect,
@@ -23,13 +26,11 @@ class TestMySQLCreateTableLike:
             columns=[],
             dialect_options={'like_table': 'users'}
         )
-        sql, params = create_expr.to_sql()
+        with pytest.raises(UnsupportedFeatureError):
+            create_expr.to_sql()
 
-        assert sql == "CREATE TABLE `users_copy` LIKE `users`"
-        assert params == ()
-
-    def test_like_with_if_not_exists(self):
-        """Test CREATE TABLE ... LIKE with IF NOT EXISTS."""
+    def test_like_with_if_not_exists_raises(self):
+        """Test CREATE TABLE ... LIKE with IF NOT EXISTS raises."""
         dialect = SQLServerDialect()
         create_expr = CreateTableExpression(
             dialect=dialect,
@@ -38,13 +39,11 @@ class TestMySQLCreateTableLike:
             if_not_exists=True,
             dialect_options={'like_table': 'users'}
         )
-        sql, params = create_expr.to_sql()
+        with pytest.raises(UnsupportedFeatureError):
+            create_expr.to_sql()
 
-        assert sql == "CREATE TABLE IF NOT EXISTS `users_copy` LIKE `users`"
-        assert params == ()
-
-    def test_like_with_temporary(self):
-        """Test CREATE TEMPORARY TABLE ... LIKE."""
+    def test_like_with_temporary_raises(self):
+        """Test CREATE TABLE ... LIKE with temporary raises."""
         dialect = SQLServerDialect()
         create_expr = CreateTableExpression(
             dialect=dialect,
@@ -53,13 +52,11 @@ class TestMySQLCreateTableLike:
             temporary=True,
             dialect_options={'like_table': 'users'}
         )
-        sql, params = create_expr.to_sql()
+        with pytest.raises(UnsupportedFeatureError):
+            create_expr.to_sql()
 
-        assert sql == "CREATE TABLE TEMPORARY `temp_users` LIKE `users`"
-        assert params == ()
-
-    def test_like_with_schema_qualified_table(self):
-        """Test CREATE TABLE ... LIKE with schema-qualified source table."""
+    def test_like_with_schema_qualified_table_raises(self):
+        """Test CREATE TABLE ... LIKE with schema-qualified source raises."""
         dialect = SQLServerDialect()
         create_expr = CreateTableExpression(
             dialect=dialect,
@@ -67,13 +64,11 @@ class TestMySQLCreateTableLike:
             columns=[],
             dialect_options={'like_table': ('production', 'users')}
         )
-        sql, params = create_expr.to_sql()
+        with pytest.raises(UnsupportedFeatureError):
+            create_expr.to_sql()
 
-        assert sql == "CREATE TABLE `users_copy` LIKE `production`.`users`"
-        assert params == ()
-
-    def test_like_ignores_columns(self):
-        """Test that LIKE syntax ignores columns parameter."""
+    def test_like_ignores_columns_raises(self):
+        """Test that LIKE syntax raises even when columns are present."""
         dialect = SQLServerDialect()
         columns = [
             ColumnDefinition("id", IntegerType(), constraints=[
@@ -87,14 +82,11 @@ class TestMySQLCreateTableLike:
             columns=columns,
             dialect_options={'like_table': 'users'}
         )
-        sql, params = create_expr.to_sql()
+        with pytest.raises(UnsupportedFeatureError):
+            create_expr.to_sql()
 
-        # LIKE syntax should take precedence, columns should be ignored
-        assert sql == "CREATE TABLE `users_copy` LIKE `users`"
-        assert params == ()
-
-    def test_like_with_temporary_and_if_not_exists(self):
-        """Test CREATE TEMPORARY TABLE ... LIKE with IF NOT EXISTS."""
+    def test_like_with_temporary_and_if_not_exists_raises(self):
+        """Test CREATE TABLE ... LIKE with temporary and IF NOT EXISTS raises."""
         dialect = SQLServerDialect()
         create_expr = CreateTableExpression(
             dialect=dialect,
@@ -104,9 +96,28 @@ class TestMySQLCreateTableLike:
             if_not_exists=True,
             dialect_options={'like_table': ('test_db', 'users')}
         )
+        with pytest.raises(UnsupportedFeatureError):
+            create_expr.to_sql()
+
+    def test_temporary_uses_hash_prefix(self):
+        """Test that a temporary table renders a #-prefixed table name."""
+        dialect = SQLServerDialect()
+        columns = [
+            ColumnDefinition("id", IntegerType(), constraints=[
+                ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
+            ]),
+        ]
+        create_expr = CreateTableExpression(
+            dialect=dialect,
+            table="temp_users",
+            columns=columns,
+            temporary=True,
+        )
         sql, params = create_expr.to_sql()
 
-        assert sql == "CREATE TABLE TEMPORARY IF NOT EXISTS `temp_users_copy` LIKE `test_db`.`users`"
+        assert "CREATE TABLE" in sql
+        assert "[#temp_users]" in sql
+        assert "TEMPORARY" not in sql
         assert params == ()
 
     def test_fallback_to_base_when_no_like(self):
@@ -127,10 +138,10 @@ class TestMySQLCreateTableLike:
         )
         sql, params = create_expr.to_sql()
 
-        # Should use base implementation
+        # Should use base implementation with bracketed identifiers
         assert "CREATE TABLE" in sql
-        assert "`users`" in sql
-        assert "`id`" in sql
-        assert "`name`" in sql
+        assert "[users]" in sql
+        assert "[id]" in sql
+        assert "[name]" in sql
         assert "PRIMARY KEY" in sql
         assert "NOT NULL" in sql

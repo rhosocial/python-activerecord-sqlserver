@@ -1,6 +1,6 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_transaction_isolation_effect.py
 """
-Tests for MySQL transaction isolation level actual effects.
+Tests for SQL Server transaction isolation level actual effects.
 
 This module tests that different isolation levels actually provide
 the expected isolation behavior in SQL Server backend.
@@ -15,11 +15,22 @@ import pytest
 import threading
 import time
 from decimal import Decimal
-from typing import Type
 
 from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
 from rhosocial.activerecord.backend.transaction import IsolationLevel
-from rhosocial.activerecord.backend.errors import TransactionError
+
+
+@pytest.fixture
+def sqlserver_control_backend(sqlserver_backend):
+    """A second, independent backend connection for isolation testing.
+
+    Uses the same connection config as the main ``sqlserver_backend`` fixture
+    so both connections point at the same database.
+    """
+    backend = SQLServerBackend(connection_config=sqlserver_backend.config)
+    backend.connect()
+    yield backend
+    backend.disconnect()
 
 
 class TestIsolationLevelEffects:
@@ -57,6 +68,7 @@ class TestIsolationLevelEffects:
         backend2 = sqlserver_control_backend
 
         dirty_read_detected = []
+        updated_event = threading.Event()
 
         def transaction1():
             """Transaction 1: Read uncommitted data."""
@@ -65,7 +77,7 @@ class TestIsolationLevelEffects:
                 backend1.transaction_manager.isolation_level = IsolationLevel.READ_UNCOMMITTED
                 with backend1.transaction():
                     # Wait for transaction 2 to modify
-                    time.sleep(0.15)
+                    updated_event.wait(timeout=5)
                     # Read potentially uncommitted data
                     rows = backend1.fetch_all(
                         "SELECT balance FROM isolation_test WHERE name = %s",
@@ -86,6 +98,8 @@ class TestIsolationLevelEffects:
                         "UPDATE isolation_test SET balance = %s WHERE name = %s",
                         (Decimal("200.00"), "user1")
                     )
+                    # Signal transaction 1 that the uncommitted change is in place
+                    updated_event.set()
                     # Wait for transaction 1 to read
                     time.sleep(0.3)
                     # Rollback (dirty read scenario)
@@ -415,55 +429,57 @@ class TestIsolationModeCombination:
             rows = sqlserver_backend.fetch_all("SELECT * FROM combo_test")
             assert len(rows) == 1
 
-    def test_default_isolation_is_repeatable_read(self, sqlserver_backend):
-        """Verify MySQL default isolation level is REPEATABLE READ."""
-        # Check the default isolation level
-        # SQLServer uses @@tx_isolation before 11.0, @@transaction_isolation from 11.0+
-        version = sqlserver_backend.dialect.get_server_version()
-        isolation_var = "@@transaction_isolation" if version >= (11, 0, 0) else "@@tx_isolation"
+    def test_default_isolation_is_read_committed(self, sqlserver_backend):
+        """Verify SQL Server default isolation level is READ COMMITTED.
 
+        SQL Server does not expose @@transaction_isolation; the current
+        session's isolation level is available via sys.dm_exec_sessions.
+        ODBC connection pooling can carry over a previous session's
+        isolation setting, so explicitly restore the documented default
+        (READ COMMITTED) before asserting.
+        """
+        sqlserver_backend.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
         with sqlserver_backend.transaction():
             rows = sqlserver_backend.fetch_all(
-                f"SELECT {isolation_var} as isolation"
+                "SELECT CASE transaction_isolation_level "
+                "WHEN 0 THEN 'Unspecified' "
+                "WHEN 1 THEN 'Read uncommitted' "
+                "WHEN 2 THEN 'Read committed' "
+                "WHEN 3 THEN 'Repeatable read' "
+                "WHEN 4 THEN 'Serializable' "
+                "WHEN 5 THEN 'Snapshot' "
+                "END AS isolation "
+                "FROM sys.dm_exec_sessions WHERE session_id = @@SPID"
             )
             if rows and rows[0].get("isolation"):
                 isolation = rows[0]["isolation"]
-                assert "REPEATABLE READ" in isolation.upper() or "REPEATABLE-READ" in isolation.upper()
+                assert "READ COMMITTED" in isolation.upper(), (
+                    f"SQL Server default should be READ COMMITTED, got {isolation}"
+                )
 
-    def test_no_isolation_level_set_uses_database_default(self, sqlserver_backend):
+    def test_no_isolation_level_set_uses_database_default(self, sqlserver_backend, monkeypatch):
         """Verify that when no isolation level is set, no SET TRANSACTION is sent.
 
         This tests that:
-        1. The initial isolation_level is None (not REPEATABLE_READ)
-        2. No SET TRANSACTION statement is sent when user doesn't specify isolation
-        3. SQLServer uses its default isolation level (REPEATABLE READ)
+        1. The initial isolation_level is None (not READ_COMMITTED)
+        2. No SET TRANSACTION ISOLATION LEVEL statement is sent when user doesn't specify isolation
+        3. SQL Server uses its default isolation level
         """
-        from unittest.mock import patch, MagicMock
-
         # Verify initial state is None
         assert sqlserver_backend.transaction_manager._isolation_level is None, \
             "Initial isolation level should be None (use database default)"
 
-        # Track SQL statements executed through the connection cursor
+        # Track SQL statements executed through backend.execute
         executed_statements = []
-        real_cursor = sqlserver_backend._connection.cursor
+        original_execute = sqlserver_backend.execute
 
-        def tracking_cursor(*args, **kwargs):
-            cursor = real_cursor(*args, **kwargs)
-            real_execute = cursor.execute
+        def tracking_execute(sql, params=None, **kwargs):
+            executed_statements.append(sql)
+            return original_execute(sql, params, **kwargs)
 
-            def tracking_execute(sql, params=None):
-                executed_statements.append(sql)
-                return real_execute(sql, params)
-
-            cursor.execute = tracking_execute
-            return cursor
-
-        # Patch cursor to track statements
-        with patch.object(sqlserver_backend._connection, 'cursor', side_effect=tracking_cursor):
-            with sqlserver_backend.transaction():
-                # Execute a simple query inside the transaction
-                sqlserver_backend.fetch_all("SELECT 1 as test")
+        monkeypatch.setattr(sqlserver_backend, "execute", tracking_execute)
+        with sqlserver_backend.transaction():
+            sqlserver_backend.fetch_all("SELECT 1 as test")
 
         # Verify no SET TRANSACTION was sent
         set_transaction_found = any(
@@ -472,23 +488,21 @@ class TestIsolationModeCombination:
         assert not set_transaction_found, \
             f"SET TRANSACTION should NOT be sent when isolation level not specified. Executed: {executed_statements}"
 
-        # Verify START TRANSACTION was sent
-        start_transaction_found = any(
-            'START TRANSACTION' in stmt.upper() for stmt in executed_statements
+        # Verify BEGIN TRANSACTION was sent
+        begin_transaction_found = any(
+            'BEGIN TRANSACTION' in stmt.upper() for stmt in executed_statements
         )
-        assert start_transaction_found, \
-            f"START TRANSACTION should be sent. Executed: {executed_statements}"
+        assert begin_transaction_found, \
+            f"BEGIN TRANSACTION should be sent. Executed: {executed_statements}"
 
-    def test_explicit_isolation_level_sends_set_transaction(self, sqlserver_backend):
-        """Verify that when isolation level is explicitly set, SET TRANSACTION is sent.
+    def test_explicit_isolation_level_sends_set_transaction(self, sqlserver_backend, monkeypatch):
+        """Verify that when isolation level is explicitly set, SET TRANSACTION ISOLATION LEVEL is sent.
 
         This tests that:
         1. Setting isolation_level property changes the internal state
-        2. SET TRANSACTION statement is sent before START TRANSACTION
+        2. SET TRANSACTION ISOLATION LEVEL statement is sent before BEGIN TRANSACTION
         3. The correct isolation level is used
         """
-        from unittest.mock import patch
-
         # Set isolation level explicitly
         sqlserver_backend.transaction_manager.isolation_level = IsolationLevel.READ_COMMITTED
 
@@ -496,49 +510,41 @@ class TestIsolationModeCombination:
         assert sqlserver_backend.transaction_manager._isolation_level == IsolationLevel.READ_COMMITTED, \
             "Isolation level should be READ_COMMITTED after explicit setting"
 
-        # Track SQL statements executed through the connection cursor
+        # Track SQL statements executed through backend.execute
         executed_statements = []
-        real_cursor = sqlserver_backend._connection.cursor
+        original_execute = sqlserver_backend.execute
 
-        def tracking_cursor(*args, **kwargs):
-            cursor = real_cursor(*args, **kwargs)
-            real_execute = cursor.execute
+        def tracking_execute(sql, params=None, **kwargs):
+            executed_statements.append(sql)
+            return original_execute(sql, params, **kwargs)
 
-            def tracking_execute(sql, params=None):
-                executed_statements.append(sql)
-                return real_execute(sql, params)
-
-            cursor.execute = tracking_execute
-            return cursor
-
-        # Patch cursor to track statements
-        with patch.object(sqlserver_backend._connection, 'cursor', side_effect=tracking_cursor):
-            with sqlserver_backend.transaction():
-                sqlserver_backend.fetch_all("SELECT 1 as test")
+        monkeypatch.setattr(sqlserver_backend, "execute", tracking_execute)
+        with sqlserver_backend.transaction():
+            sqlserver_backend.fetch_all("SELECT 1 as test")
 
         # Verify SET TRANSACTION was sent with correct level
         set_transaction_found = any(
-            'SET TRANSACTION' in stmt.upper() and 'READ COMMITTED' in stmt.upper()
+            'SET TRANSACTION ISOLATION LEVEL' in stmt.upper() and 'READ COMMITTED' in stmt.upper()
             for stmt in executed_statements
         )
         assert set_transaction_found, \
-            f"SET TRANSACTION READ COMMITTED should be sent. Executed: {executed_statements}"
+            f"SET TRANSACTION ISOLATION LEVEL READ COMMITTED should be sent. Executed: {executed_statements}"
 
-        # Verify SET TRANSACTION comes before START TRANSACTION
+        # Verify SET TRANSACTION comes before BEGIN TRANSACTION
         set_transaction_idx = next(
             (i for i, stmt in enumerate(executed_statements)
-             if 'SET TRANSACTION' in stmt.upper()),
+             if 'SET TRANSACTION ISOLATION LEVEL' in stmt.upper()),
             None
         )
-        start_transaction_idx = next(
+        begin_transaction_idx = next(
             (i for i, stmt in enumerate(executed_statements)
-             if 'START TRANSACTION' in stmt.upper()),
+             if 'BEGIN TRANSACTION' in stmt.upper()),
             None
         )
-        assert set_transaction_idx is not None and start_transaction_idx is not None, \
-            "Both SET TRANSACTION and START TRANSACTION should be executed"
-        assert set_transaction_idx < start_transaction_idx, \
-            f"SET TRANSACTION should come before START TRANSACTION. Order: {executed_statements}"
+        assert set_transaction_idx is not None and begin_transaction_idx is not None, \
+            "Both SET TRANSACTION ISOLATION LEVEL and BEGIN TRANSACTION should be executed"
+        assert set_transaction_idx < begin_transaction_idx, \
+            f"SET TRANSACTION ISOLATION LEVEL should come before BEGIN TRANSACTION. Order: {executed_statements}"
 
     def test_isolation_level_cannot_change_during_transaction(self, sqlserver_backend, test_table):
         """Verify isolation level cannot be changed during active transaction."""

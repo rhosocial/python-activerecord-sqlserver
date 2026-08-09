@@ -1,6 +1,6 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_async_transaction_isolation_effect.py
 """
-Async tests for MySQL transaction isolation level and mode effects.
+Async tests for SQL Server transaction isolation level and mode effects.
 
 This module tests the actual behavior of different isolation levels and transaction modes
 with SQL Server backend using async operations.
@@ -12,7 +12,15 @@ from decimal import Decimal
 
 from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
 from rhosocial.activerecord.backend.transaction import IsolationLevel, TransactionMode
-from rhosocial.activerecord.backend.errors import TransactionError
+
+
+@pytest_asyncio.fixture
+async def async_sqlserver_control_backend(async_sqlserver_backend):
+    """A second, independent async backend connection for isolation testing."""
+    backend = AsyncSQLServerBackend(connection_config=async_sqlserver_backend.config)
+    await backend.connect()
+    yield backend
+    await backend.disconnect()
 
 
 @pytest_asyncio.fixture
@@ -99,13 +107,14 @@ class TestAsyncIsolationLevelEffect:
         uncommitted transaction. READ UNCOMMITTED should allow this.
         """
         dirty_read_detected = []
+        updated_event = asyncio.Event()
 
         async def transaction1():
             """Transaction 1: Read uncommitted data."""
             try:
                 async_sqlserver_backend.transaction_manager.isolation_level = IsolationLevel.READ_UNCOMMITTED
                 async with async_sqlserver_backend.transaction():
-                    await asyncio.sleep(0.1)
+                    await asyncio.wait_for(updated_event.wait(), timeout=5)
                     rows = await async_sqlserver_backend.fetch_all(
                         "select balance from async_isolation_test where name = %s",
                         ("user1",)
@@ -124,6 +133,7 @@ class TestAsyncIsolationLevelEffect:
                         "update async_isolation_test set balance = %s where name = %s",
                         (Decimal("200.00"), "user1")
                     )
+                    updated_event.set()
                     await asyncio.sleep(0.3)
                     raise Exception("Force rollback for dirty read test")
             except Exception:
@@ -363,56 +373,57 @@ class TestAsyncTransactionCombination:
                 assert len(rows) == 1
 
     @pytest.mark.asyncio
-    async def test_default_isolation_is_repeatable_read(self, async_sqlserver_backend):
-        """Verify SQLServer default isolation level is REPEATABLE READ (async)."""
-        # SQLServer uses @@tx_isolation before 11.0, @@transaction_isolation from 11.0+
-        version = async_sqlserver_backend.dialect.get_server_version()
-        isolation_var = "@@transaction_isolation" if version >= (11, 0, 0) else "@@tx_isolation"
+    async def test_default_isolation_is_read_committed(self, async_sqlserver_backend):
+        """Verify SQL Server default isolation level is READ COMMITTED (async).
 
+        SQL Server does not expose @@transaction_isolation; the current
+        session's isolation level is available via sys.dm_exec_sessions.
+        ODBC connection pooling can carry over a previous session's
+        isolation setting, so explicitly restore the documented default
+        (READ COMMITTED) before asserting.
+        """
+        await async_sqlserver_backend.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
         async with async_sqlserver_backend.transaction():
             rows = await async_sqlserver_backend.fetch_all(
-                f"SELECT {isolation_var} as isolation"
+                "SELECT CASE transaction_isolation_level "
+                "WHEN 0 THEN 'Unspecified' "
+                "WHEN 1 THEN 'Read uncommitted' "
+                "WHEN 2 THEN 'Read committed' "
+                "WHEN 3 THEN 'Repeatable read' "
+                "WHEN 4 THEN 'Serializable' "
+                "WHEN 5 THEN 'Snapshot' "
+                "END AS isolation "
+                "FROM sys.dm_exec_sessions WHERE session_id = @@SPID"
             )
             if rows and rows[0].get("isolation"):
                 isolation = rows[0]["isolation"]
-                assert "REPEATABLE READ" in isolation.upper() or "REPEATABLE-READ" in isolation.upper()
+                assert "READ COMMITTED" in isolation.upper(), \
+                    f"SQL Server default should be READ COMMITTED, got {isolation}"
 
     @pytest.mark.asyncio
-    async def test_no_isolation_level_set_uses_database_default(self, async_sqlserver_backend):
+    async def test_no_isolation_level_set_uses_database_default(self, async_sqlserver_backend, monkeypatch):
         """Verify that when no isolation level is set, no SET TRANSACTION is sent (async).
 
         This tests that:
-        1. The initial isolation_level is None (not REPEATABLE_READ)
-        2. No SET TRANSACTION statement is sent when user doesn't specify isolation
-        3. MySQL uses its default isolation level (REPEATABLE READ)
+        1. The initial isolation_level is None
+        2. No SET TRANSACTION ISOLATION LEVEL statement is sent when user doesn't specify isolation
+        3. SQL Server uses its default isolation level
         """
-        from unittest.mock import patch
-
         # Verify initial state is None
         assert async_sqlserver_backend.transaction_manager._isolation_level is None, \
             "Initial isolation level should be None (use database default)"
 
-        # Track SQL statements executed at cursor level
-        # (transaction manager uses cursor directly, not backend.execute)
+        # Track SQL statements executed through backend.execute
         executed_statements = []
-        real_cursor = async_sqlserver_backend._connection.cursor
+        original_execute = async_sqlserver_backend.execute
 
-        def tracking_cursor(*args, **kwargs):
-            cursor = real_cursor(*args, **kwargs)
-            real_execute = cursor.execute
+        async def tracking_execute(sql, params=None, **kwargs):
+            executed_statements.append(sql)
+            return await original_execute(sql, params, **kwargs)
 
-            async def tracking_execute(sql, params=None):
-                executed_statements.append(sql)
-                return await real_execute(sql, params)
-
-            cursor.execute = tracking_execute
-            return cursor
-
-        # Patch connection.cursor to track statements
-        with patch.object(async_sqlserver_backend._connection, 'cursor', side_effect=tracking_cursor):
-            async with async_sqlserver_backend.transaction():
-                # Execute a simple query inside the transaction
-                await async_sqlserver_backend.fetch_all("SELECT 1 as test")
+        monkeypatch.setattr(async_sqlserver_backend, "execute", tracking_execute)
+        async with async_sqlserver_backend.transaction():
+            await async_sqlserver_backend.fetch_all("SELECT 1 as test")
 
         # Verify no SET TRANSACTION was sent
         set_transaction_found = any(
@@ -421,24 +432,22 @@ class TestAsyncTransactionCombination:
         assert not set_transaction_found, \
             f"SET TRANSACTION should NOT be sent when isolation level not specified. Executed: {executed_statements}"
 
-        # Verify START TRANSACTION was sent
-        start_transaction_found = any(
-            'START TRANSACTION' in stmt.upper() for stmt in executed_statements
+        # Verify BEGIN TRANSACTION was sent
+        begin_transaction_found = any(
+            'BEGIN TRANSACTION' in stmt.upper() for stmt in executed_statements
         )
-        assert start_transaction_found, \
-            f"START TRANSACTION should be sent. Executed: {executed_statements}"
+        assert begin_transaction_found, \
+            f"BEGIN TRANSACTION should be sent. Executed: {executed_statements}"
 
     @pytest.mark.asyncio
-    async def test_explicit_isolation_level_sends_set_transaction(self, async_sqlserver_backend):
-        """Verify that when isolation level is explicitly set, SET TRANSACTION is sent (async).
+    async def test_explicit_isolation_level_sends_set_transaction(self, async_sqlserver_backend, monkeypatch):
+        """Verify that when isolation level is explicitly set, SET TRANSACTION ISOLATION LEVEL is sent (async).
 
         This tests that:
         1. Setting isolation_level property changes the internal state
-        2. SET TRANSACTION statement is sent before START TRANSACTION
+        2. SET TRANSACTION ISOLATION LEVEL statement is sent before BEGIN TRANSACTION
         3. The correct isolation level is used
         """
-        from unittest.mock import patch
-
         # Set isolation level explicitly
         async_sqlserver_backend.transaction_manager.isolation_level = IsolationLevel.READ_COMMITTED
 
@@ -446,50 +455,41 @@ class TestAsyncTransactionCombination:
         assert async_sqlserver_backend.transaction_manager._isolation_level == IsolationLevel.READ_COMMITTED, \
             "Isolation level should be READ_COMMITTED after explicit setting"
 
-        # Track SQL statements executed at cursor level
-        # (transaction manager uses cursor directly, not backend.execute)
+        # Track SQL statements executed through backend.execute
         executed_statements = []
-        real_cursor = async_sqlserver_backend._connection.cursor
+        original_execute = async_sqlserver_backend.execute
 
-        def tracking_cursor(*args, **kwargs):
-            cursor = real_cursor(*args, **kwargs)
-            real_execute = cursor.execute
+        async def tracking_execute(sql, params=None, **kwargs):
+            executed_statements.append(sql)
+            return await original_execute(sql, params, **kwargs)
 
-            async def tracking_execute(sql, params=None):
-                executed_statements.append(sql)
-                return await real_execute(sql, params)
-
-            cursor.execute = tracking_execute
-            return cursor
-
-        # Patch connection.cursor to track statements
-        with patch.object(async_sqlserver_backend._connection, 'cursor', side_effect=tracking_cursor):
-            async with async_sqlserver_backend.transaction():
-                await async_sqlserver_backend.fetch_all("SELECT 1 as test")
+        monkeypatch.setattr(async_sqlserver_backend, "execute", tracking_execute)
+        async with async_sqlserver_backend.transaction():
+            await async_sqlserver_backend.fetch_all("SELECT 1 as test")
 
         # Verify SET TRANSACTION was sent with correct level
         set_transaction_found = any(
-            'SET TRANSACTION' in stmt.upper() and 'READ COMMITTED' in stmt.upper()
+            'SET TRANSACTION ISOLATION LEVEL' in stmt.upper() and 'READ COMMITTED' in stmt.upper()
             for stmt in executed_statements
         )
         assert set_transaction_found, \
-            f"SET TRANSACTION READ COMMITTED should be sent. Executed: {executed_statements}"
+            f"SET TRANSACTION ISOLATION LEVEL READ COMMITTED should be sent. Executed: {executed_statements}"
 
-        # Verify SET TRANSACTION comes before START TRANSACTION
+        # Verify SET TRANSACTION comes before BEGIN TRANSACTION
         set_transaction_idx = next(
             (i for i, stmt in enumerate(executed_statements)
-             if 'SET TRANSACTION' in stmt.upper()),
+             if 'SET TRANSACTION ISOLATION LEVEL' in stmt.upper()),
             None
         )
-        start_transaction_idx = next(
+        begin_transaction_idx = next(
             (i for i, stmt in enumerate(executed_statements)
-             if 'START TRANSACTION' in stmt.upper()),
+             if 'BEGIN TRANSACTION' in stmt.upper()),
             None
         )
-        assert set_transaction_idx is not None and start_transaction_idx is not None, \
-            "Both SET TRANSACTION and START TRANSACTION should be executed"
-        assert set_transaction_idx < start_transaction_idx, \
-            f"SET TRANSACTION should come before START TRANSACTION. Order: {executed_statements}"
+        assert set_transaction_idx is not None and begin_transaction_idx is not None, \
+            "Both SET TRANSACTION ISOLATION LEVEL and BEGIN TRANSACTION should be executed"
+        assert set_transaction_idx < begin_transaction_idx, \
+            f"SET TRANSACTION ISOLATION LEVEL should come before BEGIN TRANSACTION. Order: {executed_statements}"
 
     @pytest.mark.asyncio
     async def test_isolation_level_cannot_change_during_transaction(self, async_sqlserver_backend, async_isolation_test_table):

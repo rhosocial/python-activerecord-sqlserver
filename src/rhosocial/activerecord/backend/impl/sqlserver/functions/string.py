@@ -110,3 +110,58 @@ def string_split(
         args.append(ordinal)
     
     return core.FunctionCall(dialect, "STRING_SPLIT", args)
+
+
+def find_in_set(
+    dialect: "SQLServerDialect",
+    value: Union[str, "bases.BaseExpression"],
+    set_column: Union[str, "bases.BaseExpression"],
+) -> "core.FunctionCall":
+    """Creates a FIND_IN_SET function call (approximation).
+
+    SQL Server has no FIND_IN_SET; membership in a comma-separated value
+    is checked with a LIKE predicate.
+    """
+    return core.FunctionCall(
+        dialect,
+        "FIND_IN_SET",
+        [_convert_to_expression(dialect, value), _convert_to_expression(dialect, set_column)],
+    )
+
+
+def elt(
+    dialect: "SQLServerDialect",
+    index: Union[int, str, "bases.BaseExpression"],
+    *values: Any,
+) -> "core.FunctionCall":
+    """Creates an ELT function call (approximation; SQL Server uses CHOOSE)."""
+    args = [_convert_to_expression(dialect, index)]
+    args.extend(_convert_to_expression(dialect, v) for v in values)
+    return core.FunctionCall(dialect, "ELT", args)
+
+
+def field(
+    dialect: "SQLServerDialect",
+    value: Union[str, "bases.BaseExpression"],
+    *values: Any,
+) -> "core.FunctionCall":
+    """Creates a FIELD function call (approximation; SQL Server lacks one)."""
+    args = [_convert_to_expression(dialect, value)]
+    args.extend(_convert_to_expression(dialect, v) for v in values)
+    return core.FunctionCall(dialect, "FIELD", args)
+
+
+def match_against(
+    dialect: "SQLServerDialect",
+    column: Union[str, "bases.BaseExpression"],
+    search_string: str,
+) -> "core.FunctionCall":
+    """Creates a CONTAINS function call (SQL Server equivalent of MATCH_AGAINST).
+
+    CONTAINS performs SQL Server full-text search (2005+).
+    """
+    return core.FunctionCall(
+        dialect,
+        "CONTAINS",
+        [_convert_to_expression(dialect, column), core.Literal(dialect, search_string)],
+    )

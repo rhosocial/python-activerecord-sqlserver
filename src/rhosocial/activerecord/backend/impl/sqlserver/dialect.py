@@ -7,6 +7,7 @@ based on the SQL Server version provided at initialization.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+import copy
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
@@ -283,7 +284,18 @@ class SQLServerDialect(
     """
     
     name = "SQL Server"
-    
+
+    _NILADIC_FUNCTION_EQUIVALENTS = {
+        "NOW": "SYSDATETIME()",
+        "CURRENT_DATE": "CAST(GETDATE() AS DATE)",
+        "CURRENT_TIME": "CAST(GETDATE() AS TIME)",
+    }
+
+    _FUNCTION_NAME_EQUIVALENTS = {
+        "LENGTH": "LEN",
+        "CHAR_LENGTH": "LEN",
+    }
+
     _SQLSERVER_FUNCTION_VERSIONS = {
         "json_value": (SQL_SERVER_2016, None),
         "json_query": (SQL_SERVER_2016, None),
@@ -309,6 +321,32 @@ class SQLServerDialect(
         "json_path_exists": (SQL_SERVER_2022, None),
         "json_object": (SQL_SERVER_2022, None),
         "json_array": (SQL_SERVER_2022, None),
+        # JSON compat functions (SQL Server 2016+; JSON_OBJECT/JSON_ARRAY
+        # are 2022+, covered above by the JSON_* entries)
+        "json_extract": (SQL_SERVER_2016, None),
+        "json_unquote": (SQL_SERVER_2016, None),
+        "json_contains": (SQL_SERVER_2016, None),
+        "json_set": (SQL_SERVER_2016, None),
+        "json_remove": (SQL_SERVER_2016, None),
+        "json_type": (SQL_SERVER_2016, None),
+        "json_valid": (SQL_SERVER_2016, None),
+        "json_search": (SQL_SERVER_2016, None),
+        # Spatial functions (SQL Server 2008+)
+        "st_geom_from_text": (SQL_SERVER_2008, None),
+        "st_geom_from_wkb": (SQL_SERVER_2008, None),
+        "st_as_text": (SQL_SERVER_2008, None),
+        "st_as_geojson": (SQL_SERVER_2008, None),
+        "st_distance": (SQL_SERVER_2008, None),
+        "st_within": (SQL_SERVER_2008, None),
+        "st_contains": (SQL_SERVER_2008, None),
+        "st_intersects": (SQL_SERVER_2008, None),
+        # Full-text search (SQL Server 2005+)
+        "match_against": (SQL_SERVER_2005, None),
+        # Bitwise functions (SQL Server 2022+ for the new ones)
+        "bit_count": (SQL_SERVER_2022, None),
+        "bit_get_bit": (SQL_SERVER_2022, None),
+        "bit_shift_left": (SQL_SERVER_2022, None),
+        "bit_shift_right": (SQL_SERVER_2022, None),
     }
     
     def __init__(self, version: Optional[Tuple[int, int, int]] = None):
@@ -459,6 +497,37 @@ class SQLServerDialect(
     def get_json_access_operator(self) -> Optional[str]:
         """SQL Server doesn't have -> operator, uses JSON_VALUE/JSON_QUERY."""
         return None
+
+    def format_json_function_expression(self, expr) -> Tuple[str, tuple]:
+        """Format JSON extraction using SQL Server's JSON_VALUE built-in.
+
+        The base implementation renders ``JSON_UNQUOTE(JSON_EXTRACT(...))``
+        which is MySQL syntax. SQL Server uses ``JSON_VALUE(column, 'path')``,
+        which already returns a scalar value without surrounding quotes.
+
+        Args:
+            expr: The JSONExpression to format.
+
+        Returns:
+            (SQL string, params tuple).
+        """
+        if isinstance(expr.column, bases.BaseExpression):
+            col_sql, col_params = expr.column.to_sql()
+        else:
+            col_sql, col_params = self.format_identifier(str(expr.column)), ()
+
+        escaped_path = self._escape_sql_string(expr.path)
+        sql = f"JSON_VALUE({col_sql}, '{escaped_path}')"
+        params = col_params
+
+        if expr.cast_types:
+            for target_type in expr.cast_types:
+                sql, params = self.format_cast_expression(sql, target_type, params, None)
+
+        if expr.alias:
+            sql = f"{sql} AS {self.format_identifier(expr.alias)}"
+
+        return sql, params
     
     def supports_json_table(self) -> bool:
         """OPENJSON provides JSON table functionality since SQL Server 2016."""
@@ -1071,17 +1140,30 @@ class SQLServerDialect(
         return "BEGIN TRANSACTION", ()
     
     def supports_functions(self) -> Dict[str, bool]:
-        """Return supported SQL functions as function_name -> bool mapping."""
-        from rhosocial.activerecord.backend.expression.functions import __all__ as core_functions
-        
+        """Return supported SQL functions as function_name -> bool mapping.
+
+        Combines the core expression function factories with the SQL Server
+        function factories in ``functions.__all__``.
+        """
+        from rhosocial.activerecord.backend.expression.functions import (
+            __all__ as core_functions,
+        )
+        from rhosocial.activerecord.backend.impl.sqlserver import (
+            functions as sqlserver_functions,
+        )
+
         result = {}
         for func_name in core_functions:
             result[func_name] = self._is_sqlserver_function_supported(func_name)
-        
+
+        for func_name in getattr(sqlserver_functions, "__all__", []):
+            if func_name not in result:
+                result[func_name] = self._is_sqlserver_function_supported(func_name)
+
         for func_name in self._SQLSERVER_FUNCTION_VERSIONS:
             if func_name not in result:
                 result[func_name] = self._is_sqlserver_function_supported(func_name)
-        
+
         return result
     
     def _is_sqlserver_function_supported(self, func_name: str) -> bool:
@@ -1149,19 +1231,37 @@ class SQLServerDialect(
         SQL Server doesn't support IF NOT EXISTS syntax for CREATE TABLE
         (until SQL Server 2016 for DROP, but not CREATE). When if_not_exists
         is True, we simply skip the IF NOT EXISTS clause since it's not supported.
+        SQL Server has no CREATE TABLE ... LIKE; ``like_table`` raises
+        ``UnsupportedFeatureError``. Temporary tables use a ``#``-prefixed
+        table name instead of the ``TEMPORARY`` keyword.
         """
         all_params: List[Any] = []
 
+        dialect_options = getattr(expr, "dialect_options", {}) or {}
+        if dialect_options.get("like_table"):
+            raise UnsupportedFeatureError(
+                self.name,
+                "CREATE TABLE ... LIKE",
+                "SQL Server has no CREATE TABLE ... LIKE syntax; use SELECT INTO or an explicit CREATE TABLE statement.",
+            )
+
         # Build CREATE TABLE header
         parts = ["CREATE TABLE"]
-        if expr.temporary:
-            parts.append("TEMPORARY")
 
         # Note: SQL Server doesn't support IF NOT EXISTS for CREATE TABLE
         # We ignore if_not_exists flag and proceed with CREATE TABLE
         # In production, callers should handle existence checks separately
 
-        table_sql, table_params = expr.table.to_sql()
+        if expr.temporary:
+            temp_name = expr.table.name
+            if not temp_name.startswith("#"):
+                temp_name = f"#{temp_name}"
+            table_sql = self.format_identifier(temp_name)
+            if expr.table.schema_name:
+                table_sql = f"{self.format_identifier(expr.table.schema_name)}.{table_sql}"
+            table_params = ()
+        else:
+            table_sql, table_params = expr.table.to_sql()
         all_params.extend(table_params)
         parts.append(table_sql)
 
@@ -1196,7 +1296,6 @@ class SQLServerDialect(
             all_params.extend(partition_params)
 
         # Handle In-Memory OLTP table options (2014+)
-        dialect_options = getattr(expr, "dialect_options", {}) or {}
         if dialect_options.get("memory_optimized"):
             durability = dialect_options.get("durability", "SCHEMA_ONLY")
             parts.append(self.format_memory_optimized_option(durability))
@@ -1685,6 +1784,41 @@ class SQLServerDialect(
             parts.append(" ".join(action_parts))
 
         return " ".join(parts), tuple(all_params)
+
+    def format_function_call(
+        self, expr, filter_predicate=None
+    ) -> Tuple[str, tuple]:
+        """Format a function call, mapping MySQL/generic function names to
+        their SQL Server equivalents.
+
+        SQL Server has no NOW(), CURRENT_DATE or CURRENT_TIME:
+        - NOW() is replaced by SYSDATETIME()
+        - CURRENT_DATE is replaced by CAST(GETDATE() AS DATE)
+        - CURRENT_TIME is replaced by CAST(GETDATE() AS TIME)
+
+        SQL Server also has no generic ``LENGTH`` function; it uses ``LEN``.
+        Generic JSON operators/functions (``json_extract_text`` etc.) are
+        mapped to ``JSON_VALUE`` (see ``format_json_function_expression``).
+        """
+        name = getattr(expr, "func_name", None)
+        if name and name.upper() in self._NILADIC_FUNCTION_EQUIVALENTS:
+            sql = self._NILADIC_FUNCTION_EQUIVALENTS[name.upper()]
+            return self._apply_value_expression_modifiers(sql, (), expr)
+        if name and name.upper() in self._FUNCTION_NAME_EQUIVALENTS:
+            renamed_expr = self._clone_with_func_name(expr, self._FUNCTION_NAME_EQUIVALENTS[name.upper()])
+            return super().format_function_call(renamed_expr, filter_predicate)
+        return super().format_function_call(expr, filter_predicate)
+
+    def _clone_with_func_name(self, expr, new_name: str):
+        """Return a shallow copy of ``expr`` with ``func_name`` replaced.
+
+        The base ``format_function_call`` renders ``expr.func_name.upper()``,
+        so remapping generic names (e.g. ``LENGTH`` -> ``LEN``) only requires
+        a shallow copy with the target name substituted.
+        """
+        clone = copy.copy(expr)
+        clone.func_name = new_name
+        return clone
 
     def format_expression(self, expr) -> Tuple[str, tuple]:
         """Format an arbitrary expression to SQL."""

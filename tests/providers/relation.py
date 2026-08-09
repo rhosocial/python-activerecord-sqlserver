@@ -36,37 +36,52 @@ from providers.fixtures._common import (
 )
 
 
+def _if_not_exists(table_name: str) -> str:
+    """Return the ``IF OBJECT_ID(...) IS NULL`` guard prefix for a table.
+
+    SQL Server does not support ``CREATE TABLE IF NOT EXISTS``; the guard
+    makes the fixture scripts idempotent across runs.
+    """
+    return (
+        f"IF OBJECT_ID(N'{table_name}', N'U') IS NULL\n"
+        f"    CREATE TABLE [{table_name}]"
+    )
+
+
 EMPLOYEE_DEPARTMENT_SCHEMA = """
-    CREATE TABLE IF NOT EXISTS departments (
+    {departments} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         name NVARCHAR(255) NOT NULL,
         description NVARCHAR(MAX)
     );
-    CREATE TABLE IF NOT EXISTS employees (
+    {employees} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         username NVARCHAR(255) NOT NULL,
         department_id INT NOT NULL
     );
     DELETE FROM employees;
     DELETE FROM departments;
-"""
+""".format(
+    departments=_if_not_exists("departments"),
+    employees=_if_not_exists("employees"),
+)
 
 AUTHOR_BOOK_SCHEMA = """
-    CREATE TABLE IF NOT EXISTS authors (
+    {authors} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         name NVARCHAR(255) NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS books (
+    {books} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         title NVARCHAR(255) NOT NULL,
         author_id INT NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS chapters (
+    {chapters} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         title NVARCHAR(255) NOT NULL,
         book_id INT NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS profiles (
+    {profiles} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         bio NVARCHAR(MAX) NOT NULL,
         author_id INT NOT NULL
@@ -75,16 +90,21 @@ AUTHOR_BOOK_SCHEMA = """
     DELETE FROM books;
     DELETE FROM profiles;
     DELETE FROM authors;
-"""
+""".format(
+    authors=_if_not_exists("authors"),
+    books=_if_not_exists("books"),
+    chapters=_if_not_exists("chapters"),
+    profiles=_if_not_exists("profiles"),
+)
 
 USER_POST_COMMENT_SCHEMA = """
-    CREATE TABLE IF NOT EXISTS users (
+    {users} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         name NVARCHAR(255) NOT NULL,
         email NVARCHAR(255),
         settings NVARCHAR(MAX)
     );
-    CREATE TABLE IF NOT EXISTS posts (
+    {posts} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         title NVARCHAR(255) NOT NULL,
         body NVARCHAR(MAX) NOT NULL,
@@ -92,7 +112,7 @@ USER_POST_COMMENT_SCHEMA = """
         view_count INT NOT NULL DEFAULT 0,
         metadata NVARCHAR(MAX)
     );
-    CREATE TABLE IF NOT EXISTS comments (
+    {comments} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         body NVARCHAR(MAX) NOT NULL,
         post_id INT NOT NULL,
@@ -101,19 +121,23 @@ USER_POST_COMMENT_SCHEMA = """
     DELETE FROM comments;
     DELETE FROM posts;
     DELETE FROM users;
-"""
+""".format(
+    users=_if_not_exists("users"),
+    posts=_if_not_exists("posts"),
+    comments=_if_not_exists("comments"),
+)
 
 RELATION_BOUNDARY_SCHEMA = """
-    CREATE TABLE IF NOT EXISTS relation_boundary_owners (
+    {owners} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         name NVARCHAR(255) NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS relation_boundary_profiles (
+    {profiles} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         bio NVARCHAR(MAX) NOT NULL,
         owner_id INT NULL
     );
-    CREATE TABLE IF NOT EXISTS relation_boundary_posts (
+    {posts} (
         id INT IDENTITY(1,1) PRIMARY KEY,
         title NVARCHAR(255) NOT NULL,
         owner_id INT NULL
@@ -121,7 +145,11 @@ RELATION_BOUNDARY_SCHEMA = """
     DELETE FROM relation_boundary_posts;
     DELETE FROM relation_boundary_profiles;
     DELETE FROM relation_boundary_owners;
-"""
+""".format(
+    owners=_if_not_exists("relation_boundary_owners"),
+    profiles=_if_not_exists("relation_boundary_profiles"),
+    posts=_if_not_exists("relation_boundary_posts"),
+)
 
 
 class RelationProviderBase:
