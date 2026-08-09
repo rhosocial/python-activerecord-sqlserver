@@ -248,6 +248,7 @@ class SQLServerBackend(
             self._connection = pyodbc.connect(conn_str, **conn_args)
             
             self.log(logging.INFO, "Connected to SQL Server database successfully")
+            self.introspect_and_adapt()
             
         except PyODBCError as e:
             self.log(logging.ERROR, f"Failed to connect to SQL Server: {str(e)}")

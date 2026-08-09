@@ -19,20 +19,28 @@ def _parse_sql_datetime(value: str) -> datetime:
     ODBC/older Python runtimes deliver datetime2 values as strings without a
     ``T`` separator and often carry seven fractional digits (100ns precision),
     e.g. ``'2026-08-09 05:25:26.5205700'``. Python's ``datetime.fromisoformat``
-    rejects values with more than six fractional digits on Python < 3.13, so
-    normalize the string first: normalize the separator, then drop any
-    fractional component beyond six digits.
+    only accepts three or six fractional digits on Python < 3.11, so normalize
+    the string first: restore the ``T`` separator and pad the fractional
+    component to exactly six digits.
     """
     normalized = value.replace('Z', '+00:00')
     if 'T' not in normalized:
         head, sep, rest = normalized.partition(' ')
         if sep:
             normalized = f"{head}T{rest}"
-    if '.' in normalized:
-        head, sep, frac = normalized.rpartition('.')
-        frac = frac.rstrip('0')[:6]
-        if frac:
-            normalized = f"{head}.{frac}"
+    dot_pos = normalized.rfind('.')
+    if dot_pos != -1:
+        suffix = ''
+        frac_end = len(normalized)
+        for marker in ('+', '-'):
+            idx = normalized.find(marker, dot_pos + 1)
+            if idx != -1:
+                frac_end = idx
+                suffix = normalized[idx:]
+                break
+        frac = normalized[dot_pos + 1:frac_end]
+        frac = frac[:6].ljust(6, '0')
+        normalized = f"{normalized[:dot_pos]}.{frac}{suffix}"
     result = datetime.fromisoformat(normalized)
     if result.tzinfo is None:
         return result.replace(tzinfo=timezone.utc)

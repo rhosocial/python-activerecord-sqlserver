@@ -201,6 +201,7 @@ class AsyncSQLServerBackend(
             )
             
             self.log(logging.INFO, "Async connection to SQL Server established")
+            await self.introspect_and_adapt()
             
         except Exception as e:
             self.log(logging.ERROR, f"Failed to connect to SQL Server: {str(e)}")
