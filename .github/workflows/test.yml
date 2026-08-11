@@ -106,6 +106,95 @@ jobs:
         export PYTHONPATH=src:tests
         python -m pytest tests/
 
+  test-py39-sqlserver2017:
+    name: Run tests with Python 3.9 and SQL Server 2017
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2017-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Password123!
+        ports:
+        - 1442:1433
+        options: >-
+          --name sqlserver
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Password123!' -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+
+    steps:
+    - name: Check out the repository
+      uses: actions/checkout@v6
+
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.9"
+
+    - name: Install ODBC Driver 17 for SQL Server
+      run: |
+        curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+        curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+        sudo apt-get update
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev29#egg=rhosocial-activerecord
+        pip install git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev16#egg=rhosocial-activerecord-testsuite
+
+    - name: Create test database
+      run: |
+        python -c "
+        import pyodbc
+
+        connection_string = (
+            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'SERVER=localhost,1442;'
+            'DATABASE=master;'
+            'UID=sa;'
+            'PWD=Password123!;'
+            'TrustServerCertificate=yes;'
+            'Encrypt=no;'
+        )
+
+        conn = pyodbc.connect(connection_string, autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute('CREATE DATABASE test_db')
+        print('Successfully created test_db')
+        cursor.close()
+        conn.close()
+        "
+
+    - name: Create SQL Server scenario config
+      run: |
+        cat > sqlserver_scenarios.yaml << EOF
+        scenarios:
+          sqlserver_2017:
+            host: localhost
+            port: 1442
+            database: test_db
+            username: sa
+            password: Password123!
+            driver: "ODBC Driver 17 for SQL Server"
+            encrypt: false
+            trust_server_certificate: true
+            autocommit: true
+        EOF
+        echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
+    - name: Run tests
+      run: |
+        export PYTHONPATH=src:tests
+        python -m pytest tests/
+
   test-py310-sqlserver2019:
     name: Run tests with Python 3.10 and SQL Server 2019
     runs-on: ubuntu-latest
