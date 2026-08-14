@@ -371,6 +371,14 @@ class SQLServerDialect(
         """Return the SQL Server version this dialect is configured for."""
         return self.version
 
+    def create_schema_differ(self):
+        """Return the SQL Server schema differ (ordinal-position aware)."""
+        from rhosocial.activerecord.backend.impl.sqlserver.schema.differ import (
+            SQLServerSchemaDiffer,
+        )
+
+        return SQLServerSchemaDiffer()
+
     def format_date_trunc_expression(self, expr: "Any") -> Tuple[str, Tuple]:
         source_sql, source_params = expr.source.to_sql()
         field = expr.field.value.upper()
