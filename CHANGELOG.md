@@ -16,3 +16,7 @@
 ### Removed
 
 - Remove outdated `TestCLINamedQueryArgs` test class and `named-query` assertion from CLI tests.
+
+## [v1.0.0.dev1] - 2026-04-12
+
+Initial commit of the SQL Server backend.
