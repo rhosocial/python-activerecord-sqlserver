@@ -1,5 +1,7 @@
 ## [v1.0.0.dev2] - 2026-08-15
 
+Introduced a relatively complete set of features for the SQL Server backend.
+
 ### Added
 
 - SQL Server partition DDL support: `SQLServerPartitionMixin`, partition function/scheme expressions, `format_partition_clause` integration into `format_create_table_statement`, and protocol conformance gaited by server version.
@@ -19,4 +21,4 @@
 
 ## [v1.0.0.dev1] - 2026-04-12
 
-Initial commit of the SQL Server backend.
+Initial commit of the SQL Server backend. Incomplete development placeholder.
