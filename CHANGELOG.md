@@ -1,6 +1,6 @@
 ## [v1.0.0.dev2] - 2026-08-15
 
-Introduced a relatively complete set of features for the SQL Server backend.
+Introduced a relatively complete set of features for the SQL Server backend. ([#1](https://github.com/rhosocial/python-activerecord-sqlserver/issues/1))
 
 ### Added
 
