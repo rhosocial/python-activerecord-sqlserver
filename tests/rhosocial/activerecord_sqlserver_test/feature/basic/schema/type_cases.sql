@@ -1,0 +1,21 @@
+CREATE TABLE [type_cases] (
+    [id] NVARCHAR(36) NOT NULL PRIMARY KEY,
+    [username] NVARCHAR(MAX) NOT NULL,
+    [email] NVARCHAR(MAX) NOT NULL,
+    [tiny_int] NVARCHAR(MAX) NULL,
+    [small_int] NVARCHAR(MAX) NULL,
+    [big_int] NVARCHAR(MAX) NULL,
+    [float_val] NVARCHAR(MAX) NULL,
+    [double_val] NVARCHAR(MAX) NULL,
+    [decimal_val] NVARCHAR(MAX) NULL,
+    [char_val] NVARCHAR(MAX) NULL,
+    [varchar_val] NVARCHAR(MAX) NULL,
+    [text_val] NVARCHAR(MAX) NULL,
+    [date_val] NVARCHAR(MAX) NULL,
+    [time_val] NVARCHAR(MAX) NULL,
+    [timestamp_val] NVARCHAR(MAX) NULL,
+    [blob_val] NVARCHAR(MAX) NULL,
+    [json_val] NVARCHAR(MAX) NULL,
+    [array_val] NVARCHAR(MAX) NULL,
+    [is_active] NVARCHAR(MAX) NULL
+);
