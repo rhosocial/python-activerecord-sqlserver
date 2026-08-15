@@ -725,10 +725,21 @@ jobs:
         EOF
         echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
 
-    - name: Run tests
+    - name: Run tests with coverage
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        pip install coverage
+        coverage run --source=src -m pytest tests/ --tb=short
+        coverage xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: unittests,python-3.14,sqlserver-2025
+        name: codecov-sqlserver-3.14-2025
+        fail_ci_if_error: false
 
   test-py314t-sqlserver2022:
     name: Run tests with Python 3.14t (free-threaded) and SQL Server 2022
