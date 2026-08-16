@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rhosocial-activerecord-sqlserver"
-version = "1.0.0.dev2"
+version = "1.0.0.dev3"
 description = "SQL Server backend implementation for rhosocial-activerecord, providing robust and optimized SQL Server database support."
 readme = "README.md"
 license = { file = "LICENSE" }
