@@ -105,7 +105,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ -n auto --dist=loadgroup --tb=short -x
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py39-sqlserver2017:
     name: Run tests with Python 3.9 and SQL Server 2017
@@ -194,7 +194,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ -n auto --dist=loadgroup --tb=short -x
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py310-sqlserver2019:
     name: Run tests with Python 3.10 and SQL Server 2019
@@ -283,7 +283,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ -n auto --dist=loadgroup --tb=short -x
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py311-sqlserver2019:
     name: Run tests with Python 3.11 and SQL Server 2019
@@ -372,7 +372,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ -n auto --dist=loadgroup --tb=short -x
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py312-sqlserver2025:
     name: Run tests with Python 3.12 and SQL Server 2025
@@ -461,7 +461,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ -n auto --dist=loadgroup --tb=short -x
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py313-sqlserver2022:
     name: Run tests with Python 3.13 and SQL Server 2022
@@ -550,7 +550,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ -n auto --dist=loadgroup --tb=short -x
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py313t-sqlserver2019:
     name: Run tests with Python 3.13t (free-threaded) and SQL Server 2019
@@ -640,7 +640,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ -n auto --dist=loadgroup --tb=short -x
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py314-sqlserver2025:
     name: Run tests with Python 3.14 and SQL Server 2025
@@ -730,7 +730,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         pip install coverage
-        coverage run --source=src -m pytest tests/ --tb=short -n auto --dist=loadgroup
+        coverage run --source=src -m pytest tests/ --tb=short -n 8 --dist=loadgroup
         coverage xml
 
     - name: Upload coverage to Codecov
@@ -829,4 +829,4 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ -n auto --dist=loadgroup --tb=short -x
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
