@@ -4,4 +4,5 @@ pytest
 pytest-asyncio
 pytest-cov
 pytest-benchmark
+pytest-xdist
 coverage>=7.0.0

@@ -74,6 +74,12 @@ def get_scenario(name: str) -> Tuple[Type[SQLServerBackend], SQLServerConnection
         else:
             raise ValueError("No scenarios registered")
     scenario_config = SCENARIO_MAP[name].copy()
+    # Apply the pooled database name so parallel workers never share a schema.
+    from providers.pooling import resolve_database_name
+
+    pooled_db = resolve_database_name(name)
+    if pooled_db:
+        scenario_config["database"] = pooled_db
     config = SQLServerConnectionConfig(**scenario_config)
     return SQLServerBackend, config
 

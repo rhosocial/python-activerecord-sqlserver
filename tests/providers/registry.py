@@ -17,6 +17,10 @@ from .relation import RelationSyncProvider, RelationAsyncProvider
 from .basic_connection import BasicConnectionProvider
 from .query_connection import QueryConnectionProvider
 
+# Importing the pooling module registers the SQL Server-specific pool reset
+# handler (a side effect of the import), mirroring MySQL's tests/providers/pooling.py.
+from . import pooling  # noqa: F401
+
 provider_registry = ProviderRegistry()
 
 provider_registry.register("feature.basic.IBasicProvider", BasicSyncProvider)
