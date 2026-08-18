@@ -3,8 +3,6 @@
 
 import os
 
-from .output import RICH_AVAILABLE
-
 
 def add_connection_args(parser):
     """Add SQL Server connection arguments to a subcommand parser.
@@ -28,14 +26,23 @@ def add_connection_args(parser):
         help="Database name (env: SQLSERVER_DATABASE, optional for some operations)",
     )
     parser.add_argument(
+        "--user",
         "--username",
+        dest="username",
         default=os.getenv("SQLSERVER_USERNAME", "sa"),
-        help="Database username (env: SQLSERVER_USERNAME, default: sa)",
+        help="Database username (env: SQLSERVER_USERNAME, default: sa). "
+        "--username is an alias for --user.",
     )
     parser.add_argument(
         "--password",
         default=os.getenv("SQLSERVER_PASSWORD", ""),
         help="Database password (env: SQLSERVER_PASSWORD)",
+    )
+    parser.add_argument(
+        "--ssl",
+        choices=["auto", "require", "verify-ca", "verify-full", "disabled"],
+        default="auto",
+        help="SSL mode (env: SQLSERVER_SSL, default: auto)",
     )
     parser.add_argument(
         "--trusted-connection",
@@ -77,8 +84,9 @@ def add_connection_args(parser):
         help="Do not trust server certificate",
     )
     parser.add_argument(
-        "--use-async",
+        "--async",
         action="store_true",
+        dest="is_async",
         help="Use asynchronous backend",
     )
     parser.add_argument(
@@ -158,6 +166,16 @@ def resolve_connection_config_from_args(args):
             return resolver.resolve(conn_params)
         return resolver.resolve({})
 
+    # SSL parameter mapping (simplified for CLI unification)
+    ssl_param = getattr(args, "ssl", None)
+    if ssl_param == "disabled":
+        ssl_encrypt = False
+        ssl_trust_cert = True
+    else:
+        ssl_encrypt = True
+        # verify-ca/verify-full require a CA check; others trust the server cert
+        ssl_trust_cert = ssl_param not in ("verify-ca", "verify-full")
+
     return SQLServerConnectionConfig(
         host=args.host or "localhost",
         port=args.port or 1433,
@@ -166,8 +184,8 @@ def resolve_connection_config_from_args(args):
         password=args.password,
         trusted_connection=getattr(args, "trusted_connection", False),
         driver=getattr(args, "driver", "ODBC Driver 18 for SQL Server"),
-        encrypt=getattr(args, "encrypt", False),
-        trust_server_certificate=getattr(args, "trust_server_certificate", True),
+        encrypt=ssl_encrypt,
+        trust_server_certificate=ssl_trust_cert,
     )
 
 
