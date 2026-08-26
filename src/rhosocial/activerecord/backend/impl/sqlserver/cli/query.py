@@ -22,7 +22,15 @@ def create_parser(subparsers):
     parser = subparsers.add_parser(
         'query',
         help='Execute SQL query',
-        epilog="""Examples:
+        epilog="""Statement input forms (exactly one is used, checked in this order):
+  1. Positional argument: %(prog)s "SELECT * FROM users"
+  2. File via -f/--file:   %(prog)s -f query.sql
+  3. Stdin pipe:           cat query.sql | %(prog)s
+
+Note: there is deliberately no -q short option for the statement; use the
+forms above. Only a single SQL statement is accepted per invocation.
+
+Examples:
   # Query a database
   %(prog)s --host localhost --database mydb "SELECT * FROM users"
 
