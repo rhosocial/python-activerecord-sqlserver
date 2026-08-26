@@ -204,19 +204,21 @@ class SQLServerDateAdapter(TypeAdapter):
     def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
-        if isinstance(value, date):
-            return value
+        # datetime is an isinstance of date, so it must be checked first
+        # to truncate to the date component.
         if isinstance(value, datetime):
             return value.date()
+        if isinstance(value, date):
+            return value
         raise TypeError(f"Expected date, got {type(value)}")
     
     def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> date:
         if value is None:
             return None
-        if isinstance(value, date):
-            return value
         if isinstance(value, datetime):
             return value.date()
+        if isinstance(value, date):
+            return value
         if isinstance(value, str):
             return date.fromisoformat(value)
         raise TypeError(f"Cannot convert {type(value)} to date")

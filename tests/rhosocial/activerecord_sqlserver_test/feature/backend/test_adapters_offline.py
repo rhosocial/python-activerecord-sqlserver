@@ -167,16 +167,17 @@ class TestSQLServerDateAdapter:
     def test_iso_string_parsed(self, adapter):
         assert adapter.from_database("2026-08-09") == date(2026, 8, 9)
 
-    def test_datetime_input_passes_through_whole(self, adapter):
-        """Known product quirk: the datetime->date truncation is dead code.
-
-        ``datetime`` is an ``isinstance`` of ``date``, so both from_database
-        and to_database return datetimes unchanged instead of calling
-        ``value.date()``. Pinned here so a fix flips this test.
-        """
+    def test_datetime_truncated_to_date_both_directions(self, adapter):
+        # datetime must be checked before date so the time component is cut.
         value = datetime(2026, 8, 9, 5)
-        assert adapter.from_database(value) == value
-        assert adapter.to_database(value) == value
+        assert adapter.to_database(value) == date(2026, 8, 9)
+        assert adapter.to_database(value) is not value
+        assert adapter.from_database(value) == date(2026, 8, 9)
+
+    def test_date_only_bidirectional_passthrough(self, adapter):
+        value = date(2026, 8, 26)
+        assert adapter.to_database(value) is value
+        assert adapter.from_database(value) is value
 
     def test_error_paths(self, adapter):
         with pytest.raises(TypeError):
