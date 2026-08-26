@@ -1003,9 +1003,17 @@ class SQLServerDialect(
     def supports_create_schema(self) -> bool:
         """SQL Server supports CREATE SCHEMA."""
         return True
-    
+
     def supports_drop_schema(self) -> bool:
         """SQL Server supports DROP SCHEMA."""
+        return True
+
+    def supports_schema(self) -> bool:
+        """SQL Server models named schema namespaces natively (e.g. dbo)."""
+        return True
+
+    def supports_schema_authorization(self) -> bool:
+        """SQL Server accepts CREATE SCHEMA ... AUTHORIZATION owner."""
         return True
     
     def supports_schema_if_not_exists(self) -> bool:

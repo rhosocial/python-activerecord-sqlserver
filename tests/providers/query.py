@@ -129,9 +129,69 @@ from providers.fixtures._common import (
 class QueryProviderBase:
     def __init__(self):
         self._scenario_db_files = {}
+        self._schema_fixtures_provisioned = False
+
+    @staticmethod
+    def _ddl_options():
+        from rhosocial.activerecord.backend.options import ExecutionOptions
+        from rhosocial.activerecord.backend.schema import StatementType
+        return ExecutionOptions(stmt_type=StatementType.DDL)
 
     def get_test_scenarios(self) -> List[str]:
         return list(get_enabled_scenarios().keys())
+
+    def _cross_schema_statements(self) -> List[str]:
+        """Provision SCHEMA_A / SCHEMA_B with their tables (T-SQL)."""
+        return [
+            "IF OBJECT_ID('ar_crm.customers', 'U') IS NOT NULL DROP TABLE ar_crm.customers",
+            "IF SCHEMA_ID('ar_crm') IS NOT NULL DROP SCHEMA ar_crm",
+            "CREATE SCHEMA ar_crm",
+            "IF OBJECT_ID('ar_shop.orders', 'U') IS NOT NULL DROP TABLE ar_shop.orders",
+            "IF SCHEMA_ID('ar_shop') IS NOT NULL DROP SCHEMA ar_shop",
+            "CREATE SCHEMA ar_shop",
+            "CREATE TABLE ar_crm.customers ("
+            "id INT IDENTITY(1,1) PRIMARY KEY, name NVARCHAR(100) NOT NULL)",
+            "CREATE TABLE ar_shop.orders ("
+            "id INT IDENTITY(1,1) PRIMARY KEY, customer_id INT NOT NULL, amount INT NOT NULL)",
+        ]
+
+    def _drop_cross_schema_schemas_sync(self, backend_instance) -> None:
+        for sql in (
+            "IF OBJECT_ID('ar_crm.customers', 'U') IS NOT NULL DROP TABLE ar_crm.customers",
+            "IF OBJECT_ID('ar_shop.orders', 'U') IS NOT NULL DROP TABLE ar_shop.orders",
+            "IF SCHEMA_ID('ar_crm') IS NOT NULL DROP SCHEMA ar_crm",
+            "IF SCHEMA_ID('ar_shop') IS NOT NULL DROP SCHEMA ar_shop",
+        ):
+            try:
+                backend_instance.execute(sql, options=self._ddl_options())
+            except Exception:
+                pass
+        self._schema_fixtures_provisioned = False
+
+    async def _drop_cross_schema_schemas_async(self, backend_instance) -> None:
+        for sql in (
+            "IF OBJECT_ID('ar_crm.customers', 'U') IS NOT NULL DROP TABLE ar_crm.customers",
+            "IF OBJECT_ID('ar_shop.orders', 'U') IS NOT NULL DROP TABLE ar_shop.orders",
+            "IF SCHEMA_ID('ar_crm') IS NOT NULL DROP SCHEMA ar_crm",
+            "IF SCHEMA_ID('ar_shop') IS NOT NULL DROP SCHEMA ar_shop",
+        ):
+            try:
+                await backend_instance.execute(sql, options=self._ddl_options())
+            except Exception:
+                pass
+        self._schema_fixtures_provisioned = False
+
+    def _provision_cross_schema_sync(self, backend_instance) -> None:
+        options = self._ddl_options()
+        for sql in self._cross_schema_statements():
+            backend_instance.execute(sql, options=options)
+        self._schema_fixtures_provisioned = True
+
+    async def _provision_cross_schema_async(self, backend_instance) -> None:
+        options = self._ddl_options()
+        for sql in self._cross_schema_statements():
+            await backend_instance.execute(sql, options=options)
+        self._schema_fixtures_provisioned = True
 
     def _load_sqlserver_schema(self, filename: str) -> str:
         schema_dir = os.path.join(
@@ -294,6 +354,22 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
             backend_instance.execute(create_sql, params, options=options)
         return CompositeOrderItemBase
 
+    def setup_schema_fixtures(self, scenario_name: str):
+        """Two models in two distinct schemas (see testsuite schema_models)."""
+        from rhosocial.activerecord.testsuite.feature.query.fixtures.schema_models import (
+            SchemaCustomer,
+            SchemaOrder,
+        )
+
+        backend_class, config = get_scenario(scenario_name)
+        SchemaCustomer.configure(config, backend_class)
+        SchemaOrder.configure(config, backend_class)
+        shared_backend = SchemaCustomer.__backend__
+        if shared_backend not in self._active_backends:
+            self._active_backends.append(shared_backend)
+        self._provision_cross_schema_sync(shared_backend)
+        return SchemaCustomer, SchemaOrder
+
     def cleanup_after_test(self, scenario_name: str):
         for backend_instance in self._active_backends:
             for table_name in [
@@ -311,6 +387,11 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
             ]:
                 try:
                     safe_drop_table(backend_instance, backend_instance.dialect, table_name)
+                except Exception:
+                    pass
+            if self._schema_fixtures_provisioned:
+                try:
+                    self._drop_cross_schema_schemas_sync(backend_instance)
                 except Exception:
                     pass
             try:
@@ -583,8 +664,32 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
                     await safe_drop_table_async(backend_instance, backend_instance.dialect, table_name)
                 except Exception:
                     pass
+            if self._schema_fixtures_provisioned:
+                try:
+                    await self._drop_cross_schema_schemas_async(backend_instance)
+                except Exception:
+                    pass
             try:
                 await backend_instance.disconnect()
             except Exception:
                 pass
         self._active_async_backends.clear()
+
+    async def setup_schema_fixtures(self, scenario_name: str):
+        """Two async models in two distinct schemas."""
+        from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+        from rhosocial.activerecord.testsuite.feature.query.fixtures.schema_models import (
+            AsyncSchemaCustomer,
+            AsyncSchemaOrder,
+        )
+
+        _, config = get_scenario(scenario_name)
+        await AsyncSchemaCustomer.configure(config, AsyncSQLServerBackend)
+        AsyncSchemaOrder.__connection_config__ = config
+        AsyncSchemaOrder.__backend_class__ = AsyncSQLServerBackend
+        AsyncSchemaOrder.__backend__ = AsyncSchemaCustomer.__backend__
+        shared_backend = AsyncSchemaCustomer.__backend__
+        if shared_backend not in self._active_async_backends:
+            self._active_async_backends.append(shared_backend)
+        await self._provision_cross_schema_async(shared_backend)
+        return AsyncSchemaCustomer, AsyncSchemaOrder
