@@ -8,6 +8,7 @@ and SQL Server-specific data types.
 
 import json
 import uuid
+import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from datetime import date, datetime, time, timezone
 from typing import Any, Dict, List, Type, Union
@@ -335,8 +336,6 @@ class SQLServerXMLAdapter(TypeAdapter):
         raise TypeError(f"Cannot convert {type(value)} to XML")
     
     def _dict_to_xml(self, data: dict, root: str = "root") -> str:
-        import xml.etree.ElementTree as ET
-        
         root_elem = ET.Element(root)
         self._build_xml(root_elem, data)
         return ET.tostring(root_elem, encoding='unicode')
@@ -411,14 +410,14 @@ class SQLServerSpatialAdapter(TypeAdapter):
         
         elif geom_type == 'LineString':
             coords = data.get('coordinates', [])
-            points = " ".join(f"{c[0]} {c[1]}" for c in coords)
+            points = ", ".join(f"{c[0]} {c[1]}" for c in coords)
             return f"LINESTRING({points})"
         
         elif geom_type == 'Polygon':
             coords = data.get('coordinates', [[]])
             rings = []
             for ring in coords:
-                points = " ".join(f"{c[0]} {c[1]}" for c in ring)
+                points = ", ".join(f"{c[0]} {c[1]}" for c in ring)
                 rings.append(f"({points})")
             return f"POLYGON({','.join(rings)})"
         

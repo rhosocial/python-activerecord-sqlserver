@@ -266,22 +266,20 @@ class TestSQLServerXMLAdapter:
         with pytest.raises(TypeError):
             adapter.from_database(15)
 
-    def test_dict_conversion_currently_raises_nameerror(self, adapter):
-        """Known product defect: _build_xml references ET outside its scope.
+    def test_scalar_dict_renders_text_node(self, adapter):
+        assert adapter.to_database({"a": 1}) == "<root><a>1</a></root>"
 
-        The ElementTree import lives inside _dict_to_xml only, so nested
-        dict rendering always fails with NameError. Recorded here so a fix
-        flips this test instead of silently regressing again.
-        """
-        with pytest.raises(NameError):
-            adapter.to_database({"a": 1})
-
-    def test_elementtree_rendering_works_when_import_available(self):
-        # Sanity baseline for the defect above: ET itself renders fine.
-        root = ET.Element("root")
-        child = ET.SubElement(root, "a")
-        child.text = "1"
-        assert ET.tostring(root, encoding="unicode") == "<root><a>1</a></root>"
+    def test_dict_roundtrip_covers_nested_list_and_text_nodes(self, adapter):
+        payload = {
+            "name": "users",              # text node
+            "meta": {"created": "2026"},  # nested element
+            "tag": ["a", "b"],            # repeated child elements
+        }
+        root = ET.fromstring(adapter.to_database(payload))
+        assert root.tag == "root"
+        assert root.findtext("name") == "users"
+        assert root.find("meta").findtext("created") == "2026"
+        assert [elem.text for elem in root.findall("tag")] == ["a", "b"]
 
 
 class TestSQLServerSpatialAdapter:
@@ -292,18 +290,17 @@ class TestSQLServerSpatialAdapter:
     def test_point_wkt(self, adapter):
         assert adapter._dict_to_wkt({"type": "Point", "coordinates": [1, 2]}) == "POINT(1 2)"
 
-    def test_linestring_wkt_joins_pairs_with_spaces(self, adapter):
-        # Known quirk: pairs are space-joined without commas between them.
+    def test_linestring_separates_pairs_with_commas(self, adapter):
         assert (
             adapter._dict_to_wkt({"type": "LineString", "coordinates": [[1, 2], [3, 4]]})
-            == "LINESTRING(1 2 3 4)"
+            == "LINESTRING(1 2, 3 4)"
         )
 
     def test_polygon_wkt_single_ring(self, adapter):
         ring = [[[0, 0], [0, 1], [1, 1], [0, 0]]]
         assert (
             adapter._dict_to_wkt({"type": "Polygon", "coordinates": ring})
-            == "POLYGON((0 0 0 1 1 1 0 0))"
+            == "POLYGON((0 0, 0 1, 1 1, 0 0))"
         )
 
     def test_unknown_geometry_type_raises(self, adapter):
