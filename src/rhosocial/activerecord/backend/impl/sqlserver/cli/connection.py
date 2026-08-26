@@ -1,5 +1,24 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/cli/connection.py
-"""Connection argument parsing and backend creation for SQL Server CLI."""
+"""Connection argument parsing and backend creation for SQL Server CLI.
+
+Encryption defaults matrix -- applied whenever the corresponding explicit
+flag is absent. ``--encrypt``/``--no-encrypt`` and
+``--trust-server-certificate``/``--no-trust-server-certificate`` always take
+precedence over values derived from ``--ssl``:
+
+===============  =========  ==========================
+--ssl            encrypt    trust_server_certificate
+===============  =========  ==========================
+auto (default)   False      True
+disabled         False      True
+require          True       True
+verify-ca        True       False
+verify-full      True       False
+===============  =========  ==========================
+
+In particular, the default ``--ssl auto`` no longer implies
+``encrypt=True``, matching the ``--encrypt`` flag's own default of off.
+"""
 
 import os
 
@@ -60,28 +79,28 @@ def add_connection_args(parser):
     encrypt_group.add_argument(
         "--encrypt",
         action="store_true",
-        default=False,
+        default=None,
         dest="encrypt",
-        help="Encrypt connection",
+        help="Encrypt connection (takes precedence over --ssl)",
     )
     encrypt_group.add_argument(
         "--no-encrypt",
         action="store_false",
         dest="encrypt",
-        help="Do not encrypt connection",
+        help="Do not encrypt connection (takes precedence over --ssl)",
     )
     parser.add_argument(
         "--trust-server-certificate",
         dest="trust_server_certificate",
         action="store_true",
-        default=True,
-        help="Trust server certificate (default: True for development)",
+        default=None,
+        help="Trust server certificate (takes precedence over --ssl)",
     )
     parser.add_argument(
         "--no-trust-server-certificate",
         dest="trust_server_certificate",
         action="store_false",
-        help="Do not trust server certificate",
+        help="Do not trust server certificate (takes precedence over --ssl)",
     )
     parser.add_argument(
         "--async",
@@ -166,15 +185,26 @@ def resolve_connection_config_from_args(args):
             return resolver.resolve(conn_params)
         return resolver.resolve({})
 
-    # SSL parameter mapping (simplified for CLI unification)
+    # SSL parameter mapping. Explicit --encrypt/--no-encrypt and
+    # --trust-server-certificate/--no-trust-server-certificate flags win over
+    # the values derived from --ssl; see the matrix in the module docstring.
     ssl_param = getattr(args, "ssl", None)
-    if ssl_param == "disabled":
+    if ssl_param in ("require", "verify-ca", "verify-full"):
+        ssl_encrypt = True
+        # verify-ca/verify-full require a CA check; require trusts the cert
+        ssl_trust_cert = ssl_param == "require"
+    else:
+        # "auto" (default) and "disabled" do not force encryption
         ssl_encrypt = False
         ssl_trust_cert = True
-    else:
-        ssl_encrypt = True
-        # verify-ca/verify-full require a CA check; others trust the server cert
-        ssl_trust_cert = ssl_param not in ("verify-ca", "verify-full")
+
+    explicit_encrypt = getattr(args, "encrypt", None)
+    if explicit_encrypt is not None:
+        ssl_encrypt = explicit_encrypt
+
+    explicit_trust = getattr(args, "trust_server_certificate", None)
+    if explicit_trust is not None:
+        ssl_trust_cert = explicit_trust
 
     return SQLServerConnectionConfig(
         host=args.host or "localhost",

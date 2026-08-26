@@ -164,8 +164,9 @@ class TestParserContract:
     def test_driver_default_is_odbc_18(self):
         assert make_args(["status"]).driver == "ODBC Driver 18 for SQL Server"
 
-    def test_encrypt_flag_default_and_override(self):
-        assert make_args(["status"]).encrypt is False
+    def test_encrypt_flags_default_to_none_sentinel(self):
+        # None means "flag absent": resolution then derives from --ssl.
+        assert make_args(["status"]).encrypt is None
         assert make_args(["status", "--encrypt"]).encrypt is True
         assert make_args(["status", "--no-encrypt"]).encrypt is False
 
@@ -173,8 +174,12 @@ class TestParserContract:
         with pytest.raises(SystemExit):
             make_args(["status", "--encrypt", "--no-encrypt"])
 
-    def test_trust_server_certificate_defaults_true(self):
-        assert make_args(["status"]).trust_server_certificate is True
+    def test_trust_server_certificate_defaults_to_none_sentinel(self):
+        assert make_args(["status"]).trust_server_certificate is None
+        assert (
+            make_args(["status", "--trust-server-certificate"]).trust_server_certificate
+            is True
+        )
         assert (
             make_args(["status", "--no-trust-server-certificate"]).trust_server_certificate
             is False
@@ -304,6 +309,53 @@ class TestHandleSyncDispatch:
         assert (config.host, config.port, config.database) == ("srv1", 1444, "db")
         assert (config.username, config.password) == ("bob", "pw")
         assert config.driver == "ODBC Driver 17 for SQL Server"
+
+    @pytest.mark.parametrize(
+        ("ssl_mode", "expected_encrypt", "expected_trust"),
+        [
+            ("auto", False, True),
+            ("disabled", False, True),
+            ("require", True, True),
+            ("verify-ca", True, False),
+            ("verify-full", True, False),
+        ],
+    )
+    def test_ssl_matrix_without_explicit_flags(
+        self, fake_backend_cls, monkeypatch, ssl_mode, expected_encrypt, expected_trust
+    ):
+        monkeypatch.setattr(
+            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+        )
+        monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
+        status_mod.handle(
+            make_args(["status", "users", "--database", "db", "--ssl", ssl_mode])
+        )
+        config = fake_backend_cls.created[-1]
+        assert config.encrypt is expected_encrypt
+        assert config.trust_server_certificate is expected_trust
+
+    @pytest.mark.parametrize(
+        ("extra_args", "expected_encrypt", "expected_trust"),
+        [
+            (["--ssl", "require", "--no-encrypt"], False, True),
+            (["--ssl", "disabled", "--encrypt"], True, True),
+            (["--ssl", "verify-full", "--trust-server-certificate"], True, True),
+            (["--ssl", "verify-ca", "--no-trust-server-certificate"], True, False),
+            (["--ssl", "auto", "--no-trust-server-certificate"], False, False),
+            (["--ssl", "auto", "--encrypt"], True, True),
+        ],
+    )
+    def test_explicit_flags_take_precedence_over_ssl_derivation(
+        self, fake_backend_cls, monkeypatch, extra_args, expected_encrypt, expected_trust
+    ):
+        monkeypatch.setattr(
+            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+        )
+        monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
+        status_mod.handle(make_args(["status", "users", "--database", "db"] + extra_args))
+        config = fake_backend_cls.created[-1]
+        assert config.encrypt is expected_encrypt
+        assert config.trust_server_certificate is expected_trust
 
     def test_ssl_disabled_disables_encrypt(self, fake_backend_cls, monkeypatch):
         monkeypatch.setattr(
