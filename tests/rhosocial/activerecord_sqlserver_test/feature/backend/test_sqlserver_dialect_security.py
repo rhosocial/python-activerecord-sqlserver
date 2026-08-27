@@ -101,7 +101,10 @@ def test_set_dateformat_whitelist():
     from rhosocial.activerecord.backend.impl.sqlserver.mixins.backend_mixin import _SQLSERVER_DATE_FORMATS
     for fmt in ("mdy", "dmy", "ymd", "ydm", "myd", "dym"):
         assert fmt in _SQLSERVER_DATE_FORMATS
-    for payload in ("xyz", "mdY", "MDY; DROP TABLE--", ""):
+    # Validation lowercases input, so mdY == mdy is valid
+    assert "mdY".strip().lower() in _SQLSERVER_DATE_FORMATS
+    # Genuinely invalid formats
+    for payload in ("xyz", "XYZ; DROP TABLE--", ""):
         assert payload.strip().lower() not in _SQLSERVER_DATE_FORMATS, \
             f"invalid format must not be in whitelist: {payload!r}"
 
@@ -130,9 +133,12 @@ def test_identifier_quoting_balanced(dialect):
         assert result.endswith("]"), f"ends with ]: {result}"
         # Every ] inside the brackets must be escaped as ]] to be valid
         inner = result[1:-1]  # strip outer brackets
-        # Check that unescaped ] does not appear: every ] must be followed by ]
-        for i, ch in enumerate(inner):
-            if ch == "]" and (i + 1 >= len(inner) or inner[i + 1] != "]"):
-                pytest.fail(f"unescaped ] in {result} for payload {payload!r}")
-            if ch == "]" and i + 1 < len(inner) and inner[i + 1] == "]":
-                pass  # escaped ]] pair — skip the next char
+        i = 0
+        while i < len(inner):
+            if inner[i] == "]":
+                # an embedded ] must be part of an escaped ]] pair
+                assert i + 1 < len(inner) and inner[i + 1] == "]", \
+                    f"unescaped ] in {result} for payload {payload!r}"
+                i += 2  # skip the ]] pair
+            else:
+                i += 1
