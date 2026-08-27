@@ -87,17 +87,17 @@ class TestBackendPoolConcurrent:
                 with pool.connection() as backend:
                     for i in range(10):
                         backend.execute(
-                            "INSERT INTO concurrent_test_users (thread_id, name) VALUES (%s, %s)",
+                            "INSERT INTO concurrent_test_users (thread_id, name) VALUES (?, ?)",
                             [thread_id, f"user_{thread_id}_{i}"]
                         )
 
                     query_result = backend.execute(
-                        "SELECT * FROM concurrent_test_users WHERE thread_id = %s",
+                        "SELECT * FROM concurrent_test_users WHERE thread_id = ?",
                         [thread_id]
                     )
 
                     backend.execute(
-                        "UPDATE concurrent_test_users SET name = %s WHERE thread_id = %s AND id <= %s",
+                        "UPDATE concurrent_test_users SET name = ? WHERE thread_id = ? AND id <= ?",
                         [f"updated_{thread_id}", thread_id, thread_id + 5]
                     )
 
@@ -136,7 +136,7 @@ class TestBackendPoolConcurrent:
             for thread_id in range(num_threads):
                 for i in range(records_per_thread):
                     backend.execute(
-                        "INSERT INTO concurrent_test_posts (thread_id, title, content) VALUES (%s, %s, %s)",
+                        "INSERT INTO concurrent_test_posts (thread_id, title, content) VALUES (?, ?, ?)",
                         [thread_id, f"title_{thread_id}_{i}", f"content_{thread_id}_{i}"]
                     )
 
@@ -154,7 +154,7 @@ class TestBackendPoolConcurrent:
                     time.sleep(0.05)
 
                     result = backend.execute(
-                        "SELECT * FROM concurrent_test_posts WHERE thread_id = %s ORDER BY id",
+                        "SELECT * FROM concurrent_test_posts WHERE thread_id = ? ORDER BY id",
                         [thread_id]
                     )
 
@@ -197,7 +197,7 @@ class TestBackendPoolConcurrent:
         with pool.transaction() as backend:
             for i in range(num_threads):
                 backend.execute(
-                    "INSERT INTO concurrent_test_users (thread_id, name) VALUES (%s, 'initial')",
+                    "INSERT INTO concurrent_test_users (thread_id, name) VALUES (?, 'initial')",
                     [i]
                 )
 
@@ -213,7 +213,7 @@ class TestBackendPoolConcurrent:
 
                 with pool.transaction() as backend:
                     backend.execute(
-                        "UPDATE concurrent_test_users SET name = %s WHERE thread_id = %s",
+                        "UPDATE concurrent_test_users SET name = ? WHERE thread_id = ?",
                         [f'modified_by_{thread_id}', thread_id]
                     )
 
@@ -224,7 +224,7 @@ class TestBackendPoolConcurrent:
                     )
 
                     own_row = backend.execute(
-                        "SELECT * FROM concurrent_test_users WHERE thread_id = %s",
+                        "SELECT * FROM concurrent_test_users WHERE thread_id = ?",
                         [thread_id]
                     )
 
@@ -346,12 +346,12 @@ class TestAsyncBackendPoolConcurrent:
             async with pool.connection() as backend:
                 for i in range(10):
                     await backend.execute(
-                        "INSERT INTO concurrent_test_users (task_id, name) VALUES (%s, %s)",
+                        "INSERT INTO concurrent_test_users (task_id, name) VALUES (?, ?)",
                         [task_id, f"user_{task_id}_{i}"]
                     )
 
                 query_result = await backend.execute(
-                    "SELECT * FROM concurrent_test_users WHERE task_id = %s",
+                    "SELECT * FROM concurrent_test_users WHERE task_id = ?",
                     [task_id]
                 )
 
@@ -379,7 +379,7 @@ class TestAsyncBackendPoolConcurrent:
             for task_id in range(num_concurrent):
                 for i in range(records_per_task):
                     await backend.execute(
-                        "INSERT INTO concurrent_test_posts (task_id, title, content) VALUES (%s, %s, %s)",
+                        "INSERT INTO concurrent_test_posts (task_id, title, content) VALUES (?, ?, ?)",
                         [task_id, f"title_{task_id}_{i}", f"content_{task_id}_{i}"]
                     )
 
@@ -393,7 +393,7 @@ class TestAsyncBackendPoolConcurrent:
             async with pool.connection() as backend:
                 await asyncio.sleep(0.05)
                 result = await backend.execute(
-                    "SELECT * FROM concurrent_test_posts WHERE task_id = %s ORDER BY id",
+                    "SELECT * FROM concurrent_test_posts WHERE task_id = ? ORDER BY id",
                     [task_id]
                 )
                 await asyncio.sleep(0.05)

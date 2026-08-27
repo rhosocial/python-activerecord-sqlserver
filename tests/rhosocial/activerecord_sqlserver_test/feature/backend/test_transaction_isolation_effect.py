@@ -49,7 +49,7 @@ class TestIsolationLevelEffects:
             )
         """)
         sqlserver_backend.execute(
-            "INSERT INTO isolation_test (name, balance) VALUES (%s, %s)",
+            "INSERT INTO isolation_test (name, balance) VALUES (?, ?)",
             ("user1", Decimal("100.00"))
         )
         yield "isolation_test"
@@ -80,7 +80,7 @@ class TestIsolationLevelEffects:
                     updated_event.wait(timeout=5)
                     # Read potentially uncommitted data
                     rows = backend1.fetch_all(
-                        "SELECT balance FROM isolation_test WHERE name = %s",
+                        "SELECT balance FROM isolation_test WHERE name = ?",
                         ("user1",)
                     )
                     if rows and rows[0]["balance"] == Decimal("200.00"):
@@ -95,7 +95,7 @@ class TestIsolationLevelEffects:
                 with backend2.transaction():
                     # Update balance
                     backend2.execute(
-                        "UPDATE isolation_test SET balance = %s WHERE name = %s",
+                        "UPDATE isolation_test SET balance = ? WHERE name = ?",
                         (Decimal("200.00"), "user1")
                     )
                     # Signal transaction 1 that the uncommitted change is in place
@@ -136,7 +136,7 @@ class TestIsolationLevelEffects:
                     time.sleep(0.15)
                     # Should NOT see the uncommitted change
                     rows = backend1.fetch_all(
-                        "SELECT balance FROM isolation_test WHERE name = %s",
+                        "SELECT balance FROM isolation_test WHERE name = ?",
                         ("user1",)
                     )
                     if rows and rows[0]["balance"] != Decimal("200.00"):
@@ -152,7 +152,7 @@ class TestIsolationLevelEffects:
                 backend2.transaction_manager.isolation_level = IsolationLevel.READ_COMMITTED
                 with backend2.transaction():
                     backend2.execute(
-                        "UPDATE isolation_test SET balance = %s WHERE name = %s",
+                        "UPDATE isolation_test SET balance = ? WHERE name = ?",
                         (Decimal("200.00"), "user1")
                     )
                     time.sleep(0.2)
@@ -191,7 +191,7 @@ class TestIsolationLevelEffects:
                 with backend1.transaction():
                     # First read
                     rows1 = backend1.fetch_all(
-                        "SELECT balance FROM isolation_test WHERE name = %s",
+                        "SELECT balance FROM isolation_test WHERE name = ?",
                         ("user1",)
                     )
                     read_values.append(rows1[0]["balance"])
@@ -201,7 +201,7 @@ class TestIsolationLevelEffects:
 
                     # Second read (should be same as first)
                     rows2 = backend1.fetch_all(
-                        "SELECT balance FROM isolation_test WHERE name = %s",
+                        "SELECT balance FROM isolation_test WHERE name = ?",
                         ("user1",)
                     )
                     read_values.append(rows2[0]["balance"])
@@ -215,7 +215,7 @@ class TestIsolationLevelEffects:
                 backend2.transaction_manager.isolation_level = IsolationLevel.READ_COMMITTED
                 with backend2.transaction():
                     backend2.execute(
-                        "UPDATE isolation_test SET balance = %s WHERE name = %s",
+                        "UPDATE isolation_test SET balance = ? WHERE name = ?",
                         (Decimal("200.00"), "user1")
                     )
             except Exception as e:
@@ -255,7 +255,7 @@ class TestIsolationLevelEffects:
                 with backend1.transaction():
                     # First count
                     rows1 = backend1.fetch_all(
-                        "SELECT COUNT(*) as cnt FROM isolation_test WHERE balance > %s",
+                        "SELECT COUNT(*) as cnt FROM isolation_test WHERE balance > ?",
                         (Decimal("50.00"),)
                     )
                     initial_count.append(rows1[0]["cnt"])
@@ -265,7 +265,7 @@ class TestIsolationLevelEffects:
 
                     # Second count (should be same)
                     rows2 = backend1.fetch_all(
-                        "SELECT COUNT(*) as cnt FROM isolation_test WHERE balance > %s",
+                        "SELECT COUNT(*) as cnt FROM isolation_test WHERE balance > ?",
                         (Decimal("50.00"),)
                     )
                     second_count.append(rows2[0]["cnt"])
@@ -280,7 +280,7 @@ class TestIsolationLevelEffects:
                 with backend2.transaction():
                     # Try to insert a row that matches the condition
                     backend2.execute(
-                        "INSERT INTO isolation_test (name, balance) VALUES (%s, %s)",
+                        "INSERT INTO isolation_test (name, balance) VALUES (?, ?)",
                         ("user2", Decimal("75.00"))
                     )
                 insert_blocked.append(False)
@@ -318,7 +318,7 @@ class TestTransactionModeEffects:
             )
         """)
         sqlserver_backend.execute(
-            "INSERT INTO mode_test (name, value) VALUES (%s, %s)",
+            "INSERT INTO mode_test (name, value) VALUES (?, ?)",
             ("item1", 100)
         )
         yield "mode_test"
@@ -341,7 +341,7 @@ class TestTransactionModeEffects:
             with sqlserver_backend.transaction():
                 # Attempt to insert (should fail)
                 sqlserver_backend.execute(
-                    "INSERT INTO mode_test (name, value) VALUES (%s, %s)",
+                    "INSERT INTO mode_test (name, value) VALUES (?, ?)",
                     ("item2", 200)
                 )
         except Exception as e:
@@ -369,7 +369,7 @@ class TestTransactionModeEffects:
         sqlserver_backend.transaction_manager.transaction_mode = TransactionMode.READ_WRITE
         with sqlserver_backend.transaction():
             sqlserver_backend.execute(
-                "INSERT INTO mode_test (name, value) VALUES (%s, %s)",
+                "INSERT INTO mode_test (name, value) VALUES (?, ?)",
                 ("item2", 200)
             )
 
@@ -393,7 +393,7 @@ class TestIsolationModeCombination:
             )
         """)
         sqlserver_backend.execute(
-            "INSERT INTO combo_test (name, balance) VALUES (%s, %s)",
+            "INSERT INTO combo_test (name, balance) VALUES (?, ?)",
             ("account1", Decimal("1000.00"))
         )
         yield "combo_test"
@@ -577,7 +577,7 @@ class TestNestedTransactionsWithIsolation:
         with sqlserver_backend.transaction():
             # Insert first record
             sqlserver_backend.execute(
-                "INSERT INTO nested_test (name, value) VALUES (%s, %s)",
+                "INSERT INTO nested_test (name, value) VALUES (?, ?)",
                 ("outer", 1)
             )
 
@@ -586,7 +586,7 @@ class TestNestedTransactionsWithIsolation:
 
             # Insert second record
             sqlserver_backend.execute(
-                "INSERT INTO nested_test (name, value) VALUES (%s, %s)",
+                "INSERT INTO nested_test (name, value) VALUES (?, ?)",
                 ("inner", 2)
             )
 
