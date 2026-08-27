@@ -34,17 +34,14 @@ class SQLServerBackendMixin:
     _identity_columns_cache: Dict[str, Set[str]] = {}
 
     def _prepare_sql_and_params(self, sql: str, params: Optional[Tuple]) -> Tuple[str, Optional[Tuple]]:
-        """Convert ``%s`` placeholders to pyodbc ``?`` markers.
+        """Prepare SQL Server-specific SQL before execution.
 
-        SQL Server uses ODBC qmark placeholders. Raw SQL coming from MySQL-style
-        tests or generic expression renderers may use ``%s``; translate them here
-        (``%%`` is first collapsed to a literal ``%``) so pyodbc never receives a
-        mismatched marker count.
+        This method only performs the SQL Server-specific table hint relocation
+        (``_relocate_table_hint``). Parameter placeholders are provided by the
+        caller according to the ``dialect.get_parameter_placeholder()`` contract
+        (SQL Server returns ``?``, matching pyodbc's native qmark style), so no
+        guessing-style placeholder conversion is done at the execute layer.
         """
-        if params:
-            sql = re.sub(r"%%", "\x00", sql)
-            sql = sql.replace("%s", "?")
-            sql = sql.replace("\x00", "%")
         sql = self._relocate_table_hint(sql)
         return sql, params
 
