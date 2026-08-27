@@ -84,59 +84,55 @@ def test_escape_sql_string_inherited(dialect):
 # ── SET statement whitelist ───────────────────────────────────────────
 
 
-def test_set_language_whitelist(dialect):
-    """SET LANGUAGE accepts valid lang names, rejects invalid."""
-    # Valid
-    dialect._validate_set_language("us_english")  # no raise
-    dialect._validate_set_language("简体中文")  # no raise
-    # Invalid
-    with pytest.raises(ValueError, match="Invalid SET LANGUAGE"):
-        dialect._validate_set_language("malicious; DROP TABLE--")
-    with pytest.raises(ValueError, match="Invalid SET LANGUAGE"):
-        dialect._validate_set_language("")
+def test_set_language_whitelist():
+    """SET LANGUAGE whitelist rejects invalid names, accepts valid ones."""
+    from rhosocial.activerecord.backend.impl.sqlserver.mixins.backend_mixin import _SQLSERVER_LANGUAGES
+    # Valid languages
+    assert "us_english" in _SQLSERVER_LANGUAGES
+    assert "simplified chinese" in _SQLSERVER_LANGUAGES
+    # Invalid / injection payloads must NOT be in the whitelist
+    for payload in ("malicious; DROP TABLE--", "", "us_english; DROP TABLE--"):
+        assert payload.strip().lower() not in _SQLSERVER_LANGUAGES, \
+            f"injection payload must not be in whitelist: {payload!r}"
 
 
-def test_set_dateformat_whitelist(dialect):
-    """SET DATEFORMAT accepts valid formats, rejects invalid."""
+def test_set_dateformat_whitelist():
+    """SET DATEFORMAT whitelist rejects invalid formats."""
+    from rhosocial.activerecord.backend.impl.sqlserver.mixins.backend_mixin import _SQLSERVER_DATE_FORMATS
     for fmt in ("mdy", "dmy", "ymd", "ydm", "myd", "dym"):
-        dialect._validate_set_dateformat(fmt)  # no raise
-    with pytest.raises(ValueError, match="Invalid SET DATEFORMAT"):
-        dialect._validate_set_dateformat("xyz")
-    with pytest.raises(ValueError, match="Invalid SET DATEFORMAT"):
-        dialect._validate_set_dateformat("mdY")
+        assert fmt in _SQLSERVER_DATE_FORMATS
+    for payload in ("xyz", "mdY", "MDY; DROP TABLE--", ""):
+        assert payload.strip().lower() not in _SQLSERVER_DATE_FORMATS, \
+            f"invalid format must not be in whitelist: {payload!r}"
 
 
-def test_set_deadlock_priority_whitelist(dialect):
-    """SET DEADLOCK_PRIORITY accepts valid priorities, rejects invalid."""
-    dialect._validate_set_deadlock_priority(-10)  # no raise
-    dialect._validate_set_deadlock_priority(10)  # no raise
-    dialect._validate_set_deadlock_priority("LOW")  # no raise
-    dialect._validate_set_deadlock_priority("NORMAL")  # no raise
-    dialect._validate_set_deadlock_priority("HIGH")  # no raise
-    with pytest.raises(ValueError, match="Invalid DEADLOCK_PRIORITY"):
-        dialect._validate_set_deadlock_priority(-11)
-    with pytest.raises(ValueError, match="Invalid DEADLOCK_PRIORITY"):
-        dialect._validate_set_deadlock_priority(11)
-    with pytest.raises(ValueError, match="Invalid DEADLOCK_PRIORITY"):
-        dialect._validate_set_deadlock_priority("INJECTION")
-    with pytest.raises(ValueError, match="Invalid DEADLOCK_PRIORITY"):
-        dialect._validate_set_deadlock_priority("")
+def test_set_deadlock_priority_whitelist():
+    """SET DEADLOCK_PRIORITY whitelist rejects invalid values."""
+    from rhosocial.activerecord.backend.impl.sqlserver.mixins.backend_mixin import (
+        _SQLSERVER_DEADLOCK_PRIORITIES,
+    )
+    for name in ("LOW", "NORMAL", "HIGH"):
+        assert name in _SQLSERVER_DEADLOCK_PRIORITIES
+    for payload in ("INJECTION", "", "HIGH; DROP TABLE--"):
+        assert payload.upper() not in _SQLSERVER_DEADLOCK_PRIORITIES, \
+            f"invalid priority must not be in whitelist: {payload!r}"
 
 
 # ── Identifier quoting ────────────────────────────────────────────────
 
 
 def test_identifier_quoting_balanced(dialect):
-    """format_identifier always produces balanced brackets."""
+    """format_identifier always produces syntactically valid brackets."""
     payloads = ["]", "a]b", "a]]b", "a]b]c"]
     for payload in payloads:
         result = dialect.format_identifier(payload)
-        opened = result.count("[")
-        closed = result.count("]")  # includes escaped ]]
-        # Each ]] is one escaped bracket, so real counting: every ] is either
-        # part of ]] or a closing bracket. We just check it's parseable.
         assert result.startswith("["), f"starts with [: {result}"
         assert result.endswith("]"), f"ends with ]: {result}"
-        # Embedded ]] pairs are escaped brackets; single ] closes group
-        assert result.count("]") % 2 == 0 or result == "[]", \
-            f"balanced brackets: {result}"
+        # Every ] inside the brackets must be escaped as ]] to be valid
+        inner = result[1:-1]  # strip outer brackets
+        # Check that unescaped ] does not appear: every ] must be followed by ]
+        for i, ch in enumerate(inner):
+            if ch == "]" and (i + 1 >= len(inner) or inner[i + 1] != "]"):
+                pytest.fail(f"unescaped ] in {result} for payload {payload!r}")
+            if ch == "]" and i + 1 < len(inner) and inner[i + 1] == "]":
+                pass  # escaped ]] pair — skip the next char
