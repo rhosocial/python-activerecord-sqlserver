@@ -1,6 +1,6 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/backend_mixin.py
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+from typing import Any, Dict, Optional, Set, Tuple, Type, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -26,6 +26,21 @@ _CLAUSE_KEYWORDS = (
 _TABLE_REF_PATTERN = re.compile(
     rf"(\[[^\]]+\]|[A-Za-z_][\w$]*)(\s+(?:AS\s+)?(?!(?:{_CLAUSE_KEYWORDS})\b)[A-Za-z_][\w$]*)?"
 )
+
+_SQLSERVER_DATE_FORMATS = frozenset({"mdy", "dmy", "ymd", "ydm", "myd", "dym"})
+
+_SQLSERVER_DEADLOCK_PRIORITIES = frozenset({"LOW", "NORMAL", "HIGH"})
+
+_SQLSERVER_LANGUAGES = frozenset({
+    "us_english", "english", "british english", "bokmål", "brazilian",
+    "simplified chinese", "traditional chinese",
+    "japanese", "korean", "french", "german", "italian",
+    "spanish", "portuguese", "dutch", "swedish", "norwegian",
+    "danish", "finnish", "polish", "czech", "hungarian",
+    "romanian", "turkish", "greek", "russian", "arabic",
+    "thai", "slovak", "slovenian", "croatian", "lithuanian",
+    "latvian", "estonian", "bulgarian",
+})
 
 
 class SQLServerBackendMixin:
@@ -171,7 +186,7 @@ class SQLServerBackendMixin:
 
     def get_identity_current(self, table: str) -> Optional[int]:
         cursor = self._get_cursor()
-        cursor.execute(f"SELECT IDENT_CURRENT('{table}')")
+        cursor.execute("SELECT IDENT_CURRENT(?)", (table,))
         row = cursor.fetchone()
         cursor.close()
         if row and row[0] is not None:
@@ -180,7 +195,7 @@ class SQLServerBackendMixin:
 
     def reset_identity(self, table: str, seed: int = 1) -> None:
         cursor = self._get_cursor()
-        cursor.execute(f"DBCC CHECKIDENT('{table}', RESEED, {seed})")
+        cursor.execute("DBCC CHECKIDENT(?, RESEED, ?)", (table, seed))
         cursor.close()
 
     def set_lock_timeout(self, timeout_ms: int) -> None:
@@ -190,9 +205,19 @@ class SQLServerBackendMixin:
 
     def set_deadlock_priority(self, priority) -> None:
         if isinstance(priority, int):
+            if not -10 <= priority <= 10:
+                raise ValueError(
+                    f"Invalid DEADLOCK_PRIORITY: {priority!r} (must be -10 to 10)"
+                )
             sql = f"SET DEADLOCK_PRIORITY {priority}"
         else:
-            sql = f"SET DEADLOCK_PRIORITY {priority.upper()}"
+            name = priority.upper()
+            if name not in _SQLSERVER_DEADLOCK_PRIORITIES:
+                raise ValueError(
+                    f"Invalid DEADLOCK_PRIORITY: {priority!r} "
+                    f"(must be one of {sorted(_SQLSERVER_DEADLOCK_PRIORITIES)})"
+                )
+            sql = f"SET DEADLOCK_PRIORITY {name}"
         cursor = self._get_cursor()
         cursor.execute(sql)
         cursor.close()
@@ -221,13 +246,22 @@ class SQLServerBackendMixin:
         cursor.close()
 
     def set_language(self, language: str) -> None:
+        key = language.strip().lower()
+        if key not in _SQLSERVER_LANGUAGES:
+            raise ValueError(f"Unsupported SQL Server language: {language!r}")
         cursor = self._get_cursor()
-        cursor.execute(f"SET LANGUAGE {language}")
+        cursor.execute(f"SET LANGUAGE '{key}'")
         cursor.close()
 
     def set_dateformat(self, format: str) -> None:
+        key = format.strip().lower()
+        if key not in _SQLSERVER_DATE_FORMATS:
+            raise ValueError(
+                f"Invalid DATEFORMAT: {format!r} "
+                f"(must be one of {sorted(_SQLSERVER_DATE_FORMATS)})"
+            )
         cursor = self._get_cursor()
-        cursor.execute(f"SET DATEFORMAT {format}")
+        cursor.execute(f"SET DATEFORMAT {key}")
         cursor.close()
 
     def get_product_version(self) -> str:

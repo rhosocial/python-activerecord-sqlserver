@@ -62,9 +62,11 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         include_views: bool = True, table_type: Optional[str] = None,
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        conditions = [f"TABLE_SCHEMA = '{target}'"]
+        params: List[str] = [target]
+        conditions = ["TABLE_SCHEMA = ?"]
         if table_type:
-            conditions.append(f"TABLE_TYPE = '{table_type}'")
+            conditions.append("TABLE_TYPE = ?")
+            params.append(table_type)
         elif not include_views:
             conditions.append("TABLE_TYPE = 'BASE TABLE'")
         where = " AND ".join(conditions)
@@ -73,13 +75,13 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             FROM INFORMATION_SCHEMA.TABLES
             WHERE {where}
             ORDER BY TABLE_NAME
-        """, ())
+        """, tuple(params))
 
     def _build_column_info_sql(
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return (f"""
+        return ("""
             SELECT
                 c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
                 c.COLUMN_DEFAULT, c.CHARACTER_MAXIMUM_LENGTH,
@@ -90,29 +92,29 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                     c.COLUMN_NAME, 'IsIdentity'
                 ) AS IS_IDENTITY
             FROM INFORMATION_SCHEMA.COLUMNS c
-            WHERE c.TABLE_SCHEMA = '{target}' AND c.TABLE_NAME = '{table_name}'
+            WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ?
             ORDER BY c.ORDINAL_POSITION
-        """, ())
+        """, (target, table_name))
 
     def _build_primary_key_sql(
         self, table_name: str, schema: str
-    ) -> str:
-        return f"""
+    ) -> Tuple[str, tuple]:
+        return ("""
             SELECT ccu.COLUMN_NAME
             FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
             JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu
                 ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
                 AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
-            WHERE tc.TABLE_SCHEMA = '{schema}'
-              AND tc.TABLE_NAME = '{table_name}'
+            WHERE tc.TABLE_SCHEMA = ?
+              AND tc.TABLE_NAME = ?
               AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-        """
+        """, (schema, table_name))
 
     def _build_index_info_sql(
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return (f"""
+        return ("""
             SELECT
                 i.name AS index_name,
                 i.is_unique,
@@ -128,16 +130,16 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                 ON i.object_id = ic.object_id AND i.index_id = ic.index_id
             JOIN sys.columns c
                 ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE s.name = '{target}' AND t.name = '{table_name}'
+            WHERE s.name = ? AND t.name = ?
               AND i.name IS NOT NULL
             ORDER BY i.name, ic.key_ordinal
-        """, ())
+        """, (target, table_name))
 
     def _build_foreign_key_sql(
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return (f"""
+        return ("""
             SELECT
                 fk.name AS fk_name,
                 COL_NAME(fc.parent_object_id, fc.parent_column_id) AS col_name,
@@ -151,41 +153,42 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                 ON fk.object_id = fc.constraint_object_id
             JOIN sys.tables t ON fk.parent_object_id = t.object_id
             JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = '{target}' AND t.name = '{table_name}'
+            WHERE s.name = ? AND t.name = ?
             ORDER BY fk.name, fc.constraint_column_id
-        """, ())
+        """, (target, table_name))
 
     def _build_view_list_sql(
         self, schema: Optional[str], include_system: bool
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return (f"""
+        return ("""
             SELECT TABLE_NAME AS view_name
             FROM INFORMATION_SCHEMA.VIEWS
-            WHERE TABLE_SCHEMA = '{target}'
+            WHERE TABLE_SCHEMA = ?
             ORDER BY TABLE_NAME
-        """, ())
+        """, (target,))
 
     def _build_view_info_sql(
         self, view_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return (f"""
+        return ("""
             SELECT
                 TABLE_NAME AS view_name,
                 VIEW_DEFINITION AS definition,
                 IS_UPDATABLE
             FROM INFORMATION_SCHEMA.VIEWS
-            WHERE TABLE_SCHEMA = '{target}' AND TABLE_NAME = '{view_name}'
-        """, ())
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+        """, (target, view_name))
 
     def _build_trigger_list_sql(
         self, table_name: Optional[str], schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        table_filter = (
-            f"AND t.name = '{table_name}'" if table_name else ""
-        )
+        params: List[str] = [target]
+        table_filter = "AND t.name = ?" if table_name else ""
+        if table_name:
+            params.append(table_name)
         return (f"""
             SELECT
                 tr.name AS trigger_name,
@@ -196,9 +199,9 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             FROM sys.triggers tr
             JOIN sys.tables t ON tr.parent_id = t.object_id
             JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = '{target}' {table_filter}
+            WHERE s.name = ? {table_filter}
             ORDER BY tr.name
-        """, ())
+        """, tuple(params))
 
     # ------------------------------------------------------------------
     # Parse methods — pure Python, no I/O
@@ -444,8 +447,8 @@ class SyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        pk_sql = self._build_primary_key_sql(table_name, target)
-        pk_rows = self._executor.execute(pk_sql)
+        pk_sql, pk_params = self._build_primary_key_sql(table_name, target)
+        pk_rows = self._executor.execute(pk_sql, pk_params)
         primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
 
         sql, params = self._build_column_info_sql(table_name, schema)
@@ -504,8 +507,8 @@ class AsyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        pk_sql = self._build_primary_key_sql(table_name, target)
-        pk_rows = await self._executor.execute(pk_sql)
+        pk_sql, pk_params = self._build_primary_key_sql(table_name, target)
+        pk_rows = await self._executor.execute(pk_sql, pk_params)
         primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
 
         sql, params = self._build_column_info_sql(table_name, schema)
