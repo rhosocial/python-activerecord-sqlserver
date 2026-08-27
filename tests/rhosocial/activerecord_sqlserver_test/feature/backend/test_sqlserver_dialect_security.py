@@ -79,3 +79,64 @@ def test_escape_sql_string_inherited(dialect):
     """Test SQL Server inherits _escape_sql_string from base dialect."""
     result = dialect._escape_sql_string("test's value")
     assert result == "test''s value"
+
+
+# ── SET statement whitelist ───────────────────────────────────────────
+
+
+def test_set_language_whitelist(dialect):
+    """SET LANGUAGE accepts valid lang names, rejects invalid."""
+    # Valid
+    dialect._validate_set_language("us_english")  # no raise
+    dialect._validate_set_language("简体中文")  # no raise
+    # Invalid
+    with pytest.raises(ValueError, match="Invalid SET LANGUAGE"):
+        dialect._validate_set_language("malicious; DROP TABLE--")
+    with pytest.raises(ValueError, match="Invalid SET LANGUAGE"):
+        dialect._validate_set_language("")
+
+
+def test_set_dateformat_whitelist(dialect):
+    """SET DATEFORMAT accepts valid formats, rejects invalid."""
+    for fmt in ("mdy", "dmy", "ymd", "ydm", "myd", "dym"):
+        dialect._validate_set_dateformat(fmt)  # no raise
+    with pytest.raises(ValueError, match="Invalid SET DATEFORMAT"):
+        dialect._validate_set_dateformat("xyz")
+    with pytest.raises(ValueError, match="Invalid SET DATEFORMAT"):
+        dialect._validate_set_dateformat("mdY")
+
+
+def test_set_deadlock_priority_whitelist(dialect):
+    """SET DEADLOCK_PRIORITY accepts valid priorities, rejects invalid."""
+    dialect._validate_set_deadlock_priority(-10)  # no raise
+    dialect._validate_set_deadlock_priority(10)  # no raise
+    dialect._validate_set_deadlock_priority("LOW")  # no raise
+    dialect._validate_set_deadlock_priority("NORMAL")  # no raise
+    dialect._validate_set_deadlock_priority("HIGH")  # no raise
+    with pytest.raises(ValueError, match="Invalid DEADLOCK_PRIORITY"):
+        dialect._validate_set_deadlock_priority(-11)
+    with pytest.raises(ValueError, match="Invalid DEADLOCK_PRIORITY"):
+        dialect._validate_set_deadlock_priority(11)
+    with pytest.raises(ValueError, match="Invalid DEADLOCK_PRIORITY"):
+        dialect._validate_set_deadlock_priority("INJECTION")
+    with pytest.raises(ValueError, match="Invalid DEADLOCK_PRIORITY"):
+        dialect._validate_set_deadlock_priority("")
+
+
+# ── Identifier quoting ────────────────────────────────────────────────
+
+
+def test_identifier_quoting_balanced(dialect):
+    """format_identifier always produces balanced brackets."""
+    payloads = ["]", "a]b", "a]]b", "a]b]c"]
+    for payload in payloads:
+        result = dialect.format_identifier(payload)
+        opened = result.count("[")
+        closed = result.count("]")  # includes escaped ]]
+        # Each ]] is one escaped bracket, so real counting: every ] is either
+        # part of ]] or a closing bracket. We just check it's parseable.
+        assert result.startswith("["), f"starts with [: {result}"
+        assert result.endswith("]"), f"ends with ]: {result}"
+        # Embedded ]] pairs are escaped brackets; single ] closes group
+        assert result.count("]") % 2 == 0 or result == "[]", \
+            f"balanced brackets: {result}"
