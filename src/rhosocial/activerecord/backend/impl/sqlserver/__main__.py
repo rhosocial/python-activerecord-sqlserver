@@ -22,18 +22,18 @@ def _build_parser():
     return parser
 
 
-def parse_args():
+def parse_args(argv=None):
     """Parse command-line arguments.
 
     Provided for test compatibility. In production, main() is used instead.
     """
     parser = _build_parser()
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main():
+def main(argv=None):
     parser = _build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.command is None:
         cmd_list = ", ".join(f"'{c}'" for c in COMMAND_NAMES[:-1])

@@ -31,13 +31,13 @@ class TestMySQLCRUDBackend:
     def test_insert_and_fetch(self, sqlserver_backend, test_table):
         """Test inserting data and fetching it back."""
         result = sqlserver_backend.execute(
-            "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+            "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
             ("Alice", 25, Decimal("100.50"))
         )
         assert result.affected_rows == 1
 
         row = sqlserver_backend.fetch_one(
-            "SELECT * FROM test_crud_table WHERE name = %s",
+            "SELECT * FROM test_crud_table WHERE name = ?",
             ("Alice",)
         )
         assert row is not None
@@ -48,18 +48,18 @@ class TestMySQLCRUDBackend:
     def test_update_and_verify(self, sqlserver_backend, test_table):
         """Test updating data and verifying the change."""
         sqlserver_backend.execute(
-            "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+            "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
             ("Bob", 30, Decimal("200.00"))
         )
 
         result = sqlserver_backend.execute(
-            "UPDATE test_crud_table SET age = %s, balance = %s WHERE name = %s",
+            "UPDATE test_crud_table SET age = ?, balance = ? WHERE name = ?",
             (31, Decimal("250.75"), "Bob")
         )
         assert result.affected_rows == 1
 
         row = sqlserver_backend.fetch_one(
-            "SELECT age, balance FROM test_crud_table WHERE name = %s",
+            "SELECT age, balance FROM test_crud_table WHERE name = ?",
             ("Bob",)
         )
         assert row["age"] == 31
@@ -68,18 +68,18 @@ class TestMySQLCRUDBackend:
     def test_delete_and_confirm(self, sqlserver_backend, test_table):
         """Test deleting data and confirming removal."""
         sqlserver_backend.execute(
-            "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+            "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
             ("Charlie", 35, Decimal("300.00"))
         )
 
         result = sqlserver_backend.execute(
-            "DELETE FROM test_crud_table WHERE name = %s",
+            "DELETE FROM test_crud_table WHERE name = ?",
             ("Charlie",)
         )
         assert result.affected_rows == 1
 
         row = sqlserver_backend.fetch_one(
-            "SELECT * FROM test_crud_table WHERE name = %s",
+            "SELECT * FROM test_crud_table WHERE name = ?",
             ("Charlie",)
         )
         assert row is None
@@ -88,7 +88,7 @@ class TestMySQLCRUDBackend:
         """Test fetching multiple rows."""
         for i in range(3):
             sqlserver_backend.execute(
-                "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+                "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
                 (f"User{i}", 20 + i, Decimal(f"{100 + i * 50}"))
             )
 
@@ -104,12 +104,12 @@ class TestMySQLCRUDBackend:
         """Test transaction using context manager."""
         with sqlserver_backend.transaction() as tx:
             sqlserver_backend.execute(
-                "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+                "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
                 ("TransactionTest", 40, Decimal("500.00"))
             )
 
         row = sqlserver_backend.fetch_one(
-            "SELECT * FROM test_crud_table WHERE name = %s",
+            "SELECT * FROM test_crud_table WHERE name = ?",
             ("TransactionTest",)
         )
         assert row is not None
@@ -118,7 +118,7 @@ class TestMySQLCRUDBackend:
     def test_fetch_none(self, sqlserver_backend, test_table):
         """Test fetching when no results exist."""
         row = sqlserver_backend.fetch_one(
-            "SELECT * FROM test_crud_table WHERE name = %s",
+            "SELECT * FROM test_crud_table WHERE name = ?",
             ("NonExistent",)
         )
         assert row is None
@@ -145,13 +145,13 @@ class TestAsyncMySQLCRUDBackend:
     async def test_insert_and_fetch_async(self, async_sqlserver_backend, async_test_table):
         """Test inserting data and fetching it back (async)."""
         result = await async_sqlserver_backend.execute(
-            "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+            "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
             ("Alice", 25, Decimal("100.50"))
         )
         assert result.affected_rows == 1
 
         row = await async_sqlserver_backend.fetch_one(
-            "SELECT * FROM test_crud_table WHERE name = %s",
+            "SELECT * FROM test_crud_table WHERE name = ?",
             ("Alice",)
         )
         assert row is not None
@@ -161,18 +161,18 @@ class TestAsyncMySQLCRUDBackend:
     async def test_update_and_verify_async(self, async_sqlserver_backend, async_test_table):
         """Test updating data and verifying the change (async)."""
         await async_sqlserver_backend.execute(
-            "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+            "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
             ("Bob", 30, Decimal("200.00"))
         )
 
         result = await async_sqlserver_backend.execute(
-            "UPDATE test_crud_table SET age = %s, balance = %s WHERE name = %s",
+            "UPDATE test_crud_table SET age = ?, balance = ? WHERE name = ?",
             (31, Decimal("250.75"), "Bob")
         )
         assert result.affected_rows == 1
 
         row = await async_sqlserver_backend.fetch_one(
-            "SELECT age, balance FROM test_crud_table WHERE name = %s",
+            "SELECT age, balance FROM test_crud_table WHERE name = ?",
             ("Bob",)
         )
         assert row["age"] == 31
@@ -181,18 +181,18 @@ class TestAsyncMySQLCRUDBackend:
     async def test_delete_and_confirm_async(self, async_sqlserver_backend, async_test_table):
         """Test deleting data and confirming removal (async)."""
         await async_sqlserver_backend.execute(
-            "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+            "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
             ("Charlie", 35, Decimal("300.00"))
         )
 
         result = await async_sqlserver_backend.execute(
-            "DELETE FROM test_crud_table WHERE name = %s",
+            "DELETE FROM test_crud_table WHERE name = ?",
             ("Charlie",)
         )
         assert result.affected_rows == 1
 
         row = await async_sqlserver_backend.fetch_one(
-            "SELECT * FROM test_crud_table WHERE name = %s",
+            "SELECT * FROM test_crud_table WHERE name = ?",
             ("Charlie",)
         )
         assert row is None
@@ -201,7 +201,7 @@ class TestAsyncMySQLCRUDBackend:
         """Test fetching multiple rows (async)."""
         for i in range(3):
             await async_sqlserver_backend.execute(
-                "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+                "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
                 (f"User{i}", 20 + i, Decimal(f"{100 + i * 50}"))
             )
 
@@ -217,12 +217,12 @@ class TestAsyncMySQLCRUDBackend:
         """Test transaction using context manager (async)."""
         async with async_sqlserver_backend.transaction() as tx:
             await async_sqlserver_backend.execute(
-                "INSERT INTO test_crud_table (name, age, balance) VALUES (%s, %s, %s)",
+                "INSERT INTO test_crud_table (name, age, balance) VALUES (?, ?, ?)",
                 ("TransactionTest", 40, Decimal("500.00"))
             )
 
         row = await async_sqlserver_backend.fetch_one(
-            "SELECT * FROM test_crud_table WHERE name = %s",
+            "SELECT * FROM test_crud_table WHERE name = ?",
             ("TransactionTest",)
         )
         assert row is not None
@@ -231,7 +231,7 @@ class TestAsyncMySQLCRUDBackend:
     async def test_async_fetch_none(self, async_sqlserver_backend, async_test_table):
         """Test fetching when no results exist (async)."""
         row = await async_sqlserver_backend.fetch_one(
-            "SELECT * FROM test_crud_table WHERE name = %s",
+            "SELECT * FROM test_crud_table WHERE name = ?",
             ("NonExistent",)
         )
         assert row is None

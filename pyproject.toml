@@ -82,7 +82,7 @@ namespaces = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q"
+addopts = "-ra -q -p rhosocial.activerecord.testsuite.conftest"
 asyncio_mode = "auto"
 testpaths = [
     "tests",
