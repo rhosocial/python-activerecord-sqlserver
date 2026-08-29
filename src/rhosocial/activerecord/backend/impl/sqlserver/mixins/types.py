@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import re
-from typing import Tuple
+from typing import Optional, Tuple
 
-from rhosocial.activerecord.backend.dialect.mixins import DDLTypeMixin
+from rhosocial.activerecord.backend.dialect.mixins import (
+    DDLTypeMixin,
+    DDLTypeSuggestionMixin,
+)
 from rhosocial.activerecord.backend.dialect.protocols import DDLTypeSupport
 from rhosocial.activerecord.backend.expression.types import (
     BigIntType,
@@ -105,6 +108,11 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
     def format_data_type_blob(self, data_type: BlobType) -> Tuple[str, tuple]:
         return "VARBINARY(MAX)", ()
 
+    @DDLTypeMixin.handles(CustomType)
+    def format_data_type_custom(self, data_type: CustomType) -> Tuple[str, tuple]:
+        """Render a backend-specific type verbatim (e.g. ``uniqueidentifier``)."""
+        return data_type.raw, ()
+
     # --- Parsing ---
 
     def parse_type(self, raw: str) -> DataType:
@@ -164,3 +172,54 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
             return BlobType()
 
         return CustomType(stripped)
+
+class SQLServerTypeSuggestionMixin(DDLTypeSuggestionMixin):
+    """SQL Server ``suggest_column_type()``.
+
+    SQL Server reuses the core generic ``DataType`` classes (rendered by
+    ``SQLServerTypeSupportMixin``); suggestions therefore map to core types:
+
+    - ``uuid.UUID`` → ``CustomType("uniqueidentifier")`` (native SQL Server
+      UUID type; the default value adapter already round-trips via str).
+    - ``dict`` / ``list`` → ``JsonType`` (SQL Server has no native JSON type;
+      rendered as ``NVARCHAR(MAX)`` and handled by ``SQLServerJSONAdapter``).
+    - ``str`` → ``VarCharType(255)`` (``VARCHAR`` in the base dialect,
+      ``NVARCHAR`` under ``SQLServerUnicodeDialect``).
+
+    All common types are stable across supported SQL Server versions, so no
+    version gating applies (unlike MySQL's 5.7 JSON threshold).
+    """
+
+    def suggest_column_type(
+        self, python_type: type, version: "Optional[Tuple[int, int, int]]" = None
+    ) -> "Optional[DataType]":
+        import datetime as _dt
+        import decimal as _dec
+        import enum as _enum
+        import uuid as _uuid
+
+        mapping = {
+            str: VarCharType,
+            int: IntegerType,
+            bool: BooleanType,
+            float: DoubleType,
+            bytes: BlobType,
+            _dt.datetime: DateTimeType,
+            _dt.date: DateType,
+            _dt.time: TimeType,
+            _dec.Decimal: DecimalType,
+            dict: JsonType,
+            list: JsonType,
+            _enum.Enum: VarCharType,
+        }
+        if python_type is _uuid.UUID:
+            return CustomType("uniqueidentifier")
+        factory = mapping.get(python_type)
+        if factory is not None:
+            if python_type is _enum.Enum:
+                return VarCharType(64)
+            if python_type is str:
+                return VarCharType(255)
+            return factory()
+
+        return super().suggest_column_type(python_type, version)

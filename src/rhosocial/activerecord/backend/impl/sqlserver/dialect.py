@@ -109,7 +109,7 @@ from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
-from .mixins.types import SQLServerTypeSupportMixin
+from .mixins.types import SQLServerTypeSupportMixin, SQLServerTypeSuggestionMixin
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
 if TYPE_CHECKING:
@@ -194,6 +194,7 @@ class SQLServerDialect(
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
     DDLColumnMixin,
     SQLServerTypeSupportMixin,  # DataType formatting & parsing (standard MRO registration)
+    SQLServerTypeSuggestionMixin,  # Python -> SQL DataType suggestions (DDL generation)
     DDLTypeMixin,
     # Feature mixins
     CollationMixin,
