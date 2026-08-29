@@ -109,6 +109,7 @@ from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
+from .mixins.types import SQLServerTypeSupportMixin
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
 if TYPE_CHECKING:
@@ -192,6 +193,7 @@ class SQLServerDialect(
     SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
     DDLColumnMixin,
+    SQLServerTypeSupportMixin,  # DataType formatting & parsing (standard MRO registration)
     DDLTypeMixin,
     # Feature mixins
     CollationMixin,
@@ -1889,23 +1891,6 @@ class SQLServerDialect(
         return f"OPTION ({', '.join(clause.hints)})", ()
 
 
-# Lazy import to avoid circular dependency (backend → dialect → mixins.types → backend)
-def _register_type_formatters():
-    from .mixins.types import SQLServerTypeSupportMixin
-
-    if not hasattr(SQLServerDialect, "_type_formatters"):
-        SQLServerDialect._type_formatters = {}
-    for member_name in dir(SQLServerTypeSupportMixin):
-        member = getattr(SQLServerTypeSupportMixin, member_name, None)
-        handles_types = getattr(member, "_handles_types", None)
-        if handles_types is not None:
-            for dt_cls in handles_types:
-                SQLServerDialect._type_formatters[dt_cls] = member_name
-            setattr(SQLServerDialect, member_name, member)
-        elif member_name == "parse_type" and callable(member):
-            setattr(SQLServerDialect, member_name, member)
-
-
 def _register_partition_formatters():
     from .mixins.partition import SQLServerPartitionMixin
 
@@ -1916,5 +1901,4 @@ def _register_partition_formatters():
                 setattr(SQLServerDialect, member_name, member)
 
 
-_register_type_formatters()
 _register_partition_formatters()
