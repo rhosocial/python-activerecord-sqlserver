@@ -12,6 +12,7 @@ on:
     - main
     - "release/v**"
     - "maint/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -58,8 +59,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -104,7 +105,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py39-sqlserver2017:
     name: Run tests with Python 3.9 and SQL Server 2017
@@ -147,8 +148,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -193,7 +194,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py310-sqlserver2019:
     name: Run tests with Python 3.10 and SQL Server 2019
@@ -236,8 +237,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -282,7 +283,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py311-sqlserver2019:
     name: Run tests with Python 3.11 and SQL Server 2019
@@ -325,8 +326,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -371,7 +372,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py312-sqlserver2025:
     name: Run tests with Python 3.12 and SQL Server 2025
@@ -414,8 +415,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -460,7 +461,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py313-sqlserver2022:
     name: Run tests with Python 3.13 and SQL Server 2022
@@ -503,8 +504,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -549,7 +550,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py313t-sqlserver2019:
     name: Run tests with Python 3.13t (free-threaded) and SQL Server 2019
@@ -593,8 +594,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -639,7 +640,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py314-sqlserver2025:
     name: Run tests with Python 3.14 and SQL Server 2025
@@ -682,8 +683,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -728,9 +729,7 @@ jobs:
     - name: Run tests with coverage
       run: |
         export PYTHONPATH=src:tests
-        pip install coverage
-        coverage run --source=src -m pytest tests/ --tb=short
-        coverage xml
+        python -m pytest tests/ --tb=short -n 8 --dist=loadgroup --cov=src/rhosocial --cov-branch --cov-report=xml
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
@@ -739,7 +738,7 @@ jobs:
         files: ./coverage.xml
         flags: unittests,python-3.14,sqlserver-2025
         name: codecov-sqlserver-3.14-2025
-        fail_ci_if_error: false
+        fail_ci_if_error: true
 
   test-py314t-sqlserver2022:
     name: Run tests with Python 3.14t (free-threaded) and SQL Server 2022
@@ -782,8 +781,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install rhosocial-activerecord==1.0.0.dev29
-        pip install rhosocial-activerecord-testsuite==1.0.0.dev16
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
 
     - name: Create test database
       run: |
@@ -828,4 +827,4 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x

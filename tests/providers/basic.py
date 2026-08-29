@@ -515,6 +515,10 @@ class BasicSyncProvider(BasicProviderBase, IBasicSyncProvider, WorkerTestProtoco
             else:
                 raise ValueError("No scenarios registered")
         config_dict = SCENARIO_MAP[scenario_name]
+        from providers.pooling import resolve_database_name
+        pooled_db = resolve_database_name(scenario_name)
+        if pooled_db:
+            config_dict = {**config_dict, "database": pooled_db}
         return {
             "backend_module": "rhosocial.activerecord.backend.impl.sqlserver",
             "backend_class_name": backend_class_name,

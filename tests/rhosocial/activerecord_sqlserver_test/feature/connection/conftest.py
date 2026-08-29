@@ -88,7 +88,14 @@ def get_scenario_config(name: str) -> Dict[str, Any]:
             name = next(iter(SCENARIO_MAP))
         else:
             raise ValueError("No scenarios registered or enabled")
-    return SCENARIO_MAP[name]
+    scenario_config = SCENARIO_MAP[name].copy()
+    # Apply the pooled database name so parallel workers never share a schema.
+    from providers.pooling import resolve_database_name
+
+    pooled_db = resolve_database_name(name)
+    if pooled_db:
+        scenario_config["database"] = pooled_db
+    return scenario_config
 
 
 def get_scenario_names():

@@ -7,6 +7,11 @@ This directory contains example code demonstrating how to use the rhosocial-acti
 ```
 examples/
 ├── README.md               # This file
+├── cli/                    # CLI demo scripts (named connection/query/procedure)
+│   ├── __init__.py
+│   ├── named_connection_demo.py
+│   ├── named_query_demo.py
+│   └── named_procedure_demo.py
 ├── connection/             # Connection examples
 │   ├── __init__.py
 │   └── quickstart.py       # Quick start guide - connect, query, result handling
@@ -18,6 +23,16 @@ examples/
 │   ├── __init__.py
 │   ├── with_output.py      # Insert with OUTPUT clause (SQL Server's RETURNING)
 │   └── batch.py            # Batch insert multiple rows
+├── named_connections/      # Named Connection examples
+│   ├── __init__.py
+│   ├── development.py      # Local/dev named connections
+│   └── production.py       # Production named connections
+├── named_expressions/      # Named Expression (Named Query) examples
+│   ├── __init__.py
+│   └── order_expressions.py
+├── named_procedures/       # Named Procedure examples
+│   ├── __init__.py
+│   └── order_workflow.py   # Order processing workflow procedure
 ├── query/                  # Query (SELECT) examples
 │   ├── __init__.py
 │   ├── basic.py            # Basic SELECT with WHERE, ORDER BY, OFFSET FETCH
@@ -108,6 +123,9 @@ export SQLSERVER_PASSWORD=YourPassword
 
 # Run a specific example
 python -m rhosocial.activerecord.backend.impl.sqlserver.examples.ddl.create_table
+
+# Run a CLI demo script
+python src/rhosocial/activerecord/backend/impl/sqlserver/examples/cli/named_query_demo.py
 ```
 
 ## For LLM Context

@@ -8,6 +8,7 @@ and SQL Server-specific data types.
 
 import json
 import uuid
+import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from datetime import date, datetime, time, timezone
 from typing import Any, Dict, List, Type, Union
@@ -203,19 +204,21 @@ class SQLServerDateAdapter(TypeAdapter):
     def to_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
         if value is None:
             return None
-        if isinstance(value, date):
-            return value
+        # datetime is an isinstance of date, so it must be checked first
+        # to truncate to the date component.
         if isinstance(value, datetime):
             return value.date()
+        if isinstance(value, date):
+            return value
         raise TypeError(f"Expected date, got {type(value)}")
     
     def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> date:
         if value is None:
             return None
-        if isinstance(value, date):
-            return value
         if isinstance(value, datetime):
             return value.date()
+        if isinstance(value, date):
+            return value
         if isinstance(value, str):
             return date.fromisoformat(value)
         raise TypeError(f"Cannot convert {type(value)} to date")
@@ -335,8 +338,6 @@ class SQLServerXMLAdapter(TypeAdapter):
         raise TypeError(f"Cannot convert {type(value)} to XML")
     
     def _dict_to_xml(self, data: dict, root: str = "root") -> str:
-        import xml.etree.ElementTree as ET
-        
         root_elem = ET.Element(root)
         self._build_xml(root_elem, data)
         return ET.tostring(root_elem, encoding='unicode')
@@ -411,14 +412,14 @@ class SQLServerSpatialAdapter(TypeAdapter):
         
         elif geom_type == 'LineString':
             coords = data.get('coordinates', [])
-            points = " ".join(f"{c[0]} {c[1]}" for c in coords)
+            points = ", ".join(f"{c[0]} {c[1]}" for c in coords)
             return f"LINESTRING({points})"
         
         elif geom_type == 'Polygon':
             coords = data.get('coordinates', [[]])
             rings = []
             for ring in coords:
-                points = " ".join(f"{c[0]} {c[1]}" for c in ring)
+                points = ", ".join(f"{c[0]} {c[1]}" for c in ring)
                 rings.append(f"({points})")
             return f"POLYGON({','.join(rings)})"
         

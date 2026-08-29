@@ -5,7 +5,7 @@ named-procedure requires connection arguments, output arguments, and --rich-asci
 """
 
 from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
-from rhosocial.activerecord.backend.options import ExecutionOptions
+
 from .connection import create_connection_parent_parser, resolve_connection_config_from_args
 from .output import create_provider
 
@@ -56,12 +56,6 @@ def handle(args):
         backend.introspect_and_adapt()
         return backend
 
-    def get_dialect(b):
-        return b.dialect
-
-    def execute_query(sql, params, stmt_type):
-        return backend.execute(sql, params, options=ExecutionOptions(stmt_type=stmt_type))
-
     def disconnect():
         if backend and backend._connection:
             backend.disconnect()
@@ -77,12 +71,6 @@ def handle(args):
             async_backend = AsyncSQLServerBackend(connection_config=config)
             return async_backend
 
-        async def get_dialect_async(b):
-            return b.dialect
-
-        async def execute_query_async(sql, params, stmt_type):
-            return await async_backend.execute(sql, params, options=ExecutionOptions(stmt_type=stmt_type))
-
         async def disconnect_async():
             if async_backend and async_backend._connection:
                 await async_backend.disconnect()
@@ -91,12 +79,8 @@ def handle(args):
             args,
             provider,
             backend_factory=backend_factory,
-            get_dialect=get_dialect,
-            execute_query=execute_query,
             disconnect=disconnect,
             backend_async_factory=backend_async_factory,
-            get_dialect_async=get_dialect_async,
-            execute_query_async=execute_query_async,
             disconnect_async=disconnect_async,
         )
         return
@@ -105,7 +89,5 @@ def handle(args):
         args,
         provider,
         backend_factory=backend_factory,
-        get_dialect=get_dialect,
-        execute_query=execute_query,
         disconnect=disconnect,
     )

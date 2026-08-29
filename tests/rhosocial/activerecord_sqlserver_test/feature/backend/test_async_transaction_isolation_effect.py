@@ -36,7 +36,7 @@ async def async_isolation_test_table(async_sqlserver_backend):
         )
     """)
     await async_sqlserver_backend.execute(
-        "insert into async_isolation_test (name, balance) values (%s, %s)",
+        "insert into async_isolation_test (name, balance) values (?, ?)",
         ("user1", Decimal("100.00"))
     )
     yield "async_isolation_test"
@@ -55,7 +55,7 @@ async def async_mode_test_table(async_sqlserver_backend):
         )
     """)
     await async_sqlserver_backend.execute(
-        "insert into async_mode_test (name, balance) values (%s, %s)",
+        "insert into async_mode_test (name, balance) values (?, ?)",
         ("account1", Decimal("1000.00"))
     )
     yield "async_mode_test"
@@ -74,7 +74,7 @@ async def async_combo_test_table(async_sqlserver_backend):
         )
     """)
     await async_sqlserver_backend.execute(
-        "insert into async_combo_test (name, balance) values (%s, %s)",
+        "insert into async_combo_test (name, balance) values (?, ?)",
         ("account1", Decimal("1000.00"))
     )
     yield "async_combo_test"
@@ -116,7 +116,7 @@ class TestAsyncIsolationLevelEffect:
                 async with async_sqlserver_backend.transaction():
                     await asyncio.wait_for(updated_event.wait(), timeout=5)
                     rows = await async_sqlserver_backend.fetch_all(
-                        "select balance from async_isolation_test where name = %s",
+                        "select balance from async_isolation_test where name = ?",
                         ("user1",)
                     )
                     if rows and rows[0]["balance"] == Decimal("200.00"):
@@ -130,7 +130,7 @@ class TestAsyncIsolationLevelEffect:
                 async_sqlserver_control_backend.transaction_manager.isolation_level = IsolationLevel.READ_UNCOMMITTED
                 async with async_sqlserver_control_backend.transaction():
                     await async_sqlserver_control_backend.execute(
-                        "update async_isolation_test set balance = %s where name = %s",
+                        "update async_isolation_test set balance = ? where name = ?",
                         (Decimal("200.00"), "user1")
                     )
                     updated_event.set()
@@ -154,7 +154,7 @@ class TestAsyncIsolationLevelEffect:
                 async with async_sqlserver_backend.transaction():
                     await asyncio.sleep(0.15)
                     rows = await async_sqlserver_backend.fetch_all(
-                        "select balance from async_isolation_test where name = %s",
+                        "select balance from async_isolation_test where name = ?",
                         ("user1",)
                     )
                     if rows and rows[0]["balance"] != Decimal("200.00"):
@@ -170,7 +170,7 @@ class TestAsyncIsolationLevelEffect:
                 async_sqlserver_control_backend.transaction_manager.isolation_level = IsolationLevel.READ_COMMITTED
                 async with async_sqlserver_control_backend.transaction():
                     await async_sqlserver_control_backend.execute(
-                        "update async_isolation_test set balance = %s where name = %s",
+                        "update async_isolation_test set balance = ? where name = ?",
                         (Decimal("200.00"), "user1")
                     )
                     await asyncio.sleep(0.2)
@@ -198,7 +198,7 @@ class TestAsyncIsolationLevelEffect:
                 async with async_sqlserver_backend.transaction():
                     # First read
                     rows1 = await async_sqlserver_backend.fetch_all(
-                        "select balance from async_isolation_test where name = %s",
+                        "select balance from async_isolation_test where name = ?",
                         ("user1",)
                     )
                     read_values.append(rows1[0]["balance"])
@@ -208,7 +208,7 @@ class TestAsyncIsolationLevelEffect:
 
                     # Second read (should be same as first)
                     rows2 = await async_sqlserver_backend.fetch_all(
-                        "select balance from async_isolation_test where name = %s",
+                        "select balance from async_isolation_test where name = ?",
                         ("user1",)
                     )
                     read_values.append(rows2[0]["balance"])
@@ -222,7 +222,7 @@ class TestAsyncIsolationLevelEffect:
                 async_sqlserver_control_backend.transaction_manager.isolation_level = IsolationLevel.READ_COMMITTED
                 async with async_sqlserver_control_backend.transaction():
                     await async_sqlserver_control_backend.execute(
-                        "update async_isolation_test set balance = %s where name = %s",
+                        "update async_isolation_test set balance = ? where name = ?",
                         (Decimal("200.00"), "user1")
                     )
             except Exception as e:
@@ -253,7 +253,7 @@ class TestAsyncIsolationLevelEffect:
                 async with async_sqlserver_backend.transaction():
                     # First count
                     rows1 = await async_sqlserver_backend.fetch_all(
-                        "select count(*) as cnt from async_isolation_test where balance > %s",
+                        "select count(*) as cnt from async_isolation_test where balance > ?",
                         (Decimal("50.00"),)
                     )
                     initial_count.append(rows1[0]["cnt"])
@@ -263,7 +263,7 @@ class TestAsyncIsolationLevelEffect:
 
                     # Second count (should be same)
                     rows2 = await async_sqlserver_backend.fetch_all(
-                        "select count(*) as cnt from async_isolation_test where balance > %s",
+                        "select count(*) as cnt from async_isolation_test where balance > ?",
                         (Decimal("50.00"),)
                     )
                     second_count.append(rows2[0]["cnt"])
@@ -278,7 +278,7 @@ class TestAsyncIsolationLevelEffect:
                 async with async_sqlserver_control_backend.transaction():
                     # Try to insert a row that matches the condition
                     await async_sqlserver_control_backend.execute(
-                        "insert into async_isolation_test (name, balance) values (%s, %s)",
+                        "insert into async_isolation_test (name, balance) values (?, ?)",
                         ("user2", Decimal("75.00"))
                     )
                 insert_blocked.append(False)
@@ -321,7 +321,7 @@ class TestAsyncTransactionModeEffect:
         with pytest.raises(Exception):
             async with async_sqlserver_backend.transaction():
                 await async_sqlserver_backend.execute(
-                    "update async_mode_test set balance = %s where name = %s",
+                    "update async_mode_test set balance = ? where name = ?",
                     (Decimal("500.00"), "account1")
                 )
 
@@ -332,12 +332,12 @@ class TestAsyncTransactionModeEffect:
 
         async with async_sqlserver_backend.transaction():
             await async_sqlserver_backend.execute(
-                "update async_mode_test set balance = %s where name = %s",
+                "update async_mode_test set balance = ? where name = ?",
                 (Decimal("500.00"), "account1")
             )
 
         rows = await async_sqlserver_backend.fetch_all(
-            "select balance from async_mode_test where name = %s",
+            "select balance from async_mode_test where name = ?",
             ("account1",)
         )
         assert rows[0]["balance"] == Decimal("500.00")
@@ -509,14 +509,14 @@ class TestAsyncNestedTransactionsWithIsolation:
 
         async with async_sqlserver_backend.transaction():
             await async_sqlserver_backend.execute(
-                "insert into async_nested_test (name, value) values (%s, %s)",
+                "insert into async_nested_test (name, value) values (?, ?)",
                 ("outer", 1)
             )
 
             sp = await async_sqlserver_backend.transaction_manager.savepoint("sp1")
 
             await async_sqlserver_backend.execute(
-                "insert into async_nested_test (name, value) values (%s, %s)",
+                "insert into async_nested_test (name, value) values (?, ?)",
                 ("inner", 2)
             )
 

@@ -1,7 +1,12 @@
+# tests/providers/scenarios.py
+"""SQL Server backend test scenario configuration mapping table"""
+
 import os
+from dataclasses import replace
 from typing import Dict, Any, Tuple, Type
 from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+from rhosocial.activerecord.testsuite.core.pool import pooled_database_name
 
 SCENARIO_MAP: Dict[str, Dict[str, Any]] = {}
 
@@ -10,7 +15,13 @@ def register_scenario(name: str, config: Dict[str, Any]):
     SCENARIO_MAP[name] = config
 
 
-def get_scenario(name: str) -> Tuple[Type[SQLServerBackend], SQLServerConnectionConfig]:
+def get_scenario_raw(name: str) -> Tuple[Type[SQLServerBackend], SQLServerConnectionConfig]:
+    """Return the backend class and connection config for a scenario.
+
+    The config uses the scenario's configured ``database``; no pool override is
+    applied. Used by the pool reset handler, which must reach the server
+    regardless of whether a pooled database exists yet.
+    """
     if name not in SCENARIO_MAP:
         if SCENARIO_MAP:
             name = next(iter(SCENARIO_MAP))
@@ -18,6 +29,22 @@ def get_scenario(name: str) -> Tuple[Type[SQLServerBackend], SQLServerConnection
             raise ValueError("No scenarios registered")
     config = SQLServerConnectionConfig(**SCENARIO_MAP[name])
     return SQLServerBackend, config
+
+
+def get_scenario(name: str) -> Tuple[Type[SQLServerBackend], SQLServerConnectionConfig]:
+    """
+    Retrieves the backend class and a connection configuration object for a given
+    scenario name. This is called by the provider to set up the database for a test.
+
+    Under an active database pool the config's ``database`` is replaced by the
+    worker's pooled database name (``{database}_{index}``) so concurrent workers
+    never share a schema. Serial runs keep the scenario's configured database.
+    """
+    backend_class, config = get_scenario_raw(name)
+    pooled_db = pooled_database_name(name)
+    if pooled_db:
+        config = replace(config, database=pooled_db)
+    return backend_class, config
 
 
 def get_enabled_scenarios() -> Dict[str, Any]:

@@ -129,9 +129,100 @@ from providers.fixtures._common import (
 class QueryProviderBase:
     def __init__(self):
         self._scenario_db_files = {}
+        self._schema_fixtures_provisioned = False
+        self._mixed_schema_provisioned = False
+
+    @staticmethod
+    def _ddl_options():
+        from rhosocial.activerecord.backend.options import ExecutionOptions
+        from rhosocial.activerecord.backend.schema import StatementType
+        return ExecutionOptions(stmt_type=StatementType.DDL)
 
     def get_test_scenarios(self) -> List[str]:
         return list(get_enabled_scenarios().keys())
+
+    def _cross_schema_statements(self) -> List[str]:
+        """Provision SCHEMA_A / SCHEMA_B with their tables (T-SQL)."""
+        return [
+            "IF OBJECT_ID('ar_crm.customers', 'U') IS NOT NULL DROP TABLE ar_crm.customers",
+            "IF SCHEMA_ID('ar_crm') IS NOT NULL DROP SCHEMA ar_crm",
+            "CREATE SCHEMA ar_crm",
+            "IF OBJECT_ID('ar_shop.orders', 'U') IS NOT NULL DROP TABLE ar_shop.orders",
+            "IF OBJECT_ID('ar_crm.orders', 'U') IS NOT NULL DROP TABLE ar_crm.orders",
+            "IF SCHEMA_ID('ar_shop') IS NOT NULL DROP SCHEMA ar_shop",
+            "CREATE SCHEMA ar_shop",
+            "CREATE TABLE ar_crm.customers ("
+            "id INT IDENTITY(1,1) PRIMARY KEY, name NVARCHAR(100) NOT NULL)",
+            "CREATE TABLE ar_shop.orders ("
+            "id INT IDENTITY(1,1) PRIMARY KEY, customer_id INT NOT NULL, amount INT NOT NULL)",
+        ]
+
+    def _drop_cross_schema_schemas_sync(self, backend_instance) -> None:
+        for sql in (
+            "IF OBJECT_ID('ar_crm.customers', 'U') IS NOT NULL DROP TABLE ar_crm.customers",
+            "IF OBJECT_ID('ar_shop.orders', 'U') IS NOT NULL DROP TABLE ar_shop.orders",
+            "IF OBJECT_ID('ar_crm.orders', 'U') IS NOT NULL DROP TABLE ar_crm.orders",
+            "IF SCHEMA_ID('ar_crm') IS NOT NULL DROP SCHEMA ar_crm",
+            "IF SCHEMA_ID('ar_shop') IS NOT NULL DROP SCHEMA ar_shop",
+        ):
+            try:
+                backend_instance.execute(sql, options=self._ddl_options())
+            except Exception:
+                pass
+        self._schema_fixtures_provisioned = False
+
+    async def _drop_cross_schema_schemas_async(self, backend_instance) -> None:
+        for sql in (
+            "IF OBJECT_ID('ar_crm.customers', 'U') IS NOT NULL DROP TABLE ar_crm.customers",
+            "IF OBJECT_ID('ar_shop.orders', 'U') IS NOT NULL DROP TABLE ar_shop.orders",
+            "IF OBJECT_ID('ar_crm.orders', 'U') IS NOT NULL DROP TABLE ar_crm.orders",
+            "IF SCHEMA_ID('ar_crm') IS NOT NULL DROP SCHEMA ar_crm",
+            "IF SCHEMA_ID('ar_shop') IS NOT NULL DROP SCHEMA ar_shop",
+        ):
+            try:
+                await backend_instance.execute(sql, options=self._ddl_options())
+            except Exception:
+                pass
+        self._schema_fixtures_provisioned = False
+
+    def _provision_cross_schema_sync(self, backend_instance) -> None:
+        options = self._ddl_options()
+        for sql in self._cross_schema_statements():
+            backend_instance.execute(sql, options=options)
+        self._schema_fixtures_provisioned = True
+
+    async def _provision_cross_schema_async(self, backend_instance) -> None:
+        options = self._ddl_options()
+        for sql in self._cross_schema_statements():
+            await backend_instance.execute(sql, options=options)
+        self._schema_fixtures_provisioned = True
+
+    def _mixed_schema_statements(self) -> List[str]:
+        """Provision an identical orders table in SCHEMA_A (T-SQL, no FK)."""
+        return [
+            "IF OBJECT_ID('ar_crm.orders', 'U') IS NOT NULL DROP TABLE ar_crm.orders",
+            "IF SCHEMA_ID('ar_crm') IS NOT NULL DROP SCHEMA ar_crm",
+            "CREATE SCHEMA ar_crm",
+            "CREATE TABLE ar_crm.orders ("
+            "[id] INT IDENTITY(1,1) PRIMARY KEY, "
+            "[user_id] INT NOT NULL, "
+            "[order_number] NVARCHAR(255) NOT NULL, "
+            "[total_amount] DECIMAL(10,2) NOT NULL DEFAULT 0.00, "
+            "[status] NVARCHAR(50) NOT NULL DEFAULT 'pending', "
+            "[created_at] DATETIME2 NULL, [updated_at] DATETIME2 NULL)",
+        ]
+
+    def _provision_mixed_schema_sync(self, backend_instance) -> None:
+        options = self._ddl_options()
+        for sql in self._mixed_schema_statements():
+            backend_instance.execute(sql, options=options)
+        self._mixed_schema_provisioned = True
+
+    async def _provision_mixed_schema_async(self, backend_instance) -> None:
+        options = self._ddl_options()
+        for sql in self._mixed_schema_statements():
+            await backend_instance.execute(sql, options=options)
+        self._mixed_schema_provisioned = True
 
     def _load_sqlserver_schema(self, filename: str) -> str:
         schema_dir = os.path.join(
@@ -294,6 +385,42 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
             backend_instance.execute(create_sql, params, options=options)
         return CompositeOrderItemBase
 
+    def setup_schema_fixtures(self, scenario_name: str):
+        """Two models in two distinct schemas (see testsuite schema_models)."""
+        from rhosocial.activerecord.testsuite.feature.query.fixtures.schema_models import (
+            SchemaCustomer,
+            SchemaOrder,
+        )
+
+        backend_class, config = get_scenario(scenario_name)
+        SchemaCustomer.configure(config, backend_class)
+        SchemaOrder.configure(config, backend_class)
+        shared_backend = SchemaCustomer.__backend__
+        if shared_backend not in self._active_backends:
+            self._active_backends.append(shared_backend)
+        self._provision_cross_schema_sync(shared_backend)
+        return SchemaCustomer, SchemaOrder
+
+    def setup_mixed_schema_fixtures(self, scenario_name: str):
+        """(User, Order, MixedSchemaOrder): default users/orders plus orders in SCHEMA_A."""
+        from rhosocial.activerecord.testsuite.feature.query.cross_schema.mixed_schema_models import (
+            MixedSchemaOrder,
+        )
+        from rhosocial.activerecord.testsuite.feature.query.fixtures.models import Order, User
+
+        user_model, order_model = self._setup_multiple_models(
+            [(User, "users"), (Order, "orders")], scenario_name
+        )
+        shared_backend = order_model.__backend__
+        backend_class, config = get_scenario(scenario_name)
+        MixedSchemaOrder.__connection_config__ = config
+        MixedSchemaOrder.__backend_class__ = backend_class
+        MixedSchemaOrder.__backend__ = shared_backend
+        if shared_backend not in self._active_backends:
+            self._active_backends.append(shared_backend)
+        self._provision_mixed_schema_sync(shared_backend)
+        return user_model, order_model, MixedSchemaOrder
+
     def cleanup_after_test(self, scenario_name: str):
         for backend_instance in self._active_backends:
             for table_name in [
@@ -313,6 +440,17 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
                     safe_drop_table(backend_instance, backend_instance.dialect, table_name)
                 except Exception:
                     pass
+            if self._schema_fixtures_provisioned:
+                try:
+                    self._drop_cross_schema_schemas_sync(backend_instance)
+                except Exception:
+                    pass
+            if self._mixed_schema_provisioned:
+                try:
+                    self._drop_cross_schema_schemas_sync(backend_instance)
+                except Exception:
+                    pass
+                self._mixed_schema_provisioned = False
             try:
                 backend_instance.disconnect()
             except Exception:
@@ -331,6 +469,10 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
             else:
                 raise ValueError("No scenarios registered")
         config_dict = SCENARIO_MAP[scenario_name]
+        from providers.pooling import resolve_database_name
+        pooled_db = resolve_database_name(scenario_name)
+        if pooled_db:
+            config_dict = {**config_dict, "database": pooled_db}
         return {
             "backend_module": "rhosocial.activerecord.backend.impl.sqlserver",
             "backend_class_name": backend_class_name,
@@ -579,8 +721,62 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
                     await safe_drop_table_async(backend_instance, backend_instance.dialect, table_name)
                 except Exception:
                     pass
+            if self._schema_fixtures_provisioned:
+                try:
+                    await self._drop_cross_schema_schemas_async(backend_instance)
+                except Exception:
+                    pass
+            if self._mixed_schema_provisioned:
+                try:
+                    await self._drop_cross_schema_schemas_async(backend_instance)
+                except Exception:
+                    pass
+                self._mixed_schema_provisioned = False
             try:
                 await backend_instance.disconnect()
             except Exception:
                 pass
         self._active_async_backends.clear()
+
+    async def setup_mixed_schema_fixtures(self, scenario_name: str):
+        """(AsyncUser, AsyncOrder, AsyncMixedSchemaOrder) with orders also in SCHEMA_A."""
+        from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+        from rhosocial.activerecord.testsuite.feature.query.cross_schema.mixed_schema_models import (
+            AsyncMixedSchemaOrder,
+        )
+        from rhosocial.activerecord.testsuite.feature.query.fixtures.async_models import (
+            AsyncOrder,
+            AsyncUser,
+        )
+
+        _, config = get_scenario(scenario_name)
+        user_model = await self._setup_async_model(AsyncUser, scenario_name, "users")
+        shared_backend = user_model.__backend__
+        if shared_backend not in self._active_async_backends:
+            self._active_async_backends.append(shared_backend)
+        order_model = await self._setup_async_model(AsyncOrder, scenario_name, "orders", shared_backend)
+
+        AsyncMixedSchemaOrder.__connection_config__ = config
+        AsyncMixedSchemaOrder.__backend_class__ = AsyncSQLServerBackend
+        AsyncMixedSchemaOrder.__backend__ = shared_backend
+        await self._provision_mixed_schema_async(shared_backend)
+        return AsyncUser, order_model, AsyncMixedSchemaOrder
+
+    async def setup_schema_fixtures(self, scenario_name: str):
+        """Two async models in two distinct schemas."""
+        from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+        from rhosocial.activerecord.testsuite.feature.query.fixtures.schema_models import (
+            AsyncSchemaCustomer,
+            AsyncSchemaOrder,
+        )
+
+        _, config = get_scenario(scenario_name)
+        await AsyncSchemaCustomer.configure(config, AsyncSQLServerBackend)
+        AsyncSchemaOrder.__connection_config__ = config
+        AsyncSchemaOrder.__backend_class__ = AsyncSQLServerBackend
+        AsyncSchemaOrder.__backend__ = AsyncSchemaCustomer.__backend__
+        shared_backend = AsyncSchemaCustomer.__backend__
+        if shared_backend not in self._active_async_backends:
+            self._active_async_backends.append(shared_backend)
+        await self._provision_cross_schema_async(shared_backend)
+        return AsyncSchemaCustomer, AsyncSchemaOrder

@@ -1,9 +1,26 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/cli/connection.py
-"""Connection argument parsing and backend creation for SQL Server CLI."""
+"""Connection argument parsing and backend creation for SQL Server CLI.
+
+Encryption defaults matrix -- applied whenever the corresponding explicit
+flag is absent. ``--encrypt``/``--no-encrypt`` and
+``--trust-server-certificate``/``--no-trust-server-certificate`` always take
+precedence over values derived from ``--ssl``:
+
+===============  =========  ==========================
+--ssl            encrypt    trust_server_certificate
+===============  =========  ==========================
+auto (default)   False      True
+disabled         False      True
+require          True       True
+verify-ca        True       False
+verify-full      True       False
+===============  =========  ==========================
+
+In particular, the default ``--ssl auto`` no longer implies
+``encrypt=True``, matching the ``--encrypt`` flag's own default of off.
+"""
 
 import os
-
-from .output import RICH_AVAILABLE
 
 
 def add_connection_args(parser):
@@ -28,14 +45,23 @@ def add_connection_args(parser):
         help="Database name (env: SQLSERVER_DATABASE, optional for some operations)",
     )
     parser.add_argument(
+        "--user",
         "--username",
+        dest="username",
         default=os.getenv("SQLSERVER_USERNAME", "sa"),
-        help="Database username (env: SQLSERVER_USERNAME, default: sa)",
+        help="Database username (env: SQLSERVER_USERNAME, default: sa). "
+        "--username is an alias for --user.",
     )
     parser.add_argument(
         "--password",
         default=os.getenv("SQLSERVER_PASSWORD", ""),
         help="Database password (env: SQLSERVER_PASSWORD)",
+    )
+    parser.add_argument(
+        "--ssl",
+        choices=["auto", "require", "verify-ca", "verify-full", "disabled"],
+        default="auto",
+        help="SSL mode (env: SQLSERVER_SSL, default: auto)",
     )
     parser.add_argument(
         "--trusted-connection",
@@ -53,32 +79,33 @@ def add_connection_args(parser):
     encrypt_group.add_argument(
         "--encrypt",
         action="store_true",
-        default=False,
+        default=None,
         dest="encrypt",
-        help="Encrypt connection",
+        help="Encrypt connection (takes precedence over --ssl)",
     )
     encrypt_group.add_argument(
         "--no-encrypt",
         action="store_false",
         dest="encrypt",
-        help="Do not encrypt connection",
+        help="Do not encrypt connection (takes precedence over --ssl)",
     )
     parser.add_argument(
         "--trust-server-certificate",
         dest="trust_server_certificate",
         action="store_true",
-        default=True,
-        help="Trust server certificate (default: True for development)",
+        default=None,
+        help="Trust server certificate (takes precedence over --ssl)",
     )
     parser.add_argument(
         "--no-trust-server-certificate",
         dest="trust_server_certificate",
         action="store_false",
-        help="Do not trust server certificate",
+        help="Do not trust server certificate (takes precedence over --ssl)",
     )
     parser.add_argument(
-        "--use-async",
+        "--async",
         action="store_true",
+        dest="is_async",
         help="Use asynchronous backend",
     )
     parser.add_argument(
@@ -158,6 +185,27 @@ def resolve_connection_config_from_args(args):
             return resolver.resolve(conn_params)
         return resolver.resolve({})
 
+    # SSL parameter mapping. Explicit --encrypt/--no-encrypt and
+    # --trust-server-certificate/--no-trust-server-certificate flags win over
+    # the values derived from --ssl; see the matrix in the module docstring.
+    ssl_param = getattr(args, "ssl", None)
+    if ssl_param in ("require", "verify-ca", "verify-full"):
+        ssl_encrypt = True
+        # verify-ca/verify-full require a CA check; require trusts the cert
+        ssl_trust_cert = ssl_param == "require"
+    else:
+        # "auto" (default) and "disabled" do not force encryption
+        ssl_encrypt = False
+        ssl_trust_cert = True
+
+    explicit_encrypt = getattr(args, "encrypt", None)
+    if explicit_encrypt is not None:
+        ssl_encrypt = explicit_encrypt
+
+    explicit_trust = getattr(args, "trust_server_certificate", None)
+    if explicit_trust is not None:
+        ssl_trust_cert = explicit_trust
+
     return SQLServerConnectionConfig(
         host=args.host or "localhost",
         port=args.port or 1433,
@@ -166,8 +214,8 @@ def resolve_connection_config_from_args(args):
         password=args.password,
         trusted_connection=getattr(args, "trusted_connection", False),
         driver=getattr(args, "driver", "ODBC Driver 18 for SQL Server"),
-        encrypt=getattr(args, "encrypt", False),
-        trust_server_certificate=getattr(args, "trust_server_certificate", True),
+        encrypt=ssl_encrypt,
+        trust_server_certificate=ssl_trust_cert,
     )
 
 

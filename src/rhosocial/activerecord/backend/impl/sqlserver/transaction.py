@@ -271,19 +271,16 @@ class SQLServerTransactionManager(TransactionManager):
     def set_deadlock_priority(self, priority) -> None:
         """
         Set the deadlock priority for the current session.
-        
+
         Args:
             priority: "LOW", "NORMAL", "HIGH", or -10 to 10
         """
         if self._state != TransactionState.ACTIVE:
             raise TransactionError("No active transaction")
-        
-        if isinstance(priority, int):
-            sql = f"SET DEADLOCK_PRIORITY {priority}"
-        else:
-            sql = f"SET DEADLOCK_PRIORITY {priority.upper()}"
-        
-        self._backend.execute(sql)
+
+        # Delegate to the backend, which validates the priority against its
+        # whitelist (-10..10 int, or LOW/NORMAL/HIGH) to prevent injection.
+        self._backend.set_deadlock_priority(priority)
         self.log(logging.DEBUG, f"Deadlock priority set to {priority}")
 
 
