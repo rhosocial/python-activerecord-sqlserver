@@ -1247,9 +1247,11 @@ class SQLServerDialect(
     ) -> Tuple[str, tuple]:
         """Format CREATE TABLE statement for SQL Server.
 
-        SQL Server doesn't support IF NOT EXISTS syntax for CREATE TABLE
-        (until SQL Server 2016 for DROP, but not CREATE). When if_not_exists
-        is True, we simply skip the IF NOT EXISTS clause since it's not supported.
+        SQL Server doesn't support ``IF NOT EXISTS`` syntax for CREATE TABLE
+        (until SQL Server 2016 for DROP, but not CREATE). When
+        ``if_not_exists`` is True and the target is not a temporary table, the
+        statement is wrapped in an ``IF OBJECT_ID(...) IS NULL`` existence
+        guard so repeated creation is idempotent.
         SQL Server has no CREATE TABLE ... LIKE; ``like_table`` raises
         ``UnsupportedFeatureError``. Temporary tables use a ``#``-prefixed
         table name instead of the ``TEMPORARY`` keyword.
@@ -1266,10 +1268,6 @@ class SQLServerDialect(
 
         # Build CREATE TABLE header
         parts = ["CREATE TABLE"]
-
-        # Note: SQL Server doesn't support IF NOT EXISTS for CREATE TABLE
-        # We ignore if_not_exists flag and proceed with CREATE TABLE
-        # In production, callers should handle existence checks separately
 
         if expr.temporary:
             temp_name = expr.table.name
@@ -1319,7 +1317,21 @@ class SQLServerDialect(
             durability = dialect_options.get("durability", "SCHEMA_ONLY")
             parts.append(self.format_memory_optimized_option(durability))
 
-        return ' '.join(parts), tuple(all_params)
+        statement = ' '.join(parts)
+
+        if expr.if_not_exists and not expr.temporary:
+            # T-SQL has no CREATE TABLE IF NOT EXISTS; guard with an
+            # OBJECT_ID existence check instead.
+            guard_name = self.format_identifier(expr.table.name)
+            if expr.table.schema_name:
+                guard_name = (
+                    f"{self.format_identifier(expr.table.schema_name)}.{guard_name}"
+                )
+            statement = (
+                f"IF OBJECT_ID(N'{guard_name}', N'U') IS NULL {statement}"
+            )
+
+        return statement, tuple(all_params)
 
     def _format_column_definition(self, col_def: "ColumnDefinition", ColumnConstraintType) -> Tuple[str, List[Any]]:
         """Format a column definition for SQL Server."""
