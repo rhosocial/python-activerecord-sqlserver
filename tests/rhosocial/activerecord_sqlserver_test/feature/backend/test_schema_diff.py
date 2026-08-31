@@ -91,9 +91,9 @@ class TestSQLServerSchemaDiffer:
 
     def test_modified_column_type(self):
         old_col = self._make_column("name", "NVARCHAR(100)", 1,
-                                    parsed_dt=VarCharType(100))
+                                    parsed_dt=VarCharType(length=100))
         new_col = self._make_column("name", "NVARCHAR(200)", 1,
-                                    parsed_dt=VarCharType(200))
+                                    parsed_dt=VarCharType(length=200))
 
         old_snap = self._make_snapshot("SQLServerDialect", {"users": [old_col]})
         new_snap = self._make_snapshot("SQLServerDialect", {"users": [new_col]})

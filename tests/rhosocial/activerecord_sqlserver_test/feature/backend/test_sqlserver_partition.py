@@ -228,7 +228,7 @@ class TestSQLServerCreateTableWithPartition:
         d = SQLServerDialect(SQL_SERVER_2022)
         pk = ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
         col_def = ColumnDefinition("id", IntegerType(), constraints=[pk])
-        col_def2 = ColumnDefinition("name", VarCharType(100))
+        col_def2 = ColumnDefinition("name", VarCharType(length=100))
         col_def3 = ColumnDefinition("create_date", DateType())
 
         col = Column(d, "create_date")

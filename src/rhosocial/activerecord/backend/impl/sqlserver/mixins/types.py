@@ -130,48 +130,48 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
         if int_pattern.match(upper):
             if upper.startswith("BIGINT"):
-                return BigIntType()
+                return BigIntType(dialect=self)
             if upper.startswith("SMALLINT"):
-                return SmallIntType()
-            return IntegerType()
+                return SmallIntType(dialect=self)
+            return IntegerType(dialect=self)
 
         if float_pattern.match(upper):
             if upper.startswith("REAL"):
-                return RealType()
-            return FloatType()
+                return RealType(dialect=self)
+            return FloatType(dialect=self)
 
         if decimal_pattern.match(upper):
             nums = re.findall(r"\d+", stripped)
             if len(nums) >= 2:
-                return DecimalType(int(nums[0]), int(nums[1]))
+                return DecimalType(dialect=self, precision=int(nums[0]), scale=int(nums[1]))
             if len(nums) == 1:
-                return DecimalType(int(nums[0]))
-            return DecimalType()
+                return DecimalType(dialect=self, precision=int(nums[0]))
+            return DecimalType(dialect=self)
 
         if string_pattern.match(upper):
             if "MAX" in upper or "TEXT" in upper or "NTEXT" in upper:
-                return TextType()
+                return TextType(dialect=self)
             length_match = re.search(r"\((\d+)", stripped)
             length = int(length_match.group(1)) if length_match else None
             if "VARCHAR" in upper or "NVARCHAR" in upper:
-                return VarCharType(length or 255)
-            return (CharType(length) if length_match else VarCharType(255))
+                return VarCharType(dialect=self, length=length or 255)
+            return (CharType(dialect=self, length=length) if length_match else VarCharType(dialect=self, length=255))
 
         if date_pattern.match(upper):
-            return DateTimeType()
+            return DateTimeType(dialect=self)
 
         if time_pattern.match(upper):
-            return TimeType()
+            return TimeType(dialect=self)
 
         if bit_pattern.match(upper):
-            return BooleanType()
+            return BooleanType(dialect=self)
 
         if blob_pattern.match(upper):
             from rhosocial.activerecord.backend.expression.types import BlobType
 
-            return BlobType()
+            return BlobType(dialect=self)
 
-        return CustomType(stripped)
+        return CustomType(dialect=self, raw=stripped)
 
 class SQLServerTypeSuggestionMixin(DDLTypeSuggestionMixin):
     """SQL Server ``suggest_column_type()``.
@@ -213,13 +213,13 @@ class SQLServerTypeSuggestionMixin(DDLTypeSuggestionMixin):
             _enum.Enum: VarCharType,
         }
         if python_type is _uuid.UUID:
-            return CustomType("uniqueidentifier")
+            return CustomType(dialect=self, raw="uniqueidentifier")
         factory = mapping.get(python_type)
         if factory is not None:
             if python_type is _enum.Enum:
-                return VarCharType(64)
+                return VarCharType(dialect=self, length=64)
             if python_type is str:
-                return VarCharType(255)
+                return VarCharType(dialect=self, length=255)
             return factory()
 
         return super().suggest_column_type(python_type, version)

@@ -38,11 +38,11 @@ def create_combined_articles_table(dialect, table_name: str = "combined_articles
         columns=[
             ColumnDefinition("id", IntegerType(),
                 constraints=[ColumnConstraint(ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)]),
-            ColumnDefinition("title", VarCharType(255),
+            ColumnDefinition("title", VarCharType(length=255),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL)]),
             ColumnDefinition("content", TextType(),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL)]),
-            ColumnDefinition("status", VarCharType(50),
+            ColumnDefinition("status", VarCharType(length=50),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL),
                              ColumnConstraint(ColumnConstraintType.DEFAULT, default_value="draft")]),
             ColumnDefinition("created_at", DateTimeType(precision=6)),
@@ -64,7 +64,7 @@ def create_tasks_table(dialect, table_name: str = "tasks") -> CreateTableExpress
         columns=[
             ColumnDefinition("id", IntegerType(),
                 constraints=[ColumnConstraint(ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)]),
-            ColumnDefinition("title", VarCharType(255),
+            ColumnDefinition("title", VarCharType(length=255),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL)]),
             ColumnDefinition("is_completed", BooleanType(),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL),
@@ -83,7 +83,7 @@ def create_timestamped_posts_table(dialect, table_name: str = "timestamped_posts
         columns=[
             ColumnDefinition("id", IntegerType(),
                 constraints=[ColumnConstraint(ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)]),
-            ColumnDefinition("title", VarCharType(255),
+            ColumnDefinition("title", VarCharType(length=255),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL)]),
             ColumnDefinition("content", TextType(),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL)]),
@@ -101,7 +101,7 @@ def create_versioned_products_table(dialect, table_name: str = "versioned_produc
         columns=[
             ColumnDefinition("id", IntegerType(),
                 constraints=[ColumnConstraint(ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)]),
-            ColumnDefinition("name", VarCharType(255),
+            ColumnDefinition("name", VarCharType(length=255),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL)]),
             ColumnDefinition("price", DecimalType(precision=10, scale=2),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL),

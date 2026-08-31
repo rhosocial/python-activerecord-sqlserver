@@ -43,7 +43,7 @@ expr = CreateTableExpression(
             constraints=[
                 ColumnConstraint(constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True),
             ]),
-        ColumnDefinition("name", VarCharType(100)),
+        ColumnDefinition("name", VarCharType(length=100)),
     ]
 )
 sql, params = expr.to_sql()
@@ -63,7 +63,7 @@ snap_before = builder.build()
 alter = AlterTableExpression(
     dialect=dialect, table_name="users",
     actions=[
-        AddColumn(dialect, column=ColumnDefinition("email", VarCharType(255))),
+        AddColumn(dialect, column=ColumnDefinition("email", VarCharType(length=255))),
     ],
 )
 sql, params = alter.to_sql()

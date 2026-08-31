@@ -39,7 +39,7 @@ def _build_table(dialect):
             ColumnDefinition("flag", BooleanType(),
                 constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL),
                              ColumnConstraint(ColumnConstraintType.DEFAULT, default_value=True)]),
-            ColumnDefinition("code", VarCharType(16)),
+            ColumnDefinition("code", VarCharType(length=16)),
             ColumnDefinition("created_at", TimestampType()),
         ],
     )
