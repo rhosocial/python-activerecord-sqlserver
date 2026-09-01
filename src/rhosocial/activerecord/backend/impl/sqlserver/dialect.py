@@ -1288,20 +1288,20 @@ class SQLServerDialect(
         )
         column_parts = []
         for col_def in expr.columns:
-            col_sql, col_params = self._format_column_definition(col_def, ColumnConstraintType)
+            col_sql, col_params = self.format_column_definition(col_def, ColumnConstraintType)
             column_parts.append(col_sql)
             all_params.extend(col_params)
 
         # Build table constraints
         for t_const in expr.table_constraints:
-            const_sql, const_params = self._format_table_constraint(t_const)
+            const_sql, const_params = self.format_table_constraint(t_const)
             if const_sql:
                 column_parts.append(const_sql)
                 all_params.extend(const_params)
 
         # Build inline indexes (SQL Server specific)
         for idx_def in expr.indexes:
-            idx_sql = self._format_inline_index(idx_def)
+            idx_sql = self.format_inline_index(idx_def)
             column_parts.append(idx_sql)
 
         parts.append(f"({', '.join(column_parts)})")
@@ -1333,7 +1333,7 @@ class SQLServerDialect(
 
         return statement, tuple(all_params)
 
-    def _format_column_definition(self, col_def: "ColumnDefinition", ColumnConstraintType) -> Tuple[str, List[Any]]:
+    def format_column_definition(self, col_def: "ColumnDefinition", ColumnConstraintType) -> Tuple[str, List[Any]]:
         """Format a column definition for SQL Server."""
         from rhosocial.activerecord.backend.expression.types._base import DataType
         if isinstance(col_def.data_type, DataType):
@@ -1376,7 +1376,7 @@ class SQLServerDialect(
 
         return ' '.join(parts), params
 
-    def _format_table_constraint(self, t_const: "TableConstraint") -> Tuple[str, List[Any]]:
+    def format_table_constraint(self, t_const: "TableConstraint") -> Tuple[str, List[Any]]:
         """Format a table constraint for SQL Server."""
         from rhosocial.activerecord.backend.expression.statements import (
             TableConstraintType,
@@ -1420,7 +1420,7 @@ class SQLServerDialect(
 
         return ' '.join(parts), params
 
-    def _format_inline_index(self, idx_def: "IndexDefinition") -> str:
+    def format_inline_index(self, idx_def: "IndexDefinition") -> str:
         """Format an inline index definition for SQL Server."""
         parts = []
 

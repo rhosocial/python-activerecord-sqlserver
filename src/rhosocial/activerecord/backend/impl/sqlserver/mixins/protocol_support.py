@@ -259,7 +259,7 @@ class SQLServerProtocolSupportMixin:
             )
 
         full_sql, params = expr.to_sql()
-        select_head = self._format_select_head(expr)
+        select_head = self.format_select_head(expr)
         if full_sql.startswith(select_head):
             tail = full_sql[len(select_head):]
         else:
@@ -276,7 +276,7 @@ class SQLServerProtocolSupportMixin:
         into_sql = f"INTO {self.format_identifier(into_table)}"
         return f"{select_head} {into_sql}{tail}", tuple(params)
 
-    def _format_select_head(self, expr: Any) -> str:
+    def format_select_head(self, expr: Any) -> str:
         """Render the SELECT head (modifier + select list) of a query.
 
         Mirrors the core ``DQLMixin.format_query_statement`` head so the

@@ -45,7 +45,7 @@ class SQLServerRoutineMixin:
         """DROP FUNCTION is supported since SQL Server 2005."""
         return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
 
-    def _format_sqlserver_object_name(self, name: str, schema: Optional[str] = None) -> str:
+    def format_sqlserver_object_name(self, name: str, schema: Optional[str] = None) -> str:
         """Quote a (possibly schema-qualified) object name with brackets."""
         parts = []
         if schema:
@@ -60,7 +60,7 @@ class SQLServerRoutineMixin:
         return ".".join(parts)
 
     @staticmethod
-    def _format_sqlserver_params(parameters: List[Any]) -> str:
+    def format_sqlserver_params(parameters: List[Any]) -> str:
         """Normalize procedure/function parameters into a SQL fragment.
 
         Accepts either raw parameter strings (``"@x INT"``) or dictionaries
@@ -116,11 +116,11 @@ class SQLServerRoutineMixin:
         if getattr(expr, "or_alter", False):
             parts.append("OR ALTER")
         parts.append("PROCEDURE")
-        parts.append(self._format_sqlserver_object_name(name, getattr(expr, "schema", None)))
+        parts.append(self.format_sqlserver_object_name(name, getattr(expr, "schema", None)))
 
         parameters = getattr(expr, "parameters", None) or []
         if parameters:
-            parts.append(self._format_sqlserver_params(list(parameters)))
+            parts.append(self.format_sqlserver_params(list(parameters)))
 
         if not getattr(expr, "body", None):
             raise ValueError("routine body is required")
@@ -155,10 +155,10 @@ class SQLServerRoutineMixin:
         if getattr(expr, "or_alter", False):
             parts.append("OR ALTER")
         parts.append("FUNCTION")
-        parts.append(self._format_sqlserver_object_name(name, getattr(expr, "schema", None)))
+        parts.append(self.format_sqlserver_object_name(name, getattr(expr, "schema", None)))
 
         parameters = getattr(expr, "parameters", None) or []
-        parts.append(f"({self._format_sqlserver_params(list(parameters))})")
+        parts.append(f"({self.format_sqlserver_params(list(parameters))})")
         parts.append(f"RETURNS {expr.returns}")
         if not getattr(expr, "body", None):
             raise ValueError("function body is required")
@@ -194,5 +194,5 @@ class SQLServerRoutineMixin:
         parts = ["DROP", kind]
         if getattr(expr, "if_exists", False) and self.version >= _SQL_SERVER_DROP_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
             parts.append("IF EXISTS")
-        parts.append(self._format_sqlserver_object_name(name, getattr(expr, "schema", None)))
+        parts.append(self.format_sqlserver_object_name(name, getattr(expr, "schema", None)))
         return " ".join(parts), ()
