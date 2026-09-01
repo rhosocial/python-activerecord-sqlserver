@@ -1348,6 +1348,7 @@ class SQLServerDialect(
                 ColumnConstraintType as _CCT,
             )
             constraint_type = _CCT
+        from rhosocial.activerecord.backend.expression.types._base import DataType
         if isinstance(col_def.data_type, DataType):
             type_sql, type_params = col_def.data_type.to_sql(self)
             parts = [self.format_identifier(col_def.name), type_sql]
