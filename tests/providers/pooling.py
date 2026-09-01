@@ -103,6 +103,9 @@ def _reset_sqlserver_database(scenario_name: str, db_name: str) -> None:
                 )
                 cursor.execute(f"DROP DATABASE [{db_escaped}]")
                 cursor.execute(f"CREATE DATABASE [{db_escaped}]")
+                # LOCK_TIMEOUT bounds the exclusive-lock wait so a leftover
+                # transaction on another worker cannot hang the reset forever.
+                cursor.execute("SET LOCK_TIMEOUT 5000")
                 cursor.execute(
                     f"ALTER DATABASE [{db_escaped}] "
                     "SET READ_COMMITTED_SNAPSHOT ON"

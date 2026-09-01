@@ -1333,9 +1333,21 @@ class SQLServerDialect(
 
         return statement, tuple(all_params)
 
-    def format_column_definition(self, col_def: "ColumnDefinition", ColumnConstraintType) -> Tuple[str, List[Any]]:
-        """Format a column definition for SQL Server."""
-        from rhosocial.activerecord.backend.expression.types._base import DataType
+    def format_column_definition(self, col_def: "ColumnDefinition", constraint_type=None) -> Tuple[str, List[Any]]:
+        """Format a column definition for SQL Server.
+
+        ``constraint_type`` is the ``ColumnConstraintType`` enum used for
+        comparisons; it defaults to ``None`` so the generic 1-arg call
+        (ALTER TABLE ADD COLUMN path) also resolves here.
+        """
+        from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+            ColumnConstraintType,
+        )
+        if constraint_type is None:
+            from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+                ColumnConstraintType as _CCT,
+            )
+            constraint_type = _CCT
         if isinstance(col_def.data_type, DataType):
             type_sql, type_params = col_def.data_type.to_sql(self)
             parts = [self.format_identifier(col_def.name), type_sql]
