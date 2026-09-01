@@ -1356,6 +1356,7 @@ class SQLServerDialect(
         else:
             parts = [self.format_identifier(col_def.name), str(col_def.data_type)]
             params: List[Any] = []
+        tuple_params = tuple(params)
 
         constraint_parts = []
         for constraint in col_def.constraints:
@@ -1387,7 +1388,7 @@ class SQLServerDialect(
         if constraint_parts:
             parts.append(' '.join(constraint_parts))
 
-        return ' '.join(parts), params
+        return ' '.join(parts), tuple(params)
 
     def format_table_constraint(self, t_const: "TableConstraint") -> Tuple[str, List[Any]]:
         """Format a table constraint for SQL Server."""
