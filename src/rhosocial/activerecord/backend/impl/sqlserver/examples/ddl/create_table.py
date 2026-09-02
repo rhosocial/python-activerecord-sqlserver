@@ -79,7 +79,7 @@ indexes = [
 
 create_expr = CreateTableExpression(
     dialect=dialect,
-    table_name='users',
+    table='users',
     columns=columns,
     indexes=indexes,
     if_not_exists=True,
@@ -105,7 +105,7 @@ print("Table created: users")
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table='users', if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

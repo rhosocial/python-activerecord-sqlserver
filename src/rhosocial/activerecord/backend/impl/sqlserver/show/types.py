@@ -69,7 +69,7 @@ class ShowIndexResult:
     """Result from a SHOW INDEX-style query.
 
     Attributes:
-        table: Table name.
+        table_name: Table name.
         non_unique: 1 if index allows duplicates, 0 if unique.
         key_name: Index name.
         seq_in_index: Column sequence number in index.
@@ -86,7 +86,7 @@ class ShowIndexResult:
         expression: Expression for functional index.
     """
 
-    table: str
+    table_name: str
     non_unique: int
     key_name: str
     seq_in_index: int
@@ -132,9 +132,9 @@ class ShowTriggerResult:
     """Result from a SHOW TRIGGERS-style query.
 
     Attributes:
-        trigger: Trigger name.
+        trigger_name: Trigger name.
         event: Trigger event (INSERT, UPDATE, DELETE).
-        table: Table name.
+        table_name: Table name.
         statement: Trigger body.
         timing: Trigger timing.
         created: Creation time.
@@ -145,9 +145,9 @@ class ShowTriggerResult:
         database_collation: Database collation.
     """
 
-    trigger: str
+    trigger_name: str
     event: str
-    table: str
+    table_name: str
     statement: str
     timing: str
     created: Optional[str] = None

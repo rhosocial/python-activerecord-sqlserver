@@ -1499,9 +1499,9 @@ class SQLServerDialect(
         parts.append("INDEX")
         # Note: SQL Server doesn't support IF NOT EXISTS for CREATE INDEX
         # We ignore if_not_exists flag
-        parts.append(self.format_identifier(expr.index_name))
+        parts.append(self.format_identifier(expr.index))
         parts.append("ON")
-        parts.append(self.format_identifier(expr.table_name))
+        parts.append(self.format_identifier(expr.table))
 
         col_parts = []
         for col in expr.columns:
@@ -1608,7 +1608,7 @@ class SQLServerDialect(
         TRUNCATE TABLE is a DDL operation (minimal logging).
         Does not support RESTART IDENTITY or CASCADE.
         """
-        sql = f"TRUNCATE TABLE {self.format_identifier(expr.table_name)}"
+        sql = f"TRUNCATE TABLE {self.format_identifier(expr.table)}"
         return sql, ()
 
     def format_merge_statement(self, expr: "MergeExpression") -> Tuple[str, tuple]:
@@ -1624,7 +1624,7 @@ class SQLServerDialect(
 
         all_params: list = []
 
-        target_sql, target_params = expr.target_table.to_sql()
+        target_sql, target_params = expr.target.to_sql()
         all_params.extend(target_params)
 
         source_sql, source_params = expr.source.to_sql()
@@ -1817,7 +1817,7 @@ class SQLServerDialect(
         - Single action per ALTER TABLE statement
         """
         all_params: list = []
-        parts = [f"ALTER TABLE {self.format_identifier(expr.table_name)}"]
+        parts = [f"ALTER TABLE {self.format_identifier(expr.table)}"]
 
         action_parts = []
         for action in expr.actions:

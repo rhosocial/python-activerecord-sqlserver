@@ -85,9 +85,9 @@ class SQLServerBackendMixin:
         table_end = from_match.end() + table_match.end()
         return (body[:table_end] + " " + hint + body[table_end:]).strip()
 
-    def _get_identity_columns(self, table_name: str) -> Set[str]:
+    def _get_identity_columns(self, table: str) -> Set[str]:
         """Return the set of identity column names for a table (cached)."""
-        cache_key = table_name.lower()
+        cache_key = table.lower()
         if cache_key in self._identity_columns_cache:
             return self._identity_columns_cache[cache_key]
         columns: Set[str] = set()
@@ -97,7 +97,7 @@ class SQLServerBackendMixin:
                 "SELECT c.name FROM sys.identity_columns c "
                 "JOIN sys.tables t ON c.object_id = t.object_id "
                 "WHERE t.name = ? AND SCHEMA_NAME(t.schema_id) = 'dbo'",
-                (table_name,),
+                (table,),
             )
             for row in cursor.fetchall():
                 columns.add(str(row[0]).lower())
@@ -145,11 +145,11 @@ class SQLServerBackendMixin:
         """
         if not params:
             return None
-        table_name = self._insert_table_name(sql)
-        if not table_name:
+        table = self._insert_table_name(sql)
+        if not table:
             return None
         if identity_columns is None:
-            identity_columns = self._get_identity_columns(table_name)
+            identity_columns = self._get_identity_columns(table)
         if not identity_columns:
             return None
         match = _INSERT_PATTERN.match(sql)
@@ -159,7 +159,7 @@ class SQLServerBackendMixin:
             return None
         for col, value in zip(columns, params):
             if col in identity_columns and value is not None:
-                return table_name
+                return table
         return None
 
     def set_nocount(self, on: bool = True) -> None:

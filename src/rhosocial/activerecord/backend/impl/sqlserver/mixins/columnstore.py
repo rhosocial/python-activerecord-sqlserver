@@ -65,9 +65,9 @@ class SQLServerColumnstoreIndexMixin:
 
         parts.append("COLUMNSTORE")
         parts.append("INDEX")
-        parts.append(self.format_identifier(expr.index_name))  # type: ignore[attr-defined]
+        parts.append(self.format_identifier(expr.index))  # type: ignore[attr-defined]
         parts.append("ON")
-        parts.append(self.format_identifier(expr.table_name))  # type: ignore[attr-defined]
+        parts.append(self.format_identifier(expr.table))  # type: ignore[attr-defined]
 
         if expr.columns:
             columns_str = ", ".join(

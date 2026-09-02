@@ -44,7 +44,7 @@ class SQLServerTriggerDdlMixin:
         return self.version >= _SQL_SERVER_TRIGGER_VERSION  # type: ignore[attr-defined]
 
     def _get_trigger_name(self, expr: Any) -> str:
-        return getattr(expr, "name", None) or getattr(expr, "trigger_name", "")
+        return getattr(expr, "name", None) or getattr(expr, "trigger", "")
 
     def format_create_trigger_statement(
         self, expr: "SQLServerCreateTriggerExpression"
@@ -75,7 +75,7 @@ class SQLServerTriggerDdlMixin:
         name = self._get_trigger_name(expr)
         if not name:
             raise ValueError("trigger name is required")
-        table = getattr(expr, "table_name", None) or getattr(expr, "table", None)
+        table = getattr(expr, "table", None) or getattr(expr, "table", None)
         if not table:
             raise ValueError("trigger table is required")
 

@@ -61,7 +61,7 @@ snap_before = builder.build()
 
 # Add a column
 alter = AlterTableExpression(
-    dialect=dialect, table_name="users",
+    dialect=dialect, table="users",
     actions=[
         AddColumn(dialect, column=ColumnDefinition("email", VarCharType(length=255))),
     ],

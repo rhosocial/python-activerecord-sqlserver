@@ -72,5 +72,5 @@ class SQLServerProtocolSupportSupport(Protocol):
         ...  # pragma: no cover
     def format_st_intersects(self, geom1: str, geom2: str) -> Tuple[str, tuple]:
         ...  # pragma: no cover
-    def format_create_spatial_index(self, index_name: str, table_name: str, column: str) -> Tuple[str, tuple]:
+    def format_create_spatial_index(self, index: str, table: str, column: str) -> Tuple[str, tuple]:
         ...  # pragma: no cover

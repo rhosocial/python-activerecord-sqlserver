@@ -23,8 +23,8 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
     """SQL Server CREATE [CLUSTERED|NONCLUSTERED] COLUMNSTORE INDEX statement.
 
     Attributes:
-        index_name: Name of the columnstore index.
-        table_name: Table on which the index is created.
+        index: Name of the columnstore index.
+        table: Table on which the index is created.
         columns: Key columns. Required for NONCLUSTERED columnstore
             (``clustered=False``), forbidden for clustered columnstore.
         clustered: If ``None`` the CLUSTERED/NONCLUSTERED keyword is omitted
@@ -44,15 +44,15 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
     def __init__(
         self,
         dialect: "SQLServerDialect",
-        index_name: str,
-        table_name: str,
+        index: str,
+        table: str,
         columns: Sequence[str] = (),
         clustered: Optional[bool] = None,
         order_columns: Sequence[str] = (),
     ):
         super().__init__(dialect)
-        self.index_name = index_name
-        self.table_name = table_name
+        self.index = index
+        self.table = table
         self.columns = list(columns)
         self.clustered = clustered
         self.order_columns = list(order_columns)

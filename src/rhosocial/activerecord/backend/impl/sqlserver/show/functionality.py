@@ -37,7 +37,7 @@ class SQLServerShowFunctionality:
 
     # ========== Parsing Helper Methods ==========
 
-    def _parse_create_table_result(self, result, table_name: str):
+    def _parse_create_table_result(self, result, table: str):
         """Parse a table definition result."""
         from .types import ShowCreateTableResult
 
@@ -46,7 +46,7 @@ class SQLServerShowFunctionality:
 
         row = result.data[0]
         return ShowCreateTableResult(
-            table_name=row.get("Table", row.get("TABLE", table_name)),
+            table_name=row.get("Table", row.get("TABLE", table)),
             create_statement=row.get("Create Table", row.get("CREATE TABLE", "")),
         )
 
@@ -93,7 +93,7 @@ class SQLServerShowFunctionality:
         for row in result.data:
             indexes.append(
                 ShowIndexResult(
-                    table=row.get("Table", row.get("TABLE_NAME")),
+                    table_name=row.get("Table", row.get("TABLE_NAME")),
                     non_unique=row.get("Non_unique", row.get("NON_UNIQUE")),
                     key_name=row.get("Key_name", row.get("INDEX_NAME")),
                     seq_in_index=row.get("Seq_in_index", row.get("SEQ_IN_INDEX")),
@@ -140,9 +140,9 @@ class SQLServerShowFunctionality:
         for row in result.data:
             triggers.append(
                 ShowTriggerResult(
-                    trigger=row.get("Trigger", row.get("TRIGGER_NAME")),
+                    trigger_name=row.get("Trigger", row.get("TRIGGER_NAME")),
                     event=row.get("Event", row.get("EVENT_MANIPULATION")),
-                    table=row.get("Table", row.get("EVENT_OBJECT_TABLE")),
+                    table_name=row.get("Table", row.get("EVENT_OBJECT_TABLE")),
                     statement=row.get("Statement", row.get("ACTION_STATEMENT")),
                     timing=row.get("Timing", row.get("ACTION_TIMING")),
                     created=row.get("Created"),

@@ -250,9 +250,9 @@ class AsyncSQLServerBackend(
         async with await self._get_cursor() as cursor:
             await cursor.execute(sql)
 
-    async def _get_identity_columns_async(self, table_name: str) -> Set[str]:
+    async def _get_identity_columns_async(self, table: str) -> Set[str]:
         """Return the set of identity column names for a table (async, cached)."""
-        cache_key = table_name.lower()
+        cache_key = table.lower()
         if cache_key in self._identity_columns_cache:
             return self._identity_columns_cache[cache_key]
         columns: Set[str] = set()
@@ -262,7 +262,7 @@ class AsyncSQLServerBackend(
                     "SELECT c.name FROM sys.identity_columns c "
                     "JOIN sys.tables t ON c.object_id = t.object_id "
                     "WHERE t.name = ? AND SCHEMA_NAME(t.schema_id) = 'dbo'",
-                    (table_name,),
+                    (table,),
                 )
                 for row in await cursor.fetchall():
                     columns.add(str(row[0]).lower())
@@ -357,9 +357,9 @@ class AsyncSQLServerBackend(
             async with await self._get_cursor() as cursor:
                 final_sql, final_params = self._prepare_sql_and_params(sql, prepared_params)
                 identity_columns = None
-                table_name = self._insert_table_name(final_sql)
-                if table_name is not None:
-                    identity_columns = await self._get_identity_columns_async(table_name)
+                table = self._insert_table_name(final_sql)
+                if table is not None:
+                    identity_columns = await self._get_identity_columns_async(table)
                 identity_table = self._identity_insert_info(
                     final_sql, final_params, identity_columns
                 )

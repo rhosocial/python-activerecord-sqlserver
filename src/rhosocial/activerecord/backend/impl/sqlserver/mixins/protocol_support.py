@@ -679,7 +679,7 @@ class SQLServerProtocolSupportMixin:
         return f"{geom1}.STIntersects({geom2})", ()
 
     def format_create_spatial_index(
-        self, index_name: str, table_name: str, column: str
+        self, index: str, table: str, column: str
     ) -> Tuple[str, tuple]:
         """Format a CREATE SPATIAL INDEX statement.
 
@@ -695,8 +695,8 @@ class SQLServerProtocolSupportMixin:
             "requires SQL Server 2008+.",
         )
         sql = (
-            f"CREATE SPATIAL INDEX {self.format_identifier(index_name)} "
-            f"ON {self.format_identifier(table_name)} ({self.format_identifier(column)}) "
+            f"CREATE SPATIAL INDEX {self.format_identifier(index)} "
+            f"ON {self.format_identifier(table)} ({self.format_identifier(column)}) "
             f"WITH (BOUNDING_BOX = (0, 0, 100, 100))"
         )
         return sql, ()

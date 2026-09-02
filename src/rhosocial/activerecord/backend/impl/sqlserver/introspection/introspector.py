@@ -78,7 +78,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         """, tuple(params))
 
     def _build_column_info_sql(
-        self, table_name: str, schema: Optional[str]
+        self, table: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
         return ("""
@@ -94,10 +94,10 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             FROM INFORMATION_SCHEMA.COLUMNS c
             WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ?
             ORDER BY c.ORDINAL_POSITION
-        """, (target, table_name))
+        """, (target, table))
 
     def _build_primary_key_sql(
-        self, table_name: str, schema: str
+        self, table: str, schema: str
     ) -> Tuple[str, tuple]:
         return ("""
             SELECT ccu.COLUMN_NAME
@@ -108,15 +108,15 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             WHERE tc.TABLE_SCHEMA = ?
               AND tc.TABLE_NAME = ?
               AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-        """, (schema, table_name))
+        """, (schema, table))
 
     def _build_index_info_sql(
-        self, table_name: str, schema: Optional[str]
+        self, table: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
         return ("""
             SELECT
-                i.name AS index_name,
+                i.name AS index,
                 i.is_unique,
                 i.is_primary_key,
                 i.type_desc AS index_type,
@@ -133,10 +133,10 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             WHERE s.name = ? AND t.name = ?
               AND i.name IS NOT NULL
             ORDER BY i.name, ic.key_ordinal
-        """, (target, table_name))
+        """, (target, table))
 
     def _build_foreign_key_sql(
-        self, table_name: str, schema: Optional[str]
+        self, table: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
         return ("""
@@ -155,7 +155,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             JOIN sys.schemas s ON t.schema_id = s.schema_id
             WHERE s.name = ? AND t.name = ?
             ORDER BY fk.name, fc.constraint_column_id
-        """, (target, table_name))
+        """, (target, table))
 
     def _build_view_list_sql(
         self, schema: Optional[str], include_system: bool
@@ -182,17 +182,17 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         """, (target, view_name))
 
     def _build_trigger_list_sql(
-        self, table_name: Optional[str], schema: Optional[str]
+        self, table: Optional[str], schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
         params: List[str] = [target]
-        table_filter = "AND t.name = ?" if table_name else ""
-        if table_name:
-            params.append(table_name)
+        table_filter = "AND t.name = ?" if table else ""
+        if table:
+            params.append(table)
         return (f"""
             SELECT
-                tr.name AS trigger_name,
-                t.name AS table_name,
+                tr.name AS trigger,
+                t.name AS table,
                 tr.is_disabled,
                 tr.is_instead_of_trigger,
                 OBJECT_DEFINITION(tr.object_id) AS definition
@@ -241,7 +241,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         ]
 
     def _parse_columns(
-        self, rows: List[Dict[str, Any]], table_name: str, schema: str,
+        self, rows: List[Dict[str, Any]], table: str, schema: str,
         primary_keys: Optional[List[str]] = None,
     ) -> List[ColumnInfo]:
         pk_set = set(primary_keys or [])
@@ -272,7 +272,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
 
             columns.append(ColumnInfo(
                 name=col_name,
-                table_name=table_name,
+                table_name=table,
                 schema=schema,
                 ordinal_position=row.get("ORDINAL_POSITION", 0),
                 data_type=data_type,
@@ -295,7 +295,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         return columns
 
     def _parse_indexes(
-        self, rows: List[Dict[str, Any]], table_name: str, schema: str
+        self, rows: List[Dict[str, Any]], table: str, schema: str
     ) -> List[IndexInfo]:
         type_map = {
             "CLUSTERED": IndexType.BTREE,
@@ -304,12 +304,12 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         }
         index_map: Dict[str, IndexInfo] = {}
         for row in rows:
-            idx_name = row.get("index_name", "")
+            idx_name = row.get("index", "")
             if idx_name not in index_map:
                 idx_type_str = (row.get("index_type") or "").upper()
                 index_map[idx_name] = IndexInfo(
                     name=idx_name,
-                    table_name=table_name,
+                    table_name=table,
                     schema=schema,
                     is_unique=bool(row.get("is_unique")),
                     is_primary=bool(row.get("is_primary_key")),
@@ -324,7 +324,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         return list(index_map.values())
 
     def _parse_foreign_keys(
-        self, rows: List[Dict[str, Any]], table_name: str, schema: str
+        self, rows: List[Dict[str, Any]], table: str, schema: str
     ) -> List[ForeignKeyInfo]:
         action_map = {
             "NO_ACTION": ReferentialAction.NO_ACTION,
@@ -340,7 +340,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                 on_upd = (row.get("on_update") or "NO_ACTION").upper()
                 fk_map[fk_name] = ForeignKeyInfo(
                     name=fk_name,
-                    table_name=table_name,
+                    table_name=table,
                     schema=schema,
                     referenced_table=row.get("ref_table", ""),
                     on_delete=action_map.get(
@@ -388,8 +388,8 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
     ) -> List[TriggerInfo]:
         return [
             TriggerInfo(
-                name=row.get("trigger_name", ""),
-                table_name=row.get("table_name", ""),
+                name=row.get("trigger", ""),
+                table_name=row.get("table", ""),
                 schema=schema,
                 timing=(
                     "INSTEAD OF" if row.get("is_instead_of_trigger")
@@ -413,48 +413,48 @@ class SyncSQLServerIntrospector(
         super().__init__(backend, executor)
 
     def get_table_info(
-        self, table_name: str, schema: Optional[str] = None
+        self, table: str, schema: Optional[str] = None
     ) -> Optional[TableInfo]:
         key = self._make_cache_key(
-            IntrospectionScope.TABLE, table_name, schema=schema
+            IntrospectionScope.TABLE, table, schema=schema
         )
         cached = self._get_cached(key)
         if cached is not None:
             return cached
 
         tables = self.list_tables(schema)
-        table = next(
-            (t for t in tables if t.name == table_name), None
+        found = next(
+            (t for t in tables if t.name == table), None
         )
-        if table is None:
+        if found is None:
             return None
 
-        table = copy.copy(table)
-        table.columns = self.list_columns(table_name, schema)
-        table.indexes = self.list_indexes(table_name, schema)
-        table.foreign_keys = self.list_foreign_keys(table_name, schema)
-        self._set_cached(key, table)
-        return table
+        info = copy.copy(found)
+        info.columns = self.list_columns(table, schema)
+        info.indexes = self.list_indexes(table, schema)
+        info.foreign_keys = self.list_foreign_keys(table, schema)
+        self._set_cached(key, info)
+        return info
 
     def list_columns(
-        self, table_name: str, schema: Optional[str] = None
+        self, table: str, schema: Optional[str] = None
     ) -> List[ColumnInfo]:
         target = schema if schema is not None else self._get_default_schema()
         key = self._make_cache_key(
-            IntrospectionScope.COLUMN, table_name, schema=target
+            IntrospectionScope.COLUMN, table, schema=target
         )
         cached = self._get_cached(key)
         if cached is not None:
             return cached
 
-        pk_sql, pk_params = self._build_primary_key_sql(table_name, target)
+        pk_sql, pk_params = self._build_primary_key_sql(table, target)
         pk_rows = self._executor.execute(pk_sql, pk_params)
         primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
 
-        sql, params = self._build_column_info_sql(table_name, schema)
+        sql, params = self._build_column_info_sql(table, schema)
         rows = self._executor.execute(sql, params)
         columns = self._parse_columns(
-            rows, table_name, target, primary_keys
+            rows, table, target, primary_keys
         )
         self._set_cached(key, columns)
         return columns
@@ -471,50 +471,50 @@ class AsyncSQLServerIntrospector(
         super().__init__(backend, executor)
 
     async def get_table_info(
-        self, table_name: str, schema: Optional[str] = None
+        self, table: str, schema: Optional[str] = None
     ) -> Optional[TableInfo]:
         key = self._make_cache_key(
-            IntrospectionScope.TABLE, table_name, schema=schema
+            IntrospectionScope.TABLE, table, schema=schema
         )
         cached = self._get_cached(key)
         if cached is not None:
             return cached
 
         tables = await self.list_tables(schema)
-        table = next(
-            (t for t in tables if t.name == table_name), None
+        found = next(
+            (t for t in tables if t.name == table), None
         )
-        if table is None:
+        if found is None:
             return None
 
-        table = copy.copy(table)
-        table.columns = await self.list_columns(table_name, schema)
-        table.indexes = await self.list_indexes(table_name, schema)
-        table.foreign_keys = await self.list_foreign_keys(
-            table_name, schema
+        info = copy.copy(found)
+        info.columns = await self.list_columns(table, schema)
+        info.indexes = await self.list_indexes(table, schema)
+        info.foreign_keys = await self.list_foreign_keys(
+            table, schema
         )
-        self._set_cached(key, table)
-        return table
+        self._set_cached(key, info)
+        return info
 
     async def list_columns(
-        self, table_name: str, schema: Optional[str] = None
+        self, table: str, schema: Optional[str] = None
     ) -> List[ColumnInfo]:
         target = schema if schema is not None else self._get_default_schema()
         key = self._make_cache_key(
-            IntrospectionScope.COLUMN, table_name, schema=target
+            IntrospectionScope.COLUMN, table, schema=target
         )
         cached = self._get_cached(key)
         if cached is not None:
             return cached
 
-        pk_sql, pk_params = self._build_primary_key_sql(table_name, target)
+        pk_sql, pk_params = self._build_primary_key_sql(table, target)
         pk_rows = await self._executor.execute(pk_sql, pk_params)
         primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
 
-        sql, params = self._build_column_info_sql(table_name, schema)
+        sql, params = self._build_column_info_sql(table, schema)
         rows = await self._executor.execute(sql, params)
         columns = self._parse_columns(
-            rows, table_name, target, primary_keys
+            rows, table, target, primary_keys
         )
         self._set_cached(key, columns)
         return columns
