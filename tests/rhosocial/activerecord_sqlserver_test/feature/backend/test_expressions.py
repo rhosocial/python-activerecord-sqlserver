@@ -135,8 +135,8 @@ class TestCreateIndexExpression:
 
         idx = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_users_email",
-            table_name="users",
+            index="idx_users_email",
+            table="users",
             columns=["email"],
         )
 
@@ -151,8 +151,8 @@ class TestCreateIndexExpression:
 
         idx = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_users_email_unique",
-            table_name="users",
+            index="idx_users_email_unique",
+            table="users",
             columns=["email"],
             unique=True,
         )
@@ -166,8 +166,8 @@ class TestCreateIndexExpression:
 
         idx = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_orders_composite",
-            table_name="orders",
+            index="idx_orders_composite",
+            table="orders",
             columns=["user_id", "created_at"],
         )
 

@@ -312,9 +312,9 @@ class TestShowTriggersParsing:
 
         assert len(triggers) == 1
         # ShowTriggerResult uses 'trigger' attribute, not 'name'
-        assert triggers[0].trigger == "users_before_insert"
+        assert triggers[0].trigger_name == "users_before_insert"
         assert triggers[0].event == "INSERT"
-        assert triggers[0].table == "users"
+        assert triggers[0].table_name == "users"
 
 
 class TestShowVariablesParsing:

@@ -212,7 +212,7 @@ class TestMergeOutputAndHoldlock:
 
         return MergeExpression(
             dialect=d,
-            target_table="tgt",
+            target="tgt",
             source=TableExpression(d, "src"),
             on_condition=ComparisonPredicate(
                 d, "=", Column(d, "id", "tgt"), Column(d, "id", "src")

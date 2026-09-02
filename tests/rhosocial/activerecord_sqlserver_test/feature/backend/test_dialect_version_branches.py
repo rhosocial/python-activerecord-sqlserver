@@ -284,7 +284,7 @@ class TestRenderingSnapshots:
         d = SQLServerDialect((16, 0, 0))
         merge = MergeExpression(
             dialect=d,
-            target_table=TableExpression(d, "target"),
+            target=TableExpression(d, "target"),
             source=QueryExpression(
                 dialect=d,
                 select=[Column(d, "id"), Column(d, "name")],
@@ -323,7 +323,7 @@ class TestRenderingSnapshots:
         d = SQLServerDialect((16, 0, 0))
         merge = MergeExpression(
             dialect=d,
-            target_table=TableExpression(d, "t"),
+            target=TableExpression(d, "t"),
             source=QueryExpression(dialect=d, select=[Column(d, "id")], from_=TableExpression(d, "s")),
             on_condition=ComparisonPredicate(d, "=", Column(d, "id", "t"), Column(d, "id", "s")),
             when_matched=[MergeAction(action_type=MergeActionType.DELETE)],

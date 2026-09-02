@@ -276,7 +276,7 @@ class TestSQLServerDialectTruncate:
 
         expr = TruncateExpression(
             dialect=dialect,
-            table_name="users",
+            table="users",
         )
         sql, params = dialect.format_truncate_statement(expr)
         assert sql == "TRUNCATE TABLE [users]"
@@ -412,7 +412,7 @@ class TestSQLServerDialectMerge:
 
         merge = MergeExpression(
             dialect=dialect,
-            target_table=TableExpression(dialect, "target"),
+            target=TableExpression(dialect, "target"),
             source=QueryExpression(
                 dialect=dialect,
                 select=[Column(dialect, "id"), Column(dialect, "name")],
@@ -808,8 +808,8 @@ class TestSQLServerDialectDDL:
 
         expr = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_users_email_include",
-            table_name="users",
+            index="idx_users_email_include",
+            table="users",
             columns=["email"],
             include=["id", "name"],
         )

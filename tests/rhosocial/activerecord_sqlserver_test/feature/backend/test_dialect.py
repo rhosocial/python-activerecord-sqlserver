@@ -88,8 +88,8 @@ class TestSQLServerDialectStatements:
 
         expr = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_test",
-            table_name="test_table",
+            index="idx_test",
+            table="test_table",
             columns=["id", "name"],
         )
         sql, params = dialect.format_create_index_statement(expr)
@@ -104,8 +104,8 @@ class TestSQLServerDialectStatements:
 
         expr = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_unique",
-            table_name="users",
+            index="idx_unique",
+            table="users",
             columns=["email"],
             unique=True,
         )
