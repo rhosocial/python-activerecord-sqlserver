@@ -1,4 +1,4 @@
-# tests/rhosocial/activerecord_test/feature/backend/cli/test_cli_blackbox.py
+# tests/rhosocial/activerecord_sqlserver_test/feature/backend/cli/test_cli_blackbox.py
 """Black-box CLI tests for the SQL Server backend.
 
 Live server scenarios (127.0.0.1:11433-11435) may be unavailable in the
