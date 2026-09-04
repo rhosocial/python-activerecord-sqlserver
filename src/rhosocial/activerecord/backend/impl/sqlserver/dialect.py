@@ -998,6 +998,44 @@ class SQLServerDialect(
     def supports_add_column(self) -> bool:
         """SQL Server supports ALTER TABLE ADD COLUMN."""
         return True
+
+    # CreateTableExpressionDiffSupport capability hooks
+    def _supports_alter_column_properties(self) -> bool:
+        """SQL Server has no standalone ``ALTER COLUMN SET/DROP DEFAULT`` or
+        ``SET/DROP NOT NULL`` subclauses: ``ALTER COLUMN`` re-specifies the
+        whole column (see ``SQLServerAlterColumnModifierMixin.
+        format_alter_column_action``, which only accepts ``SET DATA TYPE`` /
+        masking variants), and defaults are managed through
+        ``ADD CONSTRAINT DF_...`` / ``DROP CONSTRAINT``. Expression diffs
+        therefore route property changes (default / nullability) to a
+        rebuild plan.
+        """
+        return False
+
+    def _supports_alter_table_index_actions(self) -> bool:
+        """T-SQL has no ``ALTER TABLE ADD/DROP INDEX``: indexes are managed
+        with ``CREATE INDEX`` / ``DROP INDEX`` as separate statements, so
+        ``AddIndex`` / ``DropIndex`` alter-table actions cannot be rendered.
+        Expression diffs route index changes to a rebuild plan (the
+        recreated table carries the new index set).
+        """
+        return False
+
+    def _supports_alter_column_type(self) -> bool:
+        """Type changes stay on the rebuild path.
+
+        T-SQL *can* change a type in place (``ALTER COLUMN col INT NOT NULL``,
+        rendered by ``format_alter_column_type_action``), but the generic
+        diff mixin has no full-column-redefinition action class — its
+        portable in-place vocabulary is only AddColumn/DropColumn and the
+        SET/DROP DEFAULT/NOT NULL property operations, the latter of which
+        SQL Server rejects (see
+        :meth:`_supports_alter_column_properties`). Emitting a
+        ``ModifyColumn``/``ChangeColumn`` action (MySQL semantics) would not
+        render on SQL Server, so keep the default (False): type changes
+        produce a ``RebuildPlan``.
+        """
+        return False
     
     def supports_table_partitioning(self) -> bool:
         """SQL Server supports table partitioning."""
