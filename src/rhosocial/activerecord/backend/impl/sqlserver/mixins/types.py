@@ -32,6 +32,17 @@ from rhosocial.activerecord.backend.expression.types import (
     TimestampType,
     VarCharType,
 )
+from ..expression.types import (
+    SQLServerBitType,
+    SQLServerImageType,
+    SQLServerNCharType,
+    SQLServerNVarCharMaxType,
+    SQLServerNVarCharType,
+    SQLServerTinyIntType,
+    SQLServerVarBinaryMaxType,
+    SQLServerVarBinaryType,
+    SQLServerXmlType,
+)
 
 
 class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
@@ -112,6 +123,42 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
     def format_data_type_custom(self, data_type: CustomType) -> Tuple[str, tuple]:
         """Render a backend-specific type verbatim (e.g. ``uniqueidentifier``)."""
         return data_type.raw, ()
+
+    @DDLTypeMixin.handles(SQLServerNVarCharType)
+    def format_data_type_nvarchar(self, data_type: SQLServerNVarCharType) -> Tuple[str, tuple]:
+        return (f"NVARCHAR({data_type.length})" if data_type.length is not None else "NVARCHAR(255)"), ()
+
+    @DDLTypeMixin.handles(SQLServerNCharType)
+    def format_data_type_nchar(self, data_type: SQLServerNCharType) -> Tuple[str, tuple]:
+        return (f"NCHAR({data_type.length})" if data_type.length is not None else "NCHAR(1)"), ()
+
+    @DDLTypeMixin.handles(SQLServerNVarCharMaxType)
+    def format_data_type_nvarchar_max(self, data_type: SQLServerNVarCharMaxType) -> Tuple[str, tuple]:
+        return "NVARCHAR(MAX)", ()
+
+    @DDLTypeMixin.handles(SQLServerVarBinaryType)
+    def format_data_type_varbinary(self, data_type: SQLServerVarBinaryType) -> Tuple[str, tuple]:
+        return (f"VARBINARY({data_type.length})" if data_type.length is not None else "VARBINARY(MAX)"), ()
+
+    @DDLTypeMixin.handles(SQLServerVarBinaryMaxType)
+    def format_data_type_varbinary_max(self, data_type: SQLServerVarBinaryMaxType) -> Tuple[str, tuple]:
+        return "VARBINARY(MAX)", ()
+
+    @DDLTypeMixin.handles(SQLServerXmlType)
+    def format_data_type_xml(self, data_type: SQLServerXmlType) -> Tuple[str, tuple]:
+        return "XML", ()
+
+    @DDLTypeMixin.handles(SQLServerImageType)
+    def format_data_type_image(self, data_type: SQLServerImageType) -> Tuple[str, tuple]:
+        return "IMAGE", ()
+
+    @DDLTypeMixin.handles(SQLServerTinyIntType)
+    def format_data_type_tinyint(self, data_type: SQLServerTinyIntType) -> Tuple[str, tuple]:
+        return "TINYINT", ()
+
+    @DDLTypeMixin.handles(SQLServerBitType)
+    def format_data_type_bit(self, data_type: SQLServerBitType) -> Tuple[str, tuple]:
+        return "BIT", ()
 
     # --- Parsing ---
 
