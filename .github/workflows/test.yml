@@ -729,7 +729,7 @@ jobs:
     - name: Run tests with coverage
       run: |
         export PYTHONPATH=src:tests
-        python -m pytest tests/ --tb=short -n 8 --dist=loadgroup --cov=src/rhosocial --cov-branch --cov-report=xml
+        python -m pytest tests/ --tb=short -n 8 --dist=loadgroup --cov=src/rhosocial --cov-branch --cov-report=xml --cov-report=term-missing:skip-covered
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
