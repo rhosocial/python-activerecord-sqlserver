@@ -13,9 +13,11 @@ from rhosocial.activerecord.backend.dialect.mixins import (
 from rhosocial.activerecord.backend.dialect.protocols import DDLTypeSupport
 from rhosocial.activerecord.backend.expression.types import (
     BigIntType,
+    BinaryType,
     BlobType,
     BooleanType,
     CharType,
+    CidrType,
     CustomType,
     DataType,
     DateType,
@@ -23,13 +25,17 @@ from rhosocial.activerecord.backend.expression.types import (
     DecimalType,
     DoubleType,
     FloatType,
+    InetType,
     IntegerType,
     JsonType,
+    MacAddrType,
     RealType,
     SmallIntType,
     TextType,
     TimeType,
     TimestampType,
+    UUIDType,
+    VarBinaryType,
     VarCharType,
 )
 from ..expression.types import (
@@ -114,6 +120,30 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
     @DDLTypeMixin.handles(JsonType)
     def format_data_type_json(self, data_type: JsonType) -> Tuple[str, tuple]:
         return "NVARCHAR(MAX)", ()
+
+    @DDLTypeMixin.handles(UUIDType)
+    def format_data_type_uuid(self, data_type: UUIDType) -> Tuple[str, tuple]:
+        return "uniqueidentifier", ()
+
+    @DDLTypeMixin.handles(InetType)
+    def format_data_type_inet(self, data_type: InetType) -> Tuple[str, tuple]:
+        return "VARBINARY(16)", ()
+
+    @DDLTypeMixin.handles(CidrType)
+    def format_data_type_cidr(self, data_type: CidrType) -> Tuple[str, tuple]:
+        return "NVARCHAR(45)", ()
+
+    @DDLTypeMixin.handles(MacAddrType)
+    def format_data_type_mac_addr(self, data_type: MacAddrType) -> Tuple[str, tuple]:
+        return "BINARY(6)", ()
+
+    @DDLTypeMixin.handles(BinaryType)
+    def format_data_type_binary(self, data_type: BinaryType) -> Tuple[str, tuple]:
+        return f"BINARY({data_type.length})", ()
+
+    @DDLTypeMixin.handles(VarBinaryType)
+    def format_data_type_var_binary(self, data_type: VarBinaryType) -> Tuple[str, tuple]:
+        return f"VARBINARY({data_type.length})", ()
 
     @DDLTypeMixin.handles(BlobType)
     def format_data_type_blob(self, data_type: BlobType) -> Tuple[str, tuple]:
@@ -226,8 +256,8 @@ class SQLServerTypeSuggestionMixin(DDLTypeSuggestionMixin):
     SQL Server reuses the core generic ``DataType`` classes (rendered by
     ``SQLServerTypeSupportMixin``); suggestions therefore map to core types:
 
-    - ``uuid.UUID`` → ``CustomType("uniqueidentifier")`` (native SQL Server
-      UUID type; the default value adapter already round-trips via str).
+    - ``uuid.UUID`` → ``UUIDType`` (rendered as native SQL Server
+      ``uniqueidentifier``; the default value adapter already round-trips via str).
     - ``dict`` / ``list`` → ``JsonType`` (SQL Server has no native JSON type;
       rendered as ``NVARCHAR(MAX)`` and handled by ``SQLServerJSONAdapter``).
     - ``str`` → ``VarCharType(255)`` (``VARCHAR`` in the base dialect,
@@ -243,6 +273,7 @@ class SQLServerTypeSuggestionMixin(DDLTypeSuggestionMixin):
         import datetime as _dt
         import decimal as _dec
         import enum as _enum
+        import ipaddress as _ip
         import uuid as _uuid
 
         mapping = {
@@ -255,12 +286,18 @@ class SQLServerTypeSuggestionMixin(DDLTypeSuggestionMixin):
             _dt.date: DateType,
             _dt.time: TimeType,
             _dec.Decimal: DecimalType,
+            _uuid.UUID: UUIDType,
             dict: JsonType,
             list: JsonType,
+            set: JsonType,
+            frozenset: JsonType,
+            tuple: JsonType,
             _enum.Enum: VarCharType,
+            _ip.IPv4Address: InetType,
+            _ip.IPv6Address: InetType,
+            _ip.IPv4Network: CidrType,
+            _ip.IPv6Network: CidrType,
         }
-        if python_type is _uuid.UUID:
-            return CustomType(dialect=self, raw="uniqueidentifier")
         factory = mapping.get(python_type)
         if factory is not None:
             if python_type is _enum.Enum:
