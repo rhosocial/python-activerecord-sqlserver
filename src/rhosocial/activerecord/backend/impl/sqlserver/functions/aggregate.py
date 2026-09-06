@@ -33,7 +33,7 @@ def max_(
     expr: Union[str, "bases.BaseExpression"],
 ) -> "core.FunctionCall":
     """Creates a MAX function call."""
-    return core.FunctionCall(dialect, "MAX", [_convert_to_expression(dialect, expr)])
+    return core.FunctionCall(dialect, "MAX", _convert_to_expression(dialect, expr))
 
 
 def min_(
@@ -41,7 +41,7 @@ def min_(
     expr: Union[str, "bases.BaseExpression"],
 ) -> "core.FunctionCall":
     """Creates a MIN function call."""
-    return core.FunctionCall(dialect, "MIN", [_convert_to_expression(dialect, expr)])
+    return core.FunctionCall(dialect, "MIN", _convert_to_expression(dialect, expr))
 
 
 def avg(
@@ -49,4 +49,4 @@ def avg(
     expr: Union[str, "bases.BaseExpression"],
 ) -> "core.FunctionCall":
     """Creates an AVG function call."""
-    return core.FunctionCall(dialect, "AVG", [_convert_to_expression(dialect, expr)])
+    return core.FunctionCall(dialect, "AVG", _convert_to_expression(dialect, expr))
