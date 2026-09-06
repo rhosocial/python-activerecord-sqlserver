@@ -603,13 +603,23 @@ def transaction(backend: StorageBackend):
 ### Mixin Classes
 
 ```python
-class TimestampMixin:
-    """Add timestamp fields to models."""
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: Optional[datetime] = None
-    
+class CustomTimestampMixin:
+    """Timestamp *maintenance semantics* -- declares no fields.
+
+    The model declares the datetime fields and points at them via
+    ``__created_at_field__`` / ``__updated_at_field__``.
+    """
+    __created_at_field__ = "created_at"
+    __updated_at_field__ = "updated_at"
+
     def before_save(self):
         self.updated_at = datetime.now()
+
+
+class DefaultCustomTimestampMixin(CustomTimestampMixin):
+    """Timestamp semantics plus the conventional fields."""
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: Optional[datetime] = None
 ```
 
 ## Expression-Dialect System Coding Standards

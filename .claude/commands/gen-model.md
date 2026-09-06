@@ -14,7 +14,7 @@ Ask the user for the following information:
 3. **Table Name** (snake_case, e.g., `users`, `order_items`)
 4. **Primary Key** (default: `id`)
 5. **Fields** (format: `name:type`, e.g., `name:str, age:int, email:str`)
-6. **Mixins** (optional: `TimestampMixin`, `SoftDeleteMixin`, `VersionMixin`)
+6. **Mixins** (optional: `DefaultTimestampMixin`, `DefaultSoftDeleteMixin`, `DefaultOptimisticLockMixin`)
 
 ## Generated Model Structure
 
@@ -24,7 +24,7 @@ from datetime import datetime
 from pydantic import Field
 from rhosocial.activerecord.model import ActiveRecord
 from rhosocial.activerecord.base import FieldProxy
-from rhosocial.activerecord.field import TimestampMixin  # if selected
+from rhosocial.activerecord.field import DefaultTimestampMixin  # if selected
 
 class User(ActiveRecord):  # or AsyncActiveRecord
     __table_name__ = 'users'
