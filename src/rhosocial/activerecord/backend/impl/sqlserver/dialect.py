@@ -6,7 +6,7 @@ This dialect implements protocols for features that SQL Server actually supports
 based on the SQL Server version provided at initialization.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 import copy
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
@@ -63,7 +63,6 @@ from .protocols import (
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
     CTEMixin,
-    FilterClauseMixin,
     WindowFunctionMixin,
     JSONMixin,
     ReturningMixin,
@@ -110,31 +109,27 @@ from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
 from .mixins.types import SQLServerTypeSupportMixin, SQLServerTypeSuggestionMixin
+from .mixins.ddl_spec import SQLServerDDLSpecMixin
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
     from rhosocial.activerecord.backend.expression.collation import CollateExpression
-    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation, JSONExpression
+    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
         OrderByClause,
         LimitOffsetClause,
         ForUpdateClause,
         QualifyClause,
-        JoinExpression,
     )
     from rhosocial.activerecord.backend.expression.statements import (
         ExplainExpression,
         CreateViewExpression,
         DropViewExpression,
         CreateMaterializedViewExpression,
-        DropMaterializedViewExpression,
-        RefreshMaterializedViewExpression,
         ReturningClause,
         InsertExpression,
-        UpdateExpression,
-        DeleteExpression,
         ColumnDefinition,
         TableConstraint,
         IndexDefinition,
@@ -269,6 +264,7 @@ class SQLServerDialect(
     SQLServerSequenceSupport,
     SQLServerIdentitySupport,
     SQLServerIndexedViewSupport,
+    SQLServerDDLSpecMixin,  # DDL feature-spec claiming (RANGE partition Spec)
     SQLServerPartitionSupport,  # Before PartitionSupport
     PartitionSupport,
 ):
@@ -1967,3 +1963,24 @@ def _register_partition_formatters():
 
 
 _register_partition_formatters()
+
+
+def _register_ddl_spec_builders():
+    """Register SQL Server DDL feature-spec builder helpers.
+
+    Only the private ``_build_sqlserver_*`` helpers are copied onto the
+    dialect; the public ``build_spec`` entry point stays on the
+    ``SQLServerDDLSpecMixin`` base (added to the class bases) so that
+    ``super()`` resolution remains intact for the fall-through to the
+    generic ``DDLSpecBuildingMixin``.
+    """
+    from .mixins.ddl_spec import SQLServerDDLSpecMixin
+
+    for member_name in dir(SQLServerDDLSpecMixin):
+        if member_name.startswith("_build_sqlserver"):
+            member = getattr(SQLServerDDLSpecMixin, member_name)
+            if callable(member):
+                setattr(SQLServerDialect, member_name, member)
+
+
+_register_ddl_spec_builders()
