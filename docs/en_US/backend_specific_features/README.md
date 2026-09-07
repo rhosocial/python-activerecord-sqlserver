@@ -12,6 +12,7 @@ When you encounter a feature in this section, check whether it is a backend-spec
 - [EXPLAIN](explain.md): Query execution plan analysis (SET STATISTICS IO/TIME)
 - [Introspection](introspection.md): Database metadata queries and schema inspection
 - [Partitioning](partition.md): Table partitioning with partition schemes and functions
+- [DDL Feature Specs](ddl_spec.md): declarative DDL Specs claimed by the SQL Server dialect
 
 ## Feature Highlights
 

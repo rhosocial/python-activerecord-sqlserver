@@ -12,6 +12,7 @@
 - [EXPLAIN](explain.md)：查询执行计划分析（SET STATISTICS IO/TIME）
 - [内省](introspection.md)：数据库元数据查询和架构检查
 - [分区](partition.md)：使用分区方案和函数的表分区
+- [DDL 特征 Spec](ddl_spec.md)：SQL Server 方言认领的声明式 DDL Spec
 
 ## 功能亮点
 
