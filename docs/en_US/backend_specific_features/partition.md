@@ -12,6 +12,33 @@ SQL Server supports table partitioning for large tables.
 
 ## Creating Partitions
 
+### Declarative Partition Spec (model level)
+
+SQL Server RANGE partitioning can be declared on the model via
+`SQLServerRangePartition`; the SQL Server dialect claims it at
+`generate_create_table(dialect)` time (other backends ignore it) and renders
+`ON [scheme] ([column])`:
+
+```python
+from rhosocial.activerecord.backend.impl.sqlserver.ddl_spec import (
+    SQLServerRangePartition,
+)
+
+class Orders(ActiveRecord):
+    __table_partition__ = [
+        SQLServerRangePartition(
+            column="created_at",
+            partition_scheme="ps_orders",
+            boundaries=["2026-01-01", "2027-01-01"],  # for the companion partition function
+        ),
+    ]
+
+expr = Orders.generate_create_table(dialect)
+```
+
+The companion `CREATE PARTITION FUNCTION` / `CREATE PARTITION SCHEME`
+statements are separate DDL (see the expression-level path below).
+
 ```sql
 -- Create partition function (RANGE by year)
 CREATE PARTITION FUNCTION pf_orders_by_year (INT)
