@@ -43,6 +43,7 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
+    DDLTypeSupport,
 )
 from .protocols import (
     SQLServerTableSupport,
@@ -97,7 +98,6 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     DDLColumnMixin,
     DDLTypeMixin,
 )
-# SQLServerTypeSupportMixin is imported lazily in _register_type_formatters()
 from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .collation import validate_sqlserver_collation_name
@@ -254,6 +254,8 @@ class SQLServerDialect(
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
+    # DataType Support Protocol
+    DDLTypeSupport,
     # SQL Server-specific protocols (marker classes for isinstance() checks;
     # implementations live in SQLServerProtocolSupportMixin / SQLServerSequenceMixin)
     SQLServerOutputSupport,
@@ -386,7 +388,7 @@ class SQLServerDialect(
             sql = f"DATETRUNC({field}, {source_sql})"
         else:
             raise UnsupportedFeatureError(self.name, f"date_trunc({expr.field.value})")
-        return self._apply_value_expression_modifiers(sql, source_params, expr)
+        return self.apply_alias(sql, source_params, expr)
 
     def format_interval_expression(self, expr: "Any") -> Tuple[str, Tuple]:
         raise UnsupportedFeatureError(
@@ -399,7 +401,7 @@ class SQLServerDialect(
         source_sql, source_params = expr.source.to_sql()
         unit = expr.interval.unit.value.upper()
         sql = f"DATEADD({unit}, ?, {source_sql})"
-        return self._apply_value_expression_modifiers(
+        return self.apply_alias(
             sql, (expr.interval.value,) + source_params, expr
         )
 
@@ -407,7 +409,7 @@ class SQLServerDialect(
         source_sql, source_params = expr.source.to_sql()
         unit = expr.interval.unit.value.upper()
         sql = f"DATEADD({unit}, ?, {source_sql})"
-        return self._apply_value_expression_modifiers(
+        return self.apply_alias(
             sql, (-expr.interval.value,) + source_params, expr
         )
 
@@ -415,7 +417,7 @@ class SQLServerDialect(
         start_sql, start_params = expr.start.to_sql()
         end_sql, end_params = expr.end.to_sql()
         sql = f"DATEDIFF({expr.unit.value.upper()}, {start_sql}, {end_sql})"
-        return self._apply_value_expression_modifiers(sql, start_params + end_params, expr)
+        return self.apply_alias(sql, start_params + end_params, expr)
 
     def supports_collate_expression(self) -> bool:
         """SQL Server supports expression-level COLLATE."""
@@ -1819,7 +1821,7 @@ class SQLServerDialect(
         name = getattr(expr, "func_name", None)
         if name and name.upper() in self._NILADIC_FUNCTION_EQUIVALENTS:
             sql = self._NILADIC_FUNCTION_EQUIVALENTS[name.upper()]
-            return self._apply_value_expression_modifiers(sql, (), expr)
+            return self.apply_alias(sql, (), expr)
         if name and name.upper() in self._FUNCTION_NAME_EQUIVALENTS:
             renamed_expr = self._clone_with_func_name(expr, self._FUNCTION_NAME_EQUIVALENTS[name.upper()])
             return super().format_function_call(renamed_expr, filter_predicate)
@@ -1891,19 +1893,17 @@ class SQLServerDialect(
 
 # Lazy import to avoid circular dependency (backend → dialect → mixins.types → backend)
 def _register_type_formatters():
+    """Copy ``format_data_type_*`` / ``parse_type`` methods from the mixin
+    to the dialect class so that the naming-convention dispatch in
+    ``DDLTypeMixin.format_data_type()`` finds them.
+    """
     from .mixins.types import SQLServerTypeSupportMixin
 
-    if not hasattr(SQLServerDialect, "_type_formatters"):
-        SQLServerDialect._type_formatters = {}
     for member_name in dir(SQLServerTypeSupportMixin):
-        member = getattr(SQLServerTypeSupportMixin, member_name, None)
-        handles_types = getattr(member, "_handles_types", None)
-        if handles_types is not None:
-            for dt_cls in handles_types:
-                SQLServerDialect._type_formatters[dt_cls] = member_name
-            setattr(SQLServerDialect, member_name, member)
-        elif member_name == "parse_type" and callable(member):
-            setattr(SQLServerDialect, member_name, member)
+        if member_name.startswith("format_data_type_") or member_name == "parse_type":
+            member = getattr(SQLServerTypeSupportMixin, member_name, None)
+            if callable(member):
+                setattr(SQLServerDialect, member_name, member)
 
 
 def _register_partition_formatters():

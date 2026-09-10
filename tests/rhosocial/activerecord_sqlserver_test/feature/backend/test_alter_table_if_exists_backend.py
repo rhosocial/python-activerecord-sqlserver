@@ -33,7 +33,7 @@ class TestSQLServerAlterTableModifierCapabilities:
 
 class TestSQLServerAddColumn:
     def test_add_column_omits_column_literal(self, dialect):
-        action = AddColumn(dialect, ColumnDefinition("content", TextType()))
+        action = AddColumn(dialect, ColumnDefinition(dialect, "content", TextType()))
         sql, params = action.to_sql()
         assert sql.startswith("ADD [content]")
         assert "ADD COLUMN" not in sql
@@ -42,7 +42,7 @@ class TestSQLServerAddColumn:
     def test_add_column_if_not_exists_raises(self, dialect):
         action = AddColumn(
             dialect,
-            ColumnDefinition("content", TextType()),
+            ColumnDefinition(dialect, "content", TextType()),
             if_not_exists=True,
         )
         with pytest.raises(UnsupportedFeatureError):

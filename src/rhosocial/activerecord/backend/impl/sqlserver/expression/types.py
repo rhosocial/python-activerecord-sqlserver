@@ -1,52 +1,165 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/expression/types.py
-"""SQL Server-specific DDL DataType subclasses."""
+"""SQL Server-specific DataType subclasses.
 
-from rhosocial.activerecord.backend.expression.types import VarCharType, IntegerType
+Backend-specific types carry the ``sqlserver_`` prefix in their ``name``
+attribute.  Core types (inherited from ``rhosocial.activerecord.backend.expression.types``)
+retain their pure names and are rendered to SQL Server syntax by the dialect's
+``format_data_type_<name>`` methods.
+"""
+
+from typing import Optional, Set
+
+from rhosocial.activerecord.backend.expression.types import (
+    VarCharType,
+    CharType,
+    IntegerType,
+    BlobType,
+    BooleanType,
+)
 
 
 class SQLServerNVarCharType(VarCharType):
     """SQL Server NVARCHAR type."""
-    pass
+
+    name = "sqlserver_nvarchar"
+
+    def __init__(self, length: Optional[int] = None, dialect=None):
+        super().__init__(length, dialect)
+
+    def __eq__(self, other: object) -> bool:
+        if type(self) is not type(other):
+            return False
+        return self.length == other.length
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.length))
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"VarCharType"}
 
 
-class SQLServerNCharType(VarCharType):
+class SQLServerNCharType(CharType):
     """SQL Server NCHAR type."""
-    pass
+
+    name = "sqlserver_nchar"
+
+    def __init__(self, length: Optional[int] = None, dialect=None):
+        super().__init__(length, dialect)
+
+    def __eq__(self, other: object) -> bool:
+        if type(self) is not type(other):
+            return False
+        return self.length == other.length
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.length))
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"CharType"}
 
 
 class SQLServerNVarCharMaxType(VarCharType):
     """SQL Server NVARCHAR(MAX) type."""
-    pass
+
+    name = "sqlserver_nvarchar_max"
+
+    def __init__(self, dialect=None):
+        super().__init__(None, dialect)
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"VarCharType", "TextType"}
 
 
-class SQLServerVarBinaryType(VarCharType):
+class SQLServerVarBinaryType(BlobType):
     """SQL Server VARBINARY type."""
-    pass
+
+    name = "sqlserver_varbinary"
+
+    length: Optional[int] = None
+
+    def __init__(self, length: Optional[int] = None, dialect=None):
+        super().__init__(dialect)
+        self.length = length
+
+    def __eq__(self, other: object) -> bool:
+        if type(self) is not type(other):
+            return False
+        return self.length == other.length
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.length))
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"BlobType"}
 
 
-class SQLServerVarBinaryMaxType(VarCharType):
+class SQLServerVarBinaryMaxType(BlobType):
     """SQL Server VARBINARY(MAX) type."""
-    pass
+
+    name = "sqlserver_varbinary_max"
+
+    def __init__(self, dialect=None):
+        super().__init__(dialect)
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"BlobType", "TextType"}
 
 
 class SQLServerXmlType(VarCharType):
     """SQL Server XML type."""
-    pass
+
+    name = "sqlserver_xml"
+
+    def __init__(self, dialect=None):
+        super().__init__(None, dialect)
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"VarCharType", "TextType"}
 
 
 class SQLServerTinyIntType(IntegerType):
     """SQL Server TINYINT type."""
-    pass
+
+    name = "sqlserver_tinyint"
+
+    def __init__(self, dialect=None):
+        super().__init__(dialect)
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"TinyIntType"}
 
 
-class SQLServerBitType(IntegerType):
+class SQLServerBitType(BooleanType):
     """SQL Server BIT type."""
-    pass
+
+    name = "sqlserver_bit"
+
+    def __init__(self, dialect=None):
+        super().__init__(dialect)
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"BooleanType"}
 
 
-class SQLServerImageType(VarCharType):
+class SQLServerImageType(BlobType):
     """SQL Server IMAGE type (deprecated)."""
-    pass
+
+    name = "sqlserver_image"
+
+    def __init__(self, dialect=None):
+        super().__init__(dialect)
+
+    @classmethod
+    def synonyms(cls) -> Set[str]:
+        return {"BlobType"}
 
 
 __all__ = [

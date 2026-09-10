@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from typing import Tuple
 
-from rhosocial.activerecord.backend.dialect.mixins import DDLTypeMixin
+from rhosocial.activerecord.backend.dialect.mixins.ddl_type import DDLTypeMixin
 from rhosocial.activerecord.backend.dialect.protocols import DDLTypeSupport
 from rhosocial.activerecord.backend.expression.types import (
     BigIntType,
@@ -32,32 +32,75 @@ from rhosocial.activerecord.backend.expression.types import (
 
 
 class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
+    """SQL Server DataType formatting and parsing.
 
-    @DDLTypeMixin.handles(IntegerType)
+    Implements ``DDLTypeSupport`` so the dialect can render ``DataType``
+    expressions to SQL strings and parse raw SQL type strings back into
+    ``DataType`` instances.
+
+    Formatting dispatches by the type instance's ``name`` through the
+    naming-convention ``format_data_type_<name>`` methods (see
+    ``DDLTypeMixin``). SQL Server-specific types carry ``sqlserver_``-prefixed
+    names; core types render their real SQL Server SQL.
+    """
+
+    # --- SQL Server-specific type formatters (dispatch key = type name) ---
+
+    def format_data_type_sqlserver_nvarchar(self, data_type: "SQLServerNVarCharType") -> Tuple[str, tuple]:
+        return (f"NVARCHAR({data_type.length})" if data_type.length is not None else "NVARCHAR(255)"), ()
+
+    def format_data_type_sqlserver_nchar(self, data_type: "SQLServerNCharType") -> Tuple[str, tuple]:
+        return (f"NCHAR({data_type.length})" if data_type.length is not None else "NCHAR(1)"), ()
+
+    def format_data_type_sqlserver_nvarchar_max(self, data_type: "SQLServerNVarCharMaxType") -> Tuple[str, tuple]:
+        return "NVARCHAR(MAX)", ()
+
+    def format_data_type_sqlserver_varbinary(self, data_type: "SQLServerVarBinaryType") -> Tuple[str, tuple]:
+        if data_type.length is not None:
+            return f"VARBINARY({data_type.length})", ()
+        return "VARBINARY(255)", ()
+
+    def format_data_type_sqlserver_varbinary_max(self, data_type: "SQLServerVarBinaryMaxType") -> Tuple[str, tuple]:
+        return "VARBINARY(MAX)", ()
+
+    def format_data_type_sqlserver_xml(self, data_type: "SQLServerXmlType") -> Tuple[str, tuple]:
+        return "XML", ()
+
+    def format_data_type_sqlserver_tinyint(self, data_type: "SQLServerTinyIntType") -> Tuple[str, tuple]:
+        return "TINYINT", ()
+
+    def format_data_type_sqlserver_bit(self, data_type: "SQLServerBitType") -> Tuple[str, tuple]:
+        return "BIT", ()
+
+    def format_data_type_sqlserver_image(self, data_type: "SQLServerImageType") -> Tuple[str, tuple]:
+        return "IMAGE", ()
+
+    # --- Core types (pure names) rendered to real SQL Server SQL ---
+
     def format_data_type_integer(self, data_type: IntegerType) -> Tuple[str, tuple]:
         return "INT", ()
 
-    @DDLTypeMixin.handles(BigIntType)
+    def format_data_type_int(self, data_type: IntegerType) -> Tuple[str, tuple]:
+        return "INT", ()
+
     def format_data_type_bigint(self, data_type: BigIntType) -> Tuple[str, tuple]:
         return "BIGINT", ()
 
-    @DDLTypeMixin.handles(SmallIntType)
     def format_data_type_smallint(self, data_type: SmallIntType) -> Tuple[str, tuple]:
         return "SMALLINT", ()
 
-    @DDLTypeMixin.handles(FloatType)
+    def format_data_type_tinyint(self, data_type: DataType) -> Tuple[str, tuple]:
+        return "TINYINT", ()
+
     def format_data_type_float(self, data_type: FloatType) -> Tuple[str, tuple]:
         return (f"FLOAT({data_type.precision})" if data_type.precision is not None else "FLOAT"), ()
 
-    @DDLTypeMixin.handles(RealType)
     def format_data_type_real(self, data_type: RealType) -> Tuple[str, tuple]:
         return "REAL", ()
 
-    @DDLTypeMixin.handles(DoubleType)
     def format_data_type_double(self, data_type: DoubleType) -> Tuple[str, tuple]:
         return "FLOAT(53)", ()
 
-    @DDLTypeMixin.handles(DecimalType)
     def format_data_type_decimal(self, data_type: DecimalType) -> Tuple[str, tuple]:
         if data_type.precision is not None and data_type.scale is not None:
             return f"DECIMAL({data_type.precision}, {data_type.scale})", ()
@@ -65,102 +108,133 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
             return f"DECIMAL({data_type.precision})", ()
         return "DECIMAL", ()
 
-    @DDLTypeMixin.handles(BooleanType)
     def format_data_type_boolean(self, data_type: BooleanType) -> Tuple[str, tuple]:
         return "BIT", ()
 
-    @DDLTypeMixin.handles(VarCharType)
     def format_data_type_varchar(self, data_type: VarCharType) -> Tuple[str, tuple]:
         return (f"VARCHAR({data_type.length})" if data_type.length is not None else "VARCHAR(255)"), ()
 
-    @DDLTypeMixin.handles(CharType)
     def format_data_type_char(self, data_type: CharType) -> Tuple[str, tuple]:
         return (f"CHAR({data_type.length})" if data_type.length is not None else "CHAR(1)"), ()
 
-    @DDLTypeMixin.handles(TextType)
     def format_data_type_text(self, data_type: TextType) -> Tuple[str, tuple]:
         return "NVARCHAR(MAX)", ()
 
-    @DDLTypeMixin.handles(DateTimeType)
     def format_data_type_datetime(self, data_type: DateTimeType) -> Tuple[str, tuple]:
         return "DATETIME2", ()
 
-    @DDLTypeMixin.handles(DateType)
     def format_data_type_date(self, data_type: DateType) -> Tuple[str, tuple]:
         return "DATE", ()
 
-    @DDLTypeMixin.handles(TimeType)
     def format_data_type_time(self, data_type: TimeType) -> Tuple[str, tuple]:
         return "TIME", ()
 
-    @DDLTypeMixin.handles(TimestampType)
     def format_data_type_timestamp(self, data_type: TimestampType) -> Tuple[str, tuple]:
         return "DATETIME2", ()
 
-    @DDLTypeMixin.handles(JsonType)
     def format_data_type_json(self, data_type: JsonType) -> Tuple[str, tuple]:
         return "NVARCHAR(MAX)", ()
 
-    @DDLTypeMixin.handles(BlobType)
     def format_data_type_blob(self, data_type: BlobType) -> Tuple[str, tuple]:
         return "VARBINARY(MAX)", ()
 
-    # --- Parsing ---
+    def format_data_type_custom(self, data_type: CustomType) -> Tuple[str, tuple]:
+        return data_type.raw, ()
+
+    # ------------------------------------------------------------------
+    # DDLTypeSupport — parsing
+    # ------------------------------------------------------------------
+
+    _SQLSERVER_INTEGER_TYPES = re.compile(
+        r"^(?:INT|INTEGER|BIGINT|SMALLINT|TINYINT)\b",
+        re.IGNORECASE,
+    )
+    _SQLSERVER_FLOAT_TYPES = re.compile(
+        r"^(?:FLOAT|REAL)\b",
+        re.IGNORECASE,
+    )
+    _SQLSERVER_DECIMAL_TYPES = re.compile(
+        r"^(?:DECIMAL|NUMERIC|MONEY|SMALLMONEY)\b",
+        re.IGNORECASE,
+    )
+    _SQLSERVER_STRING_TYPES = re.compile(
+        r"^(?:CHAR|VARCHAR|NVARCHAR|NCHAR|TEXT|NTEXT)\b",
+        re.IGNORECASE,
+    )
+    _SQLSERVER_DATE_TYPES = re.compile(
+        r"^(?:DATE|DATETIME|DATETIME2|SMALLDATETIME|TIMESTAMP)\b",
+        re.IGNORECASE,
+    )
+    _SQLSERVER_TIME_TYPES = re.compile(
+        r"^(?:TIME)\b",
+        re.IGNORECASE,
+    )
+    _SQLSERVER_BIT_TYPES = re.compile(
+        r"^(?:BIT)\b",
+        re.IGNORECASE,
+    )
+    _SQLSERVER_BLOB_TYPES = re.compile(
+        r"^(?:VARBINARY|IMAGE)\b",
+        re.IGNORECASE,
+    )
 
     def parse_type(self, raw: str) -> DataType:
         stripped = raw.strip()
         upper = stripped.upper()
 
-        int_pattern = re.compile(r"^(?:INT|INTEGER|BIGINT|SMALLINT|TINYINT)\b", re.IGNORECASE)
-        float_pattern = re.compile(r"^(?:FLOAT|REAL)\b", re.IGNORECASE)
-        decimal_pattern = re.compile(r"^(?:DECIMAL|NUMERIC|MONEY|SMALLMONEY)\b", re.IGNORECASE)
-        string_pattern = re.compile(r"^(?:CHAR|VARCHAR|NVARCHAR|NCHAR|TEXT|NTEXT)\b", re.IGNORECASE)
-        date_pattern = re.compile(r"^(?:DATE|DATETIME|DATETIME2|SMALLDATETIME|TIMESTAMP)\b", re.IGNORECASE)
-        time_pattern = re.compile(r"^(?:TIME)\b", re.IGNORECASE)
-        bit_pattern = re.compile(r"^(?:BIT)\b", re.IGNORECASE)
-        blob_pattern = re.compile(r"^(?:VARBINARY|IMAGE)\b", re.IGNORECASE)
+        # BIT type
+        if self._SQLSERVER_BIT_TYPES.match(upper):
+            from ..expression.types import SQLServerBitType
+            return SQLServerBitType(dialect=self)
 
-        if int_pattern.match(upper):
+        # Integer family
+        if self._SQLSERVER_INTEGER_TYPES.match(upper):
             if upper.startswith("BIGINT"):
-                return BigIntType()
+                return BigIntType(dialect=self)
             if upper.startswith("SMALLINT"):
-                return SmallIntType()
-            return IntegerType()
+                return SmallIntType(dialect=self)
+            if upper.startswith("TINYINT"):
+                from ..expression.types import SQLServerTinyIntType
+                return SQLServerTinyIntType(dialect=self)
+            return IntegerType(dialect=self)
 
-        if float_pattern.match(upper):
+        # Float family
+        if self._SQLSERVER_FLOAT_TYPES.match(upper):
             if upper.startswith("REAL"):
-                return RealType()
-            return FloatType()
+                return RealType(dialect=self)
+            nums = re.findall(r"\d+", stripped)
+            precision = int(nums[0]) if nums else None
+            return FloatType(precision, self)
 
-        if decimal_pattern.match(upper):
+        # Decimal family
+        if self._SQLSERVER_DECIMAL_TYPES.match(upper):
             nums = re.findall(r"\d+", stripped)
             if len(nums) >= 2:
-                return DecimalType(int(nums[0]), int(nums[1]))
+                return DecimalType(int(nums[0]), int(nums[1]), self)
             if len(nums) == 1:
-                return DecimalType(int(nums[0]))
-            return DecimalType()
+                return DecimalType(int(nums[0]), self)
+            return DecimalType(dialect=self)
 
-        if string_pattern.match(upper):
+        # String family
+        if self._SQLSERVER_STRING_TYPES.match(upper):
             if "MAX" in upper or "TEXT" in upper or "NTEXT" in upper:
-                return TextType()
+                return TextType(dialect=self)
             length_match = re.search(r"\((\d+)", stripped)
             length = int(length_match.group(1)) if length_match else None
             if "VARCHAR" in upper or "NVARCHAR" in upper:
-                return VarCharType(length or 255)
-            return (CharType(length) if length_match else VarCharType(255))
+                return VarCharType(length or 255, self)
+            return (CharType(length, self) if length_match else VarCharType(255, self))
 
-        if date_pattern.match(upper):
-            return DateTimeType()
+        # Date/time family
+        if self._SQLSERVER_DATE_TYPES.match(upper):
+            return DateTimeType(dialect=self)
 
-        if time_pattern.match(upper):
-            return TimeType()
+        if self._SQLSERVER_TIME_TYPES.match(upper):
+            return TimeType(dialect=self)
 
-        if bit_pattern.match(upper):
-            return BooleanType()
+        # Blob family
+        if self._SQLSERVER_BLOB_TYPES.match(upper):
+            from ..expression.types import SQLServerVarBinaryType
+            return SQLServerVarBinaryType(dialect=self)
 
-        if blob_pattern.match(upper):
-            from rhosocial.activerecord.backend.expression.types import BlobType
-
-            return BlobType()
-
-        return CustomType(stripped)
+        return CustomType(stripped, self)
