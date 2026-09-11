@@ -19,6 +19,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
     SQL_SERVER_2022,
     SQLServerDialect,
 )
+from rhosocial.activerecord.backend.expression.query_parts import GroupingClause
 
 VERSIONS = {
     "2008": (10, 0, 0),
@@ -379,11 +380,11 @@ class TestRenderingSnapshots:
 class TestGroupingAndUpsertBasics:
     def test_grouping_operations_use_tsql_syntax(self):
         d = SQLServerDialect((16, 0, 0))
-        assert d.format_grouping_expression("ROLLUP", []) == ("WITH ROLLUP", ())
-        assert d.format_grouping_expression("CUBE", []) == ("WITH CUBE", ())
-        assert d.format_grouping_expression("GROUPING SETS", []) == ("GROUPING SETS", ())
+        assert d.format_grouping_clause(GroupingClause(d, "ROLLUP", [])) == ("WITH ROLLUP", ())
+        assert d.format_grouping_clause(GroupingClause(d, "CUBE", [])) == ("WITH CUBE", ())
+        assert d.format_grouping_clause(GroupingClause(d, "GROUPING SETS", [])) == ("GROUPING SETS", ())
         with pytest.raises(UnsupportedFeatureError):
-            d.format_grouping_expression("PIVOT", [])
+            d.format_grouping_clause(GroupingClause(d, "PIVOT", []))
 
     def test_upsert_targets_merge_syntax(self):
         for version in VERSIONS.values():

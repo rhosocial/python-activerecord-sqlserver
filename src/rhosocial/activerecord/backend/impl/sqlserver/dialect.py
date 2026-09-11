@@ -121,7 +121,7 @@ if TYPE_CHECKING:
         LimitOffsetClause,
         ForUpdateClause,
         QualifyClause,
-        JoinExpression,
+        JoinClause,
     )
     from rhosocial.activerecord.backend.expression.statements import (
         ExplainExpression,
@@ -1221,10 +1221,14 @@ class SQLServerDialect(
         """Format QUALIFY clause - not supported."""
         raise UnsupportedFeatureError(self.name, "QUALIFY clause", _SUGGESTION_QUALIFY)
     
-    def format_grouping_expression(
-        self, operation: str, _expressions: List["bases.BaseExpression"]
+    def format_grouping_clause(
+        self, expr: "bases.BaseExpression"
     ) -> Tuple[str, tuple]:
-        """Format grouping expression (ROLLUP, CUBE, GROUPING SETS)."""
+        """Format grouping clause (ROLLUP, CUBE, GROUPING SETS)."""
+        from rhosocial.activerecord.backend.expression.query_parts import GroupingClause
+        if not isinstance(expr, GroupingClause):
+            raise TypeError(f"Expected GroupingClause, got {type(expr)}")
+        operation = expr.operation
         if operation.upper() == "ROLLUP":
             return "WITH ROLLUP", ()
         elif operation.upper() == "CUBE":

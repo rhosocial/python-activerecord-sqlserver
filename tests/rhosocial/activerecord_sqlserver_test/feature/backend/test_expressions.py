@@ -176,7 +176,7 @@ class TestCreateIndexExpression:
         assert "[created_at]" in sql
 
 
-class TestJoinExpression:
+class TestJoinClause:
     """Test cases for JOIN expression formatting."""
 
     @pytest.fixture
@@ -189,11 +189,11 @@ class TestJoinExpression:
             QueryExpression,
             TableExpression,
             Column,
-            JoinExpression,
+            JoinClause,
         )
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
 
-        join = JoinExpression(
+        join = JoinClause(
             dialect=dialect,
             left_table=TableExpression(dialect, "users", alias="u"),
             right_table=TableExpression(dialect, "orders", alias="o"),
@@ -223,11 +223,11 @@ class TestJoinExpression:
             QueryExpression,
             TableExpression,
             Column,
-            JoinExpression,
+            JoinClause,
         )
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
 
-        join = JoinExpression(
+        join = JoinClause(
             dialect=dialect,
             left_table=TableExpression(dialect, "users", alias="u"),
             right_table=TableExpression(dialect, "profiles", alias="p"),

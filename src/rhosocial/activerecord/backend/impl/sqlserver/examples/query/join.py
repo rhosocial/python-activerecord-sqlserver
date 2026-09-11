@@ -120,11 +120,11 @@ from rhosocial.activerecord.backend.expression import (
     QueryExpression,
     TableExpression,
     Column,
-    JoinExpression,
+    JoinClause,
 )
 from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
 
-join_expr = JoinExpression(
+join_expr = JoinClause(
     dialect=dialect,
     left_table=TableExpression(dialect, 'join_users', alias='u'),
     right_table=TableExpression(dialect, 'join_orders', alias='o'),
