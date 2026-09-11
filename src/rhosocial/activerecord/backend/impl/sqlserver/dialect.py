@@ -1205,14 +1205,7 @@ class SQLServerDialect(
         """Format array expression - not supported."""
         raise UnsupportedFeatureError(self.name, "Array operations", _SUGGESTION_ARRAY_TYPES)
     
-    def format_json_table_expression(
-        self,
-        _json_col_sql: str,
-        _path: str,
-        _columns: List[Dict[str, Any]],
-        _alias: Optional[str],
-        _params: tuple
-    ) -> Tuple[str, Tuple]:
+    def format_json_table_expression(self, _expr) -> Tuple[str, Tuple]:
         """Format JSON_TABLE - SQL Server uses OPENJSON."""
         raise UnsupportedFeatureError(self.name, "JSON_TABLE", _SUGGESTION_JSON_TABLE)
     
@@ -1803,9 +1796,7 @@ class SQLServerDialect(
 
         return " ".join(parts), tuple(all_params)
 
-    def format_function_call(
-        self, expr, filter_predicate=None
-    ) -> Tuple[str, tuple]:
+    def format_function_call(self, expr) -> Tuple[str, tuple]:
         """Format a function call, mapping MySQL/generic function names to
         their SQL Server equivalents.
 
@@ -1824,8 +1815,8 @@ class SQLServerDialect(
             return self.apply_alias(sql, (), expr)
         if name and name.upper() in self._FUNCTION_NAME_EQUIVALENTS:
             renamed_expr = self._clone_with_func_name(expr, self._FUNCTION_NAME_EQUIVALENTS[name.upper()])
-            return super().format_function_call(renamed_expr, filter_predicate)
-        return super().format_function_call(expr, filter_predicate)
+            return super().format_function_call(renamed_expr)
+        return super().format_function_call(expr)
 
     def _clone_with_func_name(self, expr, new_name: str):
         """Return a shallow copy of ``expr`` with ``func_name`` replaced.
