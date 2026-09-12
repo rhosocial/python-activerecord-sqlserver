@@ -162,11 +162,11 @@ class TestSQLServerNiladicDDLContext:
             dialect=dialect,
             table=table_name,
             columns=[
-                ColumnDefinition('id', IntegerType(), constraints=[
+                ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
                     ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
                     ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
                 ]),
-                ColumnDefinition('ts', TimestampType(6), constraints=[
+                ColumnDefinition(dialect, 'ts', TimestampType(dialect, precision=6), constraints=[
                     ColumnConstraint(ColumnConstraintType.DEFAULT,
                                      default_value=FunctionCall(dialect, 'SYSDATETIME')),
                 ]),

@@ -71,10 +71,10 @@ class TestSQLServerCreateTableLike:
         """Test that LIKE syntax raises even when columns are present."""
         dialect = SQLServerDialect()
         columns = [
-            ColumnDefinition("id", IntegerType(), constraints=[
+            ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
                 ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
             ]),
-            ColumnDefinition("name", VarCharType(255))
+            ColumnDefinition(dialect, "name", VarCharType(dialect, length=255))
         ]
         create_expr = CreateTableExpression(
             dialect=dialect,
@@ -103,7 +103,7 @@ class TestSQLServerCreateTableLike:
         """Test that a temporary table renders a #-prefixed table name."""
         dialect = SQLServerDialect()
         columns = [
-            ColumnDefinition("id", IntegerType(), constraints=[
+            ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
                 ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
             ]),
         ]
@@ -124,10 +124,10 @@ class TestSQLServerCreateTableLike:
         """Test that base implementation is used when LIKE is not specified."""
         dialect = SQLServerDialect()
         columns = [
-            ColumnDefinition("id", IntegerType(), constraints=[
+            ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
                 ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
             ]),
-            ColumnDefinition("name", VarCharType(255), constraints=[
+            ColumnDefinition(dialect, "name", VarCharType(dialect, length=255), constraints=[
                 ColumnConstraint(ColumnConstraintType.NOT_NULL)
             ])
         ]

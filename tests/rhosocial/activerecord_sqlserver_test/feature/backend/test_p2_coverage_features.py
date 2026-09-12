@@ -78,7 +78,7 @@ class TestMemoryOptimizedTables:
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
 
-        col = ColumnDefinition("id", IntegerType())
+        col = ColumnDefinition(dialect, "id", IntegerType(dialect))
         col.constraints.append(ColumnConstraint(ColumnConstraintType.PRIMARY_KEY))
         indexes = []
         if hash_indexes:
@@ -200,7 +200,7 @@ class TestMemoryOptimizedTables:
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
 
-        col = ColumnDefinition("id", IntegerType())
+        col = ColumnDefinition(dialect, "id", IntegerType(dialect))
         col.constraints.append(ColumnConstraint(ColumnConstraintType.PRIMARY_KEY))
         ct = CreateTableExpression(
             dialect,

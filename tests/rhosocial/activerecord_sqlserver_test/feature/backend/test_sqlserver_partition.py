@@ -227,9 +227,9 @@ class TestSQLServerCreateTableWithPartition:
     def test_create_table_with_partition(self):
         d = SQLServerDialect(SQL_SERVER_2022)
         pk = ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
-        col_def = ColumnDefinition("id", IntegerType(), constraints=[pk])
-        col_def2 = ColumnDefinition("name", VarCharType(100))
-        col_def3 = ColumnDefinition("create_date", DateType())
+        col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
+        col_def2 = ColumnDefinition(d, "name", VarCharType(d, length=100))
+        col_def3 = ColumnDefinition(d, "create_date", DateType(d))
 
         col = Column(d, "create_date")
         partition = SqlServerPartitionClause(
@@ -251,7 +251,7 @@ class TestSQLServerCreateTableWithPartition:
         """Unchanged behavior when no partition is specified."""
         d = SQLServerDialect(SQL_SERVER_2022)
         pk = ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
-        col_def = ColumnDefinition("id", IntegerType(), constraints=[pk])
+        col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
         stmt = CreateTableExpression(
             d, "users",
             columns=[col_def],
@@ -265,7 +265,7 @@ class TestSQLServerCreateTableWithPartition:
         """Should fail on SQL Server 2005 which doesn't support partitioning."""
         d = SQLServerDialect(SQL_SERVER_2005)
         pk = ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
-        col_def = ColumnDefinition("id", IntegerType(), constraints=[pk])
+        col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
         col = Column(d, "id")
         partition = PartitionClause(
             d, PartitionStrategy.RANGE, [col],
