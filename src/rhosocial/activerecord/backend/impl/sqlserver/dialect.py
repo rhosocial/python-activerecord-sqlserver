@@ -1321,7 +1321,7 @@ class SQLServerDialect(
         """Format a column definition for SQL Server."""
         from rhosocial.activerecord.backend.expression.types._base import DataType
         if isinstance(col_def.data_type, DataType):
-            type_sql, type_params = col_def.data_type.to_sql(self)
+            type_sql, type_params = col_def.data_type.to_sql()
             parts = [self.format_identifier(col_def.name), type_sql]
             params: List[Any] = list(type_params)
         else:
