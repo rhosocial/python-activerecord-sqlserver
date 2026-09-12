@@ -66,6 +66,7 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.DDLTypeSupport,
     dialect_protocols.ExplainSupport,
     dialect_protocols.FilterClauseSupport,
+    dialect_protocols.GeneratedColumnSupport,
     dialect_protocols.GraphSupport,
     dialect_protocols.IndexSupport,
     dialect_protocols.IntrospectionSupport,
@@ -117,12 +118,6 @@ SQLSERVER_NOT_IMPLEMENTED = [
     # SQL Server routines are T-SQL, not SQL/PSM; function DDL is exposed through
     # backend-specific protocols instead of the generic FunctionSupport.
     dialect_protocols.FunctionSupport,
-    # --- Known gaps (feature exists, generic protocol not yet declared) ---
-    # TODO: SQL Server supports computed columns (VIRTUAL by default, PERSISTED
-    # stored), but the dialect exposes ``supports_generated_column`` (singular)
-    # while the generic protocol requires ``supports_generated_columns`` (plural).
-    # Rename/alias the method, then move this to SQLSERVER_PROTOCOLS.
-    dialect_protocols.GeneratedColumnSupport,
 ]
 
 
