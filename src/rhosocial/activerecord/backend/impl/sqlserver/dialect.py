@@ -1734,22 +1734,19 @@ class SQLServerDialect(
 
         return " ".join(sql_parts), tuple(all_params)
 
-    def format_set_operation_expression(
-        self,
-        left: "bases.BaseExpression",
-        right: "bases.BaseExpression",
-        operation: str,
-        alias: str,
-        all_: bool,
-        order_by_clause: "OrderByClause" = None,
-        limit_offset_clause: "LimitOffsetClause" = None,
-        for_update_clause: "ForUpdateClause" = None,
-    ) -> Tuple[str, tuple]:
+    def format_set_operation_expression(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
         """Format set operation for SQL Server.
 
         SQL Server supports UNION, UNION ALL, INTERSECT, EXCEPT.
         ORDER BY and OFFSET FETCH apply to the entire set operation result.
         """
+        left, right = expr.left, expr.right
+        operation = expr.operation
+        all_ = expr.all_
+        alias = expr.alias
+        order_by_clause = expr.order_by_clause
+        limit_offset_clause = expr.limit_offset_clause
+
         left_sql, left_params = left.to_sql()
         right_sql, right_params = right.to_sql()
         all_str = " ALL" if all_ else ""
