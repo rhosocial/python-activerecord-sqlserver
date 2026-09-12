@@ -1885,20 +1885,62 @@ class SQLServerDialect(
         """
         return f"OPTION ({', '.join(clause.hints)})", ()
 
+    # ------------------------------------------------------------------
+    # DataType protocol — suggestions
+    # ------------------------------------------------------------------
+
+    def suggested_data_types(self) -> Dict[str, type]:
+        """Types SQL Server does not natively support, with best-effort replacements.
+
+        Returns a mapping ``{<generic name>: DataType class}`` for every
+        core type that has **no** ``format_data_type_<name>`` on this
+        dialect.  Keys are disjoint from ``supports_data_types()``.
+        """
+        from rhosocial.activerecord.backend.expression.types import (
+            UUIDType,
+            IntervalType,
+            ArrayType,
+            EnumType,
+            JsonBType,
+            TimestampTzType,
+            TimeTzType,
+        )
+        return {
+            "uuid": UUIDType,
+            "interval": IntervalType,
+            "array": ArrayType,
+            "enum": EnumType,
+            "jsonb": JsonBType,
+            "timestamptz": TimestampTzType,
+            "timetz": TimeTzType,
+        }
+
 
 # Lazy import to avoid circular dependency (backend → dialect → mixins.types → backend)
 def _register_type_formatters():
-    """Copy ``format_data_type_*`` / ``parse_type`` methods from the mixin
-    to the dialect class so that the naming-convention dispatch in
-    ``DDLTypeMixin.format_data_type()`` finds them.
+    """Copy ``format_data_type_*`` / ``supports_data_type_*`` / ``parse_type``
+    methods from the mixin to the dialect class so that the naming-convention
+    dispatch in ``DDLTypeMixin.format_data_type()`` and
+    ``DDLTypeMixin.supports_data_types()`` find them.
+
+    Also copies the ``_SQLSERVER_*`` regex class attributes needed by
+    ``parse_type`` at runtime.
     """
     from .mixins.types import SQLServerTypeSupportMixin
 
     for member_name in dir(SQLServerTypeSupportMixin):
-        if member_name.startswith("format_data_type_") or member_name == "parse_type":
+        if (member_name.startswith("format_data_type_")
+                or member_name.startswith("supports_data_type_")
+                or member_name == "parse_type"):
             member = getattr(SQLServerTypeSupportMixin, member_name, None)
             if callable(member):
                 setattr(SQLServerDialect, member_name, member)
+
+    for attr_name in dir(SQLServerTypeSupportMixin):
+        if attr_name.startswith("_SQLSERVER_"):
+            val = getattr(SQLServerTypeSupportMixin, attr_name, None)
+            if val is not None and not callable(val):
+                setattr(SQLServerDialect, attr_name, val)
 
 
 def _register_partition_formatters():

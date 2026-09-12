@@ -7,7 +7,7 @@ retain their pure names and are rendered to SQL Server syntax by the dialect's
 ``format_data_type_<name>`` methods.
 """
 
-from typing import Optional, Set
+from typing import Any, Dict, Optional, Set
 
 from rhosocial.activerecord.backend.expression.types import (
     VarCharType,
@@ -23,16 +23,9 @@ class SQLServerNVarCharType(VarCharType):
 
     name = "sqlserver_nvarchar"
 
-    def __init__(self, length: Optional[int] = None, dialect=None):
-        super().__init__(length, dialect)
-
-    def __eq__(self, other: object) -> bool:
-        if type(self) is not type(other):
-            return False
-        return self.length == other.length
-
-    def __hash__(self) -> int:
-        return hash((type(self), self.length))
+    def __init__(self, dialect=None, length: Optional[int] = None,
+                 dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, length=length, dialect_options=dialect_options)
 
     @classmethod
     def synonyms(cls) -> Set[str]:
@@ -44,16 +37,9 @@ class SQLServerNCharType(CharType):
 
     name = "sqlserver_nchar"
 
-    def __init__(self, length: Optional[int] = None, dialect=None):
-        super().__init__(length, dialect)
-
-    def __eq__(self, other: object) -> bool:
-        if type(self) is not type(other):
-            return False
-        return self.length == other.length
-
-    def __hash__(self) -> int:
-        return hash((type(self), self.length))
+    def __init__(self, dialect=None, length: Optional[int] = None,
+                 dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, length=length, dialect_options=dialect_options)
 
     @classmethod
     def synonyms(cls) -> Set[str]:
@@ -65,8 +51,8 @@ class SQLServerNVarCharMaxType(VarCharType):
 
     name = "sqlserver_nvarchar_max"
 
-    def __init__(self, dialect=None):
-        super().__init__(None, dialect)
+    def __init__(self, dialect=None, dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, length=None, dialect_options=dialect_options)
 
     @classmethod
     def synonyms(cls) -> Set[str]:
@@ -80,17 +66,13 @@ class SQLServerVarBinaryType(BlobType):
 
     length: Optional[int] = None
 
-    def __init__(self, length: Optional[int] = None, dialect=None):
-        super().__init__(dialect)
+    def __init__(self, dialect=None, length: Optional[int] = None,
+                 dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, dialect_options=dialect_options)
         self.length = length
 
-    def __eq__(self, other: object) -> bool:
-        if type(self) is not type(other):
-            return False
-        return self.length == other.length
-
-    def __hash__(self) -> int:
-        return hash((type(self), self.length))
+    def _type_params(self) -> tuple:
+        return (self.length,)
 
     @classmethod
     def synonyms(cls) -> Set[str]:
@@ -102,8 +84,8 @@ class SQLServerVarBinaryMaxType(BlobType):
 
     name = "sqlserver_varbinary_max"
 
-    def __init__(self, dialect=None):
-        super().__init__(dialect)
+    def __init__(self, dialect=None, dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, dialect_options=dialect_options)
 
     @classmethod
     def synonyms(cls) -> Set[str]:
@@ -115,8 +97,8 @@ class SQLServerXmlType(VarCharType):
 
     name = "sqlserver_xml"
 
-    def __init__(self, dialect=None):
-        super().__init__(None, dialect)
+    def __init__(self, dialect=None, dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, length=None, dialect_options=dialect_options)
 
     @classmethod
     def synonyms(cls) -> Set[str]:
@@ -128,8 +110,8 @@ class SQLServerTinyIntType(IntegerType):
 
     name = "sqlserver_tinyint"
 
-    def __init__(self, dialect=None):
-        super().__init__(dialect)
+    def __init__(self, dialect=None, dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, dialect_options=dialect_options)
 
     @classmethod
     def synonyms(cls) -> Set[str]:
@@ -141,8 +123,8 @@ class SQLServerBitType(BooleanType):
 
     name = "sqlserver_bit"
 
-    def __init__(self, dialect=None):
-        super().__init__(dialect)
+    def __init__(self, dialect=None, dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, dialect_options=dialect_options)
 
     @classmethod
     def synonyms(cls) -> Set[str]:
@@ -154,8 +136,8 @@ class SQLServerImageType(BlobType):
 
     name = "sqlserver_image"
 
-    def __init__(self, dialect=None):
-        super().__init__(dialect)
+    def __init__(self, dialect=None, dialect_options: Optional[Dict[str, Any]] = None):
+        super().__init__(dialect, dialect_options=dialect_options)
 
     @classmethod
     def synonyms(cls) -> Set[str]:

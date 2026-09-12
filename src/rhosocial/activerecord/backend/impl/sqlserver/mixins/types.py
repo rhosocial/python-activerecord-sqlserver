@@ -93,7 +93,14 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         return "TINYINT", ()
 
     def format_data_type_float(self, data_type: FloatType) -> Tuple[str, tuple]:
-        return (f"FLOAT({data_type.precision})" if data_type.precision is not None else "FLOAT"), ()
+        if data_type.precision is not None:
+            if not (1 <= data_type.precision <= 53):
+                raise ValueError(
+                    f"SQL Server FLOAT precision must be 1-53, "
+                    f"got {data_type.precision}"
+                )
+            return f"FLOAT({data_type.precision})", ()
+        return "FLOAT", ()
 
     def format_data_type_real(self, data_type: RealType) -> Tuple[str, tuple]:
         return "REAL", ()
@@ -102,6 +109,18 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         return "FLOAT(53)", ()
 
     def format_data_type_decimal(self, data_type: DecimalType) -> Tuple[str, tuple]:
+        if data_type.precision is not None:
+            if not (1 <= data_type.precision <= 38):
+                raise ValueError(
+                    f"SQL Server DECIMAL precision must be 1-38, "
+                    f"got {data_type.precision}"
+                )
+        if data_type.scale is not None:
+            if data_type.precision is not None and data_type.scale > data_type.precision:
+                raise ValueError(
+                    f"SQL Server DECIMAL scale ({data_type.scale}) "
+                    f"must not exceed precision ({data_type.precision})"
+                )
         if data_type.precision is not None and data_type.scale is not None:
             return f"DECIMAL({data_type.precision}, {data_type.scale})", ()
         if data_type.precision is not None:
@@ -121,15 +140,36 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         return "NVARCHAR(MAX)", ()
 
     def format_data_type_datetime(self, data_type: DateTimeType) -> Tuple[str, tuple]:
+        if data_type.precision is not None:
+            if not (0 <= data_type.precision <= 7):
+                raise ValueError(
+                    f"SQL Server DATETIME2 fractional seconds precision "
+                    f"must be 0-7, got {data_type.precision}"
+                )
+            return f"DATETIME2({data_type.precision})", ()
         return "DATETIME2", ()
 
     def format_data_type_date(self, data_type: DateType) -> Tuple[str, tuple]:
         return "DATE", ()
 
     def format_data_type_time(self, data_type: TimeType) -> Tuple[str, tuple]:
+        if data_type.precision is not None:
+            if not (0 <= data_type.precision <= 7):
+                raise ValueError(
+                    f"SQL Server TIME fractional seconds precision "
+                    f"must be 0-7, got {data_type.precision}"
+                )
+            return f"TIME({data_type.precision})", ()
         return "TIME", ()
 
     def format_data_type_timestamp(self, data_type: TimestampType) -> Tuple[str, tuple]:
+        if data_type.precision is not None:
+            if not (0 <= data_type.precision <= 7):
+                raise ValueError(
+                    f"SQL Server DATETIME2 fractional seconds precision "
+                    f"must be 0-7, got {data_type.precision}"
+                )
+            return f"DATETIME2({data_type.precision})", ()
         return "DATETIME2", ()
 
     def format_data_type_json(self, data_type: JsonType) -> Tuple[str, tuple]:
@@ -140,6 +180,97 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
     def format_data_type_custom(self, data_type: CustomType) -> Tuple[str, tuple]:
         return data_type.raw, ()
+
+    # ------------------------------------------------------------------
+    # supports_data_type_<name> — 1:1 with format_data_type_<name>
+    # ------------------------------------------------------------------
+
+    def supports_data_type_sqlserver_nvarchar(self) -> bool:
+        return True
+
+    def supports_data_type_sqlserver_nchar(self) -> bool:
+        return True
+
+    def supports_data_type_sqlserver_nvarchar_max(self) -> bool:
+        return True
+
+    def supports_data_type_sqlserver_varbinary(self) -> bool:
+        return True
+
+    def supports_data_type_sqlserver_varbinary_max(self) -> bool:
+        return True
+
+    def supports_data_type_sqlserver_xml(self) -> bool:
+        return True
+
+    def supports_data_type_sqlserver_tinyint(self) -> bool:
+        return True
+
+    def supports_data_type_sqlserver_bit(self) -> bool:
+        return True
+
+    def supports_data_type_sqlserver_image(self) -> bool:
+        return True
+
+    def supports_data_type_integer(self) -> bool:
+        return True
+
+    def supports_data_type_int(self) -> bool:
+        return True
+
+    def supports_data_type_bigint(self) -> bool:
+        return True
+
+    def supports_data_type_smallint(self) -> bool:
+        return True
+
+    def supports_data_type_tinyint(self) -> bool:
+        return True
+
+    def supports_data_type_float(self) -> bool:
+        return True
+
+    def supports_data_type_real(self) -> bool:
+        return True
+
+    def supports_data_type_double(self) -> bool:
+        return True
+
+    def supports_data_type_decimal(self) -> bool:
+        return True
+
+    def supports_data_type_boolean(self) -> bool:
+        return True
+
+    def supports_data_type_varchar(self) -> bool:
+        return True
+
+    def supports_data_type_char(self) -> bool:
+        return True
+
+    def supports_data_type_text(self) -> bool:
+        return True
+
+    def supports_data_type_datetime(self) -> bool:
+        return True
+
+    def supports_data_type_date(self) -> bool:
+        return True
+
+    def supports_data_type_time(self) -> bool:
+        return True
+
+    def supports_data_type_timestamp(self) -> bool:
+        return True
+
+    def supports_data_type_json(self) -> bool:
+        return True
+
+    def supports_data_type_blob(self) -> bool:
+        return True
+
+    def supports_data_type_custom(self) -> bool:
+        return True
 
     # ------------------------------------------------------------------
     # DDLTypeSupport — parsing
@@ -204,15 +335,15 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
                 return RealType(dialect=self)
             nums = re.findall(r"\d+", stripped)
             precision = int(nums[0]) if nums else None
-            return FloatType(precision, self)
+            return FloatType(dialect=self, precision=precision)
 
         # Decimal family
         if self._SQLSERVER_DECIMAL_TYPES.match(upper):
             nums = re.findall(r"\d+", stripped)
             if len(nums) >= 2:
-                return DecimalType(int(nums[0]), int(nums[1]), self)
+                return DecimalType(dialect=self, precision=int(nums[0]), scale=int(nums[1]))
             if len(nums) == 1:
-                return DecimalType(int(nums[0]), self)
+                return DecimalType(dialect=self, precision=int(nums[0]))
             return DecimalType(dialect=self)
 
         # String family
@@ -222,8 +353,8 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
             length_match = re.search(r"\((\d+)", stripped)
             length = int(length_match.group(1)) if length_match else None
             if "VARCHAR" in upper or "NVARCHAR" in upper:
-                return VarCharType(length or 255, self)
-            return (CharType(length, self) if length_match else VarCharType(255, self))
+                return VarCharType(dialect=self, length=length or 255)
+            return (CharType(dialect=self, length=length) if length_match else VarCharType(dialect=self, length=255))
 
         # Date/time family
         if self._SQLSERVER_DATE_TYPES.match(upper):
@@ -237,4 +368,4 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
             from ..expression.types import SQLServerVarBinaryType
             return SQLServerVarBinaryType(dialect=self)
 
-        return CustomType(stripped, self)
+        return CustomType(dialect=self, raw=stripped)
