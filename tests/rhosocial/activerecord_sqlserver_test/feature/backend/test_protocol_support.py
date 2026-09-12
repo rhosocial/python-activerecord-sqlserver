@@ -219,13 +219,13 @@ class TestMergeOutputAndHoldlock:
             ),
             when_matched=[
                 MergeAction(
-                    MergeActionType.UPDATE, {"name": Column(d, "name", "src")}
+                    dialect=d, action_type=MergeActionType.UPDATE, assignments={"name": Column(d, "name", "src")}
                 )
             ],
             when_not_matched=[
                 MergeAction(
-                    MergeActionType.INSERT,
-                    {"id": Column(d, "id", "src"), "name": Column(d, "name", "src")},
+                    dialect=d, action_type=MergeActionType.INSERT,
+                    assignments={"id": Column(d, "id", "src"), "name": Column(d, "name", "src")},
                 )
             ],
         )

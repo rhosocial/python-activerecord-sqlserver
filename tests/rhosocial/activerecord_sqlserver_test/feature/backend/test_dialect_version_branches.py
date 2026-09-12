@@ -296,12 +296,13 @@ class TestRenderingSnapshots:
             ),
             when_matched=[
                 MergeAction(
+                    dialect=d,
                     action_type=MergeActionType.UPDATE,
                     assignments={"name": Column(d, "name", "source")},
                 )
             ],
             when_not_matched=[
-                MergeAction(action_type=MergeActionType.INSERT, assignments={"id": Column(d, "id", "source")})
+                MergeAction(dialect=d, action_type=MergeActionType.INSERT, assignments={"id": Column(d, "id", "source")})
             ],
         )
         # MergeExpression carries no dialect_options of its own; the dialect
@@ -327,7 +328,7 @@ class TestRenderingSnapshots:
             target_table=TableExpression(d, "t"),
             source=QueryExpression(dialect=d, select=[Column(d, "id")], from_=TableExpression(d, "s")),
             on_condition=ComparisonPredicate(d, "=", Column(d, "id", "t"), Column(d, "id", "s")),
-            when_matched=[MergeAction(action_type=MergeActionType.DELETE)],
+            when_matched=[MergeAction(dialect=d, action_type=MergeActionType.DELETE)],
         )
         sql, _ = merge.to_sql()
         assert sql.startswith("MERGE INTO [t]")
