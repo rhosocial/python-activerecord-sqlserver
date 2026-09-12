@@ -211,7 +211,7 @@ class TestRenderingSnapshots:
         expr = CreateTableExpression(
             dialect=d,
             table=TableExpression(d, "stage_users"),
-            columns=[ColumnDefinition(name="id", data_type=IntegerType())],
+            columns=[ColumnDefinition(d, name="id", data_type=IntegerType(d))],
             temporary=True,
         )
         sql, params = expr.to_sql()
@@ -230,7 +230,7 @@ class TestRenderingSnapshots:
         expr = CreateTableExpression(
             dialect=d,
             table=TableExpression(d, "t", "dbo"),
-            columns=[ColumnDefinition(name="id", data_type=IntegerType())],
+            columns=[ColumnDefinition(d, name="id", data_type=IntegerType(d))],
             temporary=True,
         )
         assert expr.to_sql()[0] == "CREATE TABLE [dbo].[#t] ([id] INT)"
@@ -247,7 +247,7 @@ class TestRenderingSnapshots:
         expr = CreateTableExpression(
             dialect=d,
             table=TableExpression(d, "copy"),
-            columns=[ColumnDefinition(name="id", data_type=IntegerType())],
+            columns=[ColumnDefinition(d, name="id", data_type=IntegerType(d))],
         )
         expr.dialect_options["like_table"] = "original"
         with pytest.raises(UnsupportedFeatureError):

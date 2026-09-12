@@ -12,6 +12,7 @@ from rhosocial.activerecord.backend.introspection.types import (
     IndexInfo, ForeignKeyInfo,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
+from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.schema import SQLServerSchemaDiffer
 
 
@@ -51,7 +52,8 @@ class TestSQLServerSchemaDiffer:
         )
 
     def test_no_changes(self):
-        col = self._make_column("id", "INT", 1, parsed_dt=IntegerType())
+        dialect = SQLServerDialect()
+        col = self._make_column("id", "INT", 1, parsed_dt=IntegerType(dialect))
         snap = self._make_snapshot("SQLServerDialect", {"users": [col]})
         differ = SQLServerSchemaDiffer()
         diff = differ.compare(snap, snap)
@@ -90,10 +92,11 @@ class TestSQLServerSchemaDiffer:
         assert removed[0].column_name == "name"
 
     def test_modified_column_type(self):
+        dialect = SQLServerDialect()
         old_col = self._make_column("name", "NVARCHAR(100)", 1,
-                                    parsed_dt=VarCharType(length=100))
+                                    parsed_dt=VarCharType(dialect, length=100))
         new_col = self._make_column("name", "NVARCHAR(200)", 1,
-                                    parsed_dt=VarCharType(length=200))
+                                    parsed_dt=VarCharType(dialect, length=200))
 
         old_snap = self._make_snapshot("SQLServerDialect", {"users": [old_col]})
         new_snap = self._make_snapshot("SQLServerDialect", {"users": [new_col]})

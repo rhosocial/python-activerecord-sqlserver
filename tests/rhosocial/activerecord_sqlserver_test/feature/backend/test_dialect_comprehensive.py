@@ -769,15 +769,15 @@ class TestSQLServerDialectDDL:
             dialect=dialect,
             table=TableExpression(dialect, "users"),
             columns=[
-                ColumnDefinition(
+                ColumnDefinition(dialect,
                     name="id",
-                    data_type=IntegerType(),
-                    constraints=[ColumnConstraint(constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)],
+                    data_type=IntegerType(dialect),
+                    constraints=[ColumnConstraint(dialect, constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)],
                 ),
-                ColumnDefinition(
+                ColumnDefinition(dialect,
                     name="name",
-                    data_type=VarCharType(length=255),
-                    constraints=[ColumnConstraint(constraint_type=ColumnConstraintType.NOT_NULL)],
+                    data_type=VarCharType(dialect, length=255),
+                    constraints=[ColumnConstraint(dialect, constraint_type=ColumnConstraintType.NOT_NULL)],
                 ),
             ],
         )

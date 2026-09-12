@@ -72,7 +72,7 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         columns = [
             ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
-                ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
+                ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY)
             ]),
             ColumnDefinition(dialect, "name", VarCharType(dialect, length=255))
         ]
@@ -104,7 +104,7 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         columns = [
             ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
-                ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
+                ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY)
             ]),
         ]
         create_expr = CreateTableExpression(
@@ -125,10 +125,10 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         columns = [
             ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
-                ColumnConstraint(ColumnConstraintType.PRIMARY_KEY)
+                ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY)
             ]),
             ColumnDefinition(dialect, "name", VarCharType(dialect, length=255), constraints=[
-                ColumnConstraint(ColumnConstraintType.NOT_NULL)
+                ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)
             ])
         ]
         create_expr = CreateTableExpression(

@@ -122,12 +122,12 @@ class TestSQLServerNiladicDDLContext:
             dialect=dialect,
             table=table_name,
             columns=[
-                ColumnDefinition('id', IntegerType(), constraints=[
-                    ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-                    ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+                ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
+                    ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
+                    ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL, is_auto_increment=True),
                 ]),
-                ColumnDefinition('ts', TimestampType(), constraints=[
-                    ColumnConstraint(ColumnConstraintType.DEFAULT,
+                ColumnDefinition(dialect, 'ts', TimestampType(dialect), constraints=[
+                    ColumnConstraint(dialect, ColumnConstraintType.DEFAULT,
                                      default_value=current_timestamp(dialect)),
                 ]),
             ],
@@ -163,11 +163,11 @@ class TestSQLServerNiladicDDLContext:
             table=table_name,
             columns=[
                 ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
-                    ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-                    ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+                    ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
+                    ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL, is_auto_increment=True),
                 ]),
                 ColumnDefinition(dialect, 'ts', TimestampType(dialect, precision=6), constraints=[
-                    ColumnConstraint(ColumnConstraintType.DEFAULT,
+                    ColumnConstraint(dialect, ColumnConstraintType.DEFAULT,
                                      default_value=FunctionCall(dialect, 'SYSDATETIME')),
                 ]),
             ],
@@ -223,12 +223,12 @@ class TestAsyncSQLServerNiladicDDLContext:
             dialect=dialect,
             table=table_name,
             columns=[
-                ColumnDefinition('id', IntegerType(), constraints=[
-                    ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-                    ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+                ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
+                    ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
+                    ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL, is_auto_increment=True),
                 ]),
-                ColumnDefinition('ts', TimestampType(), constraints=[
-                    ColumnConstraint(ColumnConstraintType.DEFAULT,
+                ColumnDefinition(dialect, 'ts', TimestampType(dialect), constraints=[
+                    ColumnConstraint(dialect, ColumnConstraintType.DEFAULT,
                                      default_value=current_timestamp(dialect)),
                 ]),
             ],
