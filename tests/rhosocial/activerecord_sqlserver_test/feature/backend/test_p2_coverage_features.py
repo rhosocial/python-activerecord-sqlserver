@@ -85,6 +85,7 @@ class TestMemoryOptimizedTables:
             for name, (columns, bucket_count) in hash_indexes.items():
                 indexes.append(
                     IndexDefinition(
+                        d,
                         name,
                         list(columns),
                         dialect_options={"hash_index": True, "bucket_count": bucket_count},
@@ -206,7 +207,7 @@ class TestMemoryOptimizedTables:
             dialect,
             "t",
             [col],
-            indexes=[IndexDefinition("ix", ["id"], dialect_options={"hash_index": True})],
+            indexes=[IndexDefinition(dialect, "ix", ["id"], dialect_options={"hash_index": True})],
             dialect_options={"memory_optimized": True},
         )
         with pytest.raises(ValueError):

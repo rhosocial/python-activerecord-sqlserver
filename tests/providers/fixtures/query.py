@@ -86,11 +86,11 @@ def create_posts_table(dialect, table_name: str = "posts") -> CreateTableExpress
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
         indexes=[
-            IndexDefinition(name="idx_user_id", columns=["user_id"]),
-            IndexDefinition(name="idx_status", columns=["status"]),
+            IndexDefinition(dialect, name="idx_user_id", columns=["user_id"]),
+            IndexDefinition(dialect, name="idx_status", columns=["status"]),
         ],
         table_constraints=[
-            ForeignKeyConstraint(columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"],
                 on_delete=_CASCADE),
         ],
     )
@@ -115,13 +115,13 @@ def create_comments_table(dialect, table_name: str = "comments") -> CreateTableE
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
         indexes=[
-            IndexDefinition(name="idx_user_id", columns=["user_id"]),
-            IndexDefinition(name="idx_post_id", columns=["post_id"]),
+            IndexDefinition(dialect, name="idx_user_id", columns=["user_id"]),
+            IndexDefinition(dialect, name="idx_post_id", columns=["post_id"]),
         ],
         table_constraints=[
-            ForeignKeyConstraint(columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"],
                 on_delete=_CASCADE),
-            ForeignKeyConstraint(columns=["post_id"], foreign_key_table="posts", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["post_id"], foreign_key_table="posts", foreign_key_columns=["id"],
                 on_delete=ReferentialAction.NO_ACTION),
         ],
     )
@@ -148,9 +148,9 @@ def create_orders_table(dialect, table_name: str = "orders") -> CreateTableExpre
             ColumnDefinition(dialect, "created_at", DateTimeType(dialect, precision=6)),
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
-        indexes=[IndexDefinition(name="idx_user_id", columns=["user_id"])],
+        indexes=[IndexDefinition(dialect, name="idx_user_id", columns=["user_id"])],
         table_constraints=[
-            ForeignKeyConstraint(columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"]),
+            ForeignKeyConstraint(dialect, columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"]),
         ],
     )
 
@@ -178,9 +178,9 @@ def create_order_items_table(dialect, table_name: str = "order_items") -> Create
             ColumnDefinition(dialect, "created_at", DateTimeType(dialect, precision=6)),
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
-        indexes=[IndexDefinition(name="idx_order_id", columns=["order_id"])],
+        indexes=[IndexDefinition(dialect, name="idx_order_id", columns=["order_id"])],
         table_constraints=[
-            ForeignKeyConstraint(columns=["order_id"], foreign_key_table="orders", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["order_id"], foreign_key_table="orders", foreign_key_columns=["id"],
                 on_delete=_CASCADE),
         ],
     )
@@ -202,7 +202,7 @@ def create_profiles_table(dialect, table_name: str = "profiles") -> CreateTableE
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
         table_constraints=[
-            ForeignKeyConstraint(columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"]),
+            ForeignKeyConstraint(dialect, columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"]),
         ],
     )
 
@@ -251,9 +251,9 @@ def create_nodes_table(dialect, table_name: str = "nodes") -> CreateTableExpress
             ColumnDefinition(dialect, "created_at", DateTimeType(dialect, precision=6)),
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
-        indexes=[IndexDefinition(name="idx_parent_id", columns=["parent_id"])],
+        indexes=[IndexDefinition(dialect, name="idx_parent_id", columns=["parent_id"])],
         table_constraints=[
-            ForeignKeyConstraint(columns=["parent_id"], foreign_key_table="nodes", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["parent_id"], foreign_key_table="nodes", foreign_key_columns=["id"],
                 on_delete=ReferentialAction.NO_ACTION),
         ],
     )
@@ -308,13 +308,13 @@ def create_extended_orders_table(dialect, table_name: str = "extended_orders") -
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
         indexes=[
-            IndexDefinition(name="idx_user_id", columns=["user_id"]),
-            IndexDefinition(name="idx_status", columns=["status"]),
-            IndexDefinition(name="idx_priority", columns=["priority"]),
-            IndexDefinition(name="idx_region", columns=["region"]),
+            IndexDefinition(dialect, name="idx_user_id", columns=["user_id"]),
+            IndexDefinition(dialect, name="idx_status", columns=["status"]),
+            IndexDefinition(dialect, name="idx_priority", columns=["priority"]),
+            IndexDefinition(dialect, name="idx_region", columns=["region"]),
         ],
         table_constraints=[
-            ForeignKeyConstraint(columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["user_id"], foreign_key_table="users", foreign_key_columns=["id"],
                 on_delete=_CASCADE),
         ],
     )
@@ -344,9 +344,9 @@ def create_extended_order_items_table(
             ColumnDefinition(dialect, "created_at", DateTimeType(dialect, precision=6)),
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
-        indexes=[IndexDefinition(name="idx_order_id", columns=["order_id"])],
+        indexes=[IndexDefinition(dialect, name="idx_order_id", columns=["order_id"])],
         table_constraints=[
-            ForeignKeyConstraint(columns=["order_id"], foreign_key_table="extended_orders",
+            ForeignKeyConstraint(dialect, columns=["order_id"], foreign_key_table="extended_orders",
                 foreign_key_columns=["id"], on_delete=_CASCADE),
         ],
     )

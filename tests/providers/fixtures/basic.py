@@ -244,9 +244,9 @@ def create_posts_table(dialect, table_name: str = "posts") -> CreateTableExpress
             ColumnDefinition(dialect, "created_at", DateTimeType(dialect, precision=6)),
             ColumnDefinition(dialect, "updated_at", DateTimeType(dialect, precision=6)),
         ],
-        indexes=[IndexDefinition(name="idx_author", columns=["author"])],
+        indexes=[IndexDefinition(dialect, name="idx_author", columns=["author"])],
         table_constraints=[
-            ForeignKeyConstraint(columns=["author"], foreign_key_table="users", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["author"], foreign_key_table="users", foreign_key_columns=["id"],
                 on_delete=_CASCADE),
         ],
     )
@@ -273,13 +273,13 @@ def create_comments_table(dialect, table_name: str = "comments") -> CreateTableE
                 constraints=[ColumnConstraint(dialect, ColumnConstraintType.DEFAULT, default_value=0)]),
         ],
         indexes=[
-            IndexDefinition(name="idx_post_ref", columns=["post_ref"]),
-            IndexDefinition(name="idx_author", columns=["author"]),
+            IndexDefinition(dialect, name="idx_post_ref", columns=["post_ref"]),
+            IndexDefinition(dialect, name="idx_author", columns=["author"]),
         ],
         table_constraints=[
-            ForeignKeyConstraint(columns=["post_ref"], foreign_key_table="posts", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["post_ref"], foreign_key_table="posts", foreign_key_columns=["id"],
                 on_delete=_CASCADE),
-            ForeignKeyConstraint(columns=["author"], foreign_key_table="users", foreign_key_columns=["id"],
+            ForeignKeyConstraint(dialect, columns=["author"], foreign_key_table="users", foreign_key_columns=["id"],
                 on_delete=ReferentialAction.NO_ACTION),
         ],
     )
@@ -366,7 +366,7 @@ def create_composite_pk_order_items_table(
                 constraints=[ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)]),
         ],
         table_constraints=[
-            TableConstraint(constraint_type=TableConstraintType.PRIMARY_KEY,
+            TableConstraint(dialect, constraint_type=TableConstraintType.PRIMARY_KEY,
                 columns=["order_id", "product_id"]),
         ],
     )
@@ -389,7 +389,7 @@ def create_store_inventory_table(dialect, table_name: str = "store_inventory") -
                              ColumnConstraint(dialect, ColumnConstraintType.DEFAULT, default_value=0)]),
         ],
         table_constraints=[
-            TableConstraint(constraint_type=TableConstraintType.PRIMARY_KEY,
+            TableConstraint(dialect, constraint_type=TableConstraintType.PRIMARY_KEY,
                 columns=["store_id", "product_id", "batch_id"]),
         ],
     )

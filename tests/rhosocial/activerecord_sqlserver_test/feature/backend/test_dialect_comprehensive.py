@@ -313,6 +313,7 @@ class TestSQLServerDialectSetOperation:
 
     def test_union_all(self, dialect):
         from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
@@ -325,15 +326,17 @@ class TestSQLServerDialectSetOperation:
             from_=TableExpression(dialect, "admins"),
         )
 
-        sql, params = dialect.format_set_operation_expression(
-            left, right, "UNION", alias=None, all_=True
+        expr = SetOperationExpression(
+            dialect, left=left, right=right, operation="UNION", all_=True
         )
+        sql, params = dialect.format_set_operation_expression(expr)
         assert "UNION ALL" in sql
         assert "[users]" in sql
         assert "[admins]" in sql
 
     def test_intersect(self, dialect):
         from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
@@ -346,13 +349,15 @@ class TestSQLServerDialectSetOperation:
             from_=TableExpression(dialect, "shipments"),
         )
 
-        sql, params = dialect.format_set_operation_expression(
-            left, right, "INTERSECT", alias=None, all_=False
+        expr = SetOperationExpression(
+            dialect, left=left, right=right, operation="INTERSECT", all_=False
         )
+        sql, params = dialect.format_set_operation_expression(expr)
         assert "INTERSECT" in sql
 
     def test_except(self, dialect):
         from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
@@ -365,9 +370,10 @@ class TestSQLServerDialectSetOperation:
             from_=TableExpression(dialect, "managers"),
         )
 
-        sql, params = dialect.format_set_operation_expression(
-            left, right, "EXCEPT", alias=None, all_=False
+        expr = SetOperationExpression(
+            dialect, left=left, right=right, operation="EXCEPT", all_=False
         )
+        sql, params = dialect.format_set_operation_expression(expr)
         assert "EXCEPT" in sql
 
 
@@ -425,12 +431,14 @@ class TestSQLServerDialectMerge:
             ),
             when_matched=[
                 MergeAction(
+                    dialect=dialect,
                     action_type=MergeActionType.UPDATE,
                     assignments={"name": Column(dialect, "name", "source")},
                 ),
             ],
             when_not_matched=[
                 MergeAction(
+                    dialect=dialect,
                     action_type=MergeActionType.INSERT,
                     assignments={"id": Column(dialect, "id", "source"), "name": Column(dialect, "name", "source")},
                 ),
