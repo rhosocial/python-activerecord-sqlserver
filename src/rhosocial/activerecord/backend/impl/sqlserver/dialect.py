@@ -466,6 +466,10 @@ class SQLServerDialect(
     def supports_materialized_cte(self) -> bool:
         """SQL Server doesn't support MATERIALIZED hint for CTEs."""
         return False
+
+    def supports_cte_order_by(self) -> bool:
+        """SQL Server prohibits ORDER BY in CTEs unless TOP/OFFSET is present."""
+        return False
     
     def supports_returning_insert(self) -> bool:
         """SQL Server supports OUTPUT clause for INSERT."""
