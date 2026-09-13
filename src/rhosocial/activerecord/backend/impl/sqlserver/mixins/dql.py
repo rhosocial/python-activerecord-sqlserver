@@ -1,0 +1,77 @@
+# src/rhosocial/activerecord/backend/impl/sqlserver/mixins/dql.py
+from typing import Any, List, Optional, Tuple, TYPE_CHECKING
+
+from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from .version_constants import SQL_SERVER_2012
+
+if TYPE_CHECKING:
+    from rhosocial.activerecord.backend.expression.query_parts import LimitOffsetClause
+
+
+class SQLServerDQLMixin:
+    """SQL Server SELECT / LIMIT / OFFSET formatting."""
+
+    def format_limit_offset(
+        self,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None
+    ) -> Tuple[Optional[str], List[Any]]:
+        """
+        Format LIMIT/OFFSET as OFFSET FETCH for SQL Server 2012+.
+
+        SQL Server 2012+ uses OFFSET FETCH syntax for pagination.
+        Note: ORDER BY is required when using OFFSET FETCH.
+        """
+        if limit is None and offset is None:
+            return None, []
+
+        if self.version < SQL_SERVER_2012:
+            raise UnsupportedFeatureError(
+                self.name,
+                "OFFSET FETCH pagination",
+                "SQL Server 2012+ required for OFFSET FETCH. Use ROW_NUMBER() for older versions."
+            )
+
+        sql_parts = []
+        params = []
+
+        offset_val = offset or 0
+        sql_parts.append(f"OFFSET {offset_val} ROWS")
+
+        if limit is not None:
+            sql_parts.append(f"FETCH NEXT {limit} ROWS ONLY")
+
+        return " ".join(sql_parts), params
+
+    def format_limit_offset_clause(self, clause: "LimitOffsetClause") -> Tuple[str, tuple]:
+        """Format LIMIT/OFFSET clause for SQL Server using OFFSET FETCH syntax."""
+        if clause.limit is None and clause.offset is None:
+            return "", ()
+
+        if self.version < SQL_SERVER_2012:
+            raise UnsupportedFeatureError(
+                self.name,
+                "OFFSET FETCH pagination",
+                "SQL Server 2012+ required for OFFSET FETCH. Use ROW_NUMBER() for older versions."
+            )
+
+        parts = []
+        params = []
+
+        offset_val = clause.offset if clause.offset is not None else 0
+        parts.append(f"OFFSET {offset_val} ROWS")
+
+        if clause.limit is not None:
+            parts.append(f"FETCH NEXT {clause.limit} ROWS ONLY")
+
+        return " ".join(parts), tuple(params)
+
+    def format_query_statement(self, expr: "QueryExpression") -> Tuple[str, tuple]:
+        sql, params = super().format_query_statement(expr)
+        if expr.limit_offset is not None and expr.order_by is None:
+            lo_sql = expr.limit_offset.to_sql()[0]
+            if lo_sql and lo_sql in sql:
+                sql = sql.replace(lo_sql, f"ORDER BY (SELECT NULL) {lo_sql}")
+            else:
+                sql += " ORDER BY (SELECT NULL)"
+        return sql, tuple(params)

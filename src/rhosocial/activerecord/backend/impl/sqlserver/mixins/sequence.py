@@ -50,3 +50,13 @@ class SQLServerSequenceMixin:
             quoted = self.format_identifier(sequence_name)  # type: ignore[attr-defined]
 
         return f"NEXT VALUE FOR {quoted}"
+
+    # --- Sequence capability declarations (moved from dialect.py) ---
+
+    def supports_create_sequence(self) -> bool:
+        """SQL Server 2012+ supports SEQUENCE objects."""
+        return self.version >= _SQL_SERVER_NEXT_VALUE_FOR_VERSION  # type: ignore[attr-defined]
+
+    def supports_drop_sequence(self) -> bool:
+        """SQL Server 2012+ supports DROP SEQUENCE."""
+        return self.version >= _SQL_SERVER_NEXT_VALUE_FOR_VERSION  # type: ignore[attr-defined]

@@ -115,6 +115,41 @@ from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
+from .mixins.datetime import SQLServerDateTimeMixin
+from .mixins.collation import SQLServerCollationMixin
+from .mixins.cte import SQLServerCTEMixin
+from .mixins.returning import SQLServerReturningMixin
+from .mixins.constraint import SQLServerConstraintMixin
+from .mixins.window import SQLServerWindowMixin
+from .mixins.json import SQLServerJSONMixin
+from .mixins.grouping import SQLServerGroupingMixin
+from .mixins.locking import SQLServerLockingMixin
+from .mixins.merge import SQLServerMergeMixin
+from .mixins.temporal import SQLServerTemporalMixin
+from .mixins.upsert import SQLServerUpsertMixin
+from .mixins.lateral import SQLServerLateralMixin
+from .mixins.explain import SQLServerExplainMixin
+from .mixins.dql import SQLServerDQLMixin
+from .mixins.dml import SQLServerDMLMixin
+from .mixins.view import SQLServerViewMixin
+from .mixins.schema import SQLServerSchemaMixin
+from .mixins.index import SQLServerIndexMixin
+from .mixins.generated_column import SQLServerGeneratedColumnMixin
+from .mixins.set_operation import SQLServerSetOperationMixin
+from .mixins.table import SQLServerTableMixin
+from .mixins.identifier import SQLServerIdentifierMixin
+from .mixins.transaction import SQLServerTransactionMixin
+from .mixins.function import SQLServerFunctionMixin
+from .mixins.version_constants import (
+    SQL_SERVER_2005,
+    SQL_SERVER_2008,
+    SQL_SERVER_2012,
+    SQL_SERVER_2014,
+    SQL_SERVER_2016,
+    SQL_SERVER_2017,
+    SQL_SERVER_2019,
+    SQL_SERVER_2022,
+)
 from .reserved_words import SQLSERVER_RESERVED_WORDS
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
@@ -158,23 +193,11 @@ if TYPE_CHECKING:
     )
 
 
-SQL_SERVER_2005 = (9, 0, 0)
-SQL_SERVER_2008 = (10, 0, 0)
-SQL_SERVER_2012 = (11, 0, 0)
-SQL_SERVER_2014 = (12, 0, 0)
-SQL_SERVER_2016 = (13, 0, 0)
-SQL_SERVER_2017 = (14, 0, 0)
-SQL_SERVER_2019 = (15, 0, 0)
-SQL_SERVER_2022 = (16, 0, 0)
-
-
 _SUGGESTION_ARRAY_TYPES = "SQL Server does not support native array types. Consider using JSON or comma-separated values."
 _SUGGESTION_JSON_TABLE = "SQL Server uses OPENJSON for JSON table functionality (2016+)."
 _SUGGESTION_GRAPH_MATCH = "SQL Server does not support graph MATCH clause."
 _SUGGESTION_ORDERED_SET_AGG = "SQL Server does not support ordered-set aggregate functions (WITHIN GROUP)."
 _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquery or CTE instead."
-_SUGGESTION_MATERIALIZED_VIEW = "SQL Server does not support materialized views. Consider using indexed views."
-_SUGGESTION_LATERAL = "SQL Server uses CROSS APPLY or OUTER APPLY instead of LATERAL."
 
 
 class SQLServerDialect(
@@ -183,9 +206,8 @@ class SQLServerDialect(
     # that the dialect overrides as needed)
     PredicateMixin,
     ExpressionMixin,
-    DateTimeMixin,
-    DQLMixin,
-    DMLMixin,
+    # SQL Server-specific mixins (must precede their global counterparts
+    # to ensure SQL Server methods take precedence in MRO)
     SQLServerAlterColumnModifierMixin,  # Before DDLColumnMixin to override format_*_action
     SQLServerProtocolSupportMixin,  # SQL Server protocol contract implementations
     SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
@@ -196,8 +218,35 @@ class SQLServerDialect(
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
     DDLColumnMixin,
     DDLTypeMixin,
-    # Feature mixins
-    CollationMixin,
+    SQLServerIdentifierMixin,
+    SQLServerCollationMixin,
+    SQLServerCTEMixin,
+    SQLServerWindowMixin,
+    SQLServerJSONMixin,
+    SQLServerReturningMixin,
+    SQLServerConstraintMixin,
+    SQLServerGroupingMixin,
+    SQLServerLockingMixin,
+    SQLServerMergeMixin,
+    SQLServerTemporalMixin,
+    SQLServerUpsertMixin,
+    SQLServerLateralMixin,
+    SQLServerExplainMixin,
+    SQLServerDQLMixin,
+    SQLServerDMLMixin,
+    SQLServerViewMixin,
+    SQLServerSchemaMixin,
+    SQLServerIndexMixin,
+    SQLServerGeneratedColumnMixin,
+    SQLServerSetOperationMixin,
+    SQLServerTableMixin,
+    SQLServerTransactionMixin,
+    SQLServerFunctionMixin,
+    SQLServerDateTimeMixin,
+    # Global feature mixins (after SQL Server mixins so SQL Server methods win)
+    DateTimeMixin,
+    DQLMixin,
+    DMLMixin,
     CTEMixin,
     WindowFunctionMixin,
     JSONMixin,
@@ -285,7 +334,7 @@ class SQLServerDialect(
 ):
     """
     SQL Server dialect implementation that adapts to the SQL Server version.
-    
+
     SQL Server features and support based on version:
     - CTEs: All versions (recursive since 2008)
     - Window functions: All versions (enhanced in 2012)
@@ -296,7 +345,7 @@ class SQLServerDialect(
     - TRY_CAST/TRY_CONVERT: SQL Server 2012+
     - SEQUENCE objects: SQL Server 2012+
     """
-    
+
     name = "SQL Server"
 
     _NILADIC_FUNCTION_EQUIVALENTS = {
@@ -362,7 +411,7 @@ class SQLServerDialect(
         "bit_shift_left": (SQL_SERVER_2022, None),
         "bit_shift_right": (SQL_SERVER_2022, None),
     }
-    
+
     def __init__(self, version: Optional[Tuple[int, int, int]] = None):
         """
         Initialize SQL Server dialect with specific version.
@@ -377,8 +426,7 @@ class SQLServerDialect(
         self._reserved_words = SQLSERVER_RESERVED_WORDS
         if version is not None:
             self.version = version
-    
-    
+
     def get_server_version(self) -> Tuple[int, int, int]:
         """Return the SQL Server version this dialect is configured for."""
         return self.version
@@ -391,778 +439,30 @@ class SQLServerDialect(
 
         return SQLServerSchemaDiffer()
 
-    def format_date_trunc_expression(self, expr: "Any") -> Tuple[str, Tuple]:
-        source_sql, source_params = expr.source.to_sql()
-        field = expr.field.value.upper()
-        if field in {"YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND"}:
-            sql = f"DATETRUNC({field}, {source_sql})"
-        else:
-            raise UnsupportedFeatureError(self.name, f"date_trunc({expr.field.value})")
-        return self.apply_alias(sql, source_params, expr)
-
-    def format_interval_expression(self, expr: "Any") -> Tuple[str, Tuple]:
-        raise UnsupportedFeatureError(
-            self.name,
-            "standalone INTERVAL expression",
-            "Use date_add() or date_sub() for SQL Server date arithmetic.",
-        )
-
-    def format_datetime_add_expression(self, expr: "Any") -> Tuple[str, Tuple]:
-        source_sql, source_params = expr.source.to_sql()
-        unit = expr.interval.unit.value.upper()
-        sql = f"DATEADD({unit}, ?, {source_sql})"
-        return self.apply_alias(
-            sql, (expr.interval.value,) + source_params, expr
-        )
-
-    def format_datetime_subtract_expression(self, expr: "Any") -> Tuple[str, Tuple]:
-        source_sql, source_params = expr.source.to_sql()
-        unit = expr.interval.unit.value.upper()
-        sql = f"DATEADD({unit}, ?, {source_sql})"
-        return self.apply_alias(
-            sql, (-expr.interval.value,) + source_params, expr
-        )
-
-    def format_datetime_diff_expression(self, expr: "Any") -> Tuple[str, Tuple]:
-        start_sql, start_params = expr.start.to_sql()
-        end_sql, end_params = expr.end.to_sql()
-        sql = f"DATEDIFF({expr.unit.value.upper()}, {start_sql}, {end_sql})"
-        return self.apply_alias(sql, start_params + end_params, expr)
-
-    def supports_collate_expression(self) -> bool:
-        """SQL Server supports expression-level COLLATE."""
-        return True
-
-    def validate_collation_name(self, expr: "CollateExpression") -> str:
-        """Validate SQL Server collation names and return their SQL representation."""
-        if "schema" in expr.collation_options:
-            raise UnsupportedFeatureError(self.name, "schema-qualified COLLATE")
-        keyword = expr.collation_options.get("keyword", False)
-        unsupported = set(expr.collation_options) - {"keyword", "schema"}
-        if unsupported:
-            options = ", ".join(sorted(unsupported))
-            raise UnsupportedFeatureError(self.name, f"COLLATE options: {options}")
-        if keyword and expr.collation_name != "DATABASE_DEFAULT":
-            raise ValueError(f"Unsupported SQL Server collation keyword: {expr.collation_name!r}")
-        return validate_sqlserver_collation_name(expr.collation_name, getattr(self, "version", None))
-
-    def format_identifier(self, identifier: str, need_quote: bool = True) -> str:
-        """
-        Format identifier using SQL Server's brackets.
-        
-        SQL Server uses square brackets [] for identifiers, escaping
-        internal brackets by doubling them.
-        
-        Args:
-            identifier: Raw identifier string
-            need_quote: Whether to quote the identifier (default True)
-        
-        Returns:
-            Quoted identifier with escaped internal brackets, or raw identifier if need_quote is False
-        """
-        if not need_quote:
-            if self.is_reserved_word(identifier):
-                import warnings
-                from rhosocial.activerecord.backend.warnings import IdentifierQuotingWarning
-                warnings.warn(
-                    f"Identifier '{identifier}' is a reserved word in {self.name} "
-                    f"and may cause SQL errors without quoting.",
-                    IdentifierQuotingWarning,
-                    stacklevel=2,
-                )
-            return identifier
-        escaped = identifier.replace("]", "]]")
-        return f"[{escaped}]"
-    
-    def supports_basic_cte(self) -> bool:
-        """Basic CTEs are supported in all modern SQL Server versions."""
-        return True
-    
-    def supports_recursive_cte(self) -> bool:
-        """Recursive CTEs are supported since SQL Server 2005."""
-        return True
-    
-
-    def supports_unconditional_cte_order_by(self) -> bool:
-        """SQL Server prohibits ORDER BY in CTEs unless TOP/OFFSET is present."""
-        return False
-    
-    def supports_returning_insert(self) -> bool:
-        """SQL Server supports OUTPUT clause for INSERT."""
-        return True
-
-    def supports_returning_update(self) -> bool:
-        """SQL Server supports OUTPUT clause for UPDATE."""
-        return True
-
-    def supports_returning_delete(self) -> bool:
-        """SQL Server supports OUTPUT clause for DELETE."""
-        return True
-
-    def supports_constraint_enforced(self) -> bool:
-        """SQL Server does not support ENFORCED/NOT ENFORCED constraint control."""
-        return False
-
-    def supports_fk_match(self) -> bool:
-        """SQL Server does not support MATCH {SIMPLE|PARTIAL|FULL}."""
-        return False
-
-    def supports_deferrable_constraint(self) -> bool:
-        """SQL Server does not support DEFERRABLE constraints."""
-        return False
-
-    def supports_window_functions(self) -> bool:
-        """Window functions are supported since SQL Server 2005."""
-        return True
-    
-    def supports_window_frame_clause(self) -> bool:
-        """Window frame clauses are supported since SQL Server 2012."""
-        return self.version >= SQL_SERVER_2012
-    
-    
-    def supports_json_type(self) -> bool:
-        """JSON functions are supported since SQL Server 2016."""
-        return self.version >= SQL_SERVER_2016
-    
-    def get_json_access_operator(self) -> Optional[str]:
-        """SQL Server doesn't have -> operator, uses JSON_VALUE/JSON_QUERY."""
-        return None
-
-    def format_json_function_expression(self, expr) -> Tuple[str, tuple]:
-        """Format JSON extraction using SQL Server's JSON_VALUE built-in.
-
-        The base implementation renders ``JSON_UNQUOTE(JSON_EXTRACT(...))``
-        which is MySQL syntax. SQL Server uses ``JSON_VALUE(column, 'path')``,
-        which already returns a scalar value without surrounding quotes.
-
-        Args:
-            expr: The JSONExpression to format.
-
-        Returns:
-            (SQL string, params tuple).
-        """
-        if isinstance(expr.column, bases.BaseExpression):
-            col_sql, col_params = expr.column.to_sql()
-        else:
-            col_sql, col_params = self.format_identifier(str(expr.column)), ()
-
-        escaped_path = self._escape_sql_string(expr.path)
-        sql = f"JSON_VALUE({col_sql}, '{escaped_path}')"
-        params = col_params
-
-        if expr.alias:
-            sql = f"{sql} AS {self.format_identifier(expr.alias)}"
-
-        return sql, params
-    
-    def supports_json_table(self) -> bool:
-        """OPENJSON provides JSON table functionality since SQL Server 2016."""
-        return self.version >= SQL_SERVER_2016
-    
-    def supports_rollup(self) -> bool:
-        """ROLLUP is supported using WITH ROLLUP syntax."""
-        return True
-    
-    def supports_cube(self) -> bool:
-        """CUBE is supported using WITH CUBE syntax."""
-        return True
-    
-    def supports_grouping_sets(self) -> bool:
-        """GROUPING SETS is supported since SQL Server 2008."""
-        return True
-    
-    
-    
-    
-    
-    def supports_for_update(self) -> bool:
-        """SQL Server supports FOR UPDATE via table hints."""
-        return True
-    
-    def supports_for_update_skip_locked(self) -> bool:
-        """SQL Server 2019+ supports READPAST with UPDLOCK."""
-        return self.version >= SQL_SERVER_2019
-    
-    def supports_merge_statement(self) -> bool:
-        """SQL Server has native MERGE support since 2008."""
-        return True
-    
-    def supports_temporal_tables(self) -> bool:
-        """SQL Server 2016+ supports temporal tables."""
-        return self.version >= SQL_SERVER_2016
-    
-    
-    def supports_upsert(self) -> bool:
-        """SQL Server uses MERGE for upsert operations."""
-        return True
-    
-    def get_upsert_syntax_type(self) -> str:
-        """Return 'MERGE' for SQL Server."""
-        return "MERGE"
-    
-    def supports_lateral_join(self) -> bool:
-        """SQL Server uses CROSS APPLY/OUTER APPLY instead of LATERAL."""
-        return True
-    
-    
-    def supports_explain_analyze(self) -> bool:
-        """SQL Server uses STATISTICS PROFILE for actual execution."""
-        return True
-    
-    def supports_explain_format(self, format_type: str) -> bool:
-        """Check if specific EXPLAIN format is supported."""
-        return format_type.upper() in ["XML", "TEXT"]
-    
-    def format_explain_statement(self, explain_expr: "ExplainExpression") -> Tuple[str, tuple]:
-        """
-        Format EXPLAIN for SQL Server.
-        
-        SQL Server uses:
-        - SET SHOWPLAN_XML ON (estimated plan)
-        - SET STATISTICS PROFILE ON (actual plan with statistics)
-        - SET STATISTICS XML ON (actual plan in XML)
-        """
-        statement_sql, statement_params = explain_expr.statement.to_sql()
-        options = explain_expr.options
-        
-        if options is None:
-            return f"SET SHOWPLAN_TEXT ON; {statement_sql}", statement_params
-        
-        if options.analyze:
-            if options.format and options.format.name == "XML":
-                return f"SET STATISTICS XML ON; {statement_sql}; SET STATISTICS XML OFF", statement_params
-            return f"SET STATISTICS PROFILE ON; {statement_sql}; SET STATISTICS PROFILE OFF", statement_params
-        
-        if options.format and options.format.name == "XML":
-            return f"SET SHOWPLAN_XML ON; {statement_sql}", statement_params
-        
-        return f"SET SHOWPLAN_TEXT ON; {statement_sql}", statement_params
-    
-    def format_limit_offset(
-        self,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> Tuple[Optional[str], List[Any]]:
-        """
-        Format LIMIT/OFFSET as OFFSET FETCH for SQL Server 2012+.
-        
-        SQL Server 2012+ uses OFFSET FETCH syntax for pagination.
-        Note: ORDER BY is required when using OFFSET FETCH.
-        """
-        if limit is None and offset is None:
-            return None, []
-        
-        if self.version < SQL_SERVER_2012:
-            raise UnsupportedFeatureError(
-                self.name,
-                "OFFSET FETCH pagination",
-                "SQL Server 2012+ required for OFFSET FETCH. Use ROW_NUMBER() for older versions."
-            )
-        
-        sql_parts = []
-        params = []
-        
-        offset_val = offset or 0
-        sql_parts.append(f"OFFSET {offset_val} ROWS")
-        
-        if limit is not None:
-            sql_parts.append(f"FETCH NEXT {limit} ROWS ONLY")
-        
-        return " ".join(sql_parts), params
-
-    def format_limit_offset_clause(self, clause: "LimitOffsetClause") -> Tuple[str, tuple]:
-        """Format LIMIT/OFFSET clause for SQL Server using OFFSET FETCH syntax."""
-        if clause.limit is None and clause.offset is None:
-            return "", ()
-
-        if self.version < SQL_SERVER_2012:
-            raise UnsupportedFeatureError(
-                self.name,
-                "OFFSET FETCH pagination",
-                "SQL Server 2012+ required for OFFSET FETCH. Use ROW_NUMBER() for older versions."
-            )
-
-        parts = []
-        params = []
-
-        offset_val = clause.offset if clause.offset is not None else 0
-        parts.append(f"OFFSET {offset_val} ROWS")
-
-        if clause.limit is not None:
-            parts.append(f"FETCH NEXT {clause.limit} ROWS ONLY")
-
-        return " ".join(parts), tuple(params)
-
-    def format_query_statement(self, expr: "QueryExpression") -> Tuple[str, tuple]:
-        sql, params = super().format_query_statement(expr)
-        if expr.limit_offset is not None and expr.order_by is None:
-            lo_sql = expr.limit_offset.to_sql()[0]
-            if lo_sql and lo_sql in sql:
-                sql = sql.replace(lo_sql, f"ORDER BY (SELECT NULL) {lo_sql}")
-            else:
-                sql += " ORDER BY (SELECT NULL)"
-        return sql, tuple(params)
-
-    def format_returning_clause(self, clause: "ReturningClause", default_table: str = "INSERTED") -> Tuple[str, tuple]:
-        """
-        Format RETURNING as OUTPUT clause for SQL Server.
-
-        SQL Server OUTPUT syntax:
-        - INSERT: OUTPUT inserted.column, inserted.column2
-        - UPDATE: OUTPUT deleted.old_column, inserted.new_column
-        - DELETE: OUTPUT deleted.column
-
-        Args:
-            clause: The ReturningClause with expressions to output.
-            default_table: The default virtual table prefix ("INSERTED" for
-                INSERT/UPDATE, "DELETED" for DELETE).
-        """
-        all_params = []
-        expr_parts = []
-
-        for expr in clause.expressions:
-            if hasattr(expr, 'table') and expr.table:
-                expr_sql, expr_params = expr.to_sql()
-                expr_parts.append(f"{default_table}.{expr_sql}")
-            else:
-                expr_sql, expr_params = expr.to_sql()
-                expr_parts.append(f"{default_table}.{expr_sql}")
-            all_params.extend(expr_params)
-
-        output_sql = f"OUTPUT {', '.join(expr_parts)}"
-
-        return output_sql, tuple(all_params)
-
-    def format_insert_statement(self, expr: "InsertExpression") -> Tuple[str, tuple]:
-        """
-        Format INSERT statement with SQL Server-specific options.
-
-        SQL Server supports:
-        - OUTPUT clause for returning inserted rows
-        - INSERT TOP (n) for limiting rows
-        - DEFAULT VALUES
-        """
-        if self.strict_validation:
-            expr.validate(strict=True)
-
-        all_params: List[Any] = []
-
-        table_sql, table_params = expr.into.to_sql()
-        all_params.extend(table_params)
-
-        parts = ["INSERT INTO", table_sql]
-
-        if expr.columns:
-            columns_sql = "(" + ", ".join([self.format_identifier(c) for c in expr.columns]) + ")"
-            parts.append(columns_sql)
-
-        # Add OUTPUT clause before VALUES/SELECT (SQL Server requirement)
-        if expr.returning:
-            returning_sql, returning_params = self.format_returning_clause(expr.returning)
-            parts.append(returning_sql)
-            all_params.extend(returning_params)
-
-        from rhosocial.activerecord.backend.expression.statements import (
-            DefaultValuesSource,
-            ValuesSource,
-            SelectSource,
-        )
-
-        if isinstance(expr.source, DefaultValuesSource):
-            parts.append("DEFAULT VALUES")
-        elif isinstance(expr.source, ValuesSource):
-            all_rows_sql = []
-            for row in expr.source.values_list:
-                row_sql = []
-                row_params = []
-                for val in row:
-                    s, p = val.to_sql()
-                    row_sql.append(s)
-                    row_params.extend(p)
-                all_rows_sql.append(f"({', '.join(row_sql)})")
-                all_params.extend(row_params)
-            parts.append("VALUES " + ", ".join(all_rows_sql))
-        elif isinstance(expr.source, SelectSource):
-            s_sql, s_params = expr.source.select_query.to_sql()
-            parts.append(s_sql)
-            all_params.extend(s_params)
-
-        sql = " ".join(parts)
-
-        return sql, tuple(all_params)
-    
-    def format_update_statement(self, expr) -> Tuple[str, tuple]:
-        """Format UPDATE statement with OUTPUT clause support."""
-        if self.strict_validation:
-            expr.validate(strict=True)
-        
-        all_params: List[Any] = []
-        
-        table_sql, table_params = expr.table.to_sql()
-        all_params.extend(table_params)
-        
-        parts = ["UPDATE", table_sql]
-        
-        set_parts = []
-        for col, val in expr.assignments.items():
-            col_sql = self.format_identifier(col)
-            val_sql, val_params = val.to_sql()
-            set_parts.append(f"{col_sql} = {val_sql}")
-            all_params.extend(val_params)
-        parts.append("SET " + ", ".join(set_parts))
-
-        if expr.returning:
-            returning_sql, returning_params = self.format_returning_clause(expr.returning)
-            parts.append(returning_sql)
-            all_params.extend(returning_params)
-
-        if expr.where:
-            where_sql, where_params = expr.where.to_sql()
-            parts.append(where_sql)
-            all_params.extend(where_params)
-
-        return " ".join(parts), tuple(all_params)
-    
-    def format_delete_statement(self, expr) -> Tuple[str, tuple]:
-        """Format DELETE statement with OUTPUT clause support."""
-        if self.strict_validation:
-            expr.validate(strict=True)
-        
-        all_params: List[Any] = []
-        
-        # DeleteExpression has .tables (list), not .table
-        if expr.tables:
-            table_refs = []
-            for tbl in expr.tables:
-                tbl_sql, tbl_params = tbl.to_sql()
-                table_refs.append(tbl_sql)
-                all_params.extend(tbl_params)
-            table_sql = ", ".join(table_refs)
-        else:
-            table_sql = ""
-        
-        parts = ["DELETE FROM", table_sql]
-        
-        if expr.returning:
-            returning_sql, returning_params = self.format_returning_clause(expr.returning, default_table="DELETED")
-            parts.append(returning_sql)
-            all_params.extend(returning_params)
-        
-        if expr.where:
-            where_sql, where_params = expr.where.to_sql()
-            parts.append(where_sql)
-            all_params.extend(where_params)
-        
-        return " ".join(parts), tuple(all_params)
-    
-    
-    
-    
-    
-    
-    def supports_indexed_view(self) -> bool:
-        """SQL Server supports indexed views (similar to materialized views)."""
-        return self.version >= SQL_SERVER_2005
-    
-    def supports_if_exists_view(self) -> bool:
-        """SQL Server supports DROP VIEW IF EXISTS (2016+)."""
-        return self.version >= SQL_SERVER_2016
-    
-    def supports_view_check_option(self) -> bool:
-        """SQL Server supports WITH CHECK OPTION."""
-        return True
-    
-    
-    def format_create_view_statement(
-        self, expr: "CreateViewExpression"
-    ) -> Tuple[str, tuple]:
-        """Format CREATE VIEW statement for SQL Server."""
-        parts = ["CREATE VIEW"]
-        
-        if expr.replace:
-            parts = ["CREATE OR ALTER VIEW"]
-        
-        parts.append(self.format_identifier(expr.view_name))
-        
-        if expr.column_aliases:
-            cols = ", ".join(self.format_identifier(c) for c in expr.column_aliases)
-            parts.append(f"({cols})")
-        
-        query_sql, query_params = expr.query.to_sql()
-        as_sql = f"AS {query_sql}"
-        if expr.options and getattr(expr.options, "schemabinding", False):
-            as_sql = f"WITH SCHEMABINDING {as_sql}"
-        parts.append(as_sql)
-        
-        if expr.options and hasattr(expr.options, 'check_option') and expr.options.check_option:
-            parts.append(f"WITH {expr.options.check_option.value} CHECK OPTION")
-        
-        return " ".join(parts), query_params
-    
-    def format_drop_view_statement(
-        self, expr: "DropViewExpression"
-    ) -> Tuple[str, tuple]:
-        """Format DROP VIEW statement for SQL Server."""
-        parts = ["DROP VIEW"]
-        
-        if expr.if_exists and self.supports_if_exists_view():
-            parts.append("IF EXISTS")
-        
-        parts.append(self.format_identifier(expr.view_name))
-        
-        return " ".join(parts), ()
-    
-    def format_create_materialized_view_statement(
-        self, expr: "CreateMaterializedViewExpression"
-    ) -> Tuple[str, tuple]:
-        """Format CREATE MATERIALIZED VIEW - not supported."""
-        raise UnsupportedFeatureError(self.name, "CREATE MATERIALIZED VIEW", _SUGGESTION_MATERIALIZED_VIEW)
-    
-    def supports_trigger(self) -> bool:
-        """SQL Server supports triggers (since 2005)."""
-        return self.version >= SQL_SERVER_2005
-
-    def supports_create_trigger(self) -> bool:
-        """SQL Server supports CREATE TRIGGER (since 2005)."""
-        return self.version >= SQL_SERVER_2005
-
-    def supports_drop_trigger(self) -> bool:
-        """SQL Server supports DROP TRIGGER (since 2005)."""
-        return self.version >= SQL_SERVER_2005
-    
-    def supports_instead_of_trigger(self) -> bool:
-        """SQL Server supports INSTEAD OF triggers."""
-        return True
-    
-    def supports_statement_trigger(self) -> bool:
-        """SQL Server supports FOR EACH STATEMENT triggers."""
-        return True
-    
-    def supports_trigger_referencing(self) -> bool:
-        """SQL Server supports referencing OLD and NEW via inserted/deleted tables."""
-        return True
-    
-    def supports_trigger_when(self) -> bool:
-        """SQL Server supports WHEN condition in triggers (IF clause)."""
-        return True
-    
-    
-    
-    def supports_if_exists_table(self) -> bool:
-        """SQL Server supports DROP TABLE IF EXISTS (2016+)."""
-        return self.version >= SQL_SERVER_2016
-    
-    
-    
-    
-    
-    def supports_add_column(self) -> bool:
-        """SQL Server supports ALTER TABLE ADD COLUMN."""
-        return True
-    
-    def supports_table_partitioning(self) -> bool:
-        """SQL Server supports table partitioning."""
-        return True
-    
-    def supports_create_schema(self) -> bool:
-        """SQL Server supports CREATE SCHEMA."""
-        return True
-
-    def supports_drop_schema(self) -> bool:
-        """SQL Server supports DROP SCHEMA."""
-        return True
-
-    def supports_schema(self) -> bool:
-        """SQL Server models named schema namespaces natively (e.g. dbo)."""
-        return True
-
-    def supports_schema_authorization(self) -> bool:
-        """SQL Server accepts CREATE SCHEMA ... AUTHORIZATION owner."""
-        return True
-    
-    
-    
-    
-    
-    
-    
-    def supports_index_if_exists(self) -> bool:
-        """SQL Server supports DROP INDEX IF EXISTS (2016+)."""
-        return self.version >= SQL_SERVER_2016
-    
-    def supports_partial_index(self) -> bool:
-        """SQL Server supports filtered indexes (WHERE clause)."""
-        return True
-    
-    def supports_functional_index(self) -> bool:
-        """SQL Server supports indexes on computed columns."""
-        return True
-    
-    def supports_concurrent_index(self) -> bool:
-        """SQL Server supports ONLINE index creation (Enterprise edition)."""
-        return True
-    
-    def supports_fulltext_index(self) -> bool:
-        """SQL Server supports FULLTEXT indexes."""
-        return True
-    
-    def supports_create_sequence(self) -> bool:
-        """SQL Server 2012+ supports SEQUENCE objects."""
-        return self.version >= SQL_SERVER_2012
-    
-    def supports_drop_sequence(self) -> bool:
-        """SQL Server 2012+ supports DROP SEQUENCE."""
-        return self.version >= SQL_SERVER_2012
-    
-    
     def format_auto_increment(self) -> str:
         """Return IDENTITY(1,1) for auto-increment columns."""
         return "IDENTITY(1,1)"
-    
-    def supports_generated_column(self) -> bool:
-        """SQL Server supports computed columns."""
-        return True
 
-    def supports_generated_columns(self) -> bool:
-        """Whether generated (computed) columns are supported."""
-        return self.supports_generated_column()
-    
-    def supports_stored_generated_columns(self) -> bool:
-        """SQL Server supports PERSISTED computed columns."""
-        return True
-    
-    def supports_virtual_generated_columns(self) -> bool:
-        """SQL Server computed columns are virtual by default."""
-        return True
-    
-    def supports_union(self) -> bool:
-        """UNION is supported."""
-        return True
-    
-    def supports_union_all(self) -> bool:
-        """UNION ALL is supported."""
-        return True
-    
-    def supports_intersect(self) -> bool:
-        """INTERSECT is supported."""
-        return True
-    
-    def supports_except(self) -> bool:
-        """EXCEPT is supported."""
-        return True
-    
-    def supports_set_operation_order_by(self) -> bool:
-        """Set operations support ORDER BY."""
-        return True
-    
-    def supports_set_operation_limit_offset(self) -> bool:
-        """Set operations support OFFSET FETCH."""
-        return True
-    
-    
-    def supports_savepoint(self) -> bool:
-        """SQL Server supports savepoints."""
-        return True
-    
-    def supports_transaction_mode(self) -> bool:
-        """SQL Server doesn't support READ ONLY transactions."""
-        return False
-    
-    def supports_isolation_level_in_begin(self) -> bool:
-        """SQL Server requires SET TRANSACTION ISOLATION LEVEL before BEGIN."""
-        return False
-    
-    def supports_read_only_transaction(self) -> bool:
-        """SQL Server doesn't support READ ONLY transactions."""
-        return False
-    
-    def supports_deferrable_transaction(self) -> bool:
-        """SQL Server doesn't support DEFERRABLE mode."""
-        return False
-    
-    def format_begin_transaction(
-        self, expr: "BeginTransactionExpression"
-    ) -> Tuple[str, tuple]:
-        """Format BEGIN TRANSACTION for SQL Server."""
-        from rhosocial.activerecord.backend.errors import UnsupportedTransactionModeError
-        from rhosocial.activerecord.backend.transaction import TransactionMode
-        
-        params = expr.get_params()
-        mode = params.get("mode")
-        
-        if mode == TransactionMode.READ_ONLY:
-            raise UnsupportedTransactionModeError(
-                feature="READ ONLY transactions",
-                backend="SQL Server",
-                message="SQL Server does not support READ ONLY transactions."
-            )
-        
-        return "BEGIN TRANSACTION", ()
-    
-    def supports_functions(self) -> Dict[str, bool]:
-        """Return supported SQL functions as function_name -> bool mapping.
-
-        Combines the core expression function factories with the SQL Server
-        function factories in ``functions.__all__``.
-        """
-        from rhosocial.activerecord.backend.expression.functions import (
-            __all__ as core_functions,
-        )
-        from rhosocial.activerecord.backend.impl.sqlserver import (
-            functions as sqlserver_functions,
-        )
-
-        result = {}
-        for func_name in core_functions:
-            result[func_name] = self._is_sqlserver_function_supported(func_name)
-
-        for func_name in getattr(sqlserver_functions, "__all__", []):
-            if func_name not in result:
-                result[func_name] = self._is_sqlserver_function_supported(func_name)
-
-        for func_name in self._SQLSERVER_FUNCTION_VERSIONS:
-            if func_name not in result:
-                result[func_name] = self._is_sqlserver_function_supported(func_name)
-
-        return result
-    
-    def _is_sqlserver_function_supported(self, func_name: str) -> bool:
-        """Check if a SQL Server-specific function is supported based on version."""
-        version_range = self._SQLSERVER_FUNCTION_VERSIONS.get(func_name)
-        if version_range is None:
-            return True
-        
-        min_version = version_range[0]
-        max_version = version_range[1]
-        
-        if min_version is not None and self.version < min_version:
-            return False
-        
-        if max_version is not None and self.version > max_version:
-            return False
-        
-        return True
-    
     def format_array_expression(self, _expr: "ArrayExpression") -> Tuple[str, Tuple]:
         """Format array expression - not supported."""
         raise UnsupportedFeatureError(self.name, "Array operations", _SUGGESTION_ARRAY_TYPES)
-    
+
     def format_json_table_expression(self, _expr) -> Tuple[str, Tuple]:
         """Format JSON_TABLE - SQL Server uses OPENJSON."""
         raise UnsupportedFeatureError(self.name, "JSON_TABLE", _SUGGESTION_JSON_TABLE)
-    
+
     def format_match_clause(self, _clause: "MatchClause") -> Tuple[str, tuple]:
         """Format MATCH clause - not supported."""
         raise UnsupportedFeatureError(self.name, "graph MATCH clause", _SUGGESTION_GRAPH_MATCH)
-    
+
     def format_ordered_set_aggregation(self, _aggregation: "OrderedSetAggregation") -> Tuple[str, Tuple]:
         """Format ordered-set aggregation - not supported."""
         raise UnsupportedFeatureError(self.name, "ordered-set aggregate functions", _SUGGESTION_ORDERED_SET_AGG)
-    
+
     def format_qualify_clause(self, _clause: "QualifyClause") -> Tuple[str, tuple]:
         """Format QUALIFY clause - not supported."""
         raise UnsupportedFeatureError(self.name, "QUALIFY clause", _SUGGESTION_QUALIFY)
-    
+
     def format_grouping_clause(
         self, expr: "bases.BaseExpression"
     ) -> Tuple[str, tuple]:
@@ -1177,7 +477,7 @@ class SQLServerDialect(
             return "WITH CUBE", ()
         elif operation.upper() == "GROUPING SETS":
             return "GROUPING SETS", ()
-        
+
         raise UnsupportedFeatureError(self.name, f"{operation} grouping operation")
 
     def format_create_table_statement(
@@ -1202,12 +502,7 @@ class SQLServerDialect(
                 "SQL Server has no CREATE TABLE ... LIKE syntax; use SELECT INTO or an explicit CREATE TABLE statement.",
             )
 
-        # Build CREATE TABLE header
         parts = ["CREATE TABLE"]
-
-        # Note: SQL Server doesn't support IF NOT EXISTS for CREATE TABLE
-        # We ignore if_not_exists flag and proceed with CREATE TABLE
-        # In production, callers should handle existence checks separately
 
         if expr.temporary:
             temp_name = expr.table.name
@@ -1222,34 +517,29 @@ class SQLServerDialect(
         all_params.extend(table_params)
         parts.append(table_sql)
 
-        # Build column definitions
         column_parts = []
         for col_def in expr.columns:
             col_sql, col_params = self.format_column_definition(col_def)
             column_parts.append(col_sql)
             all_params.extend(col_params)
 
-        # Build table constraints
         for t_const in expr.table_constraints:
             const_sql, const_params = self.format_table_constraint(t_const)
             if const_sql:
                 column_parts.append(const_sql)
                 all_params.extend(const_params)
 
-        # Build inline indexes (SQL Server specific)
         for idx_def in expr.indexes:
             idx_sql = self.format_inline_index(idx_def)
             column_parts.append(idx_sql)
 
         parts.append(f"({', '.join(column_parts)})")
 
-        # Handle table partitioning clause
         if expr.partition is not None:
             partition_sql, partition_params = expr.partition.to_sql()
             parts.append(partition_sql)
             all_params.extend(partition_params)
 
-        # Handle In-Memory OLTP table options (2014+)
         if dialect_options.get("memory_optimized"):
             durability = dialect_options.get("durability", "SCHEMA_ONLY")
             parts.append(self.format_memory_optimized_option(durability))
@@ -1293,7 +583,6 @@ class SQLServerDialect(
             elif constraint.constraint_type == ColumnConstraintType.NULL:
                 constraint_parts.append("NULL")
 
-            # Handle IDENTITY (auto-increment)
             if constraint.is_auto_increment:
                 constraint_parts.append("IDENTITY(1,1)")
 
@@ -1402,15 +691,12 @@ class SQLServerDialect(
         if expr.unique:
             parts.append("UNIQUE")
 
-        # SQL Server supports clustered/nonclustered indexes
         if hasattr(expr, 'index_type') and expr.index_type:
             index_type = expr.index_type.upper()
             if index_type in ('CLUSTERED', 'NONCLUSTERED'):
                 parts.append(index_type)
 
         parts.append("INDEX")
-        # Note: SQL Server doesn't support IF NOT EXISTS for CREATE INDEX
-        # We ignore if_not_exists flag
         parts.append(self.format_identifier(expr.index_name))
         parts.append("ON")
         parts.append(self.format_identifier(expr.table_name))
@@ -1425,12 +711,10 @@ class SQLServerDialect(
                 col_parts.append(self.format_identifier(str(col)))
         parts.append(f"({', '.join(col_parts)})")
 
-        # SQL Server uses INCLUDE for covering indexes
         if expr.include:
             include_cols = ", ".join(self.format_identifier(c) for c in expr.include)
             parts.append(f"INCLUDE ({include_cols})")
 
-        # SQL Server uses WHERE for filtered indexes
         if expr.where:
             where_sql, where_params = expr.where.to_sql()
             parts.append(where_sql)
@@ -1490,28 +774,6 @@ class SQLServerDialect(
             parts.append("CYCLE" if expr.cycle else "NO CYCLE")
         if expr.cache is not None:
             parts.append(f"CACHE {expr.cache}")
-        return " ".join(parts), ()
-
-    def format_create_schema_statement(self, expr: "CreateSchemaExpression") -> Tuple[str, tuple]:
-        """Format CREATE SCHEMA for SQL Server.
-
-        SQL Server uses CREATE SCHEMA schema_name [AUTHORIZATION owner_name].
-        Does not support IF NOT EXISTS.
-        """
-        parts = ["CREATE SCHEMA"]
-        parts.append(self.format_identifier(expr.schema_name))
-        if expr.authorization:
-            parts.append(f"AUTHORIZATION {self.format_identifier(expr.authorization)}")
-        return " ".join(parts), ()
-
-    def format_drop_schema_statement(self, expr: "DropSchemaExpression") -> Tuple[str, tuple]:
-        """Format DROP SCHEMA for SQL Server.
-
-        SQL Server requires schema to be empty before dropping.
-        Does not support IF EXISTS or CASCADE.
-        """
-        parts = ["DROP SCHEMA"]
-        parts.append(self.format_identifier(expr.schema_name))
         return " ".join(parts), ()
 
     def format_truncate_statement(self, expr: "TruncateExpression") -> Tuple[str, tuple]:
@@ -1614,106 +876,6 @@ class SQLServerDialect(
         # T-SQL requires a MERGE statement to be terminated by a semi-colon.
         return " ".join(parts) + ";", tuple(all_params)
 
-    def format_set_transaction(self, expr: "SetTransactionExpression") -> Tuple[str, tuple]:
-        """Format SET TRANSACTION for SQL Server.
-
-        SQL Server requires SET TRANSACTION ISOLATION LEVEL before BEGIN TRANSACTION.
-        """
-        from rhosocial.activerecord.backend.errors import UnsupportedTransactionModeError
-        from rhosocial.activerecord.backend.transaction import TransactionMode
-
-        params = expr.get_params()
-        mode = params.get("mode")
-
-        if mode == TransactionMode.READ_ONLY:
-            raise UnsupportedTransactionModeError(
-                feature="READ ONLY transactions",
-                backend="SQL Server",
-                message="SQL Server does not support READ ONLY transactions.",
-            )
-
-        isolation_level = params.get("isolation_level")
-        if isolation_level:
-            level_name = self.get_isolation_level_name(isolation_level)
-            return f"SET TRANSACTION ISOLATION LEVEL {level_name}", ()
-
-        return "", ()
-
-    def format_lateral_expression(
-        self,
-        expr_sql: str,
-        expr_params: tuple,
-        alias: str,
-        join_type: str = "CROSS APPLY",
-    ) -> Tuple[str, tuple]:
-        """Format LATERAL as CROSS APPLY / OUTER APPLY for SQL Server.
-
-        SQL Server uses CROSS APPLY (equivalent to INNER LATERAL) and
-        OUTER APPLY (equivalent to LEFT LATERAL) instead of LATERAL.
-        """
-        if join_type.upper() in ("LEFT", "LEFT JOIN", "LEFT OUTER JOIN"):
-            apply_type = "OUTER APPLY"
-        else:
-            apply_type = "CROSS APPLY"
-
-        sql = f"{apply_type} ({expr_sql})"
-        if alias:
-            sql += f" AS {self.format_identifier(alias)}"
-        return sql, expr_params
-
-    def format_for_update_clause(self, clause: "ForUpdateClause") -> Tuple[str, tuple]:
-        """Format FOR UPDATE for SQL Server using table hints.
-
-        SQL Server does not support FOR UPDATE syntax. Instead, locking
-        is achieved through table hints: WITH (UPDLOCK, ROWLOCK) etc.
-        """
-        all_params: list = []
-
-        sql_parts = ["WITH (UPDLOCK, ROWLOCK)"]
-
-        if clause.skip_locked and self.supports_for_update_skip_locked():
-            sql_parts[0] = "WITH (UPDLOCK, ROWLOCK, READPAST)"
-
-        return " ".join(sql_parts), tuple(all_params)
-
-    def format_set_operation_expression(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
-        """Format set operation for SQL Server.
-
-        SQL Server supports UNION, UNION ALL, INTERSECT, EXCEPT.
-        ORDER BY and OFFSET FETCH apply to the entire set operation result.
-        """
-        left, right = expr.left, expr.right
-        operation = expr.operation
-        all_ = expr.all_
-        alias = expr.alias
-        order_by_clause = expr.order_by_clause
-        limit_offset_clause = expr.limit_offset_clause
-
-        left_sql, left_params = left.to_sql()
-        right_sql, right_params = right.to_sql()
-        all_str = " ALL" if all_ else ""
-
-        base_sql = f"{left_sql} {operation}{all_str} {right_sql}"
-
-        all_params = list(left_params + right_params)
-
-        sql_parts = [base_sql]
-
-        if alias:
-            sql_parts.append(f"AS {self.format_identifier(alias)}")
-
-        if order_by_clause:
-            order_by_sql, order_by_params = order_by_clause.to_sql()
-            sql_parts.append(order_by_sql)
-            all_params.extend(order_by_params)
-
-        if limit_offset_clause:
-            limit_offset_sql, limit_offset_params = limit_offset_clause.to_sql()
-            sql_parts.append(limit_offset_sql)
-            all_params.extend(limit_offset_params)
-
-        return " ".join(sql_parts), tuple(all_params)
-
     def format_alter_table_statement(self, expr: "AlterTableExpression") -> Tuple[str, tuple]:
         """Format ALTER TABLE for SQL Server.
 
@@ -1792,7 +954,7 @@ class SQLServerDialect(
         """
         columns = expr.columns
         search_term = expr.search_term
-        language = expr.mode  # SQL Server uses 'language' parameter, mapped from 'mode'
+        language = expr.mode
 
         escaped = search_term.replace("'", "''")
         cols = ", ".join(self.format_identifier(c) if isinstance(c, str) else c for c in columns)
