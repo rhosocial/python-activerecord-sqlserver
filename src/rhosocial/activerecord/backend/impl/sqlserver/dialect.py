@@ -89,11 +89,20 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     ConstraintMixin,
     IntrospectionMixin,
     PredicateMixin,
+    ExpressionMixin,
     DateTimeMixin,
     DQLMixin,
     DMLMixin,
     DDLColumnMixin,
     DDLTypeMixin,
+    FilterClauseMixin,
+    TransactionControlMixin,
+    AutoIncrementMixin,
+    GeneratedColumnMixin,
+    TriggerMixin,
+    PartitionMixin,
+    ILIKEMixin,
+    FunctionMixin,
 )
 from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
@@ -173,6 +182,7 @@ class SQLServerDialect(
     # Core infrastructure mixins (provide base implementations
     # that the dialect overrides as needed)
     PredicateMixin,
+    ExpressionMixin,
     DateTimeMixin,
     DQLMixin,
     DMLMixin,
@@ -213,6 +223,15 @@ class SQLServerDialect(
     TableMixin,
     ConstraintMixin,
     IntrospectionMixin,
+    # Newly added global mixins (previously missing from inheritance)
+    FilterClauseMixin,
+    TransactionControlMixin,
+    AutoIncrementMixin,
+    GeneratedColumnMixin,
+    TriggerMixin,
+    PartitionMixin,
+    ILIKEMixin,
+    FunctionMixin,
     # Protocols for isinstance() checks
     CollationSupport,
     CTESupport,
@@ -359,9 +378,6 @@ class SQLServerDialect(
         if version is not None:
             self.version = version
     
-    def get_parameter_placeholder(self, position: int = 0) -> str:
-        """SQL Server uses ? for placeholders (ODBC/qmark style)."""
-        return "?"
     
     def get_server_version(self) -> Tuple[int, int, int]:
         """Return the SQL Server version this dialect is configured for."""
@@ -466,9 +482,6 @@ class SQLServerDialect(
         """Recursive CTEs are supported since SQL Server 2005."""
         return True
     
-    def supports_materialized_cte(self) -> bool:
-        """SQL Server doesn't support MATERIALIZED hint for CTEs."""
-        return False
 
     def supports_unconditional_cte_order_by(self) -> bool:
         """SQL Server prohibits ORDER BY in CTEs unless TOP/OFFSET is present."""
@@ -506,9 +519,6 @@ class SQLServerDialect(
         """Window frame clauses are supported since SQL Server 2012."""
         return self.version >= SQL_SERVER_2012
     
-    def supports_filter_clause(self) -> bool:
-        """FILTER clause for aggregate functions is not supported in SQL Server."""
-        return False
     
     def supports_json_type(self) -> bool:
         """JSON functions are supported since SQL Server 2016."""
@@ -561,21 +571,9 @@ class SQLServerDialect(
         """GROUPING SETS is supported since SQL Server 2008."""
         return True
     
-    def supports_array_type(self) -> bool:
-        """SQL Server does not have native array types."""
-        return False
     
-    def supports_array_constructor(self) -> bool:
-        """SQL Server does not have ARRAY constructor."""
-        return False
     
-    def supports_array_access(self) -> bool:
-        """SQL Server does not support array subscript access."""
-        return False
     
-    def supports_graph_match(self) -> bool:
-        """SQL Server does not support graph MATCH clause."""
-        return False
     
     def supports_for_update(self) -> bool:
         """SQL Server supports FOR UPDATE via table hints."""
@@ -593,9 +591,6 @@ class SQLServerDialect(
         """SQL Server 2016+ supports temporal tables."""
         return self.version >= SQL_SERVER_2016
     
-    def supports_qualify_clause(self) -> bool:
-        """SQL Server does not have QUALIFY clause."""
-        return False
     
     def supports_upsert(self) -> bool:
         """SQL Server uses MERGE for upsert operations."""
@@ -609,9 +604,6 @@ class SQLServerDialect(
         """SQL Server uses CROSS APPLY/OUTER APPLY instead of LATERAL."""
         return True
     
-    def supports_ordered_set_aggregation(self) -> bool:
-        """SQL Server does not support WITHIN GROUP (ORDER BY ...) syntax."""
-        return False
     
     def supports_explain_analyze(self) -> bool:
         """SQL Server uses STATISTICS PROFILE for actual execution."""
@@ -863,25 +855,10 @@ class SQLServerDialect(
         
         return " ".join(parts), tuple(all_params)
     
-    def supports_create_view(self) -> bool:
-        """SQL Server supports CREATE VIEW."""
-        return True
     
-    def supports_drop_view(self) -> bool:
-        """SQL Server supports DROP VIEW."""
-        return True
     
-    def supports_or_replace_view(self) -> bool:
-        """SQL Server doesn't have OR REPLACE, uses ALTER or DROP + CREATE."""
-        return False
     
-    def supports_temporary_view(self) -> bool:
-        """SQL Server doesn't support TEMPORARY views."""
-        return False
     
-    def supports_materialized_view(self) -> bool:
-        """SQL Server doesn't have materialized views (uses indexed views)."""
-        return False
     
     def supports_indexed_view(self) -> bool:
         """SQL Server supports indexed views (similar to materialized views)."""
@@ -895,9 +872,6 @@ class SQLServerDialect(
         """SQL Server supports WITH CHECK OPTION."""
         return True
     
-    def supports_cascade_view(self) -> bool:
-        """SQL Server doesn't support CASCADE for DROP VIEW."""
-        return False
     
     def format_create_view_statement(
         self, expr: "CreateViewExpression"
@@ -972,33 +946,15 @@ class SQLServerDialect(
         """SQL Server supports WHEN condition in triggers (IF clause)."""
         return True
     
-    def supports_trigger_if_not_exists(self) -> bool:
-        """SQL Server doesn't support CREATE TRIGGER IF NOT EXISTS."""
-        return False
     
-    def supports_if_not_exists_table(self) -> bool:
-        """SQL Server doesn't support CREATE TABLE IF NOT EXISTS."""
-        return False
     
     def supports_if_exists_table(self) -> bool:
         """SQL Server supports DROP TABLE IF EXISTS (2016+)."""
         return self.version >= SQL_SERVER_2016
     
-    def supports_temporary_table(self) -> bool:
-        """SQL Server supports TEMPORARY tables (# prefix)."""
-        return True
     
-    def supports_rename_table(self) -> bool:
-        """SQL Server uses sp_rename for table renaming."""
-        return True
     
-    def supports_rename_column(self) -> bool:
-        """SQL Server uses sp_rename for column renaming."""
-        return True
     
-    def supports_drop_column(self) -> bool:
-        """SQL Server supports ALTER TABLE DROP COLUMN."""
-        return True
     
     def supports_add_column(self) -> bool:
         """SQL Server supports ALTER TABLE ADD COLUMN."""
@@ -1024,29 +980,11 @@ class SQLServerDialect(
         """SQL Server accepts CREATE SCHEMA ... AUTHORIZATION owner."""
         return True
     
-    def supports_schema_if_not_exists(self) -> bool:
-        """SQL Server doesn't support CREATE SCHEMA IF NOT EXISTS."""
-        return False
     
-    def supports_schema_if_exists(self) -> bool:
-        """SQL Server doesn't support DROP SCHEMA IF EXISTS."""
-        return False
     
-    def supports_create_index(self) -> bool:
-        """SQL Server supports CREATE INDEX."""
-        return True
     
-    def supports_drop_index(self) -> bool:
-        """SQL Server supports DROP INDEX."""
-        return True
     
-    def supports_unique_index(self) -> bool:
-        """SQL Server supports UNIQUE indexes."""
-        return True
     
-    def supports_index_if_not_exists(self) -> bool:
-        """SQL Server doesn't support CREATE INDEX IF NOT EXISTS."""
-        return False
     
     def supports_index_if_exists(self) -> bool:
         """SQL Server supports DROP INDEX IF EXISTS (2016+)."""
@@ -1076,9 +1014,6 @@ class SQLServerDialect(
         """SQL Server 2012+ supports DROP SEQUENCE."""
         return self.version >= SQL_SERVER_2012
     
-    def supports_auto_increment(self) -> bool:
-        """SQL Server uses IDENTITY for auto-increment."""
-        return True
     
     def format_auto_increment(self) -> str:
         """Return IDENTITY(1,1) for auto-increment columns."""
@@ -1124,9 +1059,6 @@ class SQLServerDialect(
         """Set operations support OFFSET FETCH."""
         return True
     
-    def supports_set_operation_for_update(self) -> bool:
-        """Set operations don't support FOR UPDATE."""
-        return False
     
     def supports_savepoint(self) -> bool:
         """SQL Server supports savepoints."""
