@@ -66,8 +66,10 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.DDLTypeSupport,
     dialect_protocols.ExplainSupport,
     dialect_protocols.FilterClauseSupport,
+    dialect_protocols.FunctionSupport,
     dialect_protocols.GeneratedColumnSupport,
     dialect_protocols.GraphSupport,
+    dialect_protocols.ILIKESupport,
     dialect_protocols.IndexSupport,
     dialect_protocols.IntrospectionSupport,
     dialect_protocols.JSONSupport,
@@ -112,12 +114,6 @@ SQLSERVER_NOT_IMPLEMENTED = [
     dialect_protocols.SQLXMLQueryingSupport,
     # SQL Server has no SQL/PGQ property-graph GRAPH_TABLE expression.
     dialect_protocols.GraphTableSupport,
-    # SQL Server has no ILIKE operator; case-insensitive matching is achieved
-    # through collation rather than a dedicated operator.
-    dialect_protocols.ILIKESupport,
-    # SQL Server routines are T-SQL, not SQL/PSM; function DDL is exposed through
-    # backend-specific protocols instead of the generic FunctionSupport.
-    dialect_protocols.FunctionSupport,
 ]
 
 
