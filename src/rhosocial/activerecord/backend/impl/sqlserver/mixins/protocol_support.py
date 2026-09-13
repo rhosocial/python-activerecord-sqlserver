@@ -135,7 +135,9 @@ class SQLServerProtocolSupportMixin:
 
     def format_contains_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a CONTAINS predicate delegating to format_fulltext_match."""
-        return self.format_fulltext_match([column], search_string)
+        from rhosocial.activerecord.backend.expression.statements.fulltext_match import FulltextMatchExpression
+        expr = FulltextMatchExpression(self, [column], search_string)
+        return self.format_fulltext_match(expr)
 
     def format_freetext_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a FREETEXT predicate."""

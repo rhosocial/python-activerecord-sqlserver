@@ -461,12 +461,16 @@ class TestSQLServerDialectFullText:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_contains(self, dialect):
-        sql, params = dialect.format_fulltext_match(["title", "content"], "database")
+        from rhosocial.activerecord.backend.expression.statements.fulltext_match import FulltextMatchExpression
+        expr = FulltextMatchExpression(dialect, ["title", "content"], "database")
+        sql, params = dialect.format_fulltext_match(expr)
         assert "CONTAINS([title], [content]" in sql or "CONTAINS(" in sql
         assert "database" in sql
 
     def test_contains_with_language(self, dialect):
-        sql, params = dialect.format_fulltext_match(["title"], "search term", language="English")
+        from rhosocial.activerecord.backend.expression.statements.fulltext_match import FulltextMatchExpression
+        expr = FulltextMatchExpression(dialect, ["title"], "search term", mode="English")
+        sql, params = dialect.format_fulltext_match(expr)
         assert "LANGUAGE" in sql
 
 

@@ -152,6 +152,9 @@ if TYPE_CHECKING:
         BeginTransactionExpression,
         SetTransactionExpression,
     )
+    from rhosocial.activerecord.backend.expression.statements.fulltext_match import (
+        FulltextMatchExpression,
+    )
 
 
 SQL_SERVER_2005 = (9, 0, 0)
@@ -1841,7 +1844,7 @@ class SQLServerDialect(
         return str(expr), ()
 
     def format_fulltext_match(
-        self, columns: list, search_string: str, language: str = None
+        self, expr: "FulltextMatchExpression"
     ) -> Tuple[str, tuple]:
         """Format SQL Server CONTAINS full-text search.
 
@@ -1852,7 +1855,11 @@ class SQLServerDialect(
         - Inflectional: CONTAINS(column, 'FORMSOF(INFLECTIONAL, term)')
         - Thesaurus: CONTAINS(column, 'FORMSOF(THESAURUS, term)')
         """
-        escaped = search_string.replace("'", "''")
+        columns = expr.columns
+        search_term = expr.search_term
+        language = expr.mode  # SQL Server uses 'language' parameter, mapped from 'mode'
+
+        escaped = search_term.replace("'", "''")
         cols = ", ".join(self.format_identifier(c) if isinstance(c, str) else c for c in columns)
 
         sql = f"CONTAINS({cols}, '{escaped}'"
