@@ -6,7 +6,7 @@ This dialect implements protocols for features that SQL Server actually supports
 based on the SQL Server version provided at initialization.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 import copy
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
@@ -64,7 +64,6 @@ from .protocols import (
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
     CTEMixin,
-    FilterClauseMixin,
     WindowFunctionMixin,
     JSONMixin,
     ReturningMixin,
@@ -89,9 +88,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     TableMixin,
     ConstraintMixin,
     IntrospectionMixin,
-    IdentifierMixin,
     PredicateMixin,
-    ExpressionMixin,
     DateTimeMixin,
     DQLMixin,
     DMLMixin,
@@ -115,26 +112,20 @@ from .reserved_words import SQLSERVER_RESERVED_WORDS
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
     from rhosocial.activerecord.backend.expression.collation import CollateExpression
-    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation, JSONExpression
+    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
-        OrderByClause,
         LimitOffsetClause,
         ForUpdateClause,
         QualifyClause,
-        JoinClause,
     )
     from rhosocial.activerecord.backend.expression.statements import (
         ExplainExpression,
         CreateViewExpression,
         DropViewExpression,
         CreateMaterializedViewExpression,
-        DropMaterializedViewExpression,
-        RefreshMaterializedViewExpression,
         ReturningClause,
         InsertExpression,
-        UpdateExpression,
-        DeleteExpression,
         ColumnDefinition,
         TableConstraint,
         IndexDefinition,
@@ -181,8 +172,6 @@ class SQLServerDialect(
     SQLDialectBase,
     # Core infrastructure mixins (provide base implementations
     # that the dialect overrides as needed)
-    IdentifierMixin,
-    ExpressionMixin,
     PredicateMixin,
     DateTimeMixin,
     DQLMixin,
@@ -1302,25 +1291,22 @@ class SQLServerDialect(
         parts.append(table_sql)
 
         # Build column definitions
-        from rhosocial.activerecord.backend.expression.statements import (
-            ColumnConstraintType,
-        )
         column_parts = []
         for col_def in expr.columns:
-            col_sql, col_params = self._format_column_definition(col_def, ColumnConstraintType)
+            col_sql, col_params = self.format_column_definition(col_def)
             column_parts.append(col_sql)
             all_params.extend(col_params)
 
         # Build table constraints
         for t_const in expr.table_constraints:
-            const_sql, const_params = self._format_table_constraint(t_const)
+            const_sql, const_params = self.format_table_constraint(t_const)
             if const_sql:
                 column_parts.append(const_sql)
                 all_params.extend(const_params)
 
         # Build inline indexes (SQL Server specific)
         for idx_def in expr.indexes:
-            idx_sql = self._format_inline_index(idx_def)
+            idx_sql = self.format_inline_index(idx_def)
             column_parts.append(idx_sql)
 
         parts.append(f"({', '.join(column_parts)})")
@@ -1338,8 +1324,11 @@ class SQLServerDialect(
 
         return ' '.join(parts), tuple(all_params)
 
-    def _format_column_definition(self, col_def: "ColumnDefinition", ColumnConstraintType) -> Tuple[str, List[Any]]:
+    def format_column_definition(self, col_def: "ColumnDefinition") -> Tuple[str, tuple]:
         """Format a column definition for SQL Server."""
+        from rhosocial.activerecord.backend.expression.statements import (
+            ColumnConstraintType,
+        )
         from rhosocial.activerecord.backend.expression.types._base import DataType
         if isinstance(col_def.data_type, DataType):
             type_sql, type_params = col_def.data_type.to_sql()
@@ -1379,9 +1368,9 @@ class SQLServerDialect(
         if constraint_parts:
             parts.append(' '.join(constraint_parts))
 
-        return ' '.join(parts), params
+        return ' '.join(parts), tuple(params)
 
-    def _format_table_constraint(self, t_const: "TableConstraint") -> Tuple[str, List[Any]]:
+    def format_table_constraint(self, t_const: "TableConstraint") -> Tuple[str, tuple]:
         """Format a table constraint for SQL Server."""
         from rhosocial.activerecord.backend.expression.statements import (
             TableConstraintType,
@@ -1423,9 +1412,9 @@ class SQLServerDialect(
             parts.append(f"CHECK ({check_sql})")
             params.extend(check_params)
 
-        return ' '.join(parts), params
+        return ' '.join(parts), tuple(params)
 
-    def _format_inline_index(self, idx_def: "IndexDefinition") -> str:
+    def format_inline_index(self, idx_def: "IndexDefinition") -> str:
         """Format an inline index definition for SQL Server."""
         parts = []
 

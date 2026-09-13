@@ -18,7 +18,6 @@ from rhosocial.activerecord.backend.expression.statements import (
 )
 from rhosocial.activerecord.backend.expression.types import DateType, IntegerType, VarCharType
 from rhosocial.activerecord.backend.dialect.mixins import (
-    IdentifierMixin,
     DDLColumnMixin,
     ExpressionMixin,
     DDLTypeMixin,

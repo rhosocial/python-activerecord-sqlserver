@@ -12,7 +12,7 @@ Version notes:
 - SWITCH, SPLIT, MERGE: SQL Server 2008+
 """
 
-from typing import Any, Sequence, Tuple, TYPE_CHECKING
+from typing import Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
