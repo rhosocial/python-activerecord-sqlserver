@@ -109,6 +109,7 @@ from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
+from .reserved_words import SQLSERVER_RESERVED_WORDS
 # SQLServerPartitionMixin is registered lazily in _register_partition_formatters()
 
 if TYPE_CHECKING:
@@ -365,6 +366,7 @@ class SQLServerDialect(
                 features can be used.
         """
         super().__init__()
+        self._reserved_words = SQLSERVER_RESERVED_WORDS
         if version is not None:
             self.version = version
     
@@ -439,7 +441,7 @@ class SQLServerDialect(
             raise ValueError(f"Unsupported SQL Server collation keyword: {expr.collation_name!r}")
         return validate_sqlserver_collation_name(expr.collation_name, getattr(self, "version", None))
 
-    def format_identifier(self, identifier: str) -> str:
+    def format_identifier(self, identifier: str, need_quote: bool = True) -> str:
         """
         Format identifier using SQL Server's brackets.
         
@@ -448,10 +450,22 @@ class SQLServerDialect(
         
         Args:
             identifier: Raw identifier string
+            need_quote: Whether to quote the identifier (default True)
         
         Returns:
-            Quoted identifier with escaped internal brackets
+            Quoted identifier with escaped internal brackets, or raw identifier if need_quote is False
         """
+        if not need_quote:
+            if self.is_reserved_word(identifier):
+                import warnings
+                from rhosocial.activerecord.backend.warnings import IdentifierQuotingWarning
+                warnings.warn(
+                    f"Identifier '{identifier}' is a reserved word in {self.name} "
+                    f"and may cause SQL errors without quoting.",
+                    IdentifierQuotingWarning,
+                    stacklevel=2,
+                )
+            return identifier
         escaped = identifier.replace("]", "]]")
         return f"[{escaped}]"
     
