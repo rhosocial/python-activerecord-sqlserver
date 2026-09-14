@@ -1,11 +1,12 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/dql.py
-from typing import Any, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .version_constants import SQL_SERVER_2012
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.query_parts import LimitOffsetClause
+    from rhosocial.activerecord.backend.expression.statements import QueryExpression
 
 
 class SQLServerDQLMixin:
@@ -15,7 +16,7 @@ class SQLServerDQLMixin:
         self,
         limit: Optional[int] = None,
         offset: Optional[int] = None
-    ) -> Tuple[Optional[str], List[Any]]:
+    ) -> Tuple[str, tuple]:
         """
         Format LIMIT/OFFSET as OFFSET FETCH for SQL Server 2012+.
 
@@ -23,7 +24,7 @@ class SQLServerDQLMixin:
         Note: ORDER BY is required when using OFFSET FETCH.
         """
         if limit is None and offset is None:
-            return None, []
+            return "", ()
 
         if self.version < SQL_SERVER_2012:
             raise UnsupportedFeatureError(
@@ -33,7 +34,6 @@ class SQLServerDQLMixin:
             )
 
         sql_parts = []
-        params = []
 
         offset_val = offset or 0
         sql_parts.append(f"OFFSET {offset_val} ROWS")
@@ -41,7 +41,7 @@ class SQLServerDQLMixin:
         if limit is not None:
             sql_parts.append(f"FETCH NEXT {limit} ROWS ONLY")
 
-        return " ".join(sql_parts), params
+        return " ".join(sql_parts), ()
 
     def format_limit_offset_clause(self, clause: "LimitOffsetClause") -> Tuple[str, tuple]:
         """Format LIMIT/OFFSET clause for SQL Server using OFFSET FETCH syntax."""
@@ -56,7 +56,6 @@ class SQLServerDQLMixin:
             )
 
         parts = []
-        params = []
 
         offset_val = clause.offset if clause.offset is not None else 0
         parts.append(f"OFFSET {offset_val} ROWS")
@@ -64,7 +63,7 @@ class SQLServerDQLMixin:
         if clause.limit is not None:
             parts.append(f"FETCH NEXT {clause.limit} ROWS ONLY")
 
-        return " ".join(parts), tuple(params)
+        return " ".join(parts), ()
 
     def format_query_statement(self, expr: "QueryExpression") -> Tuple[str, tuple]:
         sql, params = super().format_query_statement(expr)

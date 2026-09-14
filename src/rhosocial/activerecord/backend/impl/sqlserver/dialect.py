@@ -452,15 +452,15 @@ class SQLServerDialect(
 
         return SQLServerSchemaDiffer()
 
-    def format_auto_increment(self) -> str:
+    def format_auto_increment(self) -> Tuple[str, tuple]:
         """Return IDENTITY(1,1) for auto-increment columns."""
-        return "IDENTITY(1,1)"
+        return "IDENTITY(1,1)", ()
 
-    def format_array_expression(self, _expr: "ArrayExpression") -> Tuple[str, Tuple]:
+    def format_array_expression(self, _expr: "ArrayExpression") -> Tuple[str, tuple]:
         """Format array expression - not supported."""
         raise UnsupportedFeatureError(self.name, "Array operations", _SUGGESTION_ARRAY_TYPES)
 
-    def format_json_table_expression(self, _expr) -> Tuple[str, Tuple]:
+    def format_json_table_expression(self, _expr: "BaseExpression") -> Tuple[str, tuple]:
         """Format JSON_TABLE - SQL Server uses OPENJSON."""
         raise UnsupportedFeatureError(self.name, "JSON_TABLE", _SUGGESTION_JSON_TABLE)
 
@@ -468,7 +468,7 @@ class SQLServerDialect(
         """Format MATCH clause - not supported."""
         raise UnsupportedFeatureError(self.name, "graph MATCH clause", _SUGGESTION_GRAPH_MATCH)
 
-    def format_ordered_set_aggregation(self, _aggregation: "OrderedSetAggregation") -> Tuple[str, Tuple]:
+    def format_ordered_set_aggregation(self, _aggregation: "OrderedSetAggregation") -> Tuple[str, tuple]:
         """Format ordered-set aggregation - not supported."""
         raise UnsupportedFeatureError(self.name, "ordered-set aggregate functions", _SUGGESTION_ORDERED_SET_AGG)
 
@@ -543,8 +543,9 @@ class SQLServerDialect(
                 all_params.extend(const_params)
 
         for idx_def in expr.indexes:
-            idx_sql = self.format_inline_index(idx_def)
+            idx_sql, idx_params = self.format_inline_index(idx_def)
             column_parts.append(idx_sql)
+            all_params.extend(idx_params)
 
         parts.append(f"({', '.join(column_parts)})")
 
@@ -564,14 +565,9 @@ class SQLServerDialect(
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraintType,
         )
-        from rhosocial.activerecord.backend.expression.types._base import DataType
-        if isinstance(col_def.data_type, DataType):
-            type_sql, type_params = col_def.data_type.to_sql()
-            parts = [self.format_identifier(col_def.name), type_sql]
-            params: List[Any] = list(type_params)
-        else:
-            parts = [self.format_identifier(col_def.name), str(col_def.data_type)]
-            params: List[Any] = []
+        type_sql, type_params = col_def.data_type.to_sql()
+        parts = [self.format_identifier(col_def.name), type_sql]
+        params: List[Any] = list(type_params)
 
         constraint_parts = []
         for constraint in col_def.constraints:
@@ -583,16 +579,8 @@ class SQLServerDialect(
                 constraint_parts.append("UNIQUE")
             elif constraint.constraint_type == ColumnConstraintType.DEFAULT:
                 if constraint.default_value is not None:
-                    from rhosocial.activerecord.backend.expression import bases
-                    if isinstance(constraint.default_value, bases.BaseExpression):
-                        default_sql, default_params = constraint.default_value.to_sql()
-                        constraint_parts.append(f"DEFAULT {default_sql}")
-                        params.extend(default_params)
-                    elif isinstance(constraint.default_value, str):
-                        escaped = self._escape_sql_string(constraint.default_value)
-                        constraint_parts.append(f"DEFAULT '{escaped}'")
-                    else:
-                        constraint_parts.append(f"DEFAULT {constraint.default_value}")
+                    default_sql = self.inline_sql_literal(constraint.default_value)
+                    constraint_parts.append(f"DEFAULT {default_sql}")
             elif constraint.constraint_type == ColumnConstraintType.NULL:
                 constraint_parts.append("NULL")
 
@@ -648,7 +636,7 @@ class SQLServerDialect(
 
         return ' '.join(parts), tuple(params)
 
-    def format_inline_index(self, idx_def: "IndexDefinition") -> str:
+    def format_inline_index(self, idx_def: "IndexDefinition") -> Tuple[str, tuple]:
         """Format an inline index definition for SQL Server."""
         parts = []
 
@@ -658,7 +646,11 @@ class SQLServerDialect(
         parts.append("INDEX")
         parts.append(self.format_identifier(idx_def.name))
 
-        cols_str = ', '.join(self.format_identifier(c) for c in idx_def.columns)
+        col_parts = []
+        for col in idx_def.columns:
+            col_sql, col_params = col.to_sql()
+            col_parts.append(col_sql)
+        cols_str = ', '.join(col_parts)
 
         idx_options = getattr(idx_def, "dialect_options", None) or {}
         if idx_options.get("hash_index"):
@@ -674,7 +666,7 @@ class SQLServerDialect(
         else:
             parts.append(f"({cols_str})")
 
-        return ' '.join(parts)
+        return ' '.join(parts), ()
 
     def format_drop_table_statement(
         self, expr: "DropTableExpression"
@@ -696,8 +688,6 @@ class SQLServerDialect(
         SQL Server doesn't support IF NOT EXISTS for CREATE INDEX.
         We ignore the if_not_exists flag and generate standard CREATE INDEX.
         """
-        from rhosocial.activerecord.backend.expression.bases import ToSQLProtocol
-
         all_params = []
         parts = ["CREATE"]
 
@@ -716,12 +706,9 @@ class SQLServerDialect(
 
         col_parts = []
         for col in expr.columns:
-            if isinstance(col, ToSQLProtocol):
-                col_sql, col_params = col.to_sql()
-                col_parts.append(col_sql)
-                all_params.extend(col_params)
-            else:
-                col_parts.append(self.format_identifier(str(col)))
+            col_sql, col_params = col.to_sql()
+            col_parts.append(col_sql)
+            all_params.extend(col_params)
         parts.append(f"({', '.join(col_parts)})")
 
         if expr.include:
@@ -914,7 +901,7 @@ class SQLServerDialect(
 
         return " ".join(parts), tuple(all_params)
 
-    def format_function_call(self, expr) -> Tuple[str, tuple]:
+    def format_function_call(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
         """Format a function call, mapping MySQL/generic function names to
         their SQL Server equivalents.
 
@@ -936,7 +923,7 @@ class SQLServerDialect(
             return super().format_function_call(renamed_expr)
         return super().format_function_call(expr)
 
-    def _clone_with_func_name(self, expr, new_name: str):
+    def _clone_with_func_name(self, expr: "bases.BaseExpression", new_name: str) -> "bases.BaseExpression":
         """Return a shallow copy of ``expr`` with ``func_name`` replaced.
 
         The base ``format_function_call`` renders ``expr.func_name.upper()``,
@@ -947,7 +934,7 @@ class SQLServerDialect(
         clone.func_name = new_name
         return clone
 
-    def format_expression(self, expr) -> Tuple[str, tuple]:
+    def format_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format an arbitrary expression to SQL."""
         if isinstance(expr, BaseExpression):
             return expr.to_sql()
@@ -970,7 +957,7 @@ class SQLServerDialect(
         language = expr.mode
 
         escaped = search_term.replace("'", "''")
-        cols = ", ".join(self.format_identifier(c) if isinstance(c, str) else c for c in columns)
+        cols = ", ".join(c.to_sql()[0] if hasattr(c, 'to_sql') else self.format_identifier(c) for c in columns)
 
         sql = f"CONTAINS({cols}, '{escaped}'"
         if language:
@@ -979,17 +966,17 @@ class SQLServerDialect(
 
         return sql, ()
 
-    def format_top_n_clause(self, n: int, percentage: bool = False) -> str:
+    def format_top_n_clause(self, n: int, percentage: bool = False) -> Tuple[str, tuple]:
         """Format TOP n clause for SQL Server.
 
         SELECT TOP n / SELECT TOP n PERCENT
         Only valid for SELECT statements.
         """
         if percentage:
-            return f"TOP {n} PERCENT"
-        return f"TOP {n}"
+            return f"TOP {n} PERCENT", ()
+        return f"TOP {n}", ()
 
-    def format_query_option_clause(self, clause) -> Tuple[str, tuple]:
+    def format_query_option_clause(self, clause: "bases.BaseExpression") -> Tuple[str, tuple]:
         """Format an OPTION query hint clause.
 
         SQL Server exposes optimizer hints through the query-level OPTION

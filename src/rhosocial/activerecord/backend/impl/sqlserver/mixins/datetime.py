@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 class SQLServerDateTimeMixin:
     """SQL Server datetime function implementations (DATEADD, DATEDIFF, DATETRUNC)."""
 
-    def format_date_trunc_expression(self, expr: "Any") -> Tuple[str, Tuple]:
+    def format_date_trunc_expression(self, expr: "Any") -> Tuple[str, tuple]:
         source_sql, source_params = expr.source.to_sql()
         field = expr.field.value.upper()
         if field in {"YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND"}:
@@ -19,14 +19,14 @@ class SQLServerDateTimeMixin:
             raise UnsupportedFeatureError(self.name, f"date_trunc({expr.field.value})")
         return self.apply_alias(sql, source_params, expr)
 
-    def format_interval_expression(self, expr: "Any") -> Tuple[str, Tuple]:
+    def format_interval_expression(self, expr: "Any") -> Tuple[str, tuple]:
         raise UnsupportedFeatureError(
             self.name,
             "standalone INTERVAL expression",
             "Use date_add() or date_sub() for SQL Server date arithmetic.",
         )
 
-    def format_datetime_add_expression(self, expr: "Any") -> Tuple[str, Tuple]:
+    def format_datetime_add_expression(self, expr: "Any") -> Tuple[str, tuple]:
         source_sql, source_params = expr.source.to_sql()
         unit = expr.interval.unit.value.upper()
         sql = f"DATEADD({unit}, {self.p()}, {source_sql})"
@@ -34,7 +34,7 @@ class SQLServerDateTimeMixin:
             sql, (expr.interval.value,) + source_params, expr
         )
 
-    def format_datetime_subtract_expression(self, expr: "Any") -> Tuple[str, Tuple]:
+    def format_datetime_subtract_expression(self, expr: "Any") -> Tuple[str, tuple]:
         source_sql, source_params = expr.source.to_sql()
         unit = expr.interval.unit.value.upper()
         sql = f"DATEADD({unit}, {self.p()}, {source_sql})"
@@ -42,7 +42,7 @@ class SQLServerDateTimeMixin:
             sql, (-expr.interval.value,) + source_params, expr
         )
 
-    def format_datetime_diff_expression(self, expr: "Any") -> Tuple[str, Tuple]:
+    def format_datetime_diff_expression(self, expr: "Any") -> Tuple[str, tuple]:
         start_sql, start_params = expr.start.to_sql()
         end_sql, end_params = expr.end.to_sql()
         sql = f"DATEDIFF({expr.unit.value.upper()}, {start_sql}, {end_sql})"

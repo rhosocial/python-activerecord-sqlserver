@@ -4,6 +4,8 @@ from typing import Any, List, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import (
         InsertExpression,
+        UpdateExpression,
+        DeleteExpression,
     )
 
 
@@ -68,7 +70,7 @@ class SQLServerDMLMixin:
 
         return sql, tuple(all_params)
 
-    def format_update_statement(self, expr) -> Tuple[str, tuple]:
+    def format_update_statement(self, expr: "UpdateExpression") -> Tuple[str, tuple]:
         """Format UPDATE statement with OUTPUT clause support."""
         if self.strict_validation:
             expr.validate(strict=True)
@@ -100,7 +102,7 @@ class SQLServerDMLMixin:
 
         return " ".join(parts), tuple(all_params)
 
-    def format_delete_statement(self, expr) -> Tuple[str, tuple]:
+    def format_delete_statement(self, expr: "DeleteExpression") -> Tuple[str, tuple]:
         """Format DELETE statement with OUTPUT clause support."""
         if self.strict_validation:
             expr.validate(strict=True)

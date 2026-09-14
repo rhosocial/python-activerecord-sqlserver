@@ -45,4 +45,4 @@ class SQLServerNextValueForExpression(BaseExpression):
             raise TypeError(f"sequence_name must be str, got {type(self.sequence_name)}")
 
     def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_next_value_for(self), ()
+        return self.dialect.format_next_value_for(self)

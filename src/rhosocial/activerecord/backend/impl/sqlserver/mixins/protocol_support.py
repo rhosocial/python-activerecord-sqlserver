@@ -58,7 +58,7 @@ class SQLServerProtocolSupportMixin:
 
     def format_create_fulltext_catalog_statement(
         self, catalog_name: str, as_default: bool = False
-    ) -> str:
+    ) -> Tuple[str, tuple]:
         """Format CREATE FULLTEXT CATALOG statement (2005+).
 
         SQL Syntax:
@@ -70,7 +70,7 @@ class SQLServerProtocolSupportMixin:
                 database default.
 
         Returns:
-            The CREATE FULLTEXT CATALOG statement.
+            Tuple of (SQL string, params tuple).
         """
         self.check_feature_support(
             "supports_fulltext_catalog",
@@ -80,9 +80,9 @@ class SQLServerProtocolSupportMixin:
         sql = f"CREATE FULLTEXT CATALOG {self.format_identifier(catalog_name)}"
         if as_default:
             sql += " AS DEFAULT"
-        return sql
+        return sql, ()
 
-    def format_drop_fulltext_catalog_statement(self, catalog_name: str) -> str:
+    def format_drop_fulltext_catalog_statement(self, catalog_name: str) -> Tuple[str, tuple]:
         """Format DROP FULLTEXT CATALOG statement (2005+).
 
         SQL Syntax:
@@ -93,7 +93,7 @@ class SQLServerProtocolSupportMixin:
             "FULLTEXT catalogs",
             "requires SQL Server 2005+.",
         )
-        return f"DROP FULLTEXT CATALOG {self.format_identifier(catalog_name)}"
+        return f"DROP FULLTEXT CATALOG {self.format_identifier(catalog_name)}", ()
 
     def format_create_fulltext_index_statement(
         self,
@@ -101,7 +101,7 @@ class SQLServerProtocolSupportMixin:
         columns: List[str],
         key_index: str,
         catalog_name: str,
-    ) -> str:
+    ) -> Tuple[str, tuple]:
         """Format CREATE FULLTEXT INDEX statement (2005+).
 
         SQL Syntax:
@@ -114,13 +114,14 @@ class SQLServerProtocolSupportMixin:
             "requires SQL Server 2005+.",
         )
         columns_str = ", ".join(self.format_identifier(col) for col in columns)
-        return (
+        sql = (
             f"CREATE FULLTEXT INDEX ON {self.format_identifier(table)} "
             f"({columns_str}) KEY INDEX {self.format_identifier(key_index)} "
             f"ON {self.format_identifier(catalog_name)}"
         )
+        return sql, ()
 
-    def format_drop_fulltext_index_statement(self, table: str) -> str:
+    def format_drop_fulltext_index_statement(self, table: str) -> Tuple[str, tuple]:
         """Format DROP FULLTEXT INDEX statement (2005+).
 
         SQL Syntax:
@@ -131,7 +132,7 @@ class SQLServerProtocolSupportMixin:
             "FULLTEXT indexes",
             "requires SQL Server 2005+.",
         )
-        return f"DROP FULLTEXT INDEX ON {self.format_identifier(table)}"
+        return f"DROP FULLTEXT INDEX ON {self.format_identifier(table)}", ()
 
     def format_contains_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a CONTAINS predicate delegating to format_fulltext_match."""
@@ -163,7 +164,7 @@ class SQLServerProtocolSupportMixin:
         """READPAST hint requires SQL Server 2019+."""
         return self.version >= (15, 0, 0)
 
-    def format_table_hint_locking(self, hint_type: str) -> str:
+    def format_table_hint_locking(self, hint_type: str) -> Tuple[str, tuple]:
         """Format a locking table hint delegating to SQLServerTableHintClause."""
         from ..expression.locking import SQLServerTableHint, SQLServerTableHintClause
 
@@ -172,7 +173,7 @@ class SQLServerProtocolSupportMixin:
         if "READPAST" in hint_type and self.supports_readpast():
             hints.append(SQLServerTableHint("READPAST"))
         clause = SQLServerTableHintClause(self, hints)
-        return clause.to_sql()[0]
+        return clause.to_sql()
 
     def supports_try_cast(self) -> bool:
         """TRY_CAST requires SQL Server 2012+."""
@@ -200,14 +201,14 @@ class SQLServerProtocolSupportMixin:
         """SQL Server supports WITH (...) table hints."""
         return True
 
-    def format_table_hint(self, hints: List[str]) -> str:
+    def format_table_hint(self, hints: List[str]) -> Tuple[str, tuple]:
         """Format a WITH (hint1, hint2, ...) table hint clause."""
         from ..expression.locking import SQLServerTableHint, SQLServerTableHintClause
 
         clause = SQLServerTableHintClause(
             self, [SQLServerTableHint(hint) for hint in hints]
         )
-        return clause.to_sql()[0]
+        return clause.to_sql()
 
     def supports_select_into(self) -> bool:
         """SQL Server supports SELECT INTO."""
@@ -222,7 +223,7 @@ class SQLServerProtocolSupportMixin:
         sample: int,
         percentage: bool = False,
         repeatable: Optional[int] = None,
-    ) -> str:
+    ) -> Tuple[str, tuple]:
         """Format a TABLESAMPLE clause (SQL Server 2005+).
 
         SQL Syntax:
@@ -234,14 +235,14 @@ class SQLServerProtocolSupportMixin:
             repeatable: Optional REPEATABLE seed for reproducible sampling.
 
         Returns:
-            The TABLESAMPLE clause, e.g.
-            ``TABLESAMPLE (10 ROWS) REPEATABLE (42)``.
+            Tuple of (SQL string, params tuple), e.g.
+            ``(TABLESAMPLE (10 ROWS) REPEATABLE (42), ())``.
         """
         unit = "PERCENT" if percentage else "ROWS"
         clause = f"TABLESAMPLE ({sample} {unit})"
         if repeatable is not None:
             clause += f" REPEATABLE ({repeatable})"
-        return clause
+        return clause, ()
 
     def format_select_into_statement(self, expr: Any) -> Tuple[str, tuple]:
         """Format a SELECT INTO statement (all SQL Server versions).
@@ -292,21 +293,15 @@ class SQLServerProtocolSupportMixin:
         self,
         json_doc: str,
         path: Optional[str] = None,
-        schema: Optional[Dict[str, str]] = None,
+        schema: Optional[List[Any]] = None,
         alias: Optional[str] = None,
     ) -> Tuple[str, tuple]:
         """Format an OPENJSON expression delegating to SQLServerOpenJsonExpression."""
         from ..expression.openjson import OpenJsonColumn, SQLServerOpenJsonExpression
 
-        columns = []
+        columns: List[OpenJsonColumn] = []
         if schema:
-            if isinstance(schema, dict):
-                columns = [
-                    OpenJsonColumn(name=name, type=type_name)
-                    for name, type_name in schema.items()
-                ]
-            else:
-                columns = list(schema)
+            columns = list(schema)
         return SQLServerOpenJsonExpression(
             self, json_doc, path=path, schema=columns, alias=alias
         ).to_sql()
@@ -315,13 +310,14 @@ class SQLServerProtocolSupportMixin:
         """Temporal table system-versioning requires SQL Server 2016+."""
         return self.version >= (13, 0, 0)
 
-    def format_temporal_period_definition(self, start_column: str, end_column: str) -> str:
+    def format_temporal_period_definition(self, start_column: str, end_column: str) -> Tuple[str, tuple]:
         """Format PERIOD FOR SYSTEM_TIME (start, end)."""
         from ..expression.temporal import SQLServerTemporalPeriodDefinition
 
-        return SQLServerTemporalPeriodDefinition(
+        sql = SQLServerTemporalPeriodDefinition(
             self, start_column, end_column
-        ).to_sql()[0]
+        ).to_sql()
+        return sql, ()
 
     def format_create_temporal_table_statement(self, expr: Any) -> Tuple[str, tuple]:
         """Format CREATE TABLE with temporal options - not yet implemented."""
@@ -363,10 +359,10 @@ class SQLServerProtocolSupportMixin:
         """SQL Server supports SET IDENTITY_INSERT."""
         return True
 
-    def format_set_identity_insert(self, table: str, on: bool) -> str:
+    def format_set_identity_insert(self, table: str, on: bool) -> Tuple[str, tuple]:
         """Format SET IDENTITY_INSERT table {ON|OFF}."""
         state = "ON" if on else "OFF"
-        return f"SET IDENTITY_INSERT {self.format_identifier(table)} {state}"
+        return f"SET IDENTITY_INSERT {self.format_identifier(table)} {state}", ()
 
     def format_create_indexed_view_statement(self, expr: Any) -> Tuple[str, tuple]:
         """Format CREATE VIEW WITH SCHEMABINDING (indexed view) (2005+).
@@ -431,7 +427,7 @@ class SQLServerProtocolSupportMixin:
             return self.version >= (16, 0, 0)
         return self.version >= self._JSON_FUNCTION_MIN_VERSION
 
-    def format_json_extract(self, expr) -> Tuple[str, tuple]:
+    def format_json_extract(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON extraction as JSON_VALUE (single path only).
 
         SQL Server's JSON_VALUE returns the scalar value at the path, already
@@ -447,7 +443,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_VALUE({expr.json_doc}, {placeholder})"
         return self._with_alias(sql, expr.alias), (expr.path,)
 
-    def format_json_unquote(self, expr) -> Tuple[str, tuple]:
+    def format_json_unquote(self, expr: Any) -> Tuple[str, tuple]:
         """Format JSON_UNQUOTE - not needed in SQL Server.
 
         JSON_VALUE already returns scalar values without surrounding quotes,
@@ -459,7 +455,7 @@ class SQLServerProtocolSupportMixin:
             "SQL Server's JSON_VALUE returns scalar values already unquoted.",
         )
 
-    def format_json_object(self, expr) -> Tuple[str, tuple]:
+    def format_json_object(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON_OBJECT function (SQL Server 2022+).
 
         SQL Syntax:
@@ -480,7 +476,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_OBJECT({', '.join(parts)})"
         return self._with_alias(sql, expr.alias), tuple(params)
 
-    def format_json_array(self, expr) -> Tuple[str, tuple]:
+    def format_json_array(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON_ARRAY function (SQL Server 2022+)."""
         values = expr.values
         if not values:
@@ -489,7 +485,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_ARRAY({', '.join([placeholder] * len(values))})"
         return self._with_alias(sql, expr.alias), tuple(values)
 
-    def format_json_contains(self, expr) -> Tuple[str, tuple]:
+    def format_json_contains(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON containment check using OPENJSON (2016+).
 
         SQL Server has no JSON_CONTAINS; membership of ``candidate`` in the
@@ -503,7 +499,7 @@ class SQLServerProtocolSupportMixin:
         )
         return self._with_alias(sql, expr.alias), (json_path, expr.candidate)
 
-    def format_json_set(self, expr) -> Tuple[str, tuple]:
+    def format_json_set(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON_MODIFY function (single path-value pair only).
 
         SQL Server's JSON_MODIFY accepts exactly one path-value pair.
@@ -518,7 +514,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_MODIFY({expr.json_doc}, {placeholder}, {placeholder})"
         return self._with_alias(sql, expr.alias), (expr.path, expr.value)
 
-    def format_json_remove(self, expr) -> Tuple[str, tuple]:
+    def format_json_remove(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON property removal using JSON_MODIFY (single path only).
 
         SQL Server removes a property by setting it to NULL with JSON_MODIFY.
@@ -533,7 +529,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_MODIFY({expr.json_doc}, {placeholder}, NULL)"
         return self._with_alias(sql, expr.alias), (expr.path,)
 
-    def format_json_type(self, expr) -> Tuple[str, tuple]:
+    def format_json_type(self, expr: Any) -> Tuple[str, tuple]:
         """Format JSON_TYPE - not supported by SQL Server."""
         raise UnsupportedFeatureError(
             self.name,
@@ -541,7 +537,7 @@ class SQLServerProtocolSupportMixin:
             "SQL Server has no JSON_TYPE; classify values via OPENJSON.",
         )
 
-    def format_json_valid(self, expr) -> Tuple[str, tuple]:
+    def format_json_valid(self, expr: Any) -> Tuple[str, tuple]:
         """Format an ISJSON function (SQL Server equivalent of JSON_VALID)."""
         sql = f"ISJSON({expr.json_val})"
         return self._with_alias(sql, expr.alias), ()
@@ -562,7 +558,7 @@ class SQLServerProtocolSupportMixin:
         """SQL Server has no MySQL-style SET column type."""
         return False
 
-    def format_set_literal(self, expr) -> Tuple[str, tuple]:
+    def format_set_literal(self, expr: Any) -> Tuple[str, tuple]:
         """Format a comma-separated value as a bind parameter.
 
         SQL Server stores comma-separated values in VARCHAR columns; the
@@ -593,7 +589,7 @@ class SQLServerProtocolSupportMixin:
         col_sql = self.format_identifier(set_column)
         return f"(',' + {col_sql} + ',' LIKE '%,' + {placeholder} + ',%')", (value,)
 
-    def format_find_in_set(self, expr) -> Tuple[str, tuple]:
+    def format_find_in_set(self, expr: Any) -> Tuple[str, tuple]:
         """Format a comma-separated membership check.
 
         SQL Server has no FIND_IN_SET; membership is checked with a LIKE
@@ -602,7 +598,7 @@ class SQLServerProtocolSupportMixin:
         sql, params = self._format_find_in_set_parts(expr.value, expr.set_column)
         return self._with_alias(sql, expr.alias), params
 
-    def format_set_contains(self, expr) -> Tuple[str, tuple]:
+    def format_set_contains(self, expr: Any) -> Tuple[str, tuple]:
         """Format a set-containment predicate as AND-ed membership checks."""
         conditions = []
         params: List[str] = []
@@ -639,11 +635,11 @@ class SQLServerProtocolSupportMixin:
         """STAsGeoJSON is not available in the installed SQL Server types assembly."""
         return False
 
-    def format_spatial_literal(self, expr) -> Tuple[str, tuple]:
+    def format_spatial_literal(self, expr: Any) -> Tuple[str, tuple]:
         """Format a WKT literal using geometry::STGeomFromText."""
         return self.format_st_geom_from_text(expr)
 
-    def format_st_geom_from_text(self, expr) -> Tuple[str, tuple]:
+    def format_st_geom_from_text(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry::STGeomFromText call.
 
         SQL Server requires the SRID argument; it defaults to 0.
@@ -656,32 +652,32 @@ class SQLServerProtocolSupportMixin:
         sql = f"geometry::STGeomFromText({placeholder}, {placeholder})"
         return self._with_alias(sql, expr.alias), (expr.wkt, srid)
 
-    def format_st_as_text(self, expr) -> Tuple[str, tuple]:
+    def format_st_as_text(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STAsText method call: ``geom.STAsText()``."""
         sql = f"{expr.geom}.STAsText()"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_as_geojson(self, expr) -> Tuple[str, tuple]:
+    def format_st_as_geojson(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STAsGeoJSON method call: ``geom.STAsGeoJSON()``."""
         sql = f"{expr.geom}.STAsGeoJSON()"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_distance(self, expr) -> Tuple[str, tuple]:
+    def format_st_distance(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STDistance method call: ``g1.STDistance(g2)``."""
         sql = f"{expr.geom1}.STDistance({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_within(self, expr) -> Tuple[str, tuple]:
+    def format_st_within(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STWithin method call: ``g1.STWithin(g2)``."""
         sql = f"{expr.geom1}.STWithin({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_contains(self, expr) -> Tuple[str, tuple]:
+    def format_st_contains(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STContains method call: ``g1.STContains(g2)``."""
         sql = f"{expr.geom1}.STContains({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_distance_sphere(self, expr) -> Tuple[str, tuple]:
+    def format_st_distance_sphere(self, expr: Any) -> Tuple[str, tuple]:
         """Format a spherical distance check.
 
         SQL Server has no ST_Distance_Sphere; STDistance is used for the
@@ -690,12 +686,12 @@ class SQLServerProtocolSupportMixin:
         sql = f"{expr.geom1}.STDistance({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_intersects(self, expr) -> Tuple[str, tuple]:
+    def format_st_intersects(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STIntersects method call: ``g1.STIntersects(g2)``."""
         sql = f"{expr.geom1}.STIntersects({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_create_spatial_index(self, expr) -> Tuple[str, tuple]:
+    def format_create_spatial_index(self, expr: Any) -> Tuple[str, tuple]:
         """Format a CREATE SPATIAL INDEX statement.
 
         SQL Syntax:
