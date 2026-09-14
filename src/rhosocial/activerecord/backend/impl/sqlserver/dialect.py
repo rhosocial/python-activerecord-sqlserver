@@ -579,8 +579,16 @@ class SQLServerDialect(
                 constraint_parts.append("UNIQUE")
             elif constraint.constraint_type == ColumnConstraintType.DEFAULT:
                 if constraint.default_value is not None:
-                    default_sql = self.inline_sql_literal(constraint.default_value)
-                    constraint_parts.append(f"DEFAULT {default_sql}")
+                    from rhosocial.activerecord.backend.expression import bases
+                    if isinstance(constraint.default_value, bases.BaseExpression):
+                        default_sql, default_params = constraint.default_value.to_sql()
+                        constraint_parts.append(f"DEFAULT {default_sql}")
+                        params.extend(default_params)
+                    elif isinstance(constraint.default_value, str):
+                        escaped = self._escape_sql_string(constraint.default_value)
+                        constraint_parts.append(f"DEFAULT '{escaped}'")
+                    else:
+                        constraint_parts.append(f"DEFAULT {constraint.default_value}")
             elif constraint.constraint_type == ColumnConstraintType.NULL:
                 constraint_parts.append("NULL")
 
