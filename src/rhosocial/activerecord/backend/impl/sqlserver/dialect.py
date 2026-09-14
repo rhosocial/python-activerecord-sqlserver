@@ -222,6 +222,7 @@ class SQLServerDialect(
     DDLTypeMixin,
     SQLServerIdentifierMixin,
     SQLServerCollationMixin,
+    CollationMixin,
     SQLServerCTEMixin,
     SQLServerWindowMixin,
     SQLServerJSONMixin,
