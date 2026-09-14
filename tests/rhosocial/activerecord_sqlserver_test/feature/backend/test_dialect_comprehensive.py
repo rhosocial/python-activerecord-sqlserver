@@ -65,7 +65,8 @@ class TestSQLServerDialectPagination:
 
     def test_limit_offset_none(self, dialect):
         sql, params = dialect.format_limit_offset()
-        assert sql is None
+        assert sql == ""
+        assert params == ()
 
     def test_old_version_raises(self, dialect):
         old = SQLServerDialect((10, 0, 0))
@@ -482,12 +483,14 @@ class TestSQLServerDialectTop:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_top_n(self, dialect):
-        result = dialect.format_top_n_clause(10)
+        result, params = dialect.format_top_n_clause(10)
         assert result == "TOP 10"
+        assert params == ()
 
     def test_top_n_percent(self, dialect):
-        result = dialect.format_top_n_clause(50, percentage=True)
+        result, params = dialect.format_top_n_clause(50, percentage=True)
         assert result == "TOP 50 PERCENT"
+        assert params == ()
 
 
 class TestSQLServerDialectCTE:

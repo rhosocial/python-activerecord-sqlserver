@@ -381,12 +381,12 @@ class TestDelegatedFormatters:
 
     def test_format_table_hint_locking(self, dialect):
         assert dialect.format_table_hint_locking("UPDLOCK") == (
-            "WITH (UPDLOCK, ROWLOCK)"
+            "WITH (UPDLOCK, ROWLOCK)", ()
         )
 
     def test_format_table_hint_locking_readpast(self, dialect):
         assert dialect.format_table_hint_locking("READPAST") == (
-            "WITH (UPDLOCK, ROWLOCK, READPAST)"
+            "WITH (UPDLOCK, ROWLOCK, READPAST)", ()
         )
 
     def test_supports_try_cast(self, dialect):
@@ -477,12 +477,12 @@ class TestDelegatedFormatters:
 
     def test_format_set_identity_insert_on(self, dialect):
         assert dialect.format_set_identity_insert("orders", True) == (
-            "SET IDENTITY_INSERT [orders] ON"
+            "SET IDENTITY_INSERT [orders] ON", ()
         )
 
     def test_format_set_identity_insert_off(self, dialect):
         assert dialect.format_set_identity_insert("orders", False) == (
-            "SET IDENTITY_INSERT [orders] OFF"
+            "SET IDENTITY_INSERT [orders] OFF", ()
         )
 
     def test_supports_indexed_view(self, dialect):

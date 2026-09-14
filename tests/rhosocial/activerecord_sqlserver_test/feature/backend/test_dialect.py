@@ -71,8 +71,8 @@ class TestSQLServerDialect:
     def test_format_limit_offset_none(self, dialect: SQLServerDialect):
         """Test when both limit and offset are None."""
         sql, params = dialect.format_limit_offset()
-        assert sql is None
-        assert params == []
+        assert sql == ""
+        assert params == ()
 
 
 class TestSQLServerDialectStatements:

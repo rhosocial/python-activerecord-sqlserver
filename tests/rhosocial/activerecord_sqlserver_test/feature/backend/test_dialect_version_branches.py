@@ -49,7 +49,7 @@ class TestPaginationOffsetFetch:
     def test_offset_fetch_snapshot(self, version):
         sql, params = SQLServerDialect(version).format_limit_offset(10, 5)
         assert sql == "OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY"
-        assert params == []
+        assert params == ()
 
     @pytest.mark.parametrize("version", [(11, 0, 0), (13, 0, 0), (15, 0, 0), (16, 0, 0)])
     def test_limit_only_defaults_offset_to_zero(self, version):
@@ -64,7 +64,7 @@ class TestPaginationOffsetFetch:
 
     @pytest.mark.parametrize("version", [(11, 0, 0), (13, 0, 0), (15, 0, 0), (16, 0, 0)])
     def test_both_none_renders_nothing(self, version):
-        assert SQLServerDialect(version).format_limit_offset() == (None, [])
+        assert SQLServerDialect(version).format_limit_offset() == ("", ())
 
     def test_pre_2012_raises_with_row_number_suggestion(self):
         with pytest.raises(UnsupportedFeatureError) as exc:
@@ -272,8 +272,8 @@ class TestRenderingSnapshots:
     def test_locking_hints_gain_readpast_only_on_2019_plus(self):
         base = SQLServerDialect((13, 0, 0)).format_table_hint_locking("UPDLOCK, READPAST")
         newer = SQLServerDialect((15, 0, 0)).format_table_hint_locking("UPDLOCK, READPAST")
-        assert base == "WITH (UPDLOCK, ROWLOCK)"  # READPAST silently dropped pre-2019
-        assert newer == "WITH (UPDLOCK, ROWLOCK, READPAST)"
+        assert base == ("WITH (UPDLOCK, ROWLOCK)", ())  # READPAST silently dropped pre-2019
+        assert newer == ("WITH (UPDLOCK, ROWLOCK, READPAST)", ())
 
     def test_for_update_clause_hint_rendering(self):
         from rhosocial.activerecord.backend.expression.query_parts import ForUpdateClause
@@ -379,8 +379,8 @@ class TestRenderingSnapshots:
 
     def test_top_n_clause_variants(self):
         d = SQLServerDialect((16, 0, 0))
-        assert d.format_top_n_clause(10) == "TOP 10"
-        assert d.format_top_n_clause(5, percentage=True) == "TOP 5 PERCENT"
+        assert d.format_top_n_clause(10) == ("TOP 10", ())
+        assert d.format_top_n_clause(5, percentage=True) == ("TOP 5 PERCENT", ())
 
     def test_lateral_renders_as_apply(self):
         d = SQLServerDialect((16, 0, 0))

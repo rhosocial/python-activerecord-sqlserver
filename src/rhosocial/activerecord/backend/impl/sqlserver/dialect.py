@@ -11,7 +11,7 @@ import copy
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
-from rhosocial.activerecord.backend.expression.bases import BaseExpression
+from rhosocial.activerecord.backend.expression.bases import BaseExpression, ToSQLProtocol
 from rhosocial.activerecord.backend.dialect.protocols import (
     CollationSupport,
     CTESupport,
@@ -648,8 +648,11 @@ class SQLServerDialect(
 
         col_parts = []
         for col in idx_def.columns:
-            col_sql, col_params = col.to_sql()
-            col_parts.append(col_sql)
+            if isinstance(col, ToSQLProtocol):
+                col_sql, col_params = col.to_sql()
+                col_parts.append(col_sql)
+            else:
+                col_parts.append(self.format_identifier(str(col)))
         cols_str = ', '.join(col_parts)
 
         idx_options = getattr(idx_def, "dialect_options", None) or {}
@@ -706,9 +709,12 @@ class SQLServerDialect(
 
         col_parts = []
         for col in expr.columns:
-            col_sql, col_params = col.to_sql()
-            col_parts.append(col_sql)
-            all_params.extend(col_params)
+            if isinstance(col, ToSQLProtocol):
+                col_sql, col_params = col.to_sql()
+                col_parts.append(col_sql)
+                all_params.extend(col_params)
+            else:
+                col_parts.append(self.format_identifier(str(col)))
         parts.append(f"({', '.join(col_parts)})")
 
         if expr.include:
