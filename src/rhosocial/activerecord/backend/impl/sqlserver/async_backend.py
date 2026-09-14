@@ -261,7 +261,7 @@ class AsyncSQLServerBackend(
                 await cursor.execute(
                     "SELECT c.name FROM sys.identity_columns c "
                     "JOIN sys.tables t ON c.object_id = t.object_id "
-                    "WHERE t.name = ? AND SCHEMA_NAME(t.schema_id) = 'dbo'",
+                    f"WHERE t.name = {self.dialect.p()} AND SCHEMA_NAME(t.schema_id) = 'dbo'",
                     (table_name,),
                 )
                 for row in await cursor.fetchall():
