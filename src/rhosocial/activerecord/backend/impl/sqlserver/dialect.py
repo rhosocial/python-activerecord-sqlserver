@@ -416,6 +416,14 @@ class SQLServerDialect(
         "bit_shift_right": (SQL_SERVER_2022, None),
     }
 
+    def format_identifier(self, identifier: str, need_quote: bool = True) -> str:
+        """Format an identifier with SQL Server square brackets.
+
+        Declared on the dialect so it is not shadowed by ``SQLDialectBase``
+        (double quotes), which precedes the feature mixins in the MRO.
+        """
+        return SQLServerIdentifierMixin.format_identifier(self, identifier, need_quote)
+
     def __init__(self, version: Optional[Tuple[int, int, int]] = None):
         """
         Initialize SQL Server dialect with specific version.
