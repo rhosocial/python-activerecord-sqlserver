@@ -29,7 +29,7 @@ class SQLServerDateTimeMixin:
     def format_datetime_add_expression(self, expr: "Any") -> Tuple[str, Tuple]:
         source_sql, source_params = expr.source.to_sql()
         unit = expr.interval.unit.value.upper()
-        sql = f"DATEADD({unit}, ?, {source_sql})"
+        sql = f"DATEADD({unit}, {self.p()}, {source_sql})"
         return self.apply_alias(
             sql, (expr.interval.value,) + source_params, expr
         )
@@ -37,7 +37,7 @@ class SQLServerDateTimeMixin:
     def format_datetime_subtract_expression(self, expr: "Any") -> Tuple[str, Tuple]:
         source_sql, source_params = expr.source.to_sql()
         unit = expr.interval.unit.value.upper()
-        sql = f"DATEADD({unit}, ?, {source_sql})"
+        sql = f"DATEADD({unit}, {self.p()}, {source_sql})"
         return self.apply_alias(
             sql, (-expr.interval.value,) + source_params, expr
         )
