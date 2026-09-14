@@ -49,6 +49,8 @@ from .protocols import (
     SQLServerTableSupport,
     SQLServerLockingSupport,
     SQLServerJSONSupport,
+    SQLServerSetTypeSupport,
+    SQLServerSpatialSupport,
     SQLServerTemporalTableSupport,
     SQLServerSequenceSupport,
     SQLServerFullTextSearchSupport,
@@ -329,6 +331,8 @@ class SQLServerDialect(
     SQLServerSequenceSupport,
     SQLServerIdentitySupport,
     SQLServerIndexedViewSupport,
+    SQLServerSetTypeSupport,
+    SQLServerSpatialSupport,
     SQLServerPartitionSupport,  # Before PartitionSupport
     PartitionSupport,
 ):

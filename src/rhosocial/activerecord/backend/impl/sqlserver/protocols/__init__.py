@@ -5,7 +5,9 @@ from .table_hint import SQLServerTableHintSupport
 from .output import SQLServerOutputSupport
 from .table import SQLServerTableSupport
 from .locking import SQLServerLockingSupport
-from .json_support import SQLServerJSONSupport
+from .json import SQLServerJSONSupport
+from .set_type import SQLServerSetTypeSupport
+from .spatial import SQLServerSpatialSupport
 from .temporal import SQLServerTemporalTableSupport
 from .sequence import SQLServerSequenceSupport
 from .fulltext import SQLServerFullTextSearchSupport
@@ -22,6 +24,8 @@ __all__ = [
     "SQLServerTableSupport",
     "SQLServerLockingSupport",
     "SQLServerJSONSupport",
+    "SQLServerSetTypeSupport",
+    "SQLServerSpatialSupport",
     "SQLServerTemporalTableSupport",
     "SQLServerSequenceSupport",
     "SQLServerFullTextSearchSupport",

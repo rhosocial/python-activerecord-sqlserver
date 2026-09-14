@@ -26,11 +26,13 @@ class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValueEx
         json_doc: str,
         path: str,
         *,
+        paths: Optional[List[str]] = None,
         alias: Optional[str] = None,
     ):
         super().__init__(dialect)
         self.json_doc = json_doc
         self.path = path
+        self.paths = paths or []
         self.alias = alias
 
     @property
@@ -151,12 +153,14 @@ class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpres
         path: str,
         value: Any,
         *,
+        path_value_pairs: Optional[List[Tuple[str, Any]]] = None,
         alias: Optional[str] = None,
     ):
         super().__init__(dialect)
         self.json_doc = json_doc
         self.path = path
         self.value = value
+        self.path_value_pairs = path_value_pairs or []
         self.alias = alias
 
     @property
@@ -177,11 +181,13 @@ class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValueExp
         json_doc: str,
         path: str,
         *,
+        paths: Optional[List[str]] = None,
         alias: Optional[str] = None,
     ):
         super().__init__(dialect)
         self.json_doc = json_doc
         self.path = path
+        self.paths = paths or []
         self.alias = alias
 
     @property
