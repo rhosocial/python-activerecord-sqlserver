@@ -337,14 +337,16 @@ class TestFullTextCatalogAndIndex:
     def test_fulltext_catalog_gate_below_2005(self):
         d = SQLServerDialect(SQL_SERVER_2005)
         assert d.supports_fulltext_catalog() is True
-        assert d.format_create_fulltext_catalog_statement("ftc") == (
-            "CREATE FULLTEXT CATALOG [ftc]"
-        )
+        sql, params = SQLServerCreateFullTextCatalogExpression(d, "ftc").to_sql()
+        assert sql == "CREATE FULLTEXT CATALOG [ftc]"
+        assert params == ()
 
     def test_direct_formatter_default_suffix(self, dialect):
-        assert dialect.format_create_fulltext_catalog_statement("ftc", as_default=True) == (
-            "CREATE FULLTEXT CATALOG [ftc] AS DEFAULT"
-        )
+        sql, params = SQLServerCreateFullTextCatalogExpression(
+            dialect, "ftc", is_default=True
+        ).to_sql()
+        assert sql == "CREATE FULLTEXT CATALOG [ftc] AS DEFAULT"
+        assert params == ()
 
     def test_validation_requires_fields(self, dialect):
         with pytest.raises(ValueError):

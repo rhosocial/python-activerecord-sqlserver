@@ -19,6 +19,13 @@ from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
     SQL_SERVER_2022,
     SQLServerDialect,
 )
+from rhosocial.activerecord.backend.impl.sqlserver.expression.locking import (
+    SQLServerTableHint,
+    SQLServerTableHintClause,
+)
+from rhosocial.activerecord.backend.impl.sqlserver.expression.option_hint import (
+    SQLServerOptionHintClause,
+)
 from rhosocial.activerecord.backend.expression.query_parts import GroupingClause
 
 VERSIONS = {
@@ -255,8 +262,12 @@ class TestRenderingSnapshots:
 
     def test_table_hint_single_and_multiple(self):
         d = SQLServerDialect((16, 0, 0))
-        assert d.format_table_hint(["NOLOCK"]) == "WITH (NOLOCK)"
-        assert d.format_table_hint(["NOLOCK", "READCOMMITTED"]) == "WITH (NOLOCK, READCOMMITTED)"
+        single = SQLServerTableHintClause(d, [SQLServerTableHint("NOLOCK")]).to_sql()
+        assert single == ("WITH (NOLOCK)", ())
+        multiple = SQLServerTableHintClause(
+            d, [SQLServerTableHint("NOLOCK"), SQLServerTableHint("READCOMMITTED")]
+        ).to_sql()
+        assert multiple == ("WITH (NOLOCK, READCOMMITTED)", ())
 
     def test_locking_hints_gain_readpast_only_on_2019_plus(self):
         base = SQLServerDialect((13, 0, 0)).format_table_hint_locking("UPDLOCK, READPAST")
@@ -361,9 +372,10 @@ class TestRenderingSnapshots:
         assert d.supports_explain_format("JSON") is False
 
     def test_option_query_hint_clause(self):
-        clause = SimpleNamespace(hints=["RECOMPILE", "MAXDOP 4"])
-        sql, params = SQLServerDialect((16, 0, 0)).format_query_option_clause(clause)
-        assert (sql, params) == ("OPTION (RECOMPILE, MAXDOP 4)", ())
+        clause = SQLServerOptionHintClause(
+            SQLServerDialect((16, 0, 0)), ["RECOMPILE", "MAXDOP 4"]
+        )
+        assert clause.to_sql() == ("OPTION (RECOMPILE, MAXDOP 4)", ())
 
     def test_top_n_clause_variants(self):
         d = SQLServerDialect((16, 0, 0))

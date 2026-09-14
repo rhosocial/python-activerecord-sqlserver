@@ -18,8 +18,28 @@ import pytest
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.impl.sqlserver.expression.fulltext import (
+    SQLServerCreateFullTextCatalogExpression,
+)
+from rhosocial.activerecord.backend.impl.sqlserver.expression.functions import (
+    SQLServerContainsPredicate,
+    SQLServerFreetextPredicate,
+    SQLServerTryCastExpression,
+    SQLServerTryConvertExpression,
+)
+from rhosocial.activerecord.backend.impl.sqlserver.expression.locking import (
+    SQLServerTableHint,
+    SQLServerTableHintClause,
+)
+from rhosocial.activerecord.backend.impl.sqlserver.expression.openjson import (
+    OpenJsonColumn,
+    SQLServerOpenJsonExpression,
+)
 from rhosocial.activerecord.backend.impl.sqlserver.expression.sequence import (
     SQLServerNextValueForExpression,
+)
+from rhosocial.activerecord.backend.impl.sqlserver.expression.temporal import (
+    SQLServerTemporalPeriodDefinition,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.protocols import (
     SQLServerOutputSupport,
@@ -151,23 +171,28 @@ class TestNextValueFor:
 
     def test_format_next_value_for_plain_string(self):
         d = SQLServerDialect(SQL_SERVER_2022)
-        assert d.format_next_value_for("my_seq") == "NEXT VALUE FOR [my_seq]"
+        sql, params = SQLServerNextValueForExpression(d, "my_seq").to_sql()
+        assert sql == "NEXT VALUE FOR [my_seq]"
+        assert params == ()
 
     def test_next_value_for_supported_at_gate(self):
         d = SQLServerDialect(SQL_SERVER_2014)
-        sql = d.format_next_value_for("my_seq")
+        sql = SQLServerNextValueForExpression(d, "my_seq").to_sql()[0]
         assert sql == "NEXT VALUE FOR [my_seq]"
 
     def test_next_value_for_gate_below_2012(self):
         d = SQLServerDialect(SQL_SERVER_2005)
         with pytest.raises(UnsupportedFeatureError) as exc_info:
-            d.format_next_value_for("my_seq")
+            SQLServerNextValueForExpression(d, "my_seq").to_sql()
         assert "NEXT VALUE FOR" in str(exc_info.value)
         assert "requires SQL Server 2012+" in str(exc_info.value)
 
     def test_next_value_for_gate_on_2012(self):
         d = SQLServerDialect(SQL_SERVER_2012)
-        assert d.format_next_value_for("my_seq") == "NEXT VALUE FOR [my_seq]"
+        assert (
+            SQLServerNextValueForExpression(d, "my_seq").to_sql()[0]
+            == "NEXT VALUE FOR [my_seq]"
+        )
 
     def test_next_value_for_in_select(self):
         d = SQLServerDialect(SQL_SERVER_2022)
@@ -316,16 +341,18 @@ class TestDelegatedFormatters:
         assert dialect.supports_order_by_in_subquery() is True
 
     def test_format_contains_predicate(self, dialect):
-        sql, params = dialect.format_contains_predicate("title", "database")
+        sql, params = SQLServerContainsPredicate(dialect, "title", "database").to_sql()
         assert sql == "CONTAINS([title], 'database')"
         assert params == ()
 
     def test_format_contains_predicate_escapes(self, dialect):
-        sql, _ = dialect.format_contains_predicate("title", "it's")
+        sql, _ = SQLServerContainsPredicate(dialect, "title", "it's").to_sql()
         assert sql == "CONTAINS([title], 'it''s')"
 
     def test_format_freetext_predicate(self, dialect):
-        sql, params = dialect.format_freetext_predicate("title", "database design")
+        sql, params = SQLServerFreetextPredicate(
+            dialect, "title", "database design"
+        ).to_sql()
         assert sql == "FREETEXT([title], 'database design')"
         assert params == ()
 
@@ -342,9 +369,9 @@ class TestDelegatedFormatters:
         assert dialect.supports_fulltext_catalog() is True
 
     def test_format_create_fulltext_catalog_statement(self, dialect):
-        assert dialect.format_create_fulltext_catalog_statement("ftc") == (
-            "CREATE FULLTEXT CATALOG [ftc]"
-        )
+        sql, params = SQLServerCreateFullTextCatalogExpression(dialect, "ftc").to_sql()
+        assert sql == "CREATE FULLTEXT CATALOG [ftc]"
+        assert params == ()
 
     def test_supports_readpast_on_2019(self):
         assert SQLServerDialect(SQL_SERVER_2019).supports_readpast() is True
@@ -372,12 +399,14 @@ class TestDelegatedFormatters:
         assert dialect.supports_try_convert() is True
 
     def test_format_try_cast_expression(self, dialect):
-        sql, params = dialect.format_try_cast_expression("value", "INT")
+        sql, params = SQLServerTryCastExpression(dialect, "value", "INT").to_sql()
         assert sql == "TRY_CAST(value AS INT)"
         assert params == ()
 
     def test_format_try_convert_expression(self, dialect):
-        sql, params = dialect.format_try_convert_expression("value", "INT", style=100)
+        sql, params = SQLServerTryConvertExpression(
+            dialect, "INT", "value", style=100
+        ).to_sql()
         assert sql == "TRY_CONVERT(INT, value, 100)"
         assert params == ()
 
@@ -385,9 +414,11 @@ class TestDelegatedFormatters:
         assert dialect.supports_table_hints() is True
 
     def test_format_table_hint(self, dialect):
-        assert dialect.format_table_hint(["NOLOCK", "ROWLOCK"]) == (
-            "WITH (NOLOCK, ROWLOCK)"
-        )
+        sql, params = SQLServerTableHintClause(
+            dialect, [SQLServerTableHint("NOLOCK"), SQLServerTableHint("ROWLOCK")]
+        ).to_sql()
+        assert sql == "WITH (NOLOCK, ROWLOCK)"
+        assert params == ()
 
     def test_supports_select_into(self, dialect):
         assert dialect.supports_select_into() is True
@@ -415,9 +446,13 @@ class TestDelegatedFormatters:
             dialect.format_select_into_statement(query)
 
     def test_format_openjson_expression(self, dialect):
-        sql, params = dialect.format_openjson_expression(
-            "@json", path="$.orders", schema={"order_id": "INT"}, alias="o"
-        )
+        sql, params = SQLServerOpenJsonExpression(
+            dialect,
+            "@json",
+            path="$.orders",
+            schema=[OpenJsonColumn(name="order_id", type="INT")],
+            alias="o",
+        ).to_sql()
         assert sql == "OPENJSON(@json, '$.orders') WITH ([order_id] INT) AS [o]"
         assert params == ()
 
@@ -428,9 +463,11 @@ class TestDelegatedFormatters:
         assert SQLServerDialect(SQL_SERVER_2014).supports_system_versioning() is False
 
     def test_format_temporal_period_definition(self, dialect):
-        assert dialect.format_temporal_period_definition("SysStart", "SysEnd") == (
-            "PERIOD FOR SYSTEM_TIME ([SysStart], [SysEnd])"
-        )
+        sql, params = SQLServerTemporalPeriodDefinition(
+            dialect, "SysStart", "SysEnd"
+        ).to_sql()
+        assert sql == "PERIOD FOR SYSTEM_TIME ([SysStart], [SysEnd])"
+        assert params == ()
 
     def test_supports_sequence_as_data_type(self, dialect):
         assert dialect.supports_sequence_as_data_type() is False
