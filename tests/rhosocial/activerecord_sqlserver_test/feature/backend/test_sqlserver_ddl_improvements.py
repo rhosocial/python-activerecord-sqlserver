@@ -19,17 +19,17 @@ class TestSQLServerViewCapabilityGating:
 
     def test_create_or_replace_view_not_supported(self):
         """SQL Server does not support CREATE OR REPLACE VIEW."""
-        dialect = SQLServerDialect()
+        dialect = SQLServerDialect(version=(16, 0, 0))
         assert dialect.supports_create_or_replace_view() is False
 
     def test_drop_view_if_exists_supported(self):
         """SQL Server supports DROP VIEW IF EXISTS."""
-        dialect = SQLServerDialect()
+        dialect = SQLServerDialect(version=(16, 0, 0))
         assert dialect.supports_if_exists_view() is True
 
     def test_materialized_view_not_supported(self):
         """SQL Server does not support materialized views (use indexed views)."""
-        dialect = SQLServerDialect()
+        dialect = SQLServerDialect(version=(16, 0, 0))
         assert dialect.supports_materialized_view() is False
 
 
@@ -38,10 +38,10 @@ class TestSQLServerSchemaCapabilityGating:
 
     def test_create_schema_supported(self):
         """SQL Server supports CREATE SCHEMA."""
-        dialect = SQLServerDialect()
+        dialect = SQLServerDialect(version=(16, 0, 0))
         assert dialect.supports_create_schema() is True
 
     def test_drop_schema_supported(self):
         """SQL Server supports DROP SCHEMA."""
-        dialect = SQLServerDialect()
+        dialect = SQLServerDialect(version=(16, 0, 0))
         assert dialect.supports_drop_schema() is True
