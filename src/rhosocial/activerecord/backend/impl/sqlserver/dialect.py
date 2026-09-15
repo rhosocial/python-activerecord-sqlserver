@@ -138,7 +138,7 @@ from .mixins.schema import SQLServerSchemaMixin
 from .mixins.index import SQLServerIndexMixin
 from .mixins.generated_column import SQLServerGeneratedColumnMixin
 from .mixins.set_operation import SQLServerSetOperationMixin
-from .mixins.table import SQLServerTableMixin
+from .mixins.ddl_table import SQLServerTableMixin
 from .mixins.identifier import SQLServerIdentifierMixin
 from .mixins.transaction import SQLServerTransactionMixin
 from .mixins.function import SQLServerFunctionMixin

@@ -31,7 +31,7 @@ from .schema import SQLServerSchemaMixin
 from .index import SQLServerIndexMixin
 from .generated_column import SQLServerGeneratedColumnMixin
 from .set_operation import SQLServerSetOperationMixin
-from .table import SQLServerTableMixin
+from .ddl_table import SQLServerTableMixin
 from .identifier import SQLServerIdentifierMixin
 from .transaction import SQLServerTransactionMixin
 from .function import SQLServerFunctionMixin
