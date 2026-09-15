@@ -124,8 +124,10 @@ class TestSQLServerDialectProtocols:
 
     def test_supports_returning(self, dialect: SQLServerDialect):
         """Test that SQL Server supports OUTPUT clause (RETURNING)."""
-        # SQL Server supports OUTPUT via ReturningMixin
-        assert dialect.supports_returning_clause() is True
+        # SQL Server supports OUTPUT via DMLMixin / SQLServerReturningMixin
+        assert dialect.supports_returning_insert() is True
+        assert dialect.supports_returning_update() is True
+        assert dialect.supports_returning_delete() is True
 
     def test_supports_cte(self, dialect: SQLServerDialect):
         """Test that SQL Server supports CTEs."""

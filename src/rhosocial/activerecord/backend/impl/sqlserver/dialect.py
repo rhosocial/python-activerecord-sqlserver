@@ -132,7 +132,7 @@ from .mixins.lateral import SQLServerLateralMixin
 from .mixins.explain import SQLServerExplainMixin
 from .mixins.dql import SQLServerDQLMixin
 from .mixins.dml import SQLServerDMLMixin
-from .mixins.view import SQLServerViewMixin
+from .mixins.ddl_view import SQLServerViewMixin
 from .mixins.schema import SQLServerSchemaMixin
 from .mixins.index import SQLServerIndexMixin
 from .mixins.generated_column import SQLServerGeneratedColumnMixin
