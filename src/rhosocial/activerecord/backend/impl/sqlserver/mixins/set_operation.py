@@ -1,6 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/set_operation.py
 from typing import Tuple, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
 
@@ -44,6 +46,14 @@ class SQLServerSetOperationMixin:
         alias = expr.alias
         order_by_clause = expr.order_by_clause
         limit_offset_clause = expr.limit_offset_clause
+        for_update_clause = expr.for_update_clause
+
+        if for_update_clause and not self.supports_set_operation_for_update():
+            raise UnsupportedFeatureError(
+                self.name,
+                "FOR UPDATE in set operations",
+                "SQL Server does not support FOR UPDATE in a set operation.",
+            )
 
         left_sql, left_params = left.to_sql()
         right_sql, right_params = right.to_sql()

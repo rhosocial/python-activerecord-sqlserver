@@ -24,6 +24,14 @@ class SQLServerLockingMixin:
         SQL Server does not support FOR UPDATE syntax. Instead, locking
         is achieved through table hints: WITH (UPDLOCK, ROWLOCK) etc.
         """
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+        from rhosocial.activerecord.backend.expression import LockStrength
+
+        if clause.strength != LockStrength.UPDATE:
+            raise UnsupportedFeatureError(
+                self.name, f"{clause.strength.value} (unsupported lock strength)"
+            )
+
         all_params: list = []
 
         sql_parts = ["WITH (UPDLOCK, ROWLOCK)"]
