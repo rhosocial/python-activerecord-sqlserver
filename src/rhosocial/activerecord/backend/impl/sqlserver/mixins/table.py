@@ -29,6 +29,10 @@ class SQLServerTableMixin:
         """SQL Server does not support RESTRICT for DROP TABLE."""
         return False
 
+    def supports_multi_action_alter_table(self) -> bool:
+        """SQL Server requires one action per ALTER TABLE statement."""
+        return False
+
     def supports_add_column(self) -> bool:
         """SQL Server supports ALTER TABLE ADD COLUMN."""
         return True
