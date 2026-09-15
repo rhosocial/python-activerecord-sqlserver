@@ -681,20 +681,6 @@ class SQLServerDialect(
 
         return ' '.join(parts), ()
 
-    def format_drop_table_statement(
-        self, expr: "DropTableExpression"
-    ) -> Tuple[str, tuple]:
-        """Format DROP TABLE statement for SQL Server."""
-        parts = ["DROP TABLE"]
-
-        if expr.if_exists and self.supports_if_exists_table():
-            parts.append("IF EXISTS")
-
-        table_sql, table_params = expr.table.to_sql()
-        parts.append(table_sql)
-
-        return ' '.join(parts), table_params
-
     def format_create_index_statement(self, expr: "CreateIndexExpression") -> Tuple[str, tuple]:
         """Format CREATE INDEX statement for SQL Server.
 

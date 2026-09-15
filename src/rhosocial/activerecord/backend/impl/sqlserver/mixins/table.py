@@ -21,6 +21,14 @@ class SQLServerTableMixin:
         """SQL Server supports DROP TABLE IF EXISTS (2016+)."""
         return self.version >= SQL_SERVER_2016
 
+    def supports_drop_table_cascade(self) -> bool:
+        """SQL Server does not support CASCADE for DROP TABLE."""
+        return False
+
+    def supports_drop_table_restrict(self) -> bool:
+        """SQL Server does not support RESTRICT for DROP TABLE."""
+        return False
+
     def supports_add_column(self) -> bool:
         """SQL Server supports ALTER TABLE ADD COLUMN."""
         return True
