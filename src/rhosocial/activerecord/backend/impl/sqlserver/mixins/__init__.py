@@ -26,7 +26,7 @@ from .lateral import SQLServerLateralMixin
 from .explain import SQLServerExplainMixin
 from .dql import SQLServerDQLMixin
 from .dml import SQLServerDMLMixin
-from .view import SQLServerViewMixin
+from .ddl_view import SQLServerViewMixin
 from .schema import SQLServerSchemaMixin
 from .index import SQLServerIndexMixin
 from .generated_column import SQLServerGeneratedColumnMixin

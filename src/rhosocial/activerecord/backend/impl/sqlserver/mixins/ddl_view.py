@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/mixins/view.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_view.py
 from typing import Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
@@ -20,6 +20,14 @@ class SQLServerViewMixin:
     def supports_indexed_view(self) -> bool:
         """SQL Server supports indexed views (similar to materialized views)."""
         return self.version >= SQL_SERVER_2005
+
+    def supports_create_or_replace_view(self) -> bool:
+        """SQL Server does not support CREATE OR REPLACE VIEW (uses CREATE OR ALTER)."""
+        return False
+
+    def supports_if_not_exists_view(self) -> bool:
+        """SQL Server does not support IF NOT EXISTS for views."""
+        return False
 
     def supports_if_exists_view(self) -> bool:
         """SQL Server supports DROP VIEW IF EXISTS (2016+)."""
