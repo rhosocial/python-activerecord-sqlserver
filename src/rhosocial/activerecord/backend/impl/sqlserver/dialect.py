@@ -501,19 +501,15 @@ class SQLServerDialect(
         SQL Server doesn't support IF NOT EXISTS syntax for CREATE TABLE
         (until SQL Server 2016 for DROP, but not CREATE). When if_not_exists
         is True, we simply skip the IF NOT EXISTS clause since it's not supported.
-        SQL Server has no CREATE TABLE ... LIKE; ``like_table`` raises
+        SQL Server has no CREATE TABLE ... LIKE (``supports_create_table_like``
+        stays ``False``), so the gated
+        ``format_create_table_like_statement`` raises
         ``UnsupportedFeatureError``. Temporary tables use a ``#``-prefixed
         table name instead of the ``TEMPORARY`` keyword.
         """
         all_params: List[Any] = []
 
         dialect_options = getattr(expr, "dialect_options", {}) or {}
-        if dialect_options.get("like_table"):
-            raise UnsupportedFeatureError(
-                self.name,
-                "CREATE TABLE ... LIKE",
-                "SQL Server has no CREATE TABLE ... LIKE syntax; use SELECT INTO or an explicit CREATE TABLE statement.",
-            )
 
         parts = ["CREATE TABLE"]
 

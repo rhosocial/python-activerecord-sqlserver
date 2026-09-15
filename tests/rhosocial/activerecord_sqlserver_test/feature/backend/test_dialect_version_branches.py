@@ -243,20 +243,17 @@ class TestRenderingSnapshots:
         assert expr.to_sql()[0] == "CREATE TABLE [dbo].[#t] ([id] INT)"
 
     def test_create_table_like_is_unsupported(self):
-        from rhosocial.activerecord.backend.expression.core import TableExpression
         from rhosocial.activerecord.backend.expression.statements import (
-            ColumnDefinition,
-            CreateTableExpression,
+            CreateTableLikeExpression,
         )
-        from rhosocial.activerecord.backend.expression.types import IntegerType
 
         d = SQLServerDialect((16, 0, 0))
-        expr = CreateTableExpression(
+        assert d.supports_create_table_like() is False
+        expr = CreateTableLikeExpression(
             dialect=d,
-            table=TableExpression(d, "copy"),
-            columns=[ColumnDefinition(d, name="id", data_type=IntegerType(d))],
+            table="copy",
+            like_table="original",
         )
-        expr.dialect_options["like_table"] = "original"
         with pytest.raises(UnsupportedFeatureError):
             expr.to_sql()
 
