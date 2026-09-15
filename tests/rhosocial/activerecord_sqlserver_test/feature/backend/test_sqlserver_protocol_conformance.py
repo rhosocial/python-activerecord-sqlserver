@@ -104,6 +104,8 @@ SQLSERVER_PROTOCOLS = [
 # decision (move to SQLSERVER_PROTOCOLS or revert).
 SQLSERVER_NOT_IMPLEMENTED = [
     # --- Intentional non-support ---
+    # The generic DatabaseSupport protocol is not composed by SQLServerDialect.
+    dialect_protocols.DatabaseSupport,
     # SQL Server's native XML/XQuery (FOR XML, OPENXML, .query()/.value()) is not
     # the standard SQL/XML feature set, so no SQL/XML formatters are exposed.
     dialect_protocols.SQLXMLSupport,
