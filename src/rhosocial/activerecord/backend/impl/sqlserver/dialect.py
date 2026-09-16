@@ -68,14 +68,13 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     CTEMixin,
     WindowFunctionMixin,
     JSONMixin,
-    AdvancedGroupingMixin,
+
     ArrayMixin,
     ExplainMixin,
     GraphMixin,
-    LockingMixin,
+
     MergeMixin,
-    OrderedSetAggregationMixin,
-    QualifyClauseMixin,
+
     TemporalTableMixin,
     UpsertMixin,
     LateralJoinMixin,
@@ -96,7 +95,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     DMLMixin,
     DDLColumnMixin,
     DDLTypeMixin,
-    FilterClauseMixin,
+
     TransactionControlMixin,
     AutoIncrementMixin,
     GeneratedColumnMixin,
@@ -252,14 +251,13 @@ class SQLServerDialect(
     CTEMixin,
     WindowFunctionMixin,
     JSONMixin,
-    AdvancedGroupingMixin,
+
     ArrayMixin,
     ExplainMixin,
     GraphMixin,
-    LockingMixin,
+
     MergeMixin,
-    OrderedSetAggregationMixin,
-    QualifyClauseMixin,
+
     TemporalTableMixin,
     UpsertMixin,
     LateralJoinMixin,
@@ -274,7 +272,7 @@ class SQLServerDialect(
     ConstraintMixin,
     IntrospectionMixin,
     # Newly added global mixins (previously missing from inheritance)
-    FilterClauseMixin,
+
     TransactionControlMixin,
     AutoIncrementMixin,
     GeneratedColumnMixin,
