@@ -150,15 +150,23 @@ class SQLServerShortestPathExpression(BaseExpression):
             )
         if maximum is not None and maximum < 1:
             raise ValueError("maximum must be >= 1.")
-        self.patterns = [pattern] + list(extra_patterns or [])
         comb = combinator.upper() if isinstance(combinator, str) else combinator
         if comb not in ("AND", ","):
             raise ValueError(
                 f"Invalid SHORTEST_PATH combinator {combinator!r}; use 'AND' or ','."
             )
+        # Attribute names mirror the constructor parameters so that the
+        # introspection-based get_params() / serialization round-trip works.
+        self.pattern = pattern
+        self.extra_patterns = list(extra_patterns or [])
         self.combinator = comb
         self.minimum = minimum
         self.maximum = maximum
+
+    @property
+    def patterns(self) -> List:
+        """All patterns: the primary ``pattern`` followed by ``extra_patterns``."""
+        return [self.pattern] + list(self.extra_patterns)
 
     @property
     def format_method(self) -> str:
