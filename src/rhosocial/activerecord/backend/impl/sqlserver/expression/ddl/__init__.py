@@ -10,6 +10,11 @@ from .trigger import (
     SQLServerCreateTriggerExpression,
     SQLServerDropTriggerExpression,
 )
+from .graph import (
+    SQLServerGraphTableKind,
+    SQLServerAsGraphTableExpression,
+    SQLServerEdgeConstraint,
+)
 
 __all__ = [
     "SQLServerCreateProcedureExpression",
@@ -17,4 +22,7 @@ __all__ = [
     "SQLServerDropRoutineExpression",
     "SQLServerCreateTriggerExpression",
     "SQLServerDropTriggerExpression",
+    "SQLServerGraphTableKind",
+    "SQLServerAsGraphTableExpression",
+    "SQLServerEdgeConstraint",
 ]

@@ -55,6 +55,7 @@ from .protocols import (
     SQLServerSequenceSupport,
     SQLServerFullTextSearchSupport,
     SQLServerPaginationSupport,
+    SQLServerGraphSupport,
     SQLServerMergeSupport,
     SQLServerPartitionSupport,
     SQLServerOutputSupport,
@@ -110,6 +111,7 @@ from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
+from .mixins.graph import SQLServerGraphMixin
 from .mixins.columnstore import SQLServerColumnstoreIndexMixin
 from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
 from .mixins.routine import SQLServerRoutineMixin
@@ -195,7 +197,10 @@ if TYPE_CHECKING:
 
 _SUGGESTION_ARRAY_TYPES = "SQL Server does not support native array types. Consider using JSON or comma-separated values."
 _SUGGESTION_JSON_TABLE = "SQL Server uses OPENJSON for JSON table functionality (2016+)."
-_SUGGESTION_GRAPH_MATCH = "SQL Server does not support graph MATCH clause."
+_SUGGESTION_GRAPH_MATCH = (
+    "SQL Server does not support the SQL/PGQ MATCH clause. Use its own SQL Graph API "
+    "(CREATE TABLE ... AS NODE/AS EDGE + SQLServerMatchPredicate) instead."
+)
 _SUGGESTION_ORDERED_SET_AGG = "SQL Server does not support ordered-set aggregate functions (WITHIN GROUP)."
 _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquery or CTE instead."
 
@@ -212,6 +217,7 @@ class SQLServerDialect(
     SQLServerProtocolSupportMixin,  # SQL Server protocol contract implementations
     SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
     SQLServerPivotMixin,  # PIVOT / UNPIVOT formatters (2005+)
+    SQLServerGraphMixin,  # SQL Graph: node/edge tables + MATCH predicate (2017+/2019+)
     SQLServerColumnstoreIndexMixin,  # columnstore index DDL (2012+/2014+/2022+)
     SQLServerMemoryOptimizedMixin,  # In-Memory OLTP table options (2014+)
     SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
@@ -320,6 +326,7 @@ class SQLServerDialect(
     # implementations live in SQLServerProtocolSupportMixin / SQLServerSequenceMixin)
     SQLServerOutputSupport,
     SQLServerPaginationSupport,
+    SQLServerGraphSupport,
     SQLServerFullTextSearchSupport,
     SQLServerTryCastSupport,
     SQLServerTableHintSupport,
@@ -539,6 +546,14 @@ class SQLServerDialect(
             column_parts.append(idx_sql)
             all_params.extend(idx_params)
 
+        # SQL Graph edge constraints (CONNECTION) are table-level constraints.
+        edge_constraints = dialect_options.get("edge_constraints")
+        if edge_constraints:
+            for edge_constraint in edge_constraints:
+                ec_sql, ec_params = edge_constraint.to_sql()
+                column_parts.append(ec_sql)
+                all_params.extend(ec_params)
+
         parts.append(f"({', '.join(column_parts)})")
 
         if expr.partition is not None:
@@ -555,6 +570,20 @@ class SQLServerDialect(
             if durability is None:
                 durability = dialect_options.get("durability", "SCHEMA_ONLY")
             parts.append(self.format_memory_optimized_option(durability))
+
+        # SQL Graph table kind (AS NODE / AS EDGE), if requested.
+        graph_kind = dialect_options.get("graph_table_kind")
+        if graph_kind is not None:
+            from .expression.ddl.graph import (
+                SQLServerAsGraphTableExpression,
+                SQLServerGraphTableKind,
+            )
+
+            if isinstance(graph_kind, SQLServerGraphTableKind):
+                graph_kind = SQLServerAsGraphTableExpression(self, graph_kind)
+            kind_sql, kind_params = graph_kind.to_sql()
+            parts.append(kind_sql)
+            all_params.extend(kind_params)
 
         return ' '.join(parts), tuple(all_params)
 

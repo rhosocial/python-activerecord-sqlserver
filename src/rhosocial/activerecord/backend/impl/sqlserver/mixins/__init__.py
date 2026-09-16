@@ -5,6 +5,7 @@ from .backend_mixin import SQLServerBackendMixin
 from .partition import SQLServerPartitionMixin
 from .sequence import SQLServerSequenceMixin
 from .pivot import SQLServerPivotMixin
+from .graph import SQLServerGraphMixin
 from .columnstore import SQLServerColumnstoreIndexMixin
 from .memory_optimized import SQLServerMemoryOptimizedMixin
 from .routine import SQLServerRoutineMixin
@@ -43,6 +44,7 @@ __all__ = [
     "SQLServerPartitionMixin",
     "SQLServerSequenceMixin",
     "SQLServerPivotMixin",
+    "SQLServerGraphMixin",
     "SQLServerColumnstoreIndexMixin",
     "SQLServerMemoryOptimizedMixin",
     "SQLServerRoutineMixin",

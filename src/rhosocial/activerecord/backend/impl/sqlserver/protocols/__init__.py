@@ -13,6 +13,7 @@ from .sequence import SQLServerSequenceSupport
 from .fulltext import SQLServerFullTextSearchSupport
 from .try_cast import SQLServerTryCastSupport
 from .pagination import SQLServerPaginationSupport
+from .graph import SQLServerGraphSupport
 from .merge import SQLServerMergeSupport
 from .partition import SQLServerPartitionSupport
 
@@ -31,6 +32,7 @@ __all__ = [
     "SQLServerFullTextSearchSupport",
     "SQLServerTryCastSupport",
     "SQLServerPaginationSupport",
+    "SQLServerGraphSupport",
     "SQLServerMergeSupport",
     "SQLServerPartitionSupport",
 ]
