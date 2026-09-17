@@ -2,7 +2,7 @@
 """SQL Server SQL Graph DDL expressions (SQL Server 2017+).
 
 Graph tables are ordinary tables annotated with ``AS NODE`` / ``AS EDGE``
-(edge tables additionally support ``CONNECTION`` edge constraints):
+(edge tables additionally support ``CONNECTION`` edge constraints from SQL Server 2019):
 
     CREATE TABLE dbo.Person (ID INT PRIMARY KEY, name VARCHAR(50)) AS NODE;
     CREATE TABLE dbo.friend (start_date DATE) AS EDGE;

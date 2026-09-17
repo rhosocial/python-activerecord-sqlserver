@@ -57,8 +57,8 @@ class SQLServerGraphMixin:
         return self.version >= SQL_SERVER_2019
 
     def supports_edge_constraints(self) -> bool:
-        """``CONNECTION`` edge constraints require SQL Server 2017+."""
-        return self.version >= SQL_SERVER_2017
+        """``CONNECTION`` edge constraints require SQL Server 2019+."""
+        return self.version >= SQL_SERVER_2019
 
     # endregion
 
@@ -84,7 +84,7 @@ class SQLServerGraphMixin:
             raise UnsupportedFeatureError(
                 self.name,
                 "CONNECTION edge constraint",
-                "Edge constraints require SQL Server 2017 or later.",
+                "Edge constraints require SQL Server 2019 or later.",
             )
         parts = []
         if constraint.name:
@@ -175,21 +175,29 @@ class SQLServerGraphMixin:
     def format_sqlserver_shortest_path(
         self, expr: "SQLServerShortestPathExpression"
     ) -> Tuple[str, tuple]:
-        """Format a ``SHORTEST_PATH (<pattern>...){quantifier}`` expression."""
+        """Format ``SHORTEST_PATH(<start>(<edge/node segments>)<quantifier>)``."""
         if not self.supports_shortest_path():
             raise UnsupportedFeatureError(
                 self.name, "SHORTEST_PATH",
                 "SHORTEST_PATH requires SQL Server 2019 or later.",
             )
         separator = " AND " if expr.combinator == "AND" else ", "
+        quantifier = "+" if expr.maximum is None else "{{1,{0}}}".format(expr.maximum)
         parts, params = [], []
         for pattern in expr.patterns:
-            sql, pattern_params = pattern.to_sql()
-            parts.append(sql)
-            params.extend(pattern_params)
-        quantifier = "+" if expr.maximum is None else "{{1,{0}}}".format(expr.maximum)
-        inner = separator.join(parts)
-        return f"SHORTEST_PATH({inner}){quantifier}", tuple(params)
+            if not pattern.segments:
+                raise ValueError("SHORTEST_PATH requires at least one segment per pattern.")
+            start_sql, start_params = pattern.start.to_sql()
+            params.extend(start_params)
+            segments = []
+            for edge_ref, node_ref in pattern.segments:
+                edge_sql, edge_params = edge_ref.to_sql()
+                node_sql, node_params = node_ref.to_sql()
+                segments.extend((edge_sql, node_sql))
+                params.extend(edge_params)
+                params.extend(node_params)
+            parts.append(f"{start_sql}({''.join(segments)}){quantifier}")
+        return f"SHORTEST_PATH({separator.join(parts)})", tuple(params)
 
     def format_sqlserver_graph_path_aggregate(
         self, aggregate: "SQLServerGraphPathAggregate"

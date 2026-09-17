@@ -127,7 +127,7 @@ class SQLServerMatchPredicate(SQLPredicate):
 
 
 class SQLServerShortestPathExpression(BaseExpression):
-    """A ``SHORTEST_PATH (<pattern>...){quantifier}`` traversal (SQL Server 2019+).
+    """A ``SHORTEST_PATH(<start>(<segments>)<quantifier>)`` traversal (SQL Server 2019+).
 
     SQL Server restricts the quantifier to ``+`` or ``{1,n}``; ``minimum`` must
     therefore be ``1``.
