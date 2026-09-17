@@ -5,7 +5,7 @@ SQL Server SQL Graph is independent from SQL/PGQ; see the plan
 ``.claude/plan/2026-09-16/pgq-expression-layer.md`` §4.3.
 """
 
-import os
+from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -34,6 +34,8 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl import (
     SQLServerEdgeConstraint,
     SQLServerGraphTableKind,
 )
+from rhosocial.activerecord.backend.impl.sqlserver.protocols import SQLServerGraphSupport
+from rhosocial.activerecord.testsuite.utils import requires_protocol, skip_test_if_protocol_unsupported
 
 
 @pytest.fixture
@@ -353,27 +355,32 @@ class TestDdl:
             )
 
 
+@pytest.fixture
+def check_graph_protocol_requirements(request, sqlserver_backend):
+    subject = SimpleNamespace(__backend__=sqlserver_backend)
+    for marker in request.node.iter_markers("requires_protocol"):
+        protocol_class, method_name = marker.args[0]
+        skip_test_if_protocol_unsupported(subject, protocol_class, method_name)
+
+
 @pytest.mark.requires_sqlserver
-@pytest.mark.skipif(
-    not os.environ.get("SQLSERVER_GRAPH_TEST_CONNECTION_STRING"),
-    reason="SQLSERVER_GRAPH_TEST_CONNECTION_STRING must target a disposable SQL Server 2019+ database",
-)
+@pytest.mark.usefixtures("check_graph_protocol_requirements")
+@requires_protocol(SQLServerGraphSupport, "supports_sql_graph")
+@requires_protocol(SQLServerGraphSupport, "supports_graph_table_kind")
+@requires_protocol(SQLServerGraphSupport, "supports_graph_pseudo_columns")
+@requires_protocol(SQLServerGraphSupport, "supports_shortest_path")
+@requires_protocol(SQLServerGraphSupport, "supports_graph_path_aggregates")
+@requires_protocol(SQLServerGraphSupport, "supports_edge_constraints")
 class TestGraphExecution:
     @pytest.mark.parametrize("maximum", [None, 3])
     @pytest.mark.parametrize("direction", [SQLServerGraphDirection.RIGHT, SQLServerGraphDirection.LEFT])
     @pytest.mark.parametrize("segment_count", [1, 2])
-    def test_shortest_path_and_edge_constraint(self, maximum, direction, segment_count):
-        import pyodbc
-
-        connection = pyodbc.connect(
-            os.environ["SQLSERVER_GRAPH_TEST_CONNECTION_STRING"], autocommit=False, timeout=5
-        )
+    def test_shortest_path_and_edge_constraint(self, sqlserver_backend, maximum, direction, segment_count):
+        backend = sqlserver_backend
+        dialect = backend.dialect
+        transaction = backend.transaction_manager
+        transaction.begin()
         try:
-            cursor = connection.cursor()
-            major = int(cursor.execute("SELECT SERVERPROPERTY('ProductMajorVersion')").fetchone()[0])
-            if major < 15:
-                pytest.skip("SQL Graph shortest paths and edge constraints require SQL Server 2019+")
-            dialect = SQLServerDialect(version=(major, 0, 0))
             suffix = uuid4().hex
             node_name, edge_name = f"graph_node_{suffix}", f"graph_edge_{suffix}"
             node = dialect.format_identifier(node_name)
@@ -382,10 +389,10 @@ class TestGraphExecution:
             edge_kind = SQLServerAsGraphTableExpression(dialect, SQLServerGraphTableKind.EDGE).to_sql()[0]
             constraint_sql, params = SQLServerEdgeConstraint(dialect, node_name, node_name).to_sql()
             assert params == ()
-            cursor.execute(f"CREATE TABLE {node} (ID INT NOT NULL) {node_kind}")
-            cursor.execute(f"CREATE TABLE {edge} ({constraint_sql}) {edge_kind}")
-            cursor.execute(f"INSERT INTO {node} (ID) VALUES (1), (2), (3), (4), (5)")
-            cursor.execute(
+            backend.execute(f"CREATE TABLE {node} (ID INT NOT NULL) {node_kind}")
+            backend.execute(f"CREATE TABLE {edge} ({constraint_sql}) {edge_kind}")
+            backend.execute(f"INSERT INTO {node} (ID) VALUES (1), (2), (3), (4), (5)")
+            backend.execute(
                 f"INSERT INTO {edge} ($from_id, $to_id) "
                 f"SELECT a.$node_id, b.$node_id FROM {node} a, {node} b WHERE b.ID = a.ID + 1"
             )
@@ -408,20 +415,19 @@ class TestGraphExecution:
             )
             match_sql, params = predicate.to_sql()
             start_id = 1 if direction == SQLServerGraphDirection.RIGHT else 5
-            cursor.execute(
-                f"SELECT LAST_VALUE([Person{segment_count + 1}].ID) WITHIN GROUP (GRAPH PATH) "
-                f"FROM {', '.join(tables)} WHERE {match_sql} AND [Person1].ID = ?",
+            result = backend.execute(
+                f"SELECT LAST_VALUE([Person{segment_count + 1}].ID) WITHIN GROUP (GRAPH PATH) AS [endpoint_id] "
+                f"FROM {', '.join(tables)} WHERE {match_sql} AND [Person1].ID = {dialect.p()}",
                 params + (start_id,),
             )
-            actual = {row[0] for row in cursor.fetchall()}
+            assert result.data is not None
+            actual = {row["endpoint_id"] for row in result.data}
             hops = min(4 // segment_count, maximum or 4)
             step = segment_count if start_id == 1 else -segment_count
             assert actual == {start_id + step * iteration for iteration in range(1, hops + 1)}
         finally:
-            try:
-                connection.rollback()
-            finally:
-                connection.close()
+            if transaction.is_active:
+                transaction.rollback()
 
 
 class TestCorePgqStillRejected:
