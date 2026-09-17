@@ -34,8 +34,10 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl import (
     SQLServerEdgeConstraint,
     SQLServerGraphTableKind,
 )
+from rhosocial.activerecord.backend.impl.sqlserver.options import SQLServerExecutionOptions
 from rhosocial.activerecord.backend.impl.sqlserver.protocols import SQLServerGraphSupport
 from rhosocial.activerecord.testsuite.utils import requires_protocol, skip_test_if_protocol_unsupported
+from rhosocial.activerecord.backend.options import StatementType
 
 
 @pytest.fixture
@@ -419,6 +421,7 @@ class TestGraphExecution:
                 f"SELECT LAST_VALUE([Person{segment_count + 1}].ID) WITHIN GROUP (GRAPH PATH) AS [endpoint_id] "
                 f"FROM {', '.join(tables)} WHERE {match_sql} AND [Person1].ID = {dialect.p()}",
                 params + (start_id,),
+                options=SQLServerExecutionOptions(stmt_type=StatementType.DQL, noscan=True),
             )
             assert result.data is not None
             actual = {row["endpoint_id"] for row in result.data}

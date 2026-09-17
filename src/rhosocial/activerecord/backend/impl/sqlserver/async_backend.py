@@ -9,7 +9,8 @@ using aioodbc as the async driver wrapper.
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 from rhosocial.activerecord.backend.base import AsyncStorageBackend
 from rhosocial.activerecord.backend.base.operations import AsyncSQLOperationsMixin
@@ -329,6 +330,21 @@ class AsyncSQLServerBackend(
         
         return await self._execute_statement(sql, params, options)
     
+    @asynccontextmanager
+    async def _cursor_noscan(self, cursor: Any, noscan: Optional[bool]) -> AsyncIterator[None]:
+        if noscan is None:
+            yield
+            return
+
+        impl = cursor._impl
+        run_operation = cursor._run_operation
+        previous = await run_operation(getattr, impl, "noscan")
+        try:
+            await run_operation(setattr, impl, "noscan", noscan)
+            yield
+        finally:
+            await run_operation(setattr, impl, "noscan", previous)
+
     async def _execute_statement(
         self, sql: str, params: Optional[Tuple], options, start_time: Optional[float] = None
     ) -> QueryResult:
@@ -366,7 +382,8 @@ class AsyncSQLServerBackend(
                 if identity_table is not None:
                     await self.set_identity_insert(identity_table, True)
                 try:
-                    await cursor.execute(final_sql, final_params or ())
+                    async with self._cursor_noscan(cursor, getattr(options, "noscan", None)):
+                        await cursor.execute(final_sql, final_params or ())
                 finally:
                     if identity_table is not None:
                         await self.set_identity_insert(identity_table, False)
