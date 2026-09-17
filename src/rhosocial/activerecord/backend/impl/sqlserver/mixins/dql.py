@@ -13,8 +13,8 @@ class SQLServerDQLMixin:
     """SQL Server SELECT / LIMIT / OFFSET formatting."""
 
     def supports_fetch_with_ties(self) -> bool:
-        """SQL Server supports FETCH NEXT ... ROWS WITH TIES (2012+)."""
-        return True
+        """SQL Server supports WITH TIES only with TOP, not OFFSET FETCH."""
+        return False
 
     def supports_nulls_first_last(self) -> bool:
         """SQL Server does not support explicit NULLS FIRST/LAST ordering."""
@@ -53,6 +53,12 @@ class SQLServerDQLMixin:
 
     def format_limit_offset_clause(self, clause: "LimitOffsetClause") -> Tuple[str, tuple]:
         """Format LIMIT/OFFSET clause for SQL Server using OFFSET FETCH syntax."""
+        if getattr(clause, "with_ties", False):
+            raise UnsupportedFeatureError(
+                self.name, "FETCH NEXT ... ROWS WITH TIES",
+                "SQL Server supports WITH TIES only with TOP, not OFFSET FETCH."
+            )
+
         if clause.limit is None and clause.offset is None:
             return "", ()
 
@@ -69,15 +75,7 @@ class SQLServerDQLMixin:
         parts.append(f"OFFSET {offset_val} ROWS")
 
         if clause.limit is not None:
-            if getattr(clause, "with_ties", False):
-                if not self.supports_fetch_with_ties():
-                    raise UnsupportedFeatureError(
-                        self.name, "FETCH NEXT ... ROWS WITH TIES",
-                        "This SQL Server dialect does not support WITH TIES."
-                    )
-                parts.append(f"FETCH NEXT {clause.limit} ROWS WITH TIES")
-            else:
-                parts.append(f"FETCH NEXT {clause.limit} ROWS ONLY")
+            parts.append(f"FETCH NEXT {clause.limit} ROWS ONLY")
 
         return " ".join(parts), ()
 

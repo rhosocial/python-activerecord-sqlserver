@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Tuple, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements.ddl_database import (
         AlterDatabaseExpression,
@@ -67,12 +65,14 @@ class SQLServerDatabaseMixin:
         self, expr: AlterDatabaseExpression
     ) -> Tuple[str, tuple]:
         from rhosocial.activerecord.backend.expression.statements.ddl_database import AlterDatabaseAction
+        if expr.action == AlterDatabaseAction.OWNER_TO:
+            database = self.format_identifier(expr.database_name)
+            owner = self.format_identifier(expr.target)
+            return f"ALTER AUTHORIZATION ON DATABASE::{database} TO {owner}", ()
         parts = ["ALTER DATABASE"]
         parts.append(self.format_identifier(expr.database_name))
         if expr.action == AlterDatabaseAction.RENAME_TO:
             parts.append(f"MODIFY NAME = {self.format_identifier(expr.target)}")
-        elif expr.action == AlterDatabaseAction.OWNER_TO:
-            parts.append(f"SET AUTHORIZATION TO {self.format_identifier(expr.target)}")
         elif expr.action == AlterDatabaseAction.COLLATION:
             parts.append(f"COLLATE {expr.target}")
         return " ".join(parts), ()

@@ -469,6 +469,20 @@ class TestDelegatedFormatters:
         assert sql == "PERIOD FOR SYSTEM_TIME ([SysStart], [SysEnd])"
         assert params == ()
 
+    @pytest.mark.parametrize(
+        "start, end, expected",
+        [
+            ("SysStart", "SysEnd", "PERIOD FOR SYSTEM_TIME ([SysStart], [SysEnd])"),
+            ("Start Time", "End]Time", "PERIOD FOR SYSTEM_TIME ([Start Time], [End]]Time])"),
+        ],
+    )
+    def test_dialect_format_temporal_period_definition(self, dialect, start, end, expected):
+        sql, params = dialect.format_temporal_period_definition(start, end)
+        assert isinstance(sql, str)
+        assert sql == expected
+        assert params == ()
+        assert (sql, params) == SQLServerTemporalPeriodDefinition(dialect, start, end).to_sql()
+
     def test_supports_sequence_as_data_type(self, dialect):
         assert dialect.supports_sequence_as_data_type() is False
 

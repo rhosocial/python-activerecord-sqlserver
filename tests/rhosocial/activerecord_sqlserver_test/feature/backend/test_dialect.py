@@ -6,6 +6,7 @@ This module tests SQL Server dialect formatting methods.
 """
 import pytest
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.impl.sqlserver.mixins.ddl_database import SQLServerDatabaseMixin
 
 
 class TestSQLServerDialect:
@@ -81,6 +82,55 @@ class TestSQLServerDialectStatements:
     @pytest.fixture
     def dialect(self):
         return SQLServerDialect(version=(16, 0, 0))
+
+    @pytest.fixture
+    def database_dialect(self):
+        class DatabaseDialect(SQLServerDatabaseMixin, SQLServerDialect):
+            pass
+
+        return DatabaseDialect(version=(16, 0, 0))
+
+    @pytest.mark.parametrize(
+        "database, owner, expected",
+        [
+            ("app_db", "app_owner", "ALTER AUTHORIZATION ON DATABASE::[app_db] TO [app_owner]"),
+            ("app db", "new owner", "ALTER AUTHORIZATION ON DATABASE::[app db] TO [new owner]"),
+            ("app]db", "owner]name", "ALTER AUTHORIZATION ON DATABASE::[app]]db] TO [owner]]name]"),
+        ],
+    )
+    def test_format_alter_database_owner(self, database_dialect, database, owner, expected):
+        from rhosocial.activerecord.backend.expression.statements.ddl_database import (
+            AlterDatabaseAction,
+            AlterDatabaseExpression,
+        )
+
+        expr = AlterDatabaseExpression(
+            database_dialect, database, AlterDatabaseAction.OWNER_TO, target=owner
+        )
+        assert database_dialect.format_alter_database_statement(expr) == (expected, ())
+        assert expr.to_sql() == (expected, ())
+
+    @pytest.mark.parametrize(
+        "action, target, expected",
+        [
+            ("RENAME_TO", "new_db", "ALTER DATABASE [app_db] MODIFY NAME = [new_db]"),
+            (
+                "COLLATION",
+                "Latin1_General_CI_AS",
+                "ALTER DATABASE [app_db] COLLATE Latin1_General_CI_AS",
+            ),
+        ],
+    )
+    def test_format_alter_database_other_actions(self, database_dialect, action, target, expected):
+        from rhosocial.activerecord.backend.expression.statements.ddl_database import (
+            AlterDatabaseAction,
+            AlterDatabaseExpression,
+        )
+
+        expr = AlterDatabaseExpression(
+            database_dialect, "app_db", AlterDatabaseAction[action], target=target
+        )
+        assert expr.to_sql() == (expected, ())
 
     def test_format_create_index_basic(self, dialect: SQLServerDialect):
         """Test basic CREATE INDEX formatting."""

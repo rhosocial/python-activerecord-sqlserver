@@ -314,10 +314,9 @@ class SQLServerProtocolSupportMixin:
         """Format PERIOD FOR SYSTEM_TIME (start, end)."""
         from ..expression.temporal import SQLServerTemporalPeriodDefinition
 
-        sql = SQLServerTemporalPeriodDefinition(
+        return SQLServerTemporalPeriodDefinition(
             self, start_column, end_column
         ).to_sql()
-        return sql, ()
 
     def format_create_temporal_table_statement(self, expr: Any) -> Tuple[str, tuple]:
         """Format CREATE TABLE with temporal options - not yet implemented."""
