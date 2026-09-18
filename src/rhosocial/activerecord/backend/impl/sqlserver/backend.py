@@ -10,6 +10,7 @@ specific behaviors and SQL dialect.
 import logging
 import re
 import time
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import pyodbc
@@ -24,6 +25,7 @@ from rhosocial.activerecord.backend.errors import (
     OperationalError,
     QueryError,
 )
+from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.result import QueryResult
 from rhosocial.activerecord.backend.introspection.backend_mixin import IntrospectorBackendMixin
 from rhosocial.activerecord.backend.explain import SyncExplainBackendMixin
@@ -161,6 +163,9 @@ class SQLServerBackend(
         self._connection = None
         self._transaction_manager = None
         self._default_suggestions_cache = None
+        self._execution_noscan: ContextVar[Optional[bool]] = ContextVar(
+            "sqlserver_execution_noscan", default=None
+        )
 
         self._register_sqlserver_adapters()
 
@@ -358,7 +363,7 @@ class SQLServerBackend(
             cursor.execute(f"SET {set_clause} ON")
             cursor.close()
             try:
-                return super().execute(statement, params, options=options)
+                return self._execute_with_options(statement, params, options)
             finally:
                 cursor = self._get_cursor()
                 cursor.execute(f"SET {set_clause} OFF")
@@ -368,7 +373,7 @@ class SQLServerBackend(
         if identity_table is not None:
             self.set_identity_insert(identity_table, True)
         try:
-            result = super().execute(sql, params, options=options)
+            result = self._execute_with_options(sql, params, options)
         finally:
             if identity_table is not None:
                 self.set_identity_insert(identity_table, False)
@@ -379,6 +384,27 @@ class SQLServerBackend(
                 result.last_insert_id = scope_id
 
         return result
+
+    def _execute_with_options(
+        self, sql: str, params: Optional[Tuple], options: ExecutionOptions
+    ) -> QueryResult:
+        token = self._execution_noscan.set(getattr(options, "noscan", None))
+        try:
+            return super().execute(sql, params, options=options)
+        finally:
+            self._execution_noscan.reset(token)
+
+    def _execute_query(self, cursor: Any, sql: str, params: Optional[Tuple]) -> Any:
+        noscan = self._execution_noscan.get()
+        if noscan is None:
+            return super()._execute_query(cursor, sql, params)
+
+        previous = cursor.noscan
+        try:
+            cursor.noscan = noscan
+            return super()._execute_query(cursor, sql, params)
+        finally:
+            cursor.noscan = previous
 
     def execute_many(self, sql: str, params_list: List[Tuple]) -> QueryResult:
         """Execute the same SQL statement multiple times with different parameters.

@@ -63,9 +63,10 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
         params: List[str] = [target]
-        conditions = ["TABLE_SCHEMA = ?"]
+        p = self.dialect.p()
+        conditions = [f"TABLE_SCHEMA = {p}"]
         if table_type:
-            conditions.append("TABLE_TYPE = ?")
+            conditions.append(f"TABLE_TYPE = {p}")
             params.append(table_type)
         elif not include_views:
             conditions.append("TABLE_TYPE = 'BASE TABLE'")
@@ -81,7 +82,8 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return ("""
+        p = self.dialect.p()
+        return (f"""
             SELECT
                 c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
                 c.COLUMN_DEFAULT, c.CHARACTER_MAXIMUM_LENGTH,
@@ -92,21 +94,22 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                     c.COLUMN_NAME, 'IsIdentity'
                 ) AS IS_IDENTITY
             FROM INFORMATION_SCHEMA.COLUMNS c
-            WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ?
+            WHERE c.TABLE_SCHEMA = {p} AND c.TABLE_NAME = {p}
             ORDER BY c.ORDINAL_POSITION
         """, (target, table_name))
 
     def _build_primary_key_sql(
         self, table_name: str, schema: str
     ) -> Tuple[str, tuple]:
-        return ("""
+        p = self.dialect.p()
+        return (f"""
             SELECT ccu.COLUMN_NAME
             FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
             JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu
                 ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
                 AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
-            WHERE tc.TABLE_SCHEMA = ?
-              AND tc.TABLE_NAME = ?
+            WHERE tc.TABLE_SCHEMA = {p}
+              AND tc.TABLE_NAME = {p}
               AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
         """, (schema, table_name))
 
@@ -114,7 +117,8 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return ("""
+        p = self.dialect.p()
+        return (f"""
             SELECT
                 i.name AS index_name,
                 i.is_unique,
@@ -130,7 +134,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                 ON i.object_id = ic.object_id AND i.index_id = ic.index_id
             JOIN sys.columns c
                 ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE s.name = ? AND t.name = ?
+            WHERE s.name = {p} AND t.name = {p}
               AND i.name IS NOT NULL
             ORDER BY i.name, ic.key_ordinal
         """, (target, table_name))
@@ -139,7 +143,8 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return ("""
+        p = self.dialect.p()
+        return (f"""
             SELECT
                 fk.name AS fk_name,
                 COL_NAME(fc.parent_object_id, fc.parent_column_id) AS col_name,
@@ -153,7 +158,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                 ON fk.object_id = fc.constraint_object_id
             JOIN sys.tables t ON fk.parent_object_id = t.object_id
             JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = ? AND t.name = ?
+            WHERE s.name = {p} AND t.name = {p}
             ORDER BY fk.name, fc.constraint_column_id
         """, (target, table_name))
 
@@ -161,10 +166,11 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         self, schema: Optional[str], include_system: bool
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return ("""
+        p = self.dialect.p()
+        return (f"""
             SELECT TABLE_NAME AS view_name
             FROM INFORMATION_SCHEMA.VIEWS
-            WHERE TABLE_SCHEMA = ?
+            WHERE TABLE_SCHEMA = {p}
             ORDER BY TABLE_NAME
         """, (target,))
 
@@ -172,13 +178,14 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
         self, view_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        return ("""
+        p = self.dialect.p()
+        return (f"""
             SELECT
                 TABLE_NAME AS view_name,
                 VIEW_DEFINITION AS definition,
                 IS_UPDATABLE
             FROM INFORMATION_SCHEMA.VIEWS
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+            WHERE TABLE_SCHEMA = {p} AND TABLE_NAME = {p}
         """, (target, view_name))
 
     def _build_trigger_list_sql(
@@ -186,7 +193,8 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
         params: List[str] = [target]
-        table_filter = "AND t.name = ?" if table_name else ""
+        p = self.dialect.p()
+        table_filter = f"AND t.name = {p}" if table_name else ""
         if table_name:
             params.append(table_name)
         return (f"""
@@ -199,7 +207,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             FROM sys.triggers tr
             JOIN sys.tables t ON tr.parent_id = t.object_id
             JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = ? {table_filter}
+            WHERE s.name = {p} {table_filter}
             ORDER BY tr.name
         """, tuple(params))
 

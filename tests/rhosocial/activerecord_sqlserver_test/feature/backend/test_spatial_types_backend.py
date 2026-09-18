@@ -8,6 +8,16 @@ geometry type (``geometry::STGeomFromText``, ``geom.STAsText()``, ...).
 """
 import pytest
 
+from rhosocial.activerecord.backend.impl.sqlserver.expression.spatial import (
+    SQLServerCreateSpatialIndexExpression,
+    SQLServerSpatialLiteralExpression,
+    SQLServerSTContainsExpression,
+    SQLServerSTDistanceExpression,
+    SQLServerSTGeomFromTextExpression,
+    SQLServerSTAsTextExpression,
+    SQLServerSTWithinExpression,
+)
+
 
 class TestSQLServerSpatialTypeBackend:
     """Synchronous tests for SQL Server spatial types with real database."""
@@ -47,7 +57,7 @@ class TestSQLServerSpatialTypeBackend:
         """)
 
         dialect = sqlserver_backend.dialect
-        sql, params = dialect.format_spatial_literal('POINT(5 5)')
+        sql, params = SQLServerSpatialLiteralExpression(dialect, 'POINT(5 5)').to_sql()
 
         sqlserver_backend.execute(
             f"INSERT INTO #test_spatial_literal (location) VALUES ({sql})",
@@ -73,7 +83,9 @@ class TestSQLServerSpatialTypeBackend:
         """)
 
         dialect = sqlserver_backend.dialect
-        sql, params = dialect.format_spatial_literal('POINT(10 20)', 4326)
+        sql, params = SQLServerSpatialLiteralExpression(
+            dialect, 'POINT(10 20)', srid=4326
+        ).to_sql()
 
         sqlserver_backend.execute(
             f"INSERT INTO #test_spatial_srid (location) VALUES ({sql})",
@@ -93,7 +105,7 @@ class TestSQLServerSpatialTypeBackend:
     def test_format_st_geom_from_text_without_srid(self, sqlserver_backend):
         """Test format_st_geom_from_text generates correct SQL without SRID."""
         dialect = sqlserver_backend.dialect
-        sql, params = dialect.format_st_geom_from_text('POINT(3 4)')
+        sql, params = SQLServerSTGeomFromTextExpression(dialect, 'POINT(3 4)').to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT {sql}.STAsText() as wkt",
@@ -106,7 +118,9 @@ class TestSQLServerSpatialTypeBackend:
     def test_format_st_geom_from_text_with_srid(self, sqlserver_backend):
         """Test format_st_geom_from_text generates correct SQL with SRID."""
         dialect = sqlserver_backend.dialect
-        sql, params = dialect.format_st_geom_from_text('POINT(1 1)', 4326)
+        sql, params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(1 1)', srid=4326
+        ).to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT {sql}.STSrid as srid",
@@ -129,7 +143,7 @@ class TestSQLServerSpatialTypeBackend:
         )
 
         dialect = sqlserver_backend.dialect
-        sql, params = dialect.format_st_as_text('location')
+        sql, params = SQLServerSTAsTextExpression(dialect, 'location').to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT {sql} as wkt FROM #test_astext",
@@ -151,10 +165,16 @@ class TestSQLServerSpatialTypeBackend:
         """Test format_st_distance generates correct SQL."""
         dialect = sqlserver_backend.dialect
 
-        point1_sql, point1_params = dialect.format_st_geom_from_text('POINT(0 0)')
-        point2_sql, point2_params = dialect.format_st_geom_from_text('POINT(3 4)')
+        point1_sql, point1_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(0 0)'
+        ).to_sql()
+        point2_sql, point2_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(3 4)'
+        ).to_sql()
 
-        distance_sql, _ = dialect.format_st_distance(point1_sql, point2_sql)
+        distance_sql, _ = SQLServerSTDistanceExpression(
+            dialect, point1_sql, point2_sql
+        ).to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT {distance_sql} as distance",
@@ -167,12 +187,16 @@ class TestSQLServerSpatialTypeBackend:
         """Test format_st_within generates correct SQL."""
         dialect = sqlserver_backend.dialect
 
-        point_sql, point_params = dialect.format_st_geom_from_text('POINT(5 5)')
-        polygon_sql, polygon_params = dialect.format_st_geom_from_text(
-            'POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))'
-        )
+        point_sql, point_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(5 5)'
+        ).to_sql()
+        polygon_sql, polygon_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))'
+        ).to_sql()
 
-        within_sql, _ = dialect.format_st_within(point_sql, polygon_sql)
+        within_sql, _ = SQLServerSTWithinExpression(
+            dialect, point_sql, polygon_sql
+        ).to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT {within_sql} as is_within",
@@ -185,12 +209,16 @@ class TestSQLServerSpatialTypeBackend:
         """Test format_st_contains generates correct SQL."""
         dialect = sqlserver_backend.dialect
 
-        polygon_sql, polygon_params = dialect.format_st_geom_from_text(
-            'POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))'
-        )
-        point_sql, point_params = dialect.format_st_geom_from_text('POINT(5 5)')
+        polygon_sql, polygon_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))'
+        ).to_sql()
+        point_sql, point_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(5 5)'
+        ).to_sql()
 
-        contains_sql, _ = dialect.format_st_contains(polygon_sql, point_sql)
+        contains_sql, _ = SQLServerSTContainsExpression(
+            dialect, polygon_sql, point_sql
+        ).to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT {contains_sql} as contains_point",
@@ -214,13 +242,15 @@ class TestSQLServerSpatialTypeBackend:
         """)
 
         dialect = sqlserver_backend.dialect
-        index_sql, params = dialect.format_create_spatial_index(
-            'idx_location', '#test_spatial_idx', 'location'
-        )
+        index_sql, params = SQLServerCreateSpatialIndexExpression(
+            dialect, 'idx_location', '#test_spatial_idx', 'location'
+        ).to_sql()
 
         sqlserver_backend.execute(index_sql)
 
-        insert_sql, insert_params = dialect.format_spatial_literal('POINT(1 1)')
+        insert_sql, insert_params = SQLServerSpatialLiteralExpression(
+            dialect, 'POINT(1 1)'
+        ).to_sql()
         sqlserver_backend.execute(
             f"INSERT INTO #test_spatial_idx (name, location) VALUES ('test', {insert_sql})",
             insert_params
@@ -260,7 +290,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
         """)
 
         dialect = async_sqlserver_backend.dialect
-        sql, params = dialect.format_spatial_literal('POINT(5 5)')
+        sql, params = SQLServerSpatialLiteralExpression(dialect, 'POINT(5 5)').to_sql()
 
         await async_sqlserver_backend.execute(
             f"INSERT INTO #test_async_spatial (location) VALUES ({sql})",
@@ -280,7 +310,9 @@ class TestAsyncSQLServerSpatialTypeBackend:
     async def test_async_format_st_geom_from_text(self, async_sqlserver_backend):
         """Test format_st_geom_from_text generates correct SQL (async)."""
         dialect = async_sqlserver_backend.dialect
-        sql, params = dialect.format_st_geom_from_text('POINT(10 20)', 4326)
+        sql, params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(10 20)', srid=4326
+        ).to_sql()
 
         result = await async_sqlserver_backend.execute(
             f"SELECT {sql}.STSrid as srid",
@@ -294,10 +326,16 @@ class TestAsyncSQLServerSpatialTypeBackend:
         """Test format_st_distance generates correct SQL (async)."""
         dialect = async_sqlserver_backend.dialect
 
-        point1_sql, point1_params = dialect.format_st_geom_from_text('POINT(0 0)')
-        point2_sql, point2_params = dialect.format_st_geom_from_text('POINT(3 4)')
+        point1_sql, point1_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(0 0)'
+        ).to_sql()
+        point2_sql, point2_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(3 4)'
+        ).to_sql()
 
-        distance_sql, _ = dialect.format_st_distance(point1_sql, point2_sql)
+        distance_sql, _ = SQLServerSTDistanceExpression(
+            dialect, point1_sql, point2_sql
+        ).to_sql()
 
         result = await async_sqlserver_backend.execute(
             f"SELECT {distance_sql} as distance",
@@ -311,12 +349,16 @@ class TestAsyncSQLServerSpatialTypeBackend:
         """Test format_st_within generates correct SQL (async)."""
         dialect = async_sqlserver_backend.dialect
 
-        point_sql, point_params = dialect.format_st_geom_from_text('POINT(5 5)')
-        polygon_sql, polygon_params = dialect.format_st_geom_from_text(
-            'POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))'
-        )
+        point_sql, point_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POINT(5 5)'
+        ).to_sql()
+        polygon_sql, polygon_params = SQLServerSTGeomFromTextExpression(
+            dialect, 'POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))'
+        ).to_sql()
 
-        within_sql, _ = dialect.format_st_within(point_sql, polygon_sql)
+        within_sql, _ = SQLServerSTWithinExpression(
+            dialect, point_sql, polygon_sql
+        ).to_sql()
 
         result = await async_sqlserver_backend.execute(
             f"SELECT {within_sql} as is_within",
@@ -347,13 +389,15 @@ class TestAsyncSQLServerSpatialTypeBackend:
         """)
 
         dialect = async_sqlserver_backend.dialect
-        index_sql, _ = dialect.format_create_spatial_index(
-            'idx_loc', '#test_async_idx', 'location'
-        )
+        index_sql, _ = SQLServerCreateSpatialIndexExpression(
+            dialect, 'idx_loc', '#test_async_idx', 'location'
+        ).to_sql()
 
         await async_sqlserver_backend.execute(index_sql)
 
-        insert_sql, insert_params = dialect.format_spatial_literal('POINT(1 1)')
+        insert_sql, insert_params = SQLServerSpatialLiteralExpression(
+            dialect, 'POINT(1 1)'
+        ).to_sql()
         await async_sqlserver_backend.execute(
             f"INSERT INTO #test_async_idx (location) VALUES ({insert_sql})",
             insert_params

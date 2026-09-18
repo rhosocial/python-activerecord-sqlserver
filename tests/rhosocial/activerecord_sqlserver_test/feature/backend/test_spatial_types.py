@@ -9,6 +9,18 @@ This module tests SQL Server-specific spatial data type functionality including:
 - SPATIAL index creation
 """
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.impl.sqlserver.expression.spatial import (
+    SQLServerCreateSpatialIndexExpression,
+    SQLServerSpatialLiteralExpression,
+    SQLServerSTAsGeoJSONExpression,
+    SQLServerSTAsTextExpression,
+    SQLServerSTContainsExpression,
+    SQLServerSTDistanceExpression,
+    SQLServerSTDistanceSphereExpression,
+    SQLServerSTGeomFromTextExpression,
+    SQLServerSTIntersectsExpression,
+    SQLServerSTWithinExpression,
+)
 
 
 class TestSpatialTypeProtocol:
@@ -63,14 +75,16 @@ class TestSpatialLiteralFormatting:
     def test_format_spatial_literal(self):
         """Test spatial literal formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_spatial_literal("POINT(1 1)")
+        expr = SQLServerSpatialLiteralExpression(dialect, "POINT(1 1)")
+        sql, params = expr.to_sql()
         assert "STGeomFromText" in sql
         assert params == ("POINT(1 1)", 0)
 
     def test_format_spatial_literal_with_srid(self):
         """Test spatial literal formatting with SRID."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_spatial_literal("POINT(1 1)", srid=4326)
+        expr = SQLServerSpatialLiteralExpression(dialect, "POINT(1 1)", srid=4326)
+        sql, params = expr.to_sql()
         assert "STGeomFromText" in sql
         assert 4326 in params
 
@@ -81,52 +95,60 @@ class TestSpatialFunctionFormatting:
     def test_format_st_geom_from_text(self):
         """Test ST_GeomFromText formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_st_geom_from_text("POINT(1 1)")
+        expr = SQLServerSTGeomFromTextExpression(dialect, "POINT(1 1)")
+        sql, params = expr.to_sql()
         assert "STGeomFromText" in sql
         assert params == ("POINT(1 1)", 0)
 
     def test_format_st_as_text(self):
         """Test STAsText formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_st_as_text("geom_col")
+        expr = SQLServerSTAsTextExpression(dialect, "geom_col")
+        sql, params = expr.to_sql()
         assert "STAsText" in sql
         assert "geom_col" in sql
 
     def test_format_st_as_geojson(self):
         """Test STAsGeoJSON formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_st_as_geojson("geom_col")
+        expr = SQLServerSTAsGeoJSONExpression(dialect, "geom_col")
+        sql, params = expr.to_sql()
         assert "STAsGeoJSON" in sql
         assert "geom_col" in sql
 
     def test_format_st_distance(self):
         """Test STDistance formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_st_distance("geom1", "geom2")
+        expr = SQLServerSTDistanceExpression(dialect, "geom1", "geom2")
+        sql, params = expr.to_sql()
         assert "STDistance" in sql
 
     def test_format_st_within(self):
         """Test STWithin formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_st_within("geom1", "geom2")
+        expr = SQLServerSTWithinExpression(dialect, "geom1", "geom2")
+        sql, params = expr.to_sql()
         assert "STWithin" in sql
 
     def test_format_st_contains(self):
         """Test STContains formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_st_contains("geom1", "geom2")
+        expr = SQLServerSTContainsExpression(dialect, "geom1", "geom2")
+        sql, params = expr.to_sql()
         assert "STContains" in sql
 
     def test_format_st_distance_sphere(self):
         """Test spherical distance formatting (STDistance approximation)."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_st_distance_sphere("geom1", "geom2")
+        expr = SQLServerSTDistanceSphereExpression(dialect, "geom1", "geom2")
+        sql, params = expr.to_sql()
         assert "STDistance" in sql
 
     def test_format_st_intersects(self):
         """Test STIntersects formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_st_intersects("geom1", "geom2")
+        expr = SQLServerSTIntersectsExpression(dialect, "geom1", "geom2")
+        sql, params = expr.to_sql()
         assert "STIntersects" in sql
 
 
@@ -136,7 +158,10 @@ class TestSpatialIndexFormatting:
     def test_format_create_spatial_index(self):
         """Test CREATE SPATIAL INDEX formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_create_spatial_index("idx_spatial", "test_table", "geom_col")
+        expr = SQLServerCreateSpatialIndexExpression(
+            dialect, "idx_spatial", "test_table", "geom_col"
+        )
+        sql, params = expr.to_sql()
         assert "SPATIAL INDEX" in sql
         assert "idx_spatial" in sql
         assert "test_table" in sql
@@ -146,5 +171,8 @@ class TestSpatialIndexFormatting:
         """Test CREATE SPATIAL INDEX does not raise for supported versions."""
         # SQL Server supports spatial indexes since 2008, so this should not raise
         dialect = SQLServerDialect(version=(10, 3, 0))
-        sql, params = dialect.format_create_spatial_index("idx_spatial", "test_table", "geom_col")
+        expr = SQLServerCreateSpatialIndexExpression(
+            dialect, "idx_spatial", "test_table", "geom_col"
+        )
+        sql, params = expr.to_sql()
         assert "SPATIAL INDEX" in sql

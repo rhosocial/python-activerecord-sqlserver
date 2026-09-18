@@ -19,6 +19,14 @@ from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
     SQL_SERVER_2022,
     SQLServerDialect,
 )
+from rhosocial.activerecord.backend.impl.sqlserver.expression.locking import (
+    SQLServerTableHint,
+    SQLServerTableHintClause,
+)
+from rhosocial.activerecord.backend.impl.sqlserver.expression.option_hint import (
+    SQLServerOptionHintClause,
+)
+from rhosocial.activerecord.backend.expression.query_parts import GroupingClause
 
 VERSIONS = {
     "2008": (10, 0, 0),
@@ -41,7 +49,7 @@ class TestPaginationOffsetFetch:
     def test_offset_fetch_snapshot(self, version):
         sql, params = SQLServerDialect(version).format_limit_offset(10, 5)
         assert sql == "OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY"
-        assert params == []
+        assert params == ()
 
     @pytest.mark.parametrize("version", [(11, 0, 0), (13, 0, 0), (15, 0, 0), (16, 0, 0)])
     def test_limit_only_defaults_offset_to_zero(self, version):
@@ -56,7 +64,7 @@ class TestPaginationOffsetFetch:
 
     @pytest.mark.parametrize("version", [(11, 0, 0), (13, 0, 0), (15, 0, 0), (16, 0, 0)])
     def test_both_none_renders_nothing(self, version):
-        assert SQLServerDialect(version).format_limit_offset() == (None, [])
+        assert SQLServerDialect(version).format_limit_offset() == ("", ())
 
     def test_pre_2012_raises_with_row_number_suggestion(self):
         with pytest.raises(UnsupportedFeatureError) as exc:
@@ -210,7 +218,7 @@ class TestRenderingSnapshots:
         expr = CreateTableExpression(
             dialect=d,
             table=TableExpression(d, "stage_users"),
-            columns=[ColumnDefinition(name="id", data_type=IntegerType())],
+            columns=[ColumnDefinition(d, name="id", data_type=IntegerType(d))],
             temporary=True,
         )
         sql, params = expr.to_sql()
@@ -229,39 +237,40 @@ class TestRenderingSnapshots:
         expr = CreateTableExpression(
             dialect=d,
             table=TableExpression(d, "t", "dbo"),
-            columns=[ColumnDefinition(name="id", data_type=IntegerType())],
+            columns=[ColumnDefinition(d, name="id", data_type=IntegerType(d))],
             temporary=True,
         )
         assert expr.to_sql()[0] == "CREATE TABLE [dbo].[#t] ([id] INT)"
 
     def test_create_table_like_is_unsupported(self):
-        from rhosocial.activerecord.backend.expression.core import TableExpression
         from rhosocial.activerecord.backend.expression.statements import (
-            ColumnDefinition,
-            CreateTableExpression,
+            CreateTableLikeExpression,
         )
-        from rhosocial.activerecord.backend.expression.types import IntegerType
 
         d = SQLServerDialect((16, 0, 0))
-        expr = CreateTableExpression(
+        assert d.supports_create_table_like() is False
+        expr = CreateTableLikeExpression(
             dialect=d,
-            table=TableExpression(d, "copy"),
-            columns=[ColumnDefinition(name="id", data_type=IntegerType())],
+            table="copy",
+            like_table="original",
         )
-        expr.dialect_options["like_table"] = "original"
         with pytest.raises(UnsupportedFeatureError):
             expr.to_sql()
 
     def test_table_hint_single_and_multiple(self):
         d = SQLServerDialect((16, 0, 0))
-        assert d.format_table_hint(["NOLOCK"]) == "WITH (NOLOCK)"
-        assert d.format_table_hint(["NOLOCK", "READCOMMITTED"]) == "WITH (NOLOCK, READCOMMITTED)"
+        single = SQLServerTableHintClause(d, [SQLServerTableHint("NOLOCK")]).to_sql()
+        assert single == ("WITH (NOLOCK)", ())
+        multiple = SQLServerTableHintClause(
+            d, [SQLServerTableHint("NOLOCK"), SQLServerTableHint("READCOMMITTED")]
+        ).to_sql()
+        assert multiple == ("WITH (NOLOCK, READCOMMITTED)", ())
 
     def test_locking_hints_gain_readpast_only_on_2019_plus(self):
         base = SQLServerDialect((13, 0, 0)).format_table_hint_locking("UPDLOCK, READPAST")
         newer = SQLServerDialect((15, 0, 0)).format_table_hint_locking("UPDLOCK, READPAST")
-        assert base == "WITH (UPDLOCK, ROWLOCK)"  # READPAST silently dropped pre-2019
-        assert newer == "WITH (UPDLOCK, ROWLOCK, READPAST)"
+        assert base == ("WITH (UPDLOCK, ROWLOCK)", ())  # READPAST silently dropped pre-2019
+        assert newer == ("WITH (UPDLOCK, ROWLOCK, READPAST)", ())
 
     def test_for_update_clause_hint_rendering(self):
         from rhosocial.activerecord.backend.expression.query_parts import ForUpdateClause
@@ -295,12 +304,13 @@ class TestRenderingSnapshots:
             ),
             when_matched=[
                 MergeAction(
+                    dialect=d,
                     action_type=MergeActionType.UPDATE,
                     assignments={"name": Column(d, "name", "source")},
                 )
             ],
             when_not_matched=[
-                MergeAction(action_type=MergeActionType.INSERT, assignments={"id": Column(d, "id", "source")})
+                MergeAction(dialect=d, action_type=MergeActionType.INSERT, assignments={"id": Column(d, "id", "source")})
             ],
         )
         # MergeExpression carries no dialect_options of its own; the dialect
@@ -326,7 +336,7 @@ class TestRenderingSnapshots:
             target_table=TableExpression(d, "t"),
             source=QueryExpression(dialect=d, select=[Column(d, "id")], from_=TableExpression(d, "s")),
             on_condition=ComparisonPredicate(d, "=", Column(d, "id", "t"), Column(d, "id", "s")),
-            when_matched=[MergeAction(action_type=MergeActionType.DELETE)],
+            when_matched=[MergeAction(dialect=d, action_type=MergeActionType.DELETE)],
         )
         sql, _ = merge.to_sql()
         assert sql.startswith("MERGE INTO [t]")
@@ -359,14 +369,15 @@ class TestRenderingSnapshots:
         assert d.supports_explain_format("JSON") is False
 
     def test_option_query_hint_clause(self):
-        clause = SimpleNamespace(hints=["RECOMPILE", "MAXDOP 4"])
-        sql, params = SQLServerDialect((16, 0, 0)).format_query_option_clause(clause)
-        assert (sql, params) == ("OPTION (RECOMPILE, MAXDOP 4)", ())
+        clause = SQLServerOptionHintClause(
+            SQLServerDialect((16, 0, 0)), ["RECOMPILE", "MAXDOP 4"]
+        )
+        assert clause.to_sql() == ("OPTION (RECOMPILE, MAXDOP 4)", ())
 
     def test_top_n_clause_variants(self):
         d = SQLServerDialect((16, 0, 0))
-        assert d.format_top_n_clause(10) == "TOP 10"
-        assert d.format_top_n_clause(5, percentage=True) == "TOP 5 PERCENT"
+        assert d.format_top_n_clause(10) == ("TOP 10", ())
+        assert d.format_top_n_clause(5, percentage=True) == ("TOP 5 PERCENT", ())
 
     def test_lateral_renders_as_apply(self):
         d = SQLServerDialect((16, 0, 0))
@@ -379,11 +390,11 @@ class TestRenderingSnapshots:
 class TestGroupingAndUpsertBasics:
     def test_grouping_operations_use_tsql_syntax(self):
         d = SQLServerDialect((16, 0, 0))
-        assert d.format_grouping_expression("ROLLUP", []) == ("WITH ROLLUP", ())
-        assert d.format_grouping_expression("CUBE", []) == ("WITH CUBE", ())
-        assert d.format_grouping_expression("GROUPING SETS", []) == ("GROUPING SETS", ())
+        assert d.format_grouping_clause(GroupingClause(d, "ROLLUP", [])) == ("WITH ROLLUP", ())
+        assert d.format_grouping_clause(GroupingClause(d, "CUBE", [])) == ("WITH CUBE", ())
+        assert d.format_grouping_clause(GroupingClause(d, "GROUPING SETS", [])) == ("GROUPING SETS", ())
         with pytest.raises(UnsupportedFeatureError):
-            d.format_grouping_expression("PIVOT", [])
+            d.format_grouping_clause(GroupingClause(d, "PIVOT", []))
 
     def test_upsert_targets_merge_syntax(self):
         for version in VERSIONS.values():

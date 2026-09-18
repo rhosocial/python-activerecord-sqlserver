@@ -78,13 +78,14 @@ class TestMemoryOptimizedTables:
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
 
-        col = ColumnDefinition("id", IntegerType())
-        col.constraints.append(ColumnConstraint(ColumnConstraintType.PRIMARY_KEY))
+        col = ColumnDefinition(d, "id", IntegerType(d))
+        col.constraints.append(ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY))
         indexes = []
         if hash_indexes:
             for name, (columns, bucket_count) in hash_indexes.items():
                 indexes.append(
                     IndexDefinition(
+                        d,
                         name,
                         list(columns),
                         dialect_options={"hash_index": True, "bucket_count": bucket_count},
@@ -200,13 +201,13 @@ class TestMemoryOptimizedTables:
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
 
-        col = ColumnDefinition("id", IntegerType())
-        col.constraints.append(ColumnConstraint(ColumnConstraintType.PRIMARY_KEY))
+        col = ColumnDefinition(dialect, "id", IntegerType(dialect))
+        col.constraints.append(ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY))
         ct = CreateTableExpression(
             dialect,
             "t",
             [col],
-            indexes=[IndexDefinition("ix", ["id"], dialect_options={"hash_index": True})],
+            indexes=[IndexDefinition(dialect, "ix", ["id"], dialect_options={"hash_index": True})],
             dialect_options={"memory_optimized": True},
         )
         with pytest.raises(ValueError):
@@ -336,14 +337,16 @@ class TestFullTextCatalogAndIndex:
     def test_fulltext_catalog_gate_below_2005(self):
         d = SQLServerDialect(SQL_SERVER_2005)
         assert d.supports_fulltext_catalog() is True
-        assert d.format_create_fulltext_catalog_statement("ftc") == (
-            "CREATE FULLTEXT CATALOG [ftc]"
-        )
+        sql, params = SQLServerCreateFullTextCatalogExpression(d, "ftc").to_sql()
+        assert sql == "CREATE FULLTEXT CATALOG [ftc]"
+        assert params == ()
 
     def test_direct_formatter_default_suffix(self, dialect):
-        assert dialect.format_create_fulltext_catalog_statement("ftc", as_default=True) == (
-            "CREATE FULLTEXT CATALOG [ftc] AS DEFAULT"
-        )
+        sql, params = SQLServerCreateFullTextCatalogExpression(
+            dialect, "ftc", is_default=True
+        ).to_sql()
+        assert sql == "CREATE FULLTEXT CATALOG [ftc] AS DEFAULT"
+        assert params == ()
 
     def test_validation_requires_fields(self, dialect):
         with pytest.raises(ValueError):

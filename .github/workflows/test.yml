@@ -45,12 +45,12 @@ jobs:
       with:
         python-version: "3.9"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -60,7 +60,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -68,7 +68,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1434;'
             'DATABASE=master;'
             'UID=sa;'
@@ -95,7 +95,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -105,6 +105,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py39-sqlserver2017:
@@ -134,12 +135,12 @@ jobs:
       with:
         python-version: "3.9"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -149,7 +150,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -157,7 +158,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1442;'
             'DATABASE=master;'
             'UID=sa;'
@@ -184,7 +185,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -194,6 +195,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py310-sqlserver2019:
@@ -223,12 +225,12 @@ jobs:
       with:
         python-version: "3.10"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -238,7 +240,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -246,7 +248,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1435;'
             'DATABASE=master;'
             'UID=sa;'
@@ -273,7 +275,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -283,6 +285,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py311-sqlserver2019:
@@ -312,12 +315,12 @@ jobs:
       with:
         python-version: "3.11"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -327,7 +330,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -335,7 +338,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1436;'
             'DATABASE=master;'
             'UID=sa;'
@@ -362,7 +365,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -372,6 +375,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py312-sqlserver2025:
@@ -401,12 +405,12 @@ jobs:
       with:
         python-version: "3.12"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -416,7 +420,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -424,7 +428,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1437;'
             'DATABASE=master;'
             'UID=sa;'
@@ -451,7 +455,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -461,6 +465,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py313-sqlserver2022:
@@ -490,12 +495,12 @@ jobs:
       with:
         python-version: "3.13"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -505,7 +510,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -513,7 +518,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1438;'
             'DATABASE=master;'
             'UID=sa;'
@@ -540,7 +545,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -550,6 +555,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py313t-sqlserver2019:
@@ -580,12 +586,12 @@ jobs:
       with:
         python-version: "3.13t"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -595,7 +601,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -603,7 +609,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1439;'
             'DATABASE=master;'
             'UID=sa;'
@@ -630,7 +636,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -640,6 +646,7 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x
 
   test-py314-sqlserver2025:
@@ -669,12 +676,12 @@ jobs:
       with:
         python-version: "3.14"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -684,7 +691,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -692,7 +699,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1440;'
             'DATABASE=master;'
             'UID=sa;'
@@ -719,7 +726,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -729,6 +736,7 @@ jobs:
     - name: Run tests with coverage
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ --tb=short -n 8 --dist=loadgroup --cov=src/rhosocial --cov-branch --cov-report=xml
 
     - name: Upload coverage to Codecov
@@ -767,12 +775,12 @@ jobs:
       with:
         python-version: "3.14t"
 
-    - name: Install ODBC Driver 17 for SQL Server
+    - name: Install ODBC Driver 18 for SQL Server
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
     - name: Install dependencies
       run: |
@@ -782,7 +790,7 @@ jobs:
     - name: Install activerecord and testsuite from PyPI
       run: |
         pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-derived-ddl"
 
     - name: Create test database
       run: |
@@ -790,7 +798,7 @@ jobs:
         import pyodbc
 
         connection_string = (
-            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'DRIVER={ODBC Driver 18 for SQL Server};'
             'SERVER=localhost,1441;'
             'DATABASE=master;'
             'UID=sa;'
@@ -817,7 +825,7 @@ jobs:
             database: test_db
             username: sa
             password: Password123!
-            driver: "ODBC Driver 17 for SQL Server"
+            driver: "ODBC Driver 18 for SQL Server"
             encrypt: false
             trust_server_certificate: true
             autocommit: true
@@ -827,4 +835,5 @@ jobs:
     - name: Run tests
       run: |
         export PYTHONPATH=src:tests
+        python tests/enable_read_committed_snapshot.py || true
         python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x

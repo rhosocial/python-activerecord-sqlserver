@@ -129,3 +129,21 @@ class SQLServerTriggerDdlMixin:
             parts.append("IF EXISTS")
         parts.append(self.format_identifier(name))  # type: ignore[attr-defined]
         return " ".join(parts), ()
+
+    # --- Additional trigger capability declarations (moved from dialect.py) ---
+
+    def supports_instead_of_trigger(self) -> bool:
+        """SQL Server supports INSTEAD OF triggers."""
+        return True
+
+    def supports_statement_trigger(self) -> bool:
+        """SQL Server supports FOR EACH STATEMENT triggers."""
+        return True
+
+    def supports_trigger_referencing(self) -> bool:
+        """SQL Server supports referencing OLD and NEW via inserted/deleted tables."""
+        return True
+
+    def supports_trigger_when(self) -> bool:
+        """SQL Server supports WHEN condition in triggers (IF clause)."""
+        return True

@@ -6,7 +6,7 @@ detection and the ``NEXT VALUE FOR`` expression formatter used by
 ``SQLServerNextValueForExpression``.
 """
 
-from typing import Any
+from typing import Any, Tuple
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
@@ -21,7 +21,7 @@ class SQLServerSequenceMixin:
         """SQL Server sequences are not usable as column data types."""
         return False
 
-    def format_next_value_for(self, sequence: Any) -> str:
+    def format_next_value_for(self, sequence: Any) -> Tuple[str, tuple]:
         """Format NEXT VALUE FOR expression (SQL Server 2012+).
 
         Args:
@@ -29,7 +29,8 @@ class SQLServerSequenceMixin:
                 sequence name string.
 
         Returns:
-            SQL string such as ``NEXT VALUE FOR [my_seq]``.
+            Tuple of (SQL string, params tuple) such as
+            ``(NEXT VALUE FOR [my_seq], ())``.
         """
         if self.version < _SQL_SERVER_NEXT_VALUE_FOR_VERSION:  # type: ignore[attr-defined]
             raise UnsupportedFeatureError(
@@ -49,4 +50,14 @@ class SQLServerSequenceMixin:
         else:
             quoted = self.format_identifier(sequence_name)  # type: ignore[attr-defined]
 
-        return f"NEXT VALUE FOR {quoted}"
+        return f"NEXT VALUE FOR {quoted}", ()
+
+    # --- Sequence capability declarations (moved from dialect.py) ---
+
+    def supports_create_sequence(self) -> bool:
+        """SQL Server 2012+ supports SEQUENCE objects."""
+        return self.version >= _SQL_SERVER_NEXT_VALUE_FOR_VERSION  # type: ignore[attr-defined]
+
+    def supports_drop_sequence(self) -> bool:
+        """SQL Server 2012+ supports DROP SEQUENCE."""
+        return self.version >= _SQL_SERVER_NEXT_VALUE_FOR_VERSION  # type: ignore[attr-defined]

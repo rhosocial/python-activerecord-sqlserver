@@ -8,6 +8,11 @@ comma-separated membership predicates the dialect provides.
 """
 import pytest
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.impl.sqlserver.expression.set_type import (
+    SQLServerFindInSetExpression,
+    SQLServerSetContainsExpression,
+    SQLServerSetLiteralExpression,
+)
 
 
 class TestSetTypeProtocol:
@@ -28,7 +33,7 @@ class TestSetTypeProtocol:
         """Test comma-separated literal with single value."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_set_literal(['value1'])
+        sql, params = SQLServerSetLiteralExpression(dialect, ['value1']).to_sql()
 
         assert sql == '?'
         assert params == ('value1',)
@@ -37,7 +42,9 @@ class TestSetTypeProtocol:
         """Test comma-separated literal with multiple values."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_set_literal(['value3', 'value1', 'value2'])
+        sql, params = SQLServerSetLiteralExpression(
+            dialect, ['value3', 'value1', 'value2']
+        ).to_sql()
 
         assert sql == '?'
         assert params == ('value1,value2,value3',)
@@ -46,7 +53,7 @@ class TestSetTypeProtocol:
         """Test comma-separated literal with empty list."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_set_literal([])
+        sql, params = SQLServerSetLiteralExpression(dialect, []).to_sql()
 
         assert sql == '?'
         assert params == ('',)
@@ -56,7 +63,9 @@ class TestSetTypeProtocol:
         dialect = SQLServerDialect(version=(16, 0, 0))
         column_values = ['red', 'green', 'blue']
 
-        sql, params = dialect.format_set_literal(['red', 'blue'], column_values)
+        sql, params = SQLServerSetLiteralExpression(
+            dialect, ['red', 'blue'], column_values
+        ).to_sql()
 
         assert sql == '?'
         assert params == ('blue,red',)
@@ -66,23 +75,25 @@ class TestSetTypeProtocol:
         dialect = SQLServerDialect(version=(16, 0, 0))
         column_values = ['red', 'green', 'blue']
 
+        expr = SQLServerSetLiteralExpression(dialect, ['red', 'yellow'], column_values)
         with pytest.raises(ValueError, match="Invalid SET values"):
-            dialect.format_set_literal(['red', 'yellow'], column_values)
+            expr.to_sql()
 
     def test_format_set_literal_max_members_exceeded(self):
         """Test that exceeding 64 members raises error."""
         dialect = SQLServerDialect(version=(16, 0, 0))
         values = [f'val{i}' for i in range(65)]
 
+        expr = SQLServerSetLiteralExpression(dialect, values)
         with pytest.raises(ValueError, match="maximum 64 members"):
-            dialect.format_set_literal(values)
+            expr.to_sql()
 
     def test_format_set_literal_max_members_allowed(self):
         """Test that 64 members is allowed."""
         dialect = SQLServerDialect(version=(16, 0, 0))
         values = [f'val{i:02d}' for i in range(64)]
 
-        sql, params = dialect.format_set_literal(values)
+        sql, params = SQLServerSetLiteralExpression(dialect, values).to_sql()
 
         assert sql == '?'
         assert len(params[0].split(',')) == 64
@@ -91,7 +102,9 @@ class TestSetTypeProtocol:
         """Test comma-separated membership check formatting."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_find_in_set('value1', 'tags')
+        sql, params = SQLServerFindInSetExpression(
+            dialect, 'value1', 'tags'
+        ).to_sql()
 
         assert 'LIKE' in sql
         assert '[tags]' in sql
@@ -101,7 +114,9 @@ class TestSetTypeProtocol:
         """Test membership check with different column name."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_find_in_set('active', 'status')
+        sql, params = SQLServerFindInSetExpression(
+            dialect, 'active', 'status'
+        ).to_sql()
 
         assert 'LIKE' in sql
         assert '[status]' in sql
@@ -111,7 +126,9 @@ class TestSetTypeProtocol:
         """Test set contains check with single value."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_set_contains('tags', ['value1'])
+        sql, params = SQLServerSetContainsExpression(
+            dialect, 'tags', ['value1']
+        ).to_sql()
 
         assert 'LIKE' in sql
         assert '[tags]' in sql
@@ -121,7 +138,9 @@ class TestSetTypeProtocol:
         """Test set contains check with multiple values."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_set_contains('tags', ['value1', 'value2'])
+        sql, params = SQLServerSetContainsExpression(
+            dialect, 'tags', ['value1', 'value2']
+        ).to_sql()
 
         assert 'LIKE' in sql
         assert ' AND ' in sql
@@ -131,7 +150,9 @@ class TestSetTypeProtocol:
         """Test set contains check with three values."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_set_contains('status', ['active', 'pending', 'verified'])
+        sql, params = SQLServerSetContainsExpression(
+            dialect, 'status', ['active', 'pending', 'verified']
+        ).to_sql()
 
         assert sql.count('LIKE') == 3
         assert sql.count(' AND ') == 2
@@ -152,7 +173,9 @@ class TestAsyncSetTypeProtocol:
         """Test async version of comma-separated literal formatting."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_set_literal(['a', 'b', 'c'])
+        sql, params = SQLServerSetLiteralExpression(
+            dialect, ['a', 'b', 'c']
+        ).to_sql()
 
         assert sql == '?'
         assert params == ('a,b,c',)
@@ -162,7 +185,9 @@ class TestAsyncSetTypeProtocol:
         """Test async version of membership check formatting."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_find_in_set('test', 'column')
+        sql, params = SQLServerFindInSetExpression(
+            dialect, 'test', 'column'
+        ).to_sql()
 
         assert 'LIKE' in sql
         assert params == ('test',)
@@ -172,7 +197,9 @@ class TestAsyncSetTypeProtocol:
         """Test async version of set contains formatting."""
         dialect = SQLServerDialect(version=(16, 0, 0))
 
-        sql, params = dialect.format_set_contains('tags', ['a', 'b'])
+        sql, params = SQLServerSetContainsExpression(
+            dialect, 'tags', ['a', 'b']
+        ).to_sql()
 
         assert ' AND ' in sql
         assert params == ('a', 'b')

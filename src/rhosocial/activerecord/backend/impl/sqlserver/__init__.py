@@ -5,6 +5,7 @@ from .backend import SQLServerBackend
 from .config import SQLServerConnectionConfig
 from .collation import SQLServerCollation
 from .dialect import SQLServerDialect
+from .options import SQLServerExecutionOptions
 from .transaction import SQLServerTransactionManager
 from .adapters import (
     SQLServerUUIDAdapter,
@@ -66,6 +67,7 @@ from .type_compatibility import (
 __all__ = [
     "SQLServerBackend",
     "SQLServerConnectionConfig",
+    "SQLServerExecutionOptions",
     "SQLServerDialect",
     "SQLServerCollation",
     "SQLServerTransactionManager",
