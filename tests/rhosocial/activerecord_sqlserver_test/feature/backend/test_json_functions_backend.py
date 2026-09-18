@@ -9,6 +9,10 @@ plus JSON_OBJECT and JSON_ARRAY (2022+).
 """
 import pytest
 
+from rhosocial.activerecord.backend.impl.sqlserver.expression.json import (
+    SQLServerJSONExtractExpression,
+)
+
 
 class TestSQLServerJSONFunctionBackend:
     """Synchronous tests for SQL Server JSON functions with real database."""
@@ -136,7 +140,7 @@ class TestSQLServerJSONFunctionBackend:
         )
 
         dialect = sqlserver_backend.dialect
-        sql, params = dialect.format_json_extract('data', '$.name')
+        sql, params = SQLServerJSONExtractExpression(dialect, 'data', '$.name').to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT {sql} as name FROM #test_format_json_extract",
@@ -281,7 +285,7 @@ class TestAsyncSQLServerJSONFunctionBackend:
         )
 
         dialect = async_sqlserver_backend.dialect
-        sql, params = dialect.format_json_extract('data', '$.name')
+        sql, params = SQLServerJSONExtractExpression(dialect, 'data', '$.name').to_sql()
 
         result = await async_sqlserver_backend.execute(
             f"SELECT {sql} as name FROM #test_async_format_json_extract",

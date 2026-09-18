@@ -6,6 +6,8 @@ the circular import triggered by the eager ``mixins/__init__.py`` chain
 (``mixins/backend_mixin`` -> ``dialect``).
 """
 
+from typing import Any, Tuple
+
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
 
@@ -35,7 +37,7 @@ class SQLServerAlterColumnModifierMixin:
         """``DROP CONSTRAINT IF EXISTS`` is supported since SQL Server 2016."""
         return True
 
-    def format_add_column_action(self, action):
+    def format_add_column_action(self, action: Any) -> Tuple[str, tuple]:
         if getattr(action, "if_not_exists", None) is True:
             raise UnsupportedFeatureError(
                 self.name,
@@ -47,13 +49,13 @@ class SQLServerAlterColumnModifierMixin:
         # SQL Server ALTER TABLE ... ADD takes the column without a COLUMN literal.
         return f"ADD {column_sql}", column_params
 
-    def format_drop_column_action(self, action):
+    def format_drop_column_action(self, action: Any) -> Tuple[str, tuple]:
         name = self.format_identifier(action.column_name)
         if getattr(action, "if_exists", None) is True:
             return f"DROP COLUMN IF EXISTS {name}", ()
         return f"DROP COLUMN {name}", ()
 
-    def format_drop_table_constraint_action(self, action):
+    def format_drop_table_constraint_action(self, action: Any) -> Tuple[str, tuple]:
         name = self.format_identifier(action.constraint_name)
         if getattr(action, "if_exists", None) is True:
             result = f"DROP CONSTRAINT IF EXISTS {name}"
@@ -63,7 +65,7 @@ class SQLServerAlterColumnModifierMixin:
             result += " CASCADE"
         return result, ()
 
-    def format_alter_column_action(self, action):
+    def format_alter_column_action(self, action: Any) -> Tuple[str, tuple]:
         """Dispatch an ALTER COLUMN action to a SQL Server-specific formatter.
 
         SQL Server re-specifies the full column rather than applying the
@@ -96,7 +98,7 @@ class SQLServerAlterColumnModifierMixin:
             "NULL/NOT NULL, COLLATE, SPARSE, or MASKED.",
         )
 
-    def format_alter_column_type_action(self, action):
+    def format_alter_column_type_action(self, action: Any) -> Tuple[str, tuple]:
         """Format a T-SQL ALTER COLUMN type change.
 
         SQL Syntax:
@@ -137,7 +139,7 @@ class SQLServerAlterColumnModifierMixin:
 
         return " ".join(parts), ()
 
-    def format_add_masked_action(self, action):
+    def format_add_masked_action(self, action: Any) -> Tuple[str, tuple]:
         """Format ALTER COLUMN ... ADD MASKED (dynamic data masking, 2016+).
 
         SQL Syntax:
@@ -165,7 +167,7 @@ class SQLServerAlterColumnModifierMixin:
             (),
         )
 
-    def format_drop_masked_action(self, action):
+    def format_drop_masked_action(self, action: Any) -> Tuple[str, tuple]:
         """Format ALTER COLUMN ... DROP MASKED (dynamic data masking, 2016+).
 
         SQL Syntax:

@@ -65,7 +65,8 @@ class TestSQLServerDialectPagination:
 
     def test_limit_offset_none(self, dialect):
         sql, params = dialect.format_limit_offset()
-        assert sql is None
+        assert sql == ""
+        assert params == ()
 
     def test_old_version_raises(self, dialect):
         old = SQLServerDialect((10, 0, 0))
@@ -313,6 +314,7 @@ class TestSQLServerDialectSetOperation:
 
     def test_union_all(self, dialect):
         from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
@@ -325,15 +327,17 @@ class TestSQLServerDialectSetOperation:
             from_=TableExpression(dialect, "admins"),
         )
 
-        sql, params = dialect.format_set_operation_expression(
-            left, right, "UNION", alias=None, all_=True
+        expr = SetOperationExpression(
+            dialect, left=left, right=right, operation="UNION", all_=True
         )
+        sql, params = dialect.format_set_operation_expression(expr)
         assert "UNION ALL" in sql
         assert "[users]" in sql
         assert "[admins]" in sql
 
     def test_intersect(self, dialect):
         from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
@@ -346,13 +350,15 @@ class TestSQLServerDialectSetOperation:
             from_=TableExpression(dialect, "shipments"),
         )
 
-        sql, params = dialect.format_set_operation_expression(
-            left, right, "INTERSECT", alias=None, all_=False
+        expr = SetOperationExpression(
+            dialect, left=left, right=right, operation="INTERSECT", all_=False
         )
+        sql, params = dialect.format_set_operation_expression(expr)
         assert "INTERSECT" in sql
 
     def test_except(self, dialect):
         from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
@@ -365,9 +371,10 @@ class TestSQLServerDialectSetOperation:
             from_=TableExpression(dialect, "managers"),
         )
 
-        sql, params = dialect.format_set_operation_expression(
-            left, right, "EXCEPT", alias=None, all_=False
+        expr = SetOperationExpression(
+            dialect, left=left, right=right, operation="EXCEPT", all_=False
         )
+        sql, params = dialect.format_set_operation_expression(expr)
         assert "EXCEPT" in sql
 
 
@@ -425,12 +432,14 @@ class TestSQLServerDialectMerge:
             ),
             when_matched=[
                 MergeAction(
+                    dialect=dialect,
                     action_type=MergeActionType.UPDATE,
                     assignments={"name": Column(dialect, "name", "source")},
                 ),
             ],
             when_not_matched=[
                 MergeAction(
+                    dialect=dialect,
                     action_type=MergeActionType.INSERT,
                     assignments={"id": Column(dialect, "id", "source"), "name": Column(dialect, "name", "source")},
                 ),
@@ -453,12 +462,16 @@ class TestSQLServerDialectFullText:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_contains(self, dialect):
-        sql, params = dialect.format_fulltext_match(["title", "content"], "database")
+        from rhosocial.activerecord.backend.expression.statements.fulltext_match import FulltextMatchExpression
+        expr = FulltextMatchExpression(dialect, ["title", "content"], "database")
+        sql, params = dialect.format_fulltext_match(expr)
         assert "CONTAINS([title], [content]" in sql or "CONTAINS(" in sql
         assert "database" in sql
 
     def test_contains_with_language(self, dialect):
-        sql, params = dialect.format_fulltext_match(["title"], "search term", language="English")
+        from rhosocial.activerecord.backend.expression.statements.fulltext_match import FulltextMatchExpression
+        expr = FulltextMatchExpression(dialect, ["title"], "search term", mode="English")
+        sql, params = dialect.format_fulltext_match(expr)
         assert "LANGUAGE" in sql
 
 
@@ -470,12 +483,14 @@ class TestSQLServerDialectTop:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_top_n(self, dialect):
-        result = dialect.format_top_n_clause(10)
+        result, params = dialect.format_top_n_clause(10)
         assert result == "TOP 10"
+        assert params == ()
 
     def test_top_n_percent(self, dialect):
-        result = dialect.format_top_n_clause(50, percentage=True)
+        result, params = dialect.format_top_n_clause(50, percentage=True)
         assert result == "TOP 50 PERCENT"
+        assert params == ()
 
 
 class TestSQLServerDialectCTE:
@@ -769,15 +784,15 @@ class TestSQLServerDialectDDL:
             dialect=dialect,
             table=TableExpression(dialect, "users"),
             columns=[
-                ColumnDefinition(
+                ColumnDefinition(dialect,
                     name="id",
-                    data_type=IntegerType(),
-                    constraints=[ColumnConstraint(constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)],
+                    data_type=IntegerType(dialect),
+                    constraints=[ColumnConstraint(dialect, constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)],
                 ),
-                ColumnDefinition(
+                ColumnDefinition(dialect,
                     name="name",
-                    data_type=VarCharType(length=255),
-                    constraints=[ColumnConstraint(constraint_type=ColumnConstraintType.NOT_NULL)],
+                    data_type=VarCharType(dialect, length=255),
+                    constraints=[ColumnConstraint(dialect, constraint_type=ColumnConstraintType.NOT_NULL)],
                 ),
             ],
         )

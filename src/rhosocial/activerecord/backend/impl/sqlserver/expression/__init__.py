@@ -16,6 +16,17 @@ from .option_hint import (
     merge_join_hint,
 )
 from .pivot import SQLServerPivotExpression, SQLServerUnpivotExpression
+from .graph import (
+    SQLServerGraphDirection,
+    SQLServerGraphPseudoColumn,
+    SQLServerGraphNodeRef,
+    SQLServerGraphEdgeRef,
+    SQLServerGraphPattern,
+    SQLServerMatchPredicate,
+    SQLServerShortestPathExpression,
+    SQLServerGraphPathAggregate,
+    SQLServerForPathTable,
+)
 from .columnstore import SQLServerColumnstoreIndexExpression
 from .fulltext import (
     SQLServerCreateFullTextCatalogExpression,
@@ -56,6 +67,15 @@ __all__ = [
     "loop_join_hint",
     "merge_join_hint",
     "SQLServerPivotExpression",
+    "SQLServerGraphDirection",
+    "SQLServerGraphPseudoColumn",
+    "SQLServerGraphNodeRef",
+    "SQLServerGraphEdgeRef",
+    "SQLServerGraphPattern",
+    "SQLServerMatchPredicate",
+    "SQLServerShortestPathExpression",
+    "SQLServerGraphPathAggregate",
+    "SQLServerForPathTable",
     "SQLServerUnpivotExpression",
     "SQLServerColumnstoreIndexExpression",
     "SQLServerCreateFullTextCatalogExpression",

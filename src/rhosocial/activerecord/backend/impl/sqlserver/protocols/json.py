@@ -1,0 +1,33 @@
+# src/rhosocial/activerecord/backend/impl/sqlserver/protocols/json.py
+from typing import Protocol, Tuple, Optional, Dict, runtime_checkable
+
+from rhosocial.activerecord.backend.dialect.protocols import JSONSupport
+
+
+@runtime_checkable
+class SQLServerJSONSupport(JSONSupport, Protocol):
+    def format_openjson_expression(
+        self,
+        json_doc: str,
+        path: Optional[str] = None,
+        schema: Optional[Dict[str, str]] = None,
+        alias: Optional[str] = None,
+    ) -> Tuple[str, tuple]: ...
+
+    def format_json_extract(self, expr) -> Tuple[str, tuple]: ...
+
+    def format_json_unquote(self, expr) -> Tuple[str, tuple]: ...
+
+    def format_json_object(self, expr) -> Tuple[str, tuple]: ...
+
+    def format_json_array(self, expr) -> Tuple[str, tuple]: ...
+
+    def format_json_contains(self, expr) -> Tuple[str, tuple]: ...
+
+    def format_json_set(self, expr) -> Tuple[str, tuple]: ...
+
+    def format_json_remove(self, expr) -> Tuple[str, tuple]: ...
+
+    def format_json_type(self, expr) -> Tuple[str, tuple]: ...
+
+    def format_json_valid(self, expr) -> Tuple[str, tuple]: ...

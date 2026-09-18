@@ -52,10 +52,10 @@ class SQLServerCreateFullTextCatalogExpression(BaseExpression):
             raise ValueError("catalog_name is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql = self.dialect.format_create_fulltext_catalog_statement(
+        sql, params = self.dialect.format_create_fulltext_catalog_statement(
             self.catalog_name, as_default=self.is_default
         )
-        return sql, ()
+        return sql, params
 
 
 class SQLServerDropFullTextCatalogExpression(BaseExpression):
@@ -81,8 +81,8 @@ class SQLServerDropFullTextCatalogExpression(BaseExpression):
             raise ValueError("catalog_name is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql = self.dialect.format_drop_fulltext_catalog_statement(self.catalog_name)
-        return sql, ()
+        sql, params = self.dialect.format_drop_fulltext_catalog_statement(self.catalog_name)
+        return sql, params
 
 
 class SQLServerCreateFullTextIndexExpression(BaseExpression):
@@ -129,13 +129,13 @@ class SQLServerCreateFullTextIndexExpression(BaseExpression):
             raise ValueError("catalog_name is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql = self.dialect.format_create_fulltext_index_statement(
+        sql, params = self.dialect.format_create_fulltext_index_statement(
             self.table,
             self.columns,
             self.key_index,
             self.catalog_name,
         )
-        return sql, ()
+        return sql, params
 
 
 class SQLServerDropFullTextIndexExpression(BaseExpression):
@@ -161,5 +161,5 @@ class SQLServerDropFullTextIndexExpression(BaseExpression):
             raise ValueError("table is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql = self.dialect.format_drop_fulltext_index_statement(self.table)
-        return sql, ()
+        sql, params = self.dialect.format_drop_fulltext_index_statement(self.table)
+        return sql, params

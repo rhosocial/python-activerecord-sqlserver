@@ -12,7 +12,7 @@ Version notes:
 - SWITCH, SPLIT, MERGE: SQL Server 2008+
 """
 
-from typing import Any, Sequence, Tuple, TYPE_CHECKING
+from typing import Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
@@ -140,15 +140,7 @@ class SQLServerPartitionMixin:
         """
         boundary_parts = []
         for value in expr.boundary_values:
-            if value is None:
-                boundary_parts.append("NULL")
-            elif isinstance(value, str):
-                escaped = value.replace("'", "''")
-                boundary_parts.append(f"'{escaped}'")
-            elif isinstance(value, bool):
-                boundary_parts.append("1" if value else "0")
-            else:
-                boundary_parts.append(str(value))
+            boundary_parts.append(self.inline_sql_literal(value))
 
         func_name = expr.function_name
         # Support schema-qualified names

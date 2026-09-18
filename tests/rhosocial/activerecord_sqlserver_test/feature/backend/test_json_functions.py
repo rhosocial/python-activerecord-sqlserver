@@ -13,6 +13,17 @@ This module tests SQL Server-specific JSON function functionality including:
 import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.impl.sqlserver.expression.json import (
+    SQLServerJSONArrayExpression,
+    SQLServerJSONContainsExpression,
+    SQLServerJSONExtractExpression,
+    SQLServerJSONObjectExpression,
+    SQLServerJSONRemoveExpression,
+    SQLServerJSONSetExpression,
+    SQLServerJSONTypeExpression,
+    SQLServerJSONUnquoteExpression,
+    SQLServerJSONValidExpression,
+)
 
 SQL_SERVER_2014 = (12, 0, 0)
 SQL_SERVER_2016 = (13, 0, 0)
@@ -54,7 +65,8 @@ class TestJSONFunctionProtocol:
         """Test JSON_VALUE extraction with a single path."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_extract('data', '$.name')
+        expr = SQLServerJSONExtractExpression(dialect, 'data', '$.name')
+        sql, params = expr.to_sql()
 
         assert sql == 'JSON_VALUE(data, ?)'
         assert params == ('$.name',)
@@ -63,21 +75,25 @@ class TestJSONFunctionProtocol:
         """Test JSON_VALUE raises for multiple paths (no T-SQL equivalent)."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
+        expr = SQLServerJSONExtractExpression(
+            dialect, 'data', '$.name', paths=['$.age', '$.city']
+        )
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_json_extract('data', '$.name', ['$.age', '$.city'])
+            expr.to_sql()
 
     def test_format_json_unquote(self):
         """Test JSON_UNQUOTE is not supported (JSON_VALUE returns scalars unquoted)."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
+        expr = SQLServerJSONUnquoteExpression(dialect, 'data')
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_json_unquote('data')
+            expr.to_sql()
 
     def test_format_json_object_empty(self):
         """Test JSON_OBJECT with no arguments."""
         dialect = SQLServerDialect(version=SQL_SERVER_2022)
 
-        sql, params = dialect.format_json_object([])
+        sql, params = SQLServerJSONObjectExpression(dialect, []).to_sql()
 
         assert sql == 'JSON_OBJECT()'
         assert params == ()
@@ -86,7 +102,9 @@ class TestJSONFunctionProtocol:
         """Test JSON_OBJECT with single key-value pair."""
         dialect = SQLServerDialect(version=SQL_SERVER_2022)
 
-        sql, params = dialect.format_json_object([('name', 'John')])
+        sql, params = SQLServerJSONObjectExpression(
+            dialect, [('name', 'John')]
+        ).to_sql()
 
         assert sql == 'JSON_OBJECT(? : ?)'
         assert params == ('name', 'John')
@@ -95,7 +113,9 @@ class TestJSONFunctionProtocol:
         """Test JSON_OBJECT with multiple key-value pairs."""
         dialect = SQLServerDialect(version=SQL_SERVER_2022)
 
-        sql, params = dialect.format_json_object([('name', 'John'), ('age', 30), ('city', 'NYC')])
+        sql, params = SQLServerJSONObjectExpression(
+            dialect, [('name', 'John'), ('age', 30), ('city', 'NYC')]
+        ).to_sql()
 
         assert sql == 'JSON_OBJECT(? : ?, ? : ?, ? : ?)'
         assert params == ('name', 'John', 'age', 30, 'city', 'NYC')
@@ -104,7 +124,7 @@ class TestJSONFunctionProtocol:
         """Test JSON_ARRAY with no arguments."""
         dialect = SQLServerDialect(version=SQL_SERVER_2022)
 
-        sql, params = dialect.format_json_array([])
+        sql, params = SQLServerJSONArrayExpression(dialect, []).to_sql()
 
         assert sql == 'JSON_ARRAY()'
         assert params == ()
@@ -113,7 +133,7 @@ class TestJSONFunctionProtocol:
         """Test JSON_ARRAY with single value."""
         dialect = SQLServerDialect(version=SQL_SERVER_2022)
 
-        sql, params = dialect.format_json_array([1])
+        sql, params = SQLServerJSONArrayExpression(dialect, [1]).to_sql()
 
         assert sql == 'JSON_ARRAY(?)'
         assert params == (1,)
@@ -122,7 +142,9 @@ class TestJSONFunctionProtocol:
         """Test JSON_ARRAY with multiple values."""
         dialect = SQLServerDialect(version=SQL_SERVER_2022)
 
-        sql, params = dialect.format_json_array([1, 'hello', None, True])
+        sql, params = SQLServerJSONArrayExpression(
+            dialect, [1, 'hello', None, True]
+        ).to_sql()
 
         assert sql == 'JSON_ARRAY(?, ?, ?, ?)'
         assert params == (1, 'hello', None, True)
@@ -131,7 +153,8 @@ class TestJSONFunctionProtocol:
         """Test OPENJSON containment check without path."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_contains('data', '{"name": "John"}')
+        expr = SQLServerJSONContainsExpression(dialect, 'data', '{"name": "John"}')
+        sql, params = expr.to_sql()
 
         assert 'EXISTS' in sql
         assert 'OPENJSON(data, ?)' in sql
@@ -141,7 +164,8 @@ class TestJSONFunctionProtocol:
         """Test OPENJSON containment check with path."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_contains('data', 'sqlserver', '$.tags')
+        expr = SQLServerJSONContainsExpression(dialect, 'data', 'sqlserver', '$.tags')
+        sql, params = expr.to_sql()
 
         assert 'EXISTS' in sql
         assert 'OPENJSON(data, ?)' in sql
@@ -151,7 +175,8 @@ class TestJSONFunctionProtocol:
         """Test JSON_MODIFY with single path-value pair."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_set('data', '$.name', 'John')
+        expr = SQLServerJSONSetExpression(dialect, 'data', '$.name', 'John')
+        sql, params = expr.to_sql()
 
         assert sql == 'JSON_MODIFY(data, ?, ?)'
         assert params == ('$.name', 'John')
@@ -160,17 +185,19 @@ class TestJSONFunctionProtocol:
         """Test JSON_MODIFY raises for multiple path-value pairs."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
+        expr = SQLServerJSONSetExpression(
+            dialect, 'data', '$.name', 'John',
+            path_value_pairs=[('$.age', 30), ('$.city', 'NYC')],
+        )
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_json_set(
-                'data', '$.name', 'John',
-                path_value_pairs=[('$.age', 30), ('$.city', 'NYC')]
-            )
+            expr.to_sql()
 
     def test_format_json_remove_single_path(self):
         """Test JSON_MODIFY property removal with a single path."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_remove('data', '$.temp')
+        expr = SQLServerJSONRemoveExpression(dialect, 'data', '$.temp')
+        sql, params = expr.to_sql()
 
         assert sql == 'JSON_MODIFY(data, ?, NULL)'
         assert params == ('$.temp',)
@@ -179,21 +206,25 @@ class TestJSONFunctionProtocol:
         """Test JSON_MODIFY removal raises for multiple paths."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
+        expr = SQLServerJSONRemoveExpression(
+            dialect, 'data', '$.temp', paths=['$.cache', '$.old']
+        )
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_json_remove('data', '$.temp', paths=['$.cache', '$.old'])
+            expr.to_sql()
 
     def test_format_json_type(self):
         """Test JSON_TYPE is not supported by SQL Server."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
+        expr = SQLServerJSONTypeExpression(dialect, 'data')
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_json_type('data')
+            expr.to_sql()
 
     def test_format_json_valid(self):
         """Test ISJSON formatting."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_valid('data')
+        sql, params = SQLServerJSONValidExpression(dialect, 'data').to_sql()
 
         assert sql == 'ISJSON(data)'
         assert params == ()
@@ -234,7 +265,8 @@ class TestAsyncJSONFunctionProtocol:
         """Test async version of JSON_VALUE formatting."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_extract('data', '$.name')
+        expr = SQLServerJSONExtractExpression(dialect, 'data', '$.name')
+        sql, params = expr.to_sql()
 
         assert 'JSON_VALUE' in sql
         assert params == ('$.name',)
@@ -244,7 +276,9 @@ class TestAsyncJSONFunctionProtocol:
         """Test async version of JSON_OBJECT formatting."""
         dialect = SQLServerDialect(version=SQL_SERVER_2022)
 
-        sql, params = dialect.format_json_object([('key', 'value')])
+        sql, params = SQLServerJSONObjectExpression(
+            dialect, [('key', 'value')]
+        ).to_sql()
 
         assert 'JSON_OBJECT' in sql
         assert params == ('key', 'value')
@@ -254,7 +288,7 @@ class TestAsyncJSONFunctionProtocol:
         """Test async version of JSON_ARRAY formatting."""
         dialect = SQLServerDialect(version=SQL_SERVER_2022)
 
-        sql, params = dialect.format_json_array([1, 2, 3])
+        sql, params = SQLServerJSONArrayExpression(dialect, [1, 2, 3]).to_sql()
 
         assert 'JSON_ARRAY' in sql
         assert params == (1, 2, 3)
@@ -264,7 +298,8 @@ class TestAsyncJSONFunctionProtocol:
         """Test async version of OPENJSON containment check."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_contains('data', 'value', '$.path')
+        expr = SQLServerJSONContainsExpression(dialect, 'data', 'value', '$.path')
+        sql, params = expr.to_sql()
 
         assert 'OPENJSON' in sql
         assert 'value' in params
@@ -274,7 +309,8 @@ class TestAsyncJSONFunctionProtocol:
         """Test async version of JSON_MODIFY formatting."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
-        sql, params = dialect.format_json_set('data', '$.key', 'value')
+        expr = SQLServerJSONSetExpression(dialect, 'data', '$.key', 'value')
+        sql, params = expr.to_sql()
 
         assert 'JSON_MODIFY' in sql
         assert '$.key' in params

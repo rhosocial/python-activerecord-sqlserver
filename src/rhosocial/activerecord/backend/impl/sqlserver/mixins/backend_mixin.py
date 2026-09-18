@@ -96,7 +96,7 @@ class SQLServerBackendMixin:
             cursor.execute(
                 "SELECT c.name FROM sys.identity_columns c "
                 "JOIN sys.tables t ON c.object_id = t.object_id "
-                "WHERE t.name = ? AND SCHEMA_NAME(t.schema_id) = 'dbo'",
+                f"WHERE t.name = {self.dialect.p()} AND SCHEMA_NAME(t.schema_id) = 'dbo'",
                 (table_name,),
             )
             for row in cursor.fetchall():
@@ -186,7 +186,7 @@ class SQLServerBackendMixin:
 
     def get_identity_current(self, table: str) -> Optional[int]:
         cursor = self._get_cursor()
-        cursor.execute("SELECT IDENT_CURRENT(?)", (table,))
+        cursor.execute(f"SELECT IDENT_CURRENT({self.dialect.p()})", (table,))
         row = cursor.fetchone()
         cursor.close()
         if row and row[0] is not None:
@@ -195,7 +195,7 @@ class SQLServerBackendMixin:
 
     def reset_identity(self, table: str, seed: int = 1) -> None:
         cursor = self._get_cursor()
-        cursor.execute("DBCC CHECKIDENT(?, RESEED, ?)", (table, seed))
+        cursor.execute(f"DBCC CHECKIDENT({self.dialect.p()}, RESEED, {self.dialect.p()})", (table, seed))
         cursor.close()
 
     def set_lock_timeout(self, timeout_ms: int) -> None:

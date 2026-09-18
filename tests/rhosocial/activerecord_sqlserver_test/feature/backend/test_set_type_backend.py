@@ -7,6 +7,12 @@ VARCHAR columns and membership is checked with LIKE predicates.
 """
 import pytest
 
+from rhosocial.activerecord.backend.impl.sqlserver.expression.set_type import (
+    SQLServerFindInSetExpression,
+    SQLServerSetContainsExpression,
+    SQLServerSetLiteralExpression,
+)
+
 
 class TestSQLServerSetTypeBackend:
     """Synchronous tests for comma-separated values with real database."""
@@ -111,7 +117,9 @@ class TestSQLServerSetTypeBackend:
         """)
 
         dialect = sqlserver_backend.dialect
-        sql_literal, params = dialect.format_set_literal(['red', 'blue'], ['red', 'green', 'blue'])
+        sql_literal, params = SQLServerSetLiteralExpression(
+            dialect, ['red', 'blue'], ['red', 'green', 'blue']
+        ).to_sql()
 
         sqlserver_backend.execute(
             f"INSERT INTO #test_set_literal (colors) VALUES ({sql_literal})",
@@ -140,7 +148,7 @@ class TestSQLServerSetTypeBackend:
         sqlserver_backend.execute("INSERT INTO #test_find_format (tags) VALUES ('a,c')")
 
         dialect = sqlserver_backend.dialect
-        condition, params = dialect.format_find_in_set('a', 'tags')
+        condition, params = SQLServerFindInSetExpression(dialect, 'a', 'tags').to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT id, tags FROM #test_find_format WHERE {condition}",
@@ -168,7 +176,9 @@ class TestSQLServerSetTypeBackend:
         sqlserver_backend.execute("INSERT INTO #test_contains_format (permissions) VALUES ('read,write,admin')")
 
         dialect = sqlserver_backend.dialect
-        condition, params = dialect.format_set_contains('permissions', ['read', 'write'])
+        condition, params = SQLServerSetContainsExpression(
+            dialect, 'permissions', ['read', 'write']
+        ).to_sql()
 
         result = sqlserver_backend.execute(
             f"SELECT id, permissions FROM #test_contains_format WHERE {condition}",
@@ -323,7 +333,9 @@ class TestAsyncSQLServerSetTypeBackend:
         """)
 
         dialect = async_sqlserver_backend.dialect
-        sql_literal, params = dialect.format_set_literal(['green', 'red'], ['red', 'green', 'blue'])
+        sql_literal, params = SQLServerSetLiteralExpression(
+            dialect, ['green', 'red'], ['red', 'green', 'blue']
+        ).to_sql()
 
         await async_sqlserver_backend.execute(
             f"INSERT INTO #test_async_set_literal (colors) VALUES ({sql_literal})",
@@ -352,7 +364,7 @@ class TestAsyncSQLServerSetTypeBackend:
         await async_sqlserver_backend.execute("INSERT INTO #test_async_find_format (tags) VALUES ('z')")
 
         dialect = async_sqlserver_backend.dialect
-        condition, params = dialect.format_find_in_set('x', 'tags')
+        condition, params = SQLServerFindInSetExpression(dialect, 'x', 'tags').to_sql()
 
         result = await async_sqlserver_backend.execute(
             f"SELECT id, tags FROM #test_async_find_format WHERE {condition}",
@@ -379,7 +391,9 @@ class TestAsyncSQLServerSetTypeBackend:
         await async_sqlserver_backend.execute("INSERT INTO #test_async_contains (roles) VALUES ('admin,moderator')")
 
         dialect = async_sqlserver_backend.dialect
-        condition, params = dialect.format_set_contains('roles', ['admin'])
+        condition, params = SQLServerSetContainsExpression(
+            dialect, 'roles', ['admin']
+        ).to_sql()
 
         result = await async_sqlserver_backend.execute(
             f"SELECT id, roles FROM #test_async_contains WHERE {condition}",
