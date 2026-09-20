@@ -13,7 +13,7 @@ This module defines:
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
+from typing import Any, Dict, Optional, Sequence, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
 from rhosocial.activerecord.backend.expression.statements import PartitionClause, PartitionStrategy
@@ -44,13 +44,11 @@ class SQLServerPartitionByRangeClause(PartitionClause):
         partition_scheme: str,
         *,
         range_direction: SQLServerPartitionRangeDirection = SQLServerPartitionRangeDirection.RIGHT,
-        dialect_options: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             dialect,
             PartitionStrategy.RANGE,
             keys,
-            dialect_options=dialect_options,
         )
         self.partition_scheme = partition_scheme
         self.range_direction = range_direction

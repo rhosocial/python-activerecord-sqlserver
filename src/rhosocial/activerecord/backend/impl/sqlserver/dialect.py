@@ -846,10 +846,9 @@ class SQLServerDialect(
         on_sql, on_params = expr.on_condition.to_sql()
         all_params.extend(on_params)
 
-        dialect_options = getattr(expr, "dialect_options", {}) or {}
-        output_columns = dialect_options.get("output")
-        output_action = dialect_options.get("output_action", False)
-        holdlock = dialect_options.get("holdlock", False)
+        output_columns = getattr(expr, "output", None)
+        output_action = getattr(expr, "output_action", False)
+        holdlock = getattr(expr, "holdlock", False)
 
         parts = [
             f"MERGE INTO {target_sql}",

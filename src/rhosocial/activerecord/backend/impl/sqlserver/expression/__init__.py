@@ -32,6 +32,7 @@ from .alter_column import SQLServerAlterColumn
 from .table_options import SQLServerCreateTableOptions
 from .index import SQLServerIndexDefinition
 from .create_table import SQLServerCreateTableExpression
+from .dml import SQLServerMergeExpression, SQLServerSelectIntoExpression
 from .columnstore import SQLServerColumnstoreIndexExpression
 from .fulltext import (
     SQLServerCreateFullTextCatalogExpression,
@@ -64,6 +65,8 @@ __all__ = [
     "SQLServerOpenJsonExpression",
     "OpenJsonColumn",
     "SQLServerNextValueForExpression",
+    "SQLServerMergeExpression",
+    "SQLServerSelectIntoExpression",
     "SQLServerOptionHintClause",
     "recompile_hint",
     "maxdop_hint",

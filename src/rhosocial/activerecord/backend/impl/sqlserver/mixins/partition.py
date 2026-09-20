@@ -122,7 +122,7 @@ class SQLServerPartitionMixin:
             parts.append(key_sql)
             params.extend(key_params)
 
-        scheme = expr.dialect_options.get("partition_scheme")
+        scheme = getattr(expr, "partition_scheme", None)
         if scheme:
             return f" ON {self.format_identifier(scheme)} ({', '.join(parts)})", tuple(params)  # type: ignore[attr-defined]
 
