@@ -95,7 +95,8 @@ class SQLServerPartitionMixin:
         """Format PARTITION BY clause for SQL Server.
 
         SQL Server uses ON partition_scheme(column) syntax.
-        The core PartitionClause must reference a scheme via dialect_options.
+        The partition scheme is a typed field on
+        ``SQLServerPartitionByRangeClause``.
         """
         self.check_feature_support(  # type: ignore[attr-defined]
             "supports_partitioned_table_creation",
