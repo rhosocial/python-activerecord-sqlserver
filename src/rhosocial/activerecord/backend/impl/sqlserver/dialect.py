@@ -134,6 +134,7 @@ from .mixins.explain import SQLServerExplainMixin
 from .mixins.dql import SQLServerDQLMixin
 from .mixins.dml import SQLServerDMLMixin
 from .mixins.ddl_view import SQLServerViewMixin
+from .mixins.ddl_database import SQLServerDatabaseMixin
 from .mixins.schema import SQLServerSchemaMixin
 from .mixins.index import SQLServerIndexMixin
 from .mixins.generated_column import SQLServerGeneratedColumnMixin
@@ -243,6 +244,7 @@ class SQLServerDialect(
     SQLServerDMLMixin,
     SQLServerViewMixin,
     SQLServerSchemaMixin,
+    SQLServerDatabaseMixin,
     SQLServerIndexMixin,
     SQLServerGeneratedColumnMixin,
     SQLServerSetOperationMixin,

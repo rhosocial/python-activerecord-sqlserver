@@ -28,6 +28,7 @@ from .explain import SQLServerExplainMixin
 from .dql import SQLServerDQLMixin
 from .dml import SQLServerDMLMixin
 from .ddl_view import SQLServerViewMixin
+from .ddl_database import SQLServerDatabaseMixin
 from .schema import SQLServerSchemaMixin
 from .index import SQLServerIndexMixin
 from .generated_column import SQLServerGeneratedColumnMixin
@@ -68,6 +69,7 @@ __all__ = [
     "SQLServerDMLMixin",
     "SQLServerViewMixin",
     "SQLServerSchemaMixin",
+    "SQLServerDatabaseMixin",
     "SQLServerIndexMixin",
     "SQLServerGeneratedColumnMixin",
     "SQLServerSetOperationMixin",
