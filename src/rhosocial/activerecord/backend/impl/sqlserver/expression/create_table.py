@@ -52,8 +52,6 @@ class SQLServerCreateTableExpression(CreateTableExpression):
         *,
         partition: Optional["PartitionClause"] = None,
         table_options: Optional["CreateTableOptions"] = None,
-        on_commit_delete: Optional[bool] = None,
-        external_file: Optional[str] = None,
         graph_table_kind: Any = None,
         edge_constraints: Optional[List[Any]] = None,
     ):
@@ -70,8 +68,6 @@ class SQLServerCreateTableExpression(CreateTableExpression):
             storage_options=storage_options,
             partition=partition,
             table_options=table_options,
-            on_commit_delete=on_commit_delete,
-            external_file=external_file,
         )
         self.graph_table_kind = graph_table_kind
         self.edge_constraints = edge_constraints or []
