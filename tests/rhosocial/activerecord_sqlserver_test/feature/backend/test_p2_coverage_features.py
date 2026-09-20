@@ -74,11 +74,11 @@ class TestMemoryOptimizedTables:
             ColumnConstraint,
             ColumnConstraintType,
             ColumnDefinition,
-            IndexDefinition,
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
         from rhosocial.activerecord.backend.impl.sqlserver.expression import (
             SQLServerCreateTableOptions,
+            SQLServerIndexDefinition,
         )
 
         col = ColumnDefinition(d, "id", IntegerType(d))
@@ -87,11 +87,12 @@ class TestMemoryOptimizedTables:
         if hash_indexes:
             for name, (columns, bucket_count) in hash_indexes.items():
                 indexes.append(
-                    IndexDefinition(
+                    SQLServerIndexDefinition(
                         d,
                         name,
                         list(columns),
-                        dialect_options={"hash_index": True, "bucket_count": bucket_count},
+                        hash_index=True,
+                        bucket_count=bucket_count,
                     )
                 )
         table_options = None
@@ -202,11 +203,11 @@ class TestMemoryOptimizedTables:
             ColumnConstraint,
             ColumnConstraintType,
             ColumnDefinition,
-            IndexDefinition,
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
         from rhosocial.activerecord.backend.impl.sqlserver.expression import (
             SQLServerCreateTableOptions,
+            SQLServerIndexDefinition,
         )
 
         col = ColumnDefinition(dialect, "id", IntegerType(dialect))
@@ -215,7 +216,7 @@ class TestMemoryOptimizedTables:
             dialect,
             "t",
             [col],
-            indexes=[IndexDefinition(dialect, "ix", ["id"], dialect_options={"hash_index": True})],
+            indexes=[SQLServerIndexDefinition(dialect, "ix", ["id"], hash_index=True)],
             table_options=SQLServerCreateTableOptions(dialect, memory_optimized=True),
         )
         with pytest.raises(ValueError):

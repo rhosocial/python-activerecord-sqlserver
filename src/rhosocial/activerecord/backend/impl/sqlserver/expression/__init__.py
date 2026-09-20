@@ -29,6 +29,7 @@ from .graph import (
 )
 from .column import SQLServerColumnDefinition, SQLServerColumnOptions
 from .table_options import SQLServerCreateTableOptions
+from .index import SQLServerIndexDefinition
 from .columnstore import SQLServerColumnstoreIndexExpression
 from .fulltext import (
     SQLServerCreateFullTextCatalogExpression,
@@ -82,6 +83,7 @@ __all__ = [
     "SQLServerCreateTableOptions",
     "SQLServerColumnDefinition",
     "SQLServerColumnOptions",
+    "SQLServerIndexDefinition",
     "SQLServerColumnstoreIndexExpression",
     "SQLServerCreateFullTextCatalogExpression",
     "SQLServerDropFullTextCatalogExpression",

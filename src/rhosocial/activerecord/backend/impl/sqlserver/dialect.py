@@ -705,14 +705,13 @@ class SQLServerDialect(
                 col_parts.append(self.format_identifier(str(col)))
         cols_str = ', '.join(col_parts)
 
-        idx_options = getattr(idx_def, "dialect_options", None) or {}
-        if idx_options.get("hash_index"):
+        if getattr(idx_def, "hash_index", False):
             self.check_feature_support(
                 "supports_memory_optimized_tables",
                 "NONCLUSTERED HASH index",
                 "requires SQL Server 2014+ (memory-optimized tables).",
             )
-            bucket_count = idx_options.get("bucket_count")
+            bucket_count = getattr(idx_def, "bucket_count", None)
             if bucket_count is None:
                 raise ValueError("bucket_count is required for a NONCLUSTERED HASH index")
             parts.append(f"NONCLUSTERED HASH ({cols_str}) WITH (BUCKET_COUNT = {bucket_count})")
