@@ -13,34 +13,14 @@ import pytest
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
     SQLServerNVarCharType,
-    SQLServerNCharType,
-    SQLServerNVarCharMaxType,
     SQLServerVarBinaryType,
-    SQLServerVarBinaryMaxType,
-    SQLServerXmlType,
-    SQLServerTinyIntType,
-    SQLServerBitType,
-    SQLServerImageType,
 )
 from rhosocial.activerecord.backend.expression.types import (
-    IntegerType,
-    BigIntType,
-    SmallIntType,
     FloatType,
-    RealType,
-    DoubleType,
     DecimalType,
-    BooleanType,
-    VarCharType,
-    CharType,
-    TextType,
     DateTimeType,
-    DateType,
     TimeType,
     TimestampType,
-    JsonType,
-    BlobType,
-    CustomType,
 )
 
 SQL_SERVER_2022 = (16, 0, 0)
@@ -164,24 +144,15 @@ class TestSuggestedDataTypes:
             )
 
 
-class TestDialectOptionsForwarding:
-    """dialect_options are forwarded through __init__ and participate in equality."""
+class TestDialectOptionsRemoved:
+    """The data-type value objects no longer carry a dialect_options bag."""
 
-    def test_nvarchar_forwarding(self):
-        t1 = SQLServerNVarCharType(length=100, dialect_options={"foo": "bar"})
-        assert t1.dialect_options == {"foo": "bar"}
+    def test_constructor_rejects_dialect_options(self):
+        with pytest.raises(TypeError):
+            SQLServerNVarCharType(length=100, dialect_options={"foo": "bar"})
 
-    def test_nvarchar_equality_with_options(self):
-        t1 = SQLServerNVarCharType(length=100, dialect_options={"foo": "bar"})
-        t2 = SQLServerNVarCharType(length=100, dialect_options={"foo": "bar"})
-        t3 = SQLServerNVarCharType(length=100, dialect_options={"foo": "baz"})
-        assert t1 == t2
-        assert t1 != t3
 
-    def test_nvarchar_hash_ignores_options(self):
-        t1 = SQLServerNVarCharType(length=100, dialect_options={"foo": "bar"})
-        t2 = SQLServerNVarCharType(length=100, dialect_options={"foo": "baz"})
-        assert hash(t1) == hash(t2)
+
 
     def test_varbinary_type_params(self):
         t = SQLServerVarBinaryType(length=512)
