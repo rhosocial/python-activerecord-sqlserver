@@ -561,14 +561,10 @@ class SQLServerDialect(
             parts.append(partition_sql)
             all_params.extend(partition_params)
 
+        from .expression.table_options import SQLServerCreateTableOptions
         table_options = getattr(expr, "table_options", None)
-        memory_optimized = getattr(table_options, "memory_optimized", None) if table_options else None
-        if memory_optimized is None:
-            memory_optimized = dialect_options.get("memory_optimized")
-        if memory_optimized:
-            durability = getattr(table_options, "durability", None) if table_options else None
-            if durability is None:
-                durability = dialect_options.get("durability", "SCHEMA_ONLY")
+        if isinstance(table_options, SQLServerCreateTableOptions) and table_options.memory_optimized:
+            durability = table_options.durability or "SCHEMA_ONLY"
             parts.append(self.format_memory_optimized_option(durability))
 
         # SQL Graph table kind (AS NODE / AS EDGE), if requested.
