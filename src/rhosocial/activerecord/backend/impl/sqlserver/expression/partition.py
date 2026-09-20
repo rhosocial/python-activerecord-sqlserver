@@ -13,7 +13,7 @@ This module defines:
 """
 
 from enum import Enum
-from typing import Any, Dict, Optional, Sequence, TYPE_CHECKING
+from typing import Any, Optional, Sequence, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
 from rhosocial.activerecord.backend.expression.statements import PartitionClause, PartitionStrategy
@@ -74,14 +74,12 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
         boundary_values: Sequence[Any],
         *,
         range_direction: SQLServerPartitionRangeDirection = SQLServerPartitionRangeDirection.RIGHT,
-        dialect_options: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(dialect)
         self.function_name = function_name
         self.data_type = data_type
         self.boundary_values = list(boundary_values)
         self.range_direction = range_direction
-        self.dialect_options = dict(dialect_options or {})
 
     def to_sql(self) -> SQLQueryAndParams:
         return self.dialect.format_sqlserver_partition_function(self)
@@ -105,7 +103,6 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         filegroups: Sequence[str],
         *,
         all_filegroup: Optional[str] = None,
-        dialect_options: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(dialect)
         self.scheme_name = scheme_name
@@ -114,7 +111,6 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         if all_filegroup and filegroups:
             raise ValueError("all_filegroup and filegroups are mutually exclusive")
         self.all_filegroup = all_filegroup
-        self.dialect_options = dict(dialect_options or {})
 
     def to_sql(self) -> SQLQueryAndParams:
         return self.dialect.format_sqlserver_partition_scheme(self)
