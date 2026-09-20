@@ -57,8 +57,33 @@ class SQLServerSelectIntoExpression(QueryExpression):
     SQL Server ``format_select_into_statement`` reads it.
     """
 
-    def __init__(self, dialect: "SQLDialectBase", *args, select_into_table: Optional[str] = None, **kwargs):
-        super().__init__(dialect, *args, **kwargs)
+    def __init__(
+        self,
+        dialect: "SQLDialectBase",
+        select: List["BaseExpression"],
+        from_=None,
+        where=None,
+        group_by_having=None,
+        order_by=None,
+        qualify=None,
+        limit_offset=None,
+        for_update=None,
+        select_modifier=None,
+        *,
+        select_into_table: Optional[str] = None,
+    ):
+        super().__init__(
+            dialect,
+            select=select,
+            from_=from_,
+            where=where,
+            group_by_having=group_by_having,
+            order_by=order_by,
+            qualify=qualify,
+            limit_offset=limit_offset,
+            for_update=for_update,
+            select_modifier=select_modifier,
+        )
         self.select_into_table = select_into_table
 
 
