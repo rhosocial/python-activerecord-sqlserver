@@ -8,7 +8,6 @@ specific behaviors and SQL dialect.
 """
 
 import logging
-import re
 import time
 from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple, Type
@@ -52,26 +51,6 @@ class SQLServerUnicodeDialect(SQLServerDialect):
 
     def format_data_type_char(self, data_type):
         return (f"NCHAR({data_type.length})" if data_type.length is not None else "NCHAR(1)"), ()
-
-    def format_cte(self, name, query_sql, columns=None, recursive=False, materialized=None, dialect_options=None):
-        """Format a CTE, working around SQL Server's ``ORDER BY`` restriction.
-
-        SQL Server rejects ``ORDER BY`` inside a CTE body unless ``TOP``,
-        ``OFFSET`` or ``FOR XML`` is also present (error 1033). The shared
-        testsuite builds CTE bodies with plain ``ORDER BY`` (valid on MySQL /
-        PostgreSQL), so inject ``TOP (100) PERCENT`` before the sort when no
-        ``TOP`` is already specified.
-        """
-        if re.search(r"\bORDER\s+BY\b", query_sql, re.IGNORECASE) and not re.search(
-            r"\bTOP\s*\(?\d+\)?", query_sql, re.IGNORECASE
-        ):
-            match = re.match(r"(?is)^(\s*SELECT\s+)((?:DISTINCT\s+|ALL\s+)?)(.*)$", query_sql)
-            if match:
-                query_sql = f"{match.group(1)}TOP (100) PERCENT {match.group(2)}{match.group(3)}"
-        return super().format_cte(
-            name, query_sql, columns=columns, recursive=recursive,
-            materialized=materialized, dialect_options=dialect_options,
-        )
 
 
 class SQLServerBackend(
