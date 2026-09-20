@@ -83,7 +83,6 @@ create_expr = CreateTableExpression(
     columns=columns,
     indexes=indexes,
     if_not_exists=True,
-    dialect_options={},
 )
 
 sql, params = create_expr.to_sql()

@@ -77,7 +77,6 @@ insert_expr = InsertExpression(
     source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
     columns=['name'],
     returning=ReturningClause(dialect, [Column(dialect, 'id')]),
-    dialect_options={},
 )
 
 sql, params = insert_expr.to_sql()
