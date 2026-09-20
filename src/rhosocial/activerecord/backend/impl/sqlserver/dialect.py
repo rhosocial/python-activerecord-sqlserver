@@ -512,8 +512,6 @@ class SQLServerDialect(
         """
         all_params: List[Any] = []
 
-        dialect_options = getattr(expr, "dialect_options", {}) or {}
-
         parts = ["CREATE TABLE"]
 
         if expr.temporary:
@@ -547,7 +545,7 @@ class SQLServerDialect(
             all_params.extend(idx_params)
 
         # SQL Graph edge constraints (CONNECTION) are table-level constraints.
-        edge_constraints = dialect_options.get("edge_constraints")
+        edge_constraints = getattr(expr, "edge_constraints", None)
         if edge_constraints:
             for edge_constraint in edge_constraints:
                 ec_sql, ec_params = edge_constraint.to_sql()
@@ -568,7 +566,7 @@ class SQLServerDialect(
             parts.append(self.format_memory_optimized_option(durability))
 
         # SQL Graph table kind (AS NODE / AS EDGE), if requested.
-        graph_kind = dialect_options.get("graph_table_kind")
+        graph_kind = getattr(expr, "graph_table_kind", None)
         if graph_kind is not None:
             from .expression.ddl.graph import (
                 SQLServerAsGraphTableExpression,
