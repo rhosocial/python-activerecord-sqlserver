@@ -588,9 +588,17 @@ class SQLServerDialect(
         return ' '.join(parts), tuple(all_params)
 
     def format_column_definition(self, col_def: "ColumnDefinition") -> Tuple[str, tuple]:
-        """Format a column definition for SQL Server."""
+        """Format a column definition for SQL Server.
+
+        Accepts both the generic ``ColumnDefinition`` and the SQL Server
+        ``SQLServerColumnDefinition``; the latter's SQL Server-only attributes
+        (``sparse`` / ``rowguidcol``) are rendered here.
+        """
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraintType,
+        )
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.column import (
+            SQLServerColumnDefinition,
         )
         type_sql, type_params = col_def.data_type.to_sql()
         parts = [self.format_identifier(col_def.name), type_sql]
@@ -629,6 +637,12 @@ class SQLServerDialect(
             gen_sql, gen_params = col_def.generated_expression.to_sql()
             parts.append(gen_sql.lstrip())
             params.extend(gen_params)
+
+        if isinstance(col_def, SQLServerColumnDefinition):
+            if col_def.rowguidcol:
+                parts.append("ROWGUIDCOL")
+            if col_def.sparse:
+                parts.append("SPARSE")
 
         return ' '.join(parts), tuple(params)
 
