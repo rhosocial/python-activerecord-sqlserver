@@ -6,7 +6,6 @@ This module tests SQL Server dialect formatting methods.
 """
 import pytest
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
-from rhosocial.activerecord.backend.impl.sqlserver.mixins.ddl_database import SQLServerDatabaseMixin
 
 
 class TestSQLServerDialect:
@@ -85,7 +84,7 @@ class TestSQLServerDialectStatements:
 
     @pytest.fixture
     def database_dialect(self):
-        class DatabaseDialect(SQLServerDatabaseMixin, SQLServerDialect):
+        class DatabaseDialect(SQLServerDialect):
             pass
 
         return DatabaseDialect(version=(16, 0, 0))
