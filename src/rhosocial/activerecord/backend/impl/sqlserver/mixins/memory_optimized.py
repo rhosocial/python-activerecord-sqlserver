@@ -10,7 +10,7 @@ expressed through ``CREATE TABLE ... WITH (...)`` table options:
 
 This mixin provides the capability switch and the ``format_*`` helpers used
 both standalone and from the dialect's ``format_create_table_statement``
-path (via ``dialect_options``).
+path (via the typed ``SQLServerCreateTableOptions``).
 """
 
 from typing import Optional, Sequence
