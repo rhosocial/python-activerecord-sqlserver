@@ -28,8 +28,10 @@ from .graph import (
     SQLServerForPathTable,
 )
 from .column import SQLServerColumnDefinition, SQLServerColumnOptions
+from .alter_column import SQLServerAlterColumn
 from .table_options import SQLServerCreateTableOptions
 from .index import SQLServerIndexDefinition
+from .create_table import SQLServerCreateTableExpression
 from .columnstore import SQLServerColumnstoreIndexExpression
 from .fulltext import (
     SQLServerCreateFullTextCatalogExpression,
@@ -83,7 +85,9 @@ __all__ = [
     "SQLServerCreateTableOptions",
     "SQLServerColumnDefinition",
     "SQLServerColumnOptions",
+    "SQLServerAlterColumn",
     "SQLServerIndexDefinition",
+    "SQLServerCreateTableExpression",
     "SQLServerColumnstoreIndexExpression",
     "SQLServerCreateFullTextCatalogExpression",
     "SQLServerDropFullTextCatalogExpression",

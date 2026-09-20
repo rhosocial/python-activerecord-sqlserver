@@ -346,12 +346,13 @@ class TestAlterColumn:
 
         return AlterTableExpression(d, "t", actions=[action]).to_sql()[0]
 
-    def _alter_column(self, d, column_name="c", operation="SET DATA TYPE", new_value=None, **dialect_options):
-        from rhosocial.activerecord.backend.expression.statements import AlterColumn
+    def _alter_column(self, d, column_name="c", operation="SET DATA TYPE", new_value=None, **options):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerAlterColumn,
+        )
 
-        return AlterColumn(
-            d, column_name, operation=operation, new_value=new_value,
-            dialect_options=dialect_options,
+        return SQLServerAlterColumn(
+            d, column_name, operation, new_value=new_value, **options
         )
 
     def test_alter_column_type(self, dialect):

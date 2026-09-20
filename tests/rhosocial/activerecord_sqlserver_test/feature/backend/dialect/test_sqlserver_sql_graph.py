@@ -19,6 +19,7 @@ from rhosocial.activerecord.backend.expression.statements import (
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+    SQLServerCreateTableExpression,
     SQLServerForPathTable,
     SQLServerGraphDirection,
     SQLServerGraphEdgeRef,
@@ -290,10 +291,10 @@ class TestDdl:
         dialect = SQLServerDialect(version=(13, 0, 0))
         expr = SQLServerAsGraphTableExpression(dialect, kind)
         if create_table:
-            expr = CreateTableExpression(
+            expr = SQLServerCreateTableExpression(
                 dialect, table="graph_table",
                 columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
-                dialect_options={"graph_table_kind": kind},
+                graph_table_kind=kind,
             )
         with pytest.raises(UnsupportedFeatureError, match="AS NODE/EDGE") as exc:
             expr.to_sql()
@@ -327,23 +328,21 @@ class TestDdl:
     )
     def test_create_graph_table(self, major, kind, expected):
         dialect = SQLServerDialect(version=(major, 0, 0))
-        expr = CreateTableExpression(
+        expr = SQLServerCreateTableExpression(
             dialect, table="graph_table",
             columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
-            dialect_options={"graph_table_kind": kind},
+            graph_table_kind=kind,
         )
         assert expr.to_sql() == (expected, ())
 
     @pytest.mark.parametrize("major", [14, 15, 16, 17])
     def test_create_table_edge_with_constraint(self, major):
         dialect = SQLServerDialect(version=(major, 0, 0))
-        expr = CreateTableExpression(
+        expr = SQLServerCreateTableExpression(
             dialect, table="friend",
             columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
-            dialect_options={
-                "graph_table_kind": SQLServerGraphTableKind.EDGE,
-                "edge_constraints": [SQLServerEdgeConstraint(dialect, "Person", "Person", name="ec_friend")],
-            },
+            graph_table_kind=SQLServerGraphTableKind.EDGE,
+            edge_constraints=[SQLServerEdgeConstraint(dialect, "Person", "Person", name="ec_friend")],
         )
         if major == 14:
             with pytest.raises(UnsupportedFeatureError, match="CONNECTION") as exc:
