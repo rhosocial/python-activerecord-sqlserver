@@ -28,6 +28,7 @@ from .graph import (
     SQLServerForPathTable,
 )
 from .column import SQLServerColumnDefinition, SQLServerColumnOptions
+from .table_options import SQLServerCreateTableOptions
 from .columnstore import SQLServerColumnstoreIndexExpression
 from .fulltext import (
     SQLServerCreateFullTextCatalogExpression,
@@ -78,6 +79,7 @@ __all__ = [
     "SQLServerGraphPathAggregate",
     "SQLServerForPathTable",
     "SQLServerUnpivotExpression",
+    "SQLServerCreateTableOptions",
     "SQLServerColumnDefinition",
     "SQLServerColumnOptions",
     "SQLServerColumnstoreIndexExpression",
