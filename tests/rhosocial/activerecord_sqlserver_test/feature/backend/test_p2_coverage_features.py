@@ -77,6 +77,9 @@ class TestMemoryOptimizedTables:
             IndexDefinition,
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerCreateTableOptions,
+        )
 
         col = ColumnDefinition(d, "id", IntegerType(d))
         col.constraints.append(ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY))
@@ -91,11 +94,13 @@ class TestMemoryOptimizedTables:
                         dialect_options={"hash_index": True, "bucket_count": bucket_count},
                     )
                 )
-        dialect_options = {}
+        table_options = None
         if memory_optimized:
-            dialect_options = {"memory_optimized": True, "durability": durability}
+            table_options = SQLServerCreateTableOptions(
+                d, memory_optimized=True, durability=durability
+            )
         return CreateTableExpression(
-            d, "t", [col], indexes=indexes, dialect_options=dialect_options
+            d, "t", [col], indexes=indexes, table_options=table_options
         )
 
     def test_mixin_registered(self, dialect):
@@ -200,6 +205,9 @@ class TestMemoryOptimizedTables:
             IndexDefinition,
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerCreateTableOptions,
+        )
 
         col = ColumnDefinition(dialect, "id", IntegerType(dialect))
         col.constraints.append(ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY))
@@ -208,7 +216,7 @@ class TestMemoryOptimizedTables:
             "t",
             [col],
             indexes=[IndexDefinition(dialect, "ix", ["id"], dialect_options={"hash_index": True})],
-            dialect_options={"memory_optimized": True},
+            table_options=SQLServerCreateTableOptions(dialect, memory_optimized=True),
         )
         with pytest.raises(ValueError):
             ct.to_sql()
