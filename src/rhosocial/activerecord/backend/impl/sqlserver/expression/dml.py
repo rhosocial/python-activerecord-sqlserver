@@ -10,6 +10,7 @@ from rhosocial.activerecord.backend.expression.statements import (
 
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
+    from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 
 class SQLServerMergeExpression(MergeExpression):
