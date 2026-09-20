@@ -250,15 +250,14 @@ class SQLServerProtocolSupportMixin:
         SQL Syntax:
             SELECT ... INTO [new_table] FROM ... WHERE ...
 
-        The target table is taken from ``expr.dialect_options["select_into_table"]``.
+        The target table is taken from ``expr.select_into_table``.
         The INTO clause is inserted between the select list and the FROM
         clause of the fully rendered query.
         """
-        dialect_options = getattr(expr, "dialect_options", None) or {}
-        into_table = dialect_options.get("select_into_table")
+        into_table = getattr(expr, "select_into_table", None)
         if not into_table:
             raise ValueError(
-                "dialect_options['select_into_table'] is required for SELECT INTO"
+                "select_into_table is required for SELECT INTO"
             )
 
         full_sql, params = expr.to_sql()

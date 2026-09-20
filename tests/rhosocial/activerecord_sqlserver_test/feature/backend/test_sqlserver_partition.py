@@ -17,6 +17,9 @@ from rhosocial.activerecord.backend.expression.statements import (
     ColumnConstraintType,
 )
 from rhosocial.activerecord.backend.expression.types import DateType, IntegerType, VarCharType
+from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
+    SQLServerPartitionByRangeClause,
+)
 from rhosocial.activerecord.backend.dialect.mixins import (
     DDLColumnMixin,
     ExpressionMixin,
@@ -97,10 +100,7 @@ class TestSQLServerPartitionClause:
     def test_format_partition_clause_with_scheme(self):
         d = SQLServerDialect(SQL_SERVER_2022)
         col = Column(d, "create_date")
-        partition = PartitionClause(
-            d, PartitionStrategy.RANGE, [col],
-            dialect_options={"partition_scheme": "ps_sales"},
-        )
+        partition = SQLServerPartitionByRangeClause(d, [col], "ps_sales")
         sql, params = d.format_partition_clause(partition)
         assert "ON [ps_sales] ([create_date])" in sql
         assert params == ()
@@ -109,10 +109,7 @@ class TestSQLServerPartitionClause:
         d = SQLServerDialect(SQL_SERVER_2022)
         col1 = Column(d, "year")
         col2 = Column(d, "month")
-        partition = PartitionClause(
-            d, PartitionStrategy.RANGE, [col1, col2],
-            dialect_options={"partition_scheme": "ps_date"},
-        )
+        partition = SQLServerPartitionByRangeClause(d, [col1, col2], "ps_date")
         sql, params = d.format_partition_clause(partition)
         assert "ON [ps_date] ([year], [month])" in sql
 
@@ -266,10 +263,7 @@ class TestSQLServerCreateTableWithPartition:
         pk = ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY)
         col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
         col = Column(d, "id")
-        partition = PartitionClause(
-            d, PartitionStrategy.RANGE, [col],
-            dialect_options={"partition_scheme": "ps_test"},
-        )
+        partition = SQLServerPartitionByRangeClause(d, [col], "ps_test")
         stmt = CreateTableExpression(
             d, "test",
             columns=[col_def],
@@ -280,16 +274,11 @@ class TestSQLServerCreateTableWithPartition:
 
 
 # Helper wrappers for tests
-class SqlServerPartitionClause(PartitionClause):
+class SqlServerPartitionClause(SQLServerPartitionByRangeClause):
     """Test helper that constructs the KVS dict for scheme name."""
 
     def __init__(self, dialect, keys, *, partition_scheme):
-        super().__init__(
-            dialect,
-            PartitionStrategy.RANGE,
-            keys,
-            dialect_options={"partition_scheme": partition_scheme},
-        )
+        super().__init__(dialect, keys, partition_scheme)
 
 
 def _get_protocol_methods(protocol: type) -> Set[str]:
