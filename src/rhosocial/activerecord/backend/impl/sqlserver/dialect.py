@@ -583,6 +583,12 @@ class SQLServerDialect(
 
         return ' '.join(parts), tuple(all_params)
 
+    def format_identity_clause(self, expr) -> Tuple[str, tuple]:
+        """SQL Server renders identity as ``IDENTITY(seed, increment)``."""
+        seed = expr.start if expr.start is not None else 1
+        increment = expr.increment if expr.increment is not None else 1
+        return f" IDENTITY({seed}, {increment})", ()
+
     def format_column_definition(self, col_def: "ColumnDefinition") -> Tuple[str, tuple]:
         """Format a column definition for SQL Server.
 
@@ -628,6 +634,11 @@ class SQLServerDialect(
 
         if constraint_parts:
             parts.append(' '.join(constraint_parts))
+
+        attr_sql, attr_params = self.format_column_attributes(col_def)
+        if attr_sql:
+            parts.append(attr_sql.strip())
+        params.extend(attr_params)
 
         if col_def.generated_expression is not None:
             gen_sql, gen_params = col_def.generated_expression.to_sql()
