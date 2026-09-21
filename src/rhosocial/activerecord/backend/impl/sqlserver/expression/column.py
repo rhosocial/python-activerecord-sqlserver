@@ -42,10 +42,7 @@ class SQLServerColumnDefinition(ColumnDefinition):
         constraints=None,
         comment: Optional[str] = None,
         generated_expression=None,
-        identity: Optional[str] = None,
-        identity_start: Optional[int] = None,
-        identity_increment: Optional[int] = None,
-        identity_clause=None,
+        attributes=None,
         *,
         sparse: Optional[bool] = None,
         rowguidcol: Optional[bool] = None,
@@ -57,10 +54,7 @@ class SQLServerColumnDefinition(ColumnDefinition):
             constraints=constraints,
             comment=comment,
             generated_expression=generated_expression,
-            identity=identity,
-            identity_start=identity_start,
-            identity_increment=identity_increment,
-            identity_clause=identity_clause,
+            attributes=attributes,
         )
         self.sparse = sparse
         self.rowguidcol = rowguidcol
@@ -72,15 +66,10 @@ class SQLServerColumnOptions(ColumnOptions):
     def __init__(
         self,
         *,
-        identity_start: Optional[int] = None,
-        identity_increment: Optional[int] = None,
         sparse: Optional[bool] = None,
         rowguidcol: Optional[bool] = None,
     ):
-        super().__init__(
-            identity_start=identity_start,
-            identity_increment=identity_increment,
-        )
+        super().__init__()
         self.sparse = sparse
         self.rowguidcol = rowguidcol
 
