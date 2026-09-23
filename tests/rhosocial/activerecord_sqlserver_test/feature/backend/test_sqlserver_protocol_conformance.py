@@ -105,6 +105,9 @@ SQLSERVER_PROTOCOLS = [
 # decision (move to SQLSERVER_PROTOCOLS or revert).
 SQLSERVER_NOT_IMPLEMENTED = [
     # --- Intentional non-support ---
+    # SQL Server has no standalone COMMENT ON statement; comments use
+    # sp_addextendedproperty (not modelled as a COMMENT ON expression).
+    dialect_protocols.CommentSupport,
     # The generic DatabaseSupport protocol is not composed by SQLServerDialect.
     dialect_protocols.DatabaseSupport,
     # SQL Server's native XML/XQuery (FOR XML, OPENXML, .query()/.value()) is not
