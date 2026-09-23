@@ -509,9 +509,20 @@ class SQLServerDialect(
         SQL Server has no CREATE TABLE ... LIKE (``supports_create_table_like``
         stays ``False``), so the gated
         ``format_create_table_like_statement`` raises
-        ``UnsupportedFeatureError``. Temporary tables use a ``#``-prefixed
+        ``UnsupportedFeatureError``.         Temporary tables use a ``#``-prefixed
         table name instead of the ``TEMPORARY`` keyword.
         """
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+        if getattr(getattr(expr, "table_options", None), "comment", None):
+            # SQL Server has no inline table comment (its native
+            # mechanism is sp_addextendedproperty, not implemented here); a
+            # comment on the table options is never silently dropped.
+            raise UnsupportedFeatureError(
+                self.name, "TABLE COMMENT",
+                "SQL Server has no inline table comment; comments are "
+                "annotated through sp_addextendedproperty (not implemented).",
+            )
         all_params: List[Any] = []
 
         parts = ["CREATE TABLE"]
@@ -602,6 +613,16 @@ class SQLServerDialect(
         from rhosocial.activerecord.backend.impl.sqlserver.expression.column import (
             SQLServerColumnDefinition,
         )
+        if getattr(col_def, "comment", None):
+            # SQL Server has no inline column comment (its native
+            # mechanism is sp_addextendedproperty, not implemented here); a
+            # comment on a column definition is never silently dropped.
+            from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+            raise UnsupportedFeatureError(
+                self.name, "COLUMN COMMENT",
+                "SQL Server has no inline column comment; comments are "
+                "annotated through sp_addextendedproperty (not implemented).",
+            )
         type_sql, type_params = col_def.data_type.to_sql()
         parts = [self.format_identifier(col_def.name), type_sql]
         params: List[Any] = list(type_params)
