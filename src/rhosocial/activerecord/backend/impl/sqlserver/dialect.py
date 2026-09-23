@@ -523,6 +523,15 @@ class SQLServerDialect(
                 "SQL Server has no inline table comment; comments are "
                 "annotated through sp_addextendedproperty (not implemented).",
             )
+        if_not_exists_guard = ""
+        if expr.if_not_exists:
+            # SQL Server has no CREATE TABLE IF NOT EXISTS syntax; the
+            # idempotent form is the IF OBJECT_ID(...) IS NULL batch guard.
+            target = expr.table.name
+            if expr.table.schema_name:
+                target = f"{expr.table.schema_name}.{target}"
+            escaped_target = target.replace("'", "''")
+            if_not_exists_guard = f"IF OBJECT_ID(N'{escaped_target}', N'U') IS NULL\n"
         all_params: List[Any] = []
 
         parts = ["CREATE TABLE"]
@@ -592,7 +601,7 @@ class SQLServerDialect(
             parts.append(kind_sql)
             all_params.extend(kind_params)
 
-        return ' '.join(parts), tuple(all_params)
+        return if_not_exists_guard + ' '.join(parts), tuple(all_params)
 
     def format_identity_clause(self, expr) -> Tuple[str, tuple]:
         """SQL Server renders identity as ``IDENTITY(seed, increment)``."""
@@ -720,6 +729,20 @@ class SQLServerDialect(
 
     def format_inline_index(self, idx_def: "IndexDefinition") -> Tuple[str, tuple]:
         """Format an inline index definition for SQL Server."""
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+        for option, value in (
+            ("if_not_exists", getattr(idx_def, "if_not_exists", False)),
+            ("tablespace", getattr(idx_def, "tablespace", None)),
+            ("include_columns", getattr(idx_def, "include_columns", None)),
+            ("partial_condition", getattr(idx_def, "partial_condition", None)),
+        ):
+            if value:
+                raise UnsupportedFeatureError(
+                    self.name, f"inline index {option}",
+                    "SQL Server's inline index definition does not render "
+                    f"'{option}'; use a standalone CREATE INDEX statement.",
+                )
         parts = []
 
         if idx_def.unique:
@@ -755,9 +778,21 @@ class SQLServerDialect(
     def format_create_index_statement(self, expr: "CreateIndexExpression") -> Tuple[str, tuple]:
         """Format CREATE INDEX statement for SQL Server.
 
-        SQL Server doesn't support IF NOT EXISTS for CREATE INDEX.
-        We ignore the if_not_exists flag and generate standard CREATE INDEX.
+        SQL Server doesn't support IF NOT EXISTS for CREATE INDEX, and has no
+        index TABLESPACE concept; declared values are never silently dropped.
         """
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+        if getattr(expr, "if_not_exists", False):
+            raise UnsupportedFeatureError(
+                self.name, "CREATE INDEX IF NOT EXISTS",
+                "SQL Server has no CREATE INDEX IF NOT EXISTS syntax.",
+            )
+        if getattr(expr, "tablespace", None):
+            raise UnsupportedFeatureError(
+                self.name, "index TABLESPACE",
+                "SQL Server has no index tablespace; use a filegroup instead.",
+            )
         all_params = []
         parts = ["CREATE"]
 
@@ -806,6 +841,18 @@ class SQLServerDialect(
         - CYCLE | NO CYCLE, CACHE, NO ORDER (ORDER not supported)
         - No IF NOT EXISTS support, no OWNED BY
         """
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+        if getattr(expr, "if_not_exists", False):
+            raise UnsupportedFeatureError(
+                self.name, "CREATE SEQUENCE IF NOT EXISTS",
+                "SQL Server has no CREATE SEQUENCE IF NOT EXISTS syntax.",
+            )
+        if getattr(expr, "owned_by", None):
+            raise UnsupportedFeatureError(
+                self.name, "SEQUENCE OWNED BY",
+                "SQL Server sequences have no OWNED BY clause.",
+            )
         parts = ["CREATE SEQUENCE"]
         parts.append(self.format_identifier(expr.sequence_name))
         if expr.start is not None:
@@ -960,7 +1007,7 @@ class SQLServerDialect(
         - Single action per ALTER TABLE statement
         """
         all_params: list = []
-        parts = [f"ALTER TABLE {self.format_identifier(expr.table_name)}"]
+        table_sql = self.format_identifier(expr.table_name)
 
         action_parts = []
         for action in expr.actions:
@@ -968,10 +1015,15 @@ class SQLServerDialect(
             action_parts.append(action_part)
             all_params.extend(action_params)
 
-        if action_parts:
-            parts.append(" ".join(action_parts))
+        if not action_parts:
+            return f"ALTER TABLE {table_sql}", ()
 
-        return " ".join(parts), tuple(all_params)
+        if self.supports_multi_action_alter_table():
+            return f"ALTER TABLE {table_sql} {', '.join(action_parts)}", tuple(all_params)
+
+        # SQL Server requires one action per statement: emit a statement each.
+        stmts = [f"ALTER TABLE {table_sql} {part}" for part in action_parts]
+        return "; ".join(stmts), tuple(all_params)
 
     def format_function_call(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
         """Format a function call, mapping MySQL/generic function names to
