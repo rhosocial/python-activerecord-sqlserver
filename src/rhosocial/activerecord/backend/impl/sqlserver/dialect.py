@@ -531,6 +531,18 @@ class SQLServerDialect(
         """
         from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
+        if getattr(expr, "tablespace", None):
+            raise UnsupportedFeatureError(
+                self.name,
+                "TABLESPACE",
+                "SQL Server does not support table tablespaces.",
+            )
+        if getattr(expr, "inherits", None):
+            raise UnsupportedFeatureError(
+                self.name,
+                "table INHERITS",
+                "SQL Server does not support table inheritance.",
+            )
         if getattr(getattr(expr, "table_options", None), "comment", None):
             # SQL Server has no inline table comment (its native
             # mechanism is sp_addextendedproperty, not implemented here); a
