@@ -288,7 +288,7 @@ def test_non_memory_table_type_keeps_regular_constraints():
 
 
 def test_memory_table_type_column_key_constraints_use_nonclustered():
-    dialect = SQLServerDialect(SQL_SERVER_2014)
+    dialect = SQLServerDialect(SQL_SERVER_2016)
     definition = SQLServerTableTypeDefinition(
         dialect,
         columns=[
