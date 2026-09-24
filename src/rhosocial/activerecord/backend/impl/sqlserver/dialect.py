@@ -44,6 +44,7 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     TransactionControlSupport,
     SQLFunctionSupport,
     DDLTypeSupport,
+    UserDefinedTypeSupport,
 )
 from .protocols import (
     SQLServerTableSupport,
@@ -63,6 +64,7 @@ from .protocols import (
     SQLServerTryCastSupport,
     SQLServerIdentitySupport,
     SQLServerIndexedViewSupport,
+    SQLServerUserDefinedTypeSupport,
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
@@ -96,6 +98,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     DMLMixin,
     DDLColumnMixin,
     DDLTypeMixin,
+    UserDefinedTypeMixin,
 
     TransactionControlMixin,
     AutoIncrementMixin,
@@ -114,6 +117,7 @@ from .mixins.pivot import SQLServerPivotMixin
 from .mixins.graph import SQLServerGraphMixin
 from .mixins.columnstore import SQLServerColumnstoreIndexMixin
 from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
+from .mixins.ddl_type import SQLServerTypeDDLMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
@@ -177,6 +181,7 @@ if TYPE_CHECKING:
         TableConstraint,
         IndexDefinition,
         CreateTableExpression,
+        CreateIndexExpression,
         DropTableExpression,
         AlterTableExpression,
         CreateSchemaExpression,
@@ -223,8 +228,10 @@ class SQLServerDialect(
     SQLServerMemoryOptimizedMixin,  # In-Memory OLTP table options (2014+)
     SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
+    SQLServerTypeDDLMixin,
     DDLColumnMixin,
     DDLTypeMixin,
+    UserDefinedTypeMixin,
     SQLServerIdentifierMixin,
     SQLServerCollationMixin,
     CollationMixin,
@@ -324,6 +331,8 @@ class SQLServerDialect(
     SQLFunctionSupport,
     # DataType Support Protocol
     DDLTypeSupport,
+    SQLServerUserDefinedTypeSupport,
+    UserDefinedTypeSupport,
     # SQL Server-specific protocols (marker classes for isinstance() checks;
     # implementations live in SQLServerProtocolSupportMixin / SQLServerSequenceMixin)
     SQLServerOutputSupport,
@@ -430,7 +439,12 @@ class SQLServerDialect(
         """
         return SQLServerIdentifierMixin.format_identifier(self, identifier, need_quote)
 
-    def __init__(self, version: Optional[Tuple[int, int, int]] = None):
+    def __init__(
+        self,
+        version: Optional[Tuple[int, int, int]] = None,
+        *,
+        deployment_target: str = "sqlserver",
+    ) -> None:
         """
         Initialize SQL Server dialect with specific version.
 
@@ -439,9 +453,12 @@ class SQLServerDialect(
                 If None, the dialect must be adapted via
                 backend.introspect_and_adapt() before version-dependent
                 features can be used.
+            deployment_target: Deployment target label used for CLR capability
+                gating; the default is on-premises SQL Server.
         """
         super().__init__()
         self._reserved_words = SQLSERVER_RESERVED_WORDS
+        self.deployment_target = deployment_target
         if version is not None:
             self.version = version
 
@@ -609,7 +626,12 @@ class SQLServerDialect(
         increment = expr.increment if expr.increment is not None else 1
         return f" IDENTITY({seed}, {increment})", ()
 
-    def format_column_definition(self, col_def: "ColumnDefinition") -> Tuple[str, tuple]:
+    def format_column_definition(
+        self,
+        col_def: "ColumnDefinition",
+        *,
+        memory_optimized: bool = False,
+    ) -> Tuple[str, tuple]:
         """Format a column definition for SQL Server.
 
         Accepts both the generic ``ColumnDefinition`` and the SQL Server
@@ -639,11 +661,13 @@ class SQLServerDialect(
         constraint_parts = []
         for constraint in col_def.constraints:
             if constraint.constraint_type == ColumnConstraintType.PRIMARY_KEY:
-                constraint_parts.append("PRIMARY KEY")
+                constraint_parts.append(
+                    "PRIMARY KEY NONCLUSTERED" if memory_optimized else "PRIMARY KEY"
+                )
             elif constraint.constraint_type == ColumnConstraintType.NOT_NULL:
                 constraint_parts.append("NOT NULL")
             elif constraint.constraint_type == ColumnConstraintType.UNIQUE:
-                constraint_parts.append("UNIQUE")
+                constraint_parts.append("UNIQUE NONCLUSTERED" if memory_optimized else "UNIQUE")
             elif constraint.constraint_type == ColumnConstraintType.DEFAULT:
                 if constraint.default_value is not None:
                     from rhosocial.activerecord.backend.expression import bases
@@ -658,6 +682,12 @@ class SQLServerDialect(
                         constraint_parts.append(f"DEFAULT {constraint.default_value}")
             elif constraint.constraint_type == ColumnConstraintType.NULL:
                 constraint_parts.append("NULL")
+            elif constraint.constraint_type == ColumnConstraintType.CHECK:
+                if constraint.check_condition is None:
+                    raise ValueError("CHECK constraint must have a check condition")
+                check_sql, check_params = constraint.check_condition.to_sql()
+                constraint_parts.append(f"CHECK ({check_sql})")
+                params.extend(check_params)
 
             if constraint.is_auto_increment:
                 constraint_parts.append("IDENTITY(1,1)")
@@ -683,7 +713,12 @@ class SQLServerDialect(
 
         return ' '.join(parts), tuple(params)
 
-    def format_table_constraint(self, t_const: "TableConstraint") -> Tuple[str, tuple]:
+    def format_table_constraint(
+        self,
+        t_const: "TableConstraint",
+        *,
+        memory_optimized: bool = False,
+    ) -> Tuple[str, tuple]:
         """Format a table constraint for SQL Server."""
         from rhosocial.activerecord.backend.expression.statements import (
             TableConstraintType,
@@ -700,11 +735,17 @@ class SQLServerDialect(
         if t_const.constraint_type == TableConstraintType.PRIMARY_KEY:
             if t_const.columns:
                 cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                parts.append(f"PRIMARY KEY ({cols_str})")
+                if memory_optimized:
+                    parts.append(f"PRIMARY KEY NONCLUSTERED ({cols_str})")
+                else:
+                    parts.append(f"PRIMARY KEY ({cols_str})")
         elif t_const.constraint_type == TableConstraintType.UNIQUE:
             if t_const.columns:
                 cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                parts.append(f"UNIQUE ({cols_str})")
+                if memory_optimized:
+                    parts.append(f"UNIQUE NONCLUSTERED ({cols_str})")
+                else:
+                    parts.append(f"UNIQUE ({cols_str})")
         elif t_const.constraint_type == TableConstraintType.FOREIGN_KEY:
             if t_const.columns and t_const.foreign_key_table and t_const.foreign_key_columns:
                 cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)

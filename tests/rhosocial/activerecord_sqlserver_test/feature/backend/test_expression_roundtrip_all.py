@@ -48,6 +48,68 @@ def _register_sqlserver_specials():
             d, keys=[Column(d, "id")], partition_scheme="ps"
         )
 
+    def alias_type(d):
+        from rhosocial.activerecord.backend.expression.types import IntegerType
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
+            SQLServerAliasTypeDefinition,
+        )
+        return SQLServerAliasTypeDefinition(d, IntegerType(d), nullability=True)
+
+    def table_type(d):
+        from rhosocial.activerecord.backend.expression.statements import (
+            ColumnConstraint,
+            ColumnConstraintType,
+            ColumnDefinition,
+            TableConstraint,
+            TableConstraintType,
+        )
+        from rhosocial.activerecord.backend.expression.types import IntegerType
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
+            SQLServerTableTypeDefinition,
+        )
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.index import (
+            SQLServerIndexDefinition,
+        )
+        return SQLServerTableTypeDefinition(
+            d,
+            columns=[
+                ColumnDefinition(
+                    d,
+                    "id",
+                    IntegerType(d),
+                    constraints=[
+                        ColumnConstraint(d, ColumnConstraintType.NOT_NULL),
+                    ],
+                )
+            ],
+            constraints=[
+                TableConstraint(
+                    d,
+                    TableConstraintType.PRIMARY_KEY,
+                    columns=["id"],
+                )
+            ],
+            indexes=[SQLServerIndexDefinition(d, "ix_id", ["id"])],
+        )
+
+    def clr_type(d):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
+            SQLServerClrTypeDefinition,
+        )
+        return SQLServerClrTypeDefinition(d, "assembly", "Namespace.Class")
+
+    def drop_type(d):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
+            SQLServerDropTypeExpression,
+        )
+        return SQLServerDropTypeExpression(d, "type_name")
+
+    def rename_type(d):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
+            SQLServerRenameTypeExpression,
+        )
+        return SQLServerRenameTypeExpression(d, "old_name", "new_name")
+
     register_special_constructor("pivot.PivotExpression", pivot)
     register_special_constructor(
         "columnstore.SQLServerColumnstoreIndexExpression", columnstore
@@ -55,6 +117,11 @@ def _register_sqlserver_specials():
     register_special_constructor(
         "partition.SQLServerPartitionByRangeClause", partition
     )
+    register_special_constructor("type.SQLServerAliasTypeDefinition", alias_type)
+    register_special_constructor("type.SQLServerTableTypeDefinition", table_type)
+    register_special_constructor("type.SQLServerClrTypeDefinition", clr_type)
+    register_special_constructor("type.SQLServerDropTypeExpression", drop_type)
+    register_special_constructor("type.SQLServerRenameTypeExpression", rename_type)
 
 
 _register_sqlserver_specials()

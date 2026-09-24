@@ -16,6 +16,7 @@ from .pagination import SQLServerPaginationSupport
 from .graph import SQLServerGraphSupport
 from .merge import SQLServerMergeSupport
 from .partition import SQLServerPartitionSupport
+from .type import SQLServerUserDefinedTypeSupport
 
 __all__ = [
     "SQLServerIdentitySupport",
@@ -35,4 +36,5 @@ __all__ = [
     "SQLServerGraphSupport",
     "SQLServerMergeSupport",
     "SQLServerPartitionSupport",
+    "SQLServerUserDefinedTypeSupport",
 ]
