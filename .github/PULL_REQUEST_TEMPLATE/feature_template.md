@@ -1,8 +1,8 @@
 ---
 name: "Feature Pull Request"
-about: Propose a new feature for the rhosocial-activerecord ecosystem, targeting a pre-release branch (e.g., release/vX.Y.Z).
+about: Propose a new feature for the rhosocial-activerecord SQL Server backend, targeting a pre-release branch (e.g., release/vX.Y.Z).
 title: "feat(<scope>): <description>"
-labels: "feature"
+labels: "enhancement"
 assignees: ""
 ---
 
@@ -40,18 +40,22 @@ Does this PR introduce a breaking change?
 - If NO, please indicate N/A.
 -->
 
-- [ ] Yes
-- [ ] No
+- [ ] Yes, for end-users (backward-incompatible API changes)
+- [ ] Yes, for backend developers (internal architectural changes that may affect custom implementations)
+- [ ] No breaking changes
 (If Yes, please describe the impact and migration path below):
 
-**Applicable `rhosocial-activerecord` Version Range:**
-<!-- Specify the version range of rhosocial-activerecord that this change is compatible with (e.g., ">=1.0.0,<2.0.0"). -->
+**Impact on End-Users:**
+<!-- Describe backward-incompatible changes for typical end-user applications consuming the public API. If none, state "No backward-incompatible changes are expected for typical end-user applications." -->
+
+**Impact on Backend Developers (Custom Implementations):**
+<!-- Describe backward-incompatible changes for developers with custom backend implementations or those directly interacting with internal mechanisms. If none, state "No backward-incompatible changes are expected for backend developers using custom implementations." -->
 
 
 ## Related Repositories/Packages
 
 <!--
-If this change affects other repositories in the rhosocial-activerecord ecosystem (e.g., testsuite, mysql, postgres),
+If this change affects other repositories in the rhosocial-activerecord ecosystem (e.g., core, testsuite, or another backend),
 please list them and describe the coordinated changes needed.
 -->
 
@@ -79,12 +83,12 @@ Go over all the following points, and put an `x` in all the boxes that apply.
 If you're unsure about any of these, don't hesitate to ask. We're here to help!
 -->
 
-- [ ] My code follows the project's code style guidelines.
+- [ ] My code follows the project's code style guidelines in `.claude/code_style.md`.
 - [ ] I have performed a self-review of my own code.
 - [ ] I have commented my code, particularly in hard-to-understand areas.
 - [ ] I have made corresponding changes to the documentation (Docstrings, `README.md`, etc.).
 - [ ] My changes generate no new warnings.
-- [ ] I have added a Changelog fragment (`changelog.d/<issue_number>.<type>.md`).
+- [ ] I have added a Changelog fragment as described in `.claude/version_control.md` (`changelog.d/<issue_number>.<type>.md`).
 - [ ] I have verified that my changes do not introduce SQL injection vulnerabilities.
 - [ ] I have checked for potential performance regressions.
 
