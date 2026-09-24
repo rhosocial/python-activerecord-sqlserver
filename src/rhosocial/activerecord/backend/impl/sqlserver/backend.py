@@ -109,16 +109,18 @@ class SQLServerBackend(
             trusted_connection: Use Windows Authentication (default: False)
             driver: ODBC driver name (default: ODBC Driver 17 for SQL Server)
             version: Expected SQL Server version tuple (default: (16, 0, 0))
+            deployment_target: Deployment target label for capability gates
             **kwargs: Additional connection options
         """
         version = kwargs.pop('version', None) or (16, 0, 0)
+        deployment_target = kwargs.pop('deployment_target', None)
         
         connection_config = kwargs.get('connection_config')
         
         if connection_config is None:
             config_params = {}
             sqlserver_params = [
-                'host', 'port', 'database', 'username', 'password',
+                'host', 'port', 'database', 'deployment_target', 'username', 'password',
                 'trusted_connection', 'driver', 'encrypt',
                 'trust_server_certificate', 'timeout', 'query_timeout',
                 'autocommit', 'charset', 'pool_size', 'pool_timeout',
@@ -127,6 +129,8 @@ class SQLServerBackend(
             for param in sqlserver_params:
                 if param in kwargs:
                     config_params[param] = kwargs[param]
+            if deployment_target is not None:
+                config_params["deployment_target"] = deployment_target
             
             if 'host' not in config_params:
                 config_params['host'] = 'localhost'
@@ -137,8 +141,17 @@ class SQLServerBackend(
         
         super().__init__(**kwargs)
 
+        configured_target = getattr(self.config, "deployment_target", None)
+        if deployment_target is not None:
+            configured_target = deployment_target
+        self.deployment_target = (
+            configured_target if configured_target is not None else "sqlserver"
+        )
         self._version = version
-        self._dialect = SQLServerUnicodeDialect(version)
+        self._dialect = SQLServerUnicodeDialect(
+            version,
+            deployment_target=self.deployment_target,
+        )
         self._connection = None
         self._transaction_manager = None
         self._default_suggestions_cache = None
@@ -511,7 +524,10 @@ class SQLServerBackend(
         actual_version = self.get_server_version()
         if self._version != actual_version:
             self._version = actual_version
-            self._dialect = SQLServerUnicodeDialect(actual_version)
+            self._dialect = SQLServerUnicodeDialect(
+                actual_version,
+                deployment_target=self.deployment_target,
+            )
             self.log(logging.INFO, f"Adapted to SQL Server version {actual_version}")
     
     def executescript(self, sql_script: str) -> None:

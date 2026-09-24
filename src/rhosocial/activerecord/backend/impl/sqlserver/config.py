@@ -22,6 +22,7 @@ class SQLServerConnectionConfig(ConnectionConfig):
         host: Database server hostname or IP address
         port: Database server port (default: 1433)
         database: Database name
+        deployment_target: Deployment target label used for capability gates
         username: Username for SQL Server Authentication
         password: Password for SQL Server Authentication
         trusted_connection: Use Windows Authentication
@@ -82,6 +83,7 @@ class SQLServerConnectionConfig(ConnectionConfig):
     pool_timeout: int = 30
 
     options: Dict[str, Any] = field(default_factory=dict)
+    deployment_target: str = "sqlserver"
 
     def __post_init__(self):
         super().__post_init__()

@@ -37,6 +37,7 @@ from .ddl_table import SQLServerTableMixin
 from .identifier import SQLServerIdentifierMixin
 from .transaction import SQLServerTransactionMixin
 from .function import SQLServerFunctionMixin
+from .ddl_type import SQLServerTypeDDLMixin
 
 __all__ = [
     "SQLServerTypeSupportMixin",
@@ -77,4 +78,5 @@ __all__ = [
     "SQLServerIdentifierMixin",
     "SQLServerTransactionMixin",
     "SQLServerFunctionMixin",
+    "SQLServerTypeDDLMixin",
 ]
