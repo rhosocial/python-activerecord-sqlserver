@@ -1,57 +1,48 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_sqlserver_ddl_improvements.py
 """Tests for SQL Server DDL improvements: capability gating, UnsupportedFeatureError."""
 import pytest
-from unittest.mock import patch, PropertyMock
+from unittest.mock import patch
 
-from rhosocial.activerecord.base.ddl import TableDDLDeriver
-from rhosocial.activerecord.model import ActiveRecord
+from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression import (
     Column,
-    TableExpression,
-    QueryExpression,
+    CreateTableExpression,
     CreateViewExpression,
-    DropViewExpression,
+    QueryExpression,
+    TableExpression,
 )
-from rhosocial.activerecord.backend.expression.statements import ViewOptions, ViewCheckOption
+from rhosocial.activerecord.backend.expression.statements import (
+    ColumnDefinition,
+    ViewCheckOption,
+    ViewOptions,
+)
+from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
-from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-
-
-class InheritingTable(ActiveRecord):
-    __table_name__ = "inheriting_table"
-
-    id: int
-
-    @classmethod
-    def table_inherits(cls):
-        return ["parent_a", "parent_b"]
-
-
-class TablespacedTable(ActiveRecord):
-    __table_name__ = "tablespaced_table"
-
-    id: int
-
-    @classmethod
-    def table_tablespace(cls):
-        return "ts_data"
 
 
 class TestSQLServerTableCapabilityGating:
     def test_table_declaration_defaults_are_absent(self):
-        class Plain(ActiveRecord):
-            __table_name__ = "plain_table_defaults"
-
-            id: int
-
-        expression = TableDDLDeriver(Plain, SQLServerDialect()).create_table()
+        dialect = SQLServerDialect(version=(16, 0, 0))
+        expression = CreateTableExpression(
+            dialect,
+            "plain_table_defaults",
+            [ColumnDefinition(dialect, "id", IntegerType(dialect))],
+        )
+        sql, params = expression.to_sql()
         assert expression.inherits == []
         assert expression.tablespace is None
+        assert "plain_table_defaults" in sql.lower()
+        assert "id" in sql.lower()
+        assert params == ()
 
     def test_table_inherits_declaration_is_propagated_and_fails_fast(self):
         dialect = SQLServerDialect(version=(16, 0, 0))
-        expression = TableDDLDeriver(InheritingTable, dialect).create_table()
-
+        expression = CreateTableExpression(
+            dialect,
+            "inheriting_table",
+            [ColumnDefinition(dialect, "id", IntegerType(dialect))],
+            inherits=["parent_a", "parent_b"],
+        )
         assert expression.inherits == ["parent_a", "parent_b"]
         assert dialect.supports_table_inheritance() is False
         with pytest.raises(UnsupportedFeatureError, match="INHERITS"):
@@ -59,8 +50,12 @@ class TestSQLServerTableCapabilityGating:
 
     def test_table_tablespace_declaration_is_propagated_and_fails_fast(self):
         dialect = SQLServerDialect(version=(16, 0, 0))
-        expression = TableDDLDeriver(TablespacedTable, dialect).create_table()
-
+        expression = CreateTableExpression(
+            dialect,
+            "tablespaced_table",
+            [ColumnDefinition(dialect, "id", IntegerType(dialect))],
+            tablespace="ts_data",
+        )
         assert expression.tablespace == "ts_data"
         assert dialect.supports_table_tablespace() is False
         with pytest.raises(UnsupportedFeatureError, match="TABLESPACE"):
