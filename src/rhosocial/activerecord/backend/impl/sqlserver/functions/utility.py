@@ -11,7 +11,7 @@ from rhosocial.activerecord.backend.expression import bases, core
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
-    from .dialect import SQLServerDialect
+    from ..dialect import SQLServerDialect
 
 
 def _convert_to_expression(
