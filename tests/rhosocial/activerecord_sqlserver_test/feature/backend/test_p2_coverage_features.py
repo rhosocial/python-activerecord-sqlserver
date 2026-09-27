@@ -74,9 +74,12 @@ class TestMemoryOptimizedTables:
             ColumnConstraint,
             ColumnConstraintType,
             ColumnDefinition,
-            IndexDefinition,
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerCreateTableOptions,
+            SQLServerIndexDefinition,
+        )
 
         col = ColumnDefinition(d, "id", IntegerType(d))
         col.constraints.append(ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY))
@@ -84,18 +87,21 @@ class TestMemoryOptimizedTables:
         if hash_indexes:
             for name, (columns, bucket_count) in hash_indexes.items():
                 indexes.append(
-                    IndexDefinition(
+                    SQLServerIndexDefinition(
                         d,
                         name,
                         list(columns),
-                        dialect_options={"hash_index": True, "bucket_count": bucket_count},
+                        hash_index=True,
+                        bucket_count=bucket_count,
                     )
                 )
-        dialect_options = {}
+        table_options = None
         if memory_optimized:
-            dialect_options = {"memory_optimized": True, "durability": durability}
+            table_options = SQLServerCreateTableOptions(
+                d, memory_optimized=True, durability=durability
+            )
         return CreateTableExpression(
-            d, "t", [col], indexes=indexes, dialect_options=dialect_options
+            d, "t", [col], indexes=indexes, table_options=table_options
         )
 
     def test_mixin_registered(self, dialect):
@@ -197,9 +203,12 @@ class TestMemoryOptimizedTables:
             ColumnConstraint,
             ColumnConstraintType,
             ColumnDefinition,
-            IndexDefinition,
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerCreateTableOptions,
+            SQLServerIndexDefinition,
+        )
 
         col = ColumnDefinition(dialect, "id", IntegerType(dialect))
         col.constraints.append(ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY))
@@ -207,8 +216,8 @@ class TestMemoryOptimizedTables:
             dialect,
             "t",
             [col],
-            indexes=[IndexDefinition(dialect, "ix", ["id"], dialect_options={"hash_index": True})],
-            dialect_options={"memory_optimized": True},
+            indexes=[SQLServerIndexDefinition(dialect, "ix", ["id"], hash_index=True)],
+            table_options=SQLServerCreateTableOptions(dialect, memory_optimized=True),
         )
         with pytest.raises(ValueError):
             ct.to_sql()

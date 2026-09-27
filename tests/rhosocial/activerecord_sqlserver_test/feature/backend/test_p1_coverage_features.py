@@ -47,15 +47,18 @@ SQL_SERVER_2016 = (13, 0, 0)
 SQL_SERVER_2022 = (16, 0, 0)
 
 
-def _make_query(d, columns=("a", "b"), where=None, **dialect_options):
-    from rhosocial.activerecord.backend.expression import Column, QueryExpression, TableExpression
+def _make_query(d, columns=("a", "b"), where=None, select_into_table=None):
+    from rhosocial.activerecord.backend.expression import Column, TableExpression
+    from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+        SQLServerSelectIntoExpression,
+    )
 
-    return QueryExpression(
+    return SQLServerSelectIntoExpression(
         dialect=d,
         select=[Column(d, col) for col in columns],
         from_=TableExpression(d, "t"),
         where=where,
-        dialect_options=dialect_options,
+        select_into_table=select_into_table,
     )
 
 
@@ -346,12 +349,13 @@ class TestAlterColumn:
 
         return AlterTableExpression(d, "t", actions=[action]).to_sql()[0]
 
-    def _alter_column(self, d, column_name="c", operation="SET DATA TYPE", new_value=None, **dialect_options):
-        from rhosocial.activerecord.backend.expression.statements import AlterColumn
+    def _alter_column(self, d, column_name="c", operation="SET DATA TYPE", new_value=None, **options):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerAlterColumn,
+        )
 
-        return AlterColumn(
-            d, column_name, operation=operation, new_value=new_value,
-            dialect_options=dialect_options,
+        return SQLServerAlterColumn(
+            d, column_name, operation, new_value=new_value, **options
         )
 
     def test_alter_column_type(self, dialect):

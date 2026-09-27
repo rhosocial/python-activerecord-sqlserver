@@ -8,7 +8,6 @@ specific behaviors and SQL dialect.
 """
 
 import logging
-import re
 import time
 from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple, Type
@@ -52,26 +51,6 @@ class SQLServerUnicodeDialect(SQLServerDialect):
 
     def format_data_type_char(self, data_type):
         return (f"NCHAR({data_type.length})" if data_type.length is not None else "NCHAR(1)"), ()
-
-    def format_cte(self, name, query_sql, columns=None, recursive=False, materialized=None, dialect_options=None):
-        """Format a CTE, working around SQL Server's ``ORDER BY`` restriction.
-
-        SQL Server rejects ``ORDER BY`` inside a CTE body unless ``TOP``,
-        ``OFFSET`` or ``FOR XML`` is also present (error 1033). The shared
-        testsuite builds CTE bodies with plain ``ORDER BY`` (valid on MySQL /
-        PostgreSQL), so inject ``TOP (100) PERCENT`` before the sort when no
-        ``TOP`` is already specified.
-        """
-        if re.search(r"\bORDER\s+BY\b", query_sql, re.IGNORECASE) and not re.search(
-            r"\bTOP\s*\(?\d+\)?", query_sql, re.IGNORECASE
-        ):
-            match = re.match(r"(?is)^(\s*SELECT\s+)((?:DISTINCT\s+|ALL\s+)?)(.*)$", query_sql)
-            if match:
-                query_sql = f"{match.group(1)}TOP (100) PERCENT {match.group(2)}{match.group(3)}"
-        return super().format_cte(
-            name, query_sql, columns=columns, recursive=recursive,
-            materialized=materialized, dialect_options=dialect_options,
-        )
 
 
 class SQLServerBackend(
@@ -130,16 +109,18 @@ class SQLServerBackend(
             trusted_connection: Use Windows Authentication (default: False)
             driver: ODBC driver name (default: ODBC Driver 17 for SQL Server)
             version: Expected SQL Server version tuple (default: (16, 0, 0))
+            deployment_target: Deployment target label for capability gates
             **kwargs: Additional connection options
         """
         version = kwargs.pop('version', None) or (16, 0, 0)
+        deployment_target = kwargs.pop('deployment_target', None)
         
         connection_config = kwargs.get('connection_config')
         
         if connection_config is None:
             config_params = {}
             sqlserver_params = [
-                'host', 'port', 'database', 'username', 'password',
+                'host', 'port', 'database', 'deployment_target', 'username', 'password',
                 'trusted_connection', 'driver', 'encrypt',
                 'trust_server_certificate', 'timeout', 'query_timeout',
                 'autocommit', 'charset', 'pool_size', 'pool_timeout',
@@ -148,6 +129,8 @@ class SQLServerBackend(
             for param in sqlserver_params:
                 if param in kwargs:
                     config_params[param] = kwargs[param]
+            if deployment_target is not None:
+                config_params["deployment_target"] = deployment_target
             
             if 'host' not in config_params:
                 config_params['host'] = 'localhost'
@@ -158,8 +141,17 @@ class SQLServerBackend(
         
         super().__init__(**kwargs)
 
+        configured_target = getattr(self.config, "deployment_target", None)
+        if deployment_target is not None:
+            configured_target = deployment_target
+        self.deployment_target = (
+            configured_target if configured_target is not None else "sqlserver"
+        )
         self._version = version
-        self._dialect = SQLServerUnicodeDialect(version)
+        self._dialect = SQLServerUnicodeDialect(
+            version,
+            deployment_target=self.deployment_target,
+        )
         self._connection = None
         self._transaction_manager = None
         self._default_suggestions_cache = None
@@ -532,7 +524,10 @@ class SQLServerBackend(
         actual_version = self.get_server_version()
         if self._version != actual_version:
             self._version = actual_version
-            self._dialect = SQLServerUnicodeDialect(actual_version)
+            self._dialect = SQLServerUnicodeDialect(
+                actual_version,
+                deployment_target=self.deployment_target,
+            )
             self.log(logging.INFO, f"Adapted to SQL Server version {actual_version}")
     
     def executescript(self, sql_script: str) -> None:

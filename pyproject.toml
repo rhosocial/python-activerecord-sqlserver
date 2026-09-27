@@ -91,6 +91,9 @@ markers = [
     "requires_capability: marks tests requiring specific backend capabilities",
     "requires_protocol: marks tests requiring specific backend protocol support",
     "requires_inner_join: marks tests requiring INNER JOIN support",
+    "feature: category label for feature-area tests; changes collection grouping only, not ordering",
+    "benchmark_relation: marks relation benchmarks; changes collection grouping only, not ordering",
+
 ]
 
 [tool.coverage.run]

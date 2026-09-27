@@ -18,6 +18,7 @@ from .protocols import (
     SQLServerPaginationSupport,
     SQLServerMergeSupport,
     SQLServerPartitionSupport,
+    SQLServerUserDefinedTypeSupport,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "SQLServerPaginationSupport",
     "SQLServerMergeSupport",
     "SQLServerPartitionSupport",
+    "SQLServerUserDefinedTypeSupport",
 ]

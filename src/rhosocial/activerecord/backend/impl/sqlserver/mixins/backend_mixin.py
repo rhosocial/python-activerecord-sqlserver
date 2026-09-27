@@ -352,7 +352,17 @@ class SQLServerBackendMixin:
         from ..dialect import SQLServerDialect
 
         if self._dialect is None:
-            self._dialect = SQLServerDialect(self._version)
+            deployment_target = getattr(self, "deployment_target", None)
+            if deployment_target is None:
+                deployment_target = getattr(
+                    getattr(self, "config", None),
+                    "deployment_target",
+                    "sqlserver",
+                )
+            self._dialect = SQLServerDialect(
+                self._version,
+                deployment_target=deployment_target,
+            )
         return self._dialect
 
     @dialect.setter

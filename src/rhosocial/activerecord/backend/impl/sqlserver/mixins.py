@@ -5,10 +5,12 @@ from .mixins import (
     SQLServerBackendMixin,
     SQLServerConcurrencyMixin,
     SQLServerTypeSupportMixin,
+    SQLServerTypeDDLMixin,
 )
 
 __all__ = [
     "SQLServerBackendMixin",
     "SQLServerConcurrencyMixin",
     "SQLServerTypeSupportMixin",
+    "SQLServerTypeDDLMixin",
 ]

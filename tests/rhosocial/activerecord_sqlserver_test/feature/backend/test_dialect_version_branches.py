@@ -287,11 +287,13 @@ class TestRenderingSnapshots:
         from rhosocial.activerecord.backend.expression.statements import (
             MergeAction,
             MergeActionType,
-            MergeExpression,
+        )
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerMergeExpression,
         )
 
         d = SQLServerDialect((16, 0, 0))
-        merge = MergeExpression(
+        merge = SQLServerMergeExpression(
             dialect=d,
             target_table=TableExpression(d, "target"),
             source=QueryExpression(
@@ -312,10 +314,10 @@ class TestRenderingSnapshots:
             when_not_matched=[
                 MergeAction(dialect=d, action_type=MergeActionType.INSERT, assignments={"id": Column(d, "id", "source")})
             ],
+            output=["inserted.id"],
+            output_action=True,
+            holdlock=True,
         )
-        # MergeExpression carries no dialect_options of its own; the dialect
-        # reads them via getattr, so the test injects the mapping directly.
-        merge.dialect_options = {"output": ["inserted.id"], "output_action": True, "holdlock": True}
         sql, params = merge.to_sql()
         assert sql.endswith("OUTPUT $action, inserted.id;")
         assert sql.startswith("MERGE INTO [target] WITH (HOLDLOCK)")

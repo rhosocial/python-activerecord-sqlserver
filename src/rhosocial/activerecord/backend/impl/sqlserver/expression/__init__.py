@@ -27,6 +27,12 @@ from .graph import (
     SQLServerGraphPathAggregate,
     SQLServerForPathTable,
 )
+from .column import SQLServerColumnDefinition, SQLServerColumnOptions
+from .alter_column import SQLServerAlterColumn
+from .table_options import SQLServerCreateTableOptions
+from .index import SQLServerIndexDefinition
+from .create_table import SQLServerCreateTableExpression
+from .dml import SQLServerMergeExpression, SQLServerSelectIntoExpression
 from .columnstore import SQLServerColumnstoreIndexExpression
 from .fulltext import (
     SQLServerCreateFullTextCatalogExpression,
@@ -40,6 +46,12 @@ from .ddl import (
     SQLServerDropRoutineExpression,
     SQLServerCreateTriggerExpression,
     SQLServerDropTriggerExpression,
+    SQLServerTypeNullability,
+    SQLServerAliasTypeDefinition,
+    SQLServerTableTypeDefinition,
+    SQLServerClrTypeDefinition,
+    SQLServerDropTypeExpression,
+    SQLServerRenameTypeExpression,
 )
 from .functions import (
     SQLServerTryCastExpression,
@@ -59,6 +71,8 @@ __all__ = [
     "SQLServerOpenJsonExpression",
     "OpenJsonColumn",
     "SQLServerNextValueForExpression",
+    "SQLServerMergeExpression",
+    "SQLServerSelectIntoExpression",
     "SQLServerOptionHintClause",
     "recompile_hint",
     "maxdop_hint",
@@ -77,6 +91,12 @@ __all__ = [
     "SQLServerGraphPathAggregate",
     "SQLServerForPathTable",
     "SQLServerUnpivotExpression",
+    "SQLServerCreateTableOptions",
+    "SQLServerColumnDefinition",
+    "SQLServerColumnOptions",
+    "SQLServerAlterColumn",
+    "SQLServerIndexDefinition",
+    "SQLServerCreateTableExpression",
     "SQLServerColumnstoreIndexExpression",
     "SQLServerCreateFullTextCatalogExpression",
     "SQLServerDropFullTextCatalogExpression",
@@ -87,6 +107,12 @@ __all__ = [
     "SQLServerDropRoutineExpression",
     "SQLServerCreateTriggerExpression",
     "SQLServerDropTriggerExpression",
+    "SQLServerTypeNullability",
+    "SQLServerAliasTypeDefinition",
+    "SQLServerTableTypeDefinition",
+    "SQLServerClrTypeDefinition",
+    "SQLServerDropTypeExpression",
+    "SQLServerRenameTypeExpression",
     "SQLServerTryCastExpression",
     "SQLServerTryConvertExpression",
     "SQLServerContainsPredicate",

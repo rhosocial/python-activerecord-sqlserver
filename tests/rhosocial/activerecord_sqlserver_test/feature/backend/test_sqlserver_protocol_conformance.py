@@ -61,9 +61,11 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.ArraySupport,
     dialect_protocols.AutoIncrementSupport,
     dialect_protocols.CTESupport,
+    dialect_protocols.ColumnAttributeSupport,
     dialect_protocols.CollationSupport,
     dialect_protocols.ConstraintSupport,
-    dialect_protocols.DDLTypeSupport,
+    dialect_protocols.DataTypeSupport,
+    dialect_protocols.UserDefinedTypeSupport,
     dialect_protocols.ExplainSupport,
     dialect_protocols.FilterClauseSupport,
     dialect_protocols.FunctionSupport,
@@ -104,8 +106,12 @@ SQLSERVER_PROTOCOLS = [
 # decision (move to SQLSERVER_PROTOCOLS or revert).
 SQLSERVER_NOT_IMPLEMENTED = [
     # --- Intentional non-support ---
+    # SQL Server has no standalone COMMENT ON statement; comments use
+    # sp_addextendedproperty (not modelled as a COMMENT ON expression).
+    dialect_protocols.CommentSupport,
     # The generic DatabaseSupport protocol is not composed by SQLServerDialect.
     dialect_protocols.DatabaseSupport,
+    dialect_protocols.DomainSupport,
     # SQL Server's native XML/XQuery (FOR XML, OPENXML, .query()/.value()) is not
     # the standard SQL/XML feature set, so no SQL/XML formatters are exposed.
     dialect_protocols.SQLXMLSupport,
@@ -153,7 +159,10 @@ class TestSQLServerDialectNegativeProtocolConformance:
 
     def test_positive_and_negative_lists_partition_all_protocols(self):
         """Every generic protocol must be classified for SQL Server."""
-        all_protos = set(get_all_generic_protocols())
+        all_protos = {
+            protocol.__name__
+            for protocol in get_all_generic_protocols().values()
+        }
         positive = {
             p.__name__
             for p in SQLSERVER_PROTOCOLS

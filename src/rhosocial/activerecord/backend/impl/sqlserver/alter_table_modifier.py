@@ -72,7 +72,7 @@ class SQLServerAlterColumnModifierMixin:
         standard SET/DROP subclauses. The ``operation`` value selects the
         variant:
 
-        - ``SET DATA TYPE`` (or ``dialect_options["data_type"]``) renders the
+        - ``SET DATA TYPE`` (or a typed ``data_type`` field) renders the
           T-SQL ``ALTER COLUMN col type [COLLATE ...] [NULL | NOT NULL] [SPARSE]``
           form via ``format_alter_column_type_action``.
         - ``ADD MASKED`` renders dynamic data masking via
@@ -81,20 +81,19 @@ class SQLServerAlterColumnModifierMixin:
         """
         operation = action.operation
         op_str = operation.value if hasattr(operation, "value") else str(operation)
-        dialect_options = getattr(action, "dialect_options", None) or {}
 
-        if op_str == "ADD MASKED" or "masked_function" in dialect_options:
+        if op_str == "ADD MASKED" or getattr(action, "masked_function", None) is not None:
             return self.format_add_masked_action(action)
-        if op_str == "DROP MASKED" or dialect_options.get("drop_masked"):
+        if op_str == "DROP MASKED" or getattr(action, "drop_masked", False):
             return self.format_drop_masked_action(action)
-        if op_str == "SET DATA TYPE" or "data_type" in dialect_options:
+        if op_str == "SET DATA TYPE" or getattr(action, "data_type", None) is not None:
             return self.format_alter_column_type_action(action)
 
         raise UnsupportedFeatureError(
             self.name,
             f"ALTER COLUMN {op_str}",
             "SQL Server requires re-specifying the full column. Use "
-            "operation='SET DATA TYPE' with dialect_options to add "
+            "operation='SET DATA TYPE' with a SQLServerAlterColumn to add "
             "NULL/NOT NULL, COLLATE, SPARSE, or MASKED.",
         )
 
@@ -105,12 +104,11 @@ class SQLServerAlterColumnModifierMixin:
             ALTER COLUMN column data_type [COLLATE collation]
             [NULL | NOT NULL] [SPARSE]
 
-        The data type comes from ``dialect_options["data_type"]`` or the
+        The data type comes from the typed ``data_type`` field or the
         action's ``new_value``. ``not_null``, ``collate``, and ``sparse``
-        are carried in ``dialect_options``.
+        are typed fields on ``SQLServerAlterColumn``.
         """
-        dialect_options = getattr(action, "dialect_options", None) or {}
-        data_type = dialect_options.get("data_type") or action.new_value
+        data_type = getattr(action, "data_type", None) or action.new_value
         if data_type is None:
             raise ValueError("data type is required for ALTER COLUMN")
 
@@ -120,15 +118,15 @@ class SQLServerAlterColumnModifierMixin:
             str(data_type),
         ]
 
-        collate = dialect_options.get("collate")
+        collate = getattr(action, "collate", None)
         if collate:
             parts.append(f"COLLATE {collate}")
 
-        not_null = dialect_options.get("not_null")
+        not_null = getattr(action, "not_null", None)
         if not_null is not None:
             parts.append("NOT NULL" if not_null else "NULL")
 
-        if dialect_options.get("sparse"):
+        if getattr(action, "sparse", False):
             if self.version < _SQL_SERVER_SPARSE_COLUMN_VERSION:  # type: ignore[attr-defined]
                 raise UnsupportedFeatureError(
                     self.name,
@@ -145,7 +143,7 @@ class SQLServerAlterColumnModifierMixin:
         SQL Syntax:
             ALTER COLUMN column ADD MASKED WITH (FUNCTION = 'mask_function')
 
-        The mask function is carried in ``dialect_options["masked_function"]``
+        The mask function is carried in the typed ``masked_function`` field
         or the action's ``new_value``.
         """
         if self.version < _SQL_SERVER_MASKED_COLUMN_VERSION:  # type: ignore[attr-defined]
@@ -155,8 +153,7 @@ class SQLServerAlterColumnModifierMixin:
                 suggestion="requires SQL Server 2016+.",
             )
 
-        dialect_options = getattr(action, "dialect_options", None) or {}
-        function = dialect_options.get("masked_function") or action.new_value
+        function = getattr(action, "masked_function", None) or action.new_value
         if function is None:
             raise ValueError("masked_function is required for ADD MASKED")
 

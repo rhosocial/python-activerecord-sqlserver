@@ -44,6 +44,7 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     TransactionControlSupport,
     SQLFunctionSupport,
     DDLTypeSupport,
+    UserDefinedTypeSupport,
 )
 from .protocols import (
     SQLServerTableSupport,
@@ -63,6 +64,7 @@ from .protocols import (
     SQLServerTryCastSupport,
     SQLServerIdentitySupport,
     SQLServerIndexedViewSupport,
+    SQLServerUserDefinedTypeSupport,
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
@@ -96,6 +98,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     DMLMixin,
     DDLColumnMixin,
     DDLTypeMixin,
+    UserDefinedTypeMixin,
 
     TransactionControlMixin,
     AutoIncrementMixin,
@@ -114,6 +117,7 @@ from .mixins.pivot import SQLServerPivotMixin
 from .mixins.graph import SQLServerGraphMixin
 from .mixins.columnstore import SQLServerColumnstoreIndexMixin
 from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
+from .mixins.ddl_type import SQLServerTypeDDLMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
@@ -134,6 +138,7 @@ from .mixins.explain import SQLServerExplainMixin
 from .mixins.dql import SQLServerDQLMixin
 from .mixins.dml import SQLServerDMLMixin
 from .mixins.ddl_view import SQLServerViewMixin
+from .mixins.ddl_database import SQLServerDatabaseMixin
 from .mixins.schema import SQLServerSchemaMixin
 from .mixins.index import SQLServerIndexMixin
 from .mixins.generated_column import SQLServerGeneratedColumnMixin
@@ -176,6 +181,7 @@ if TYPE_CHECKING:
         TableConstraint,
         IndexDefinition,
         CreateTableExpression,
+        CreateIndexExpression,
         DropTableExpression,
         AlterTableExpression,
         CreateSchemaExpression,
@@ -222,8 +228,10 @@ class SQLServerDialect(
     SQLServerMemoryOptimizedMixin,  # In-Memory OLTP table options (2014+)
     SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
+    SQLServerTypeDDLMixin,
     DDLColumnMixin,
     DDLTypeMixin,
+    UserDefinedTypeMixin,
     SQLServerIdentifierMixin,
     SQLServerCollationMixin,
     CollationMixin,
@@ -243,6 +251,7 @@ class SQLServerDialect(
     SQLServerDMLMixin,
     SQLServerViewMixin,
     SQLServerSchemaMixin,
+    SQLServerDatabaseMixin,
     SQLServerIndexMixin,
     SQLServerGeneratedColumnMixin,
     SQLServerSetOperationMixin,
@@ -322,6 +331,8 @@ class SQLServerDialect(
     SQLFunctionSupport,
     # DataType Support Protocol
     DDLTypeSupport,
+    SQLServerUserDefinedTypeSupport,
+    UserDefinedTypeSupport,
     # SQL Server-specific protocols (marker classes for isinstance() checks;
     # implementations live in SQLServerProtocolSupportMixin / SQLServerSequenceMixin)
     SQLServerOutputSupport,
@@ -428,7 +439,12 @@ class SQLServerDialect(
         """
         return SQLServerIdentifierMixin.format_identifier(self, identifier, need_quote)
 
-    def __init__(self, version: Optional[Tuple[int, int, int]] = None):
+    def __init__(
+        self,
+        version: Optional[Tuple[int, int, int]] = None,
+        *,
+        deployment_target: str = "sqlserver",
+    ) -> None:
         """
         Initialize SQL Server dialect with specific version.
 
@@ -437,9 +453,12 @@ class SQLServerDialect(
                 If None, the dialect must be adapted via
                 backend.introspect_and_adapt() before version-dependent
                 features can be used.
+            deployment_target: Deployment target label used for CLR capability
+                gating; the default is on-premises SQL Server.
         """
         super().__init__()
         self._reserved_words = SQLSERVER_RESERVED_WORDS
+        self.deployment_target = deployment_target
         if version is not None:
             self.version = version
 
@@ -507,12 +526,42 @@ class SQLServerDialect(
         SQL Server has no CREATE TABLE ... LIKE (``supports_create_table_like``
         stays ``False``), so the gated
         ``format_create_table_like_statement`` raises
-        ``UnsupportedFeatureError``. Temporary tables use a ``#``-prefixed
+        ``UnsupportedFeatureError``.         Temporary tables use a ``#``-prefixed
         table name instead of the ``TEMPORARY`` keyword.
         """
-        all_params: List[Any] = []
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
-        dialect_options = getattr(expr, "dialect_options", {}) or {}
+        if getattr(expr, "tablespace", None):
+            raise UnsupportedFeatureError(
+                self.name,
+                "TABLESPACE",
+                "SQL Server does not support table tablespaces.",
+            )
+        if getattr(expr, "inherits", None):
+            raise UnsupportedFeatureError(
+                self.name,
+                "table INHERITS",
+                "SQL Server does not support table inheritance.",
+            )
+        if getattr(getattr(expr, "table_options", None), "comment", None):
+            # SQL Server has no inline table comment (its native
+            # mechanism is sp_addextendedproperty, not implemented here); a
+            # comment on the table options is never silently dropped.
+            raise UnsupportedFeatureError(
+                self.name, "TABLE COMMENT",
+                "SQL Server has no inline table comment; comments are "
+                "annotated through sp_addextendedproperty (not implemented).",
+            )
+        if_not_exists_guard = ""
+        if expr.if_not_exists:
+            # SQL Server has no CREATE TABLE IF NOT EXISTS syntax; the
+            # idempotent form is the IF OBJECT_ID(...) IS NULL batch guard.
+            target = expr.table.name
+            if expr.table.schema_name:
+                target = f"{expr.table.schema_name}.{target}"
+            escaped_target = target.replace("'", "''")
+            if_not_exists_guard = f"IF OBJECT_ID(N'{escaped_target}', N'U') IS NULL\n"
+        all_params: List[Any] = []
 
         parts = ["CREATE TABLE"]
 
@@ -547,7 +596,7 @@ class SQLServerDialect(
             all_params.extend(idx_params)
 
         # SQL Graph edge constraints (CONNECTION) are table-level constraints.
-        edge_constraints = dialect_options.get("edge_constraints")
+        edge_constraints = getattr(expr, "edge_constraints", None)
         if edge_constraints:
             for edge_constraint in edge_constraints:
                 ec_sql, ec_params = edge_constraint.to_sql()
@@ -561,18 +610,14 @@ class SQLServerDialect(
             parts.append(partition_sql)
             all_params.extend(partition_params)
 
+        from .expression.table_options import SQLServerCreateTableOptions
         table_options = getattr(expr, "table_options", None)
-        memory_optimized = getattr(table_options, "memory_optimized", None) if table_options else None
-        if memory_optimized is None:
-            memory_optimized = dialect_options.get("memory_optimized")
-        if memory_optimized:
-            durability = getattr(table_options, "durability", None) if table_options else None
-            if durability is None:
-                durability = dialect_options.get("durability", "SCHEMA_ONLY")
+        if isinstance(table_options, SQLServerCreateTableOptions) and table_options.memory_optimized:
+            durability = table_options.durability or "SCHEMA_ONLY"
             parts.append(self.format_memory_optimized_option(durability))
 
         # SQL Graph table kind (AS NODE / AS EDGE), if requested.
-        graph_kind = dialect_options.get("graph_table_kind")
+        graph_kind = getattr(expr, "graph_table_kind", None)
         if graph_kind is not None:
             from .expression.ddl.graph import (
                 SQLServerAsGraphTableExpression,
@@ -585,13 +630,42 @@ class SQLServerDialect(
             parts.append(kind_sql)
             all_params.extend(kind_params)
 
-        return ' '.join(parts), tuple(all_params)
+        return if_not_exists_guard + ' '.join(parts), tuple(all_params)
 
-    def format_column_definition(self, col_def: "ColumnDefinition") -> Tuple[str, tuple]:
-        """Format a column definition for SQL Server."""
+    def format_identity_clause(self, expr) -> Tuple[str, tuple]:
+        """SQL Server renders identity as ``IDENTITY(seed, increment)``."""
+        seed = expr.start if expr.start is not None else 1
+        increment = expr.increment if expr.increment is not None else 1
+        return f" IDENTITY({seed}, {increment})", ()
+
+    def format_column_definition(
+        self,
+        col_def: "ColumnDefinition",
+        *,
+        memory_optimized: bool = False,
+    ) -> Tuple[str, tuple]:
+        """Format a column definition for SQL Server.
+
+        Accepts both the generic ``ColumnDefinition`` and the SQL Server
+        ``SQLServerColumnDefinition``; the latter's SQL Server-only attributes
+        (``sparse`` / ``rowguidcol``) are rendered here.
+        """
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraintType,
         )
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.column import (
+            SQLServerColumnDefinition,
+        )
+        if getattr(col_def, "comment", None):
+            # SQL Server has no inline column comment (its native
+            # mechanism is sp_addextendedproperty, not implemented here); a
+            # comment on a column definition is never silently dropped.
+            from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+            raise UnsupportedFeatureError(
+                self.name, "COLUMN COMMENT",
+                "SQL Server has no inline column comment; comments are "
+                "annotated through sp_addextendedproperty (not implemented).",
+            )
         type_sql, type_params = col_def.data_type.to_sql()
         parts = [self.format_identifier(col_def.name), type_sql]
         params: List[Any] = list(type_params)
@@ -599,11 +673,13 @@ class SQLServerDialect(
         constraint_parts = []
         for constraint in col_def.constraints:
             if constraint.constraint_type == ColumnConstraintType.PRIMARY_KEY:
-                constraint_parts.append("PRIMARY KEY")
+                constraint_parts.append(
+                    "PRIMARY KEY NONCLUSTERED" if memory_optimized else "PRIMARY KEY"
+                )
             elif constraint.constraint_type == ColumnConstraintType.NOT_NULL:
                 constraint_parts.append("NOT NULL")
             elif constraint.constraint_type == ColumnConstraintType.UNIQUE:
-                constraint_parts.append("UNIQUE")
+                constraint_parts.append("UNIQUE NONCLUSTERED" if memory_optimized else "UNIQUE")
             elif constraint.constraint_type == ColumnConstraintType.DEFAULT:
                 if constraint.default_value is not None:
                     from rhosocial.activerecord.backend.expression import bases
@@ -618,6 +694,12 @@ class SQLServerDialect(
                         constraint_parts.append(f"DEFAULT {constraint.default_value}")
             elif constraint.constraint_type == ColumnConstraintType.NULL:
                 constraint_parts.append("NULL")
+            elif constraint.constraint_type == ColumnConstraintType.CHECK:
+                if constraint.check_condition is None:
+                    raise ValueError("CHECK constraint must have a check condition")
+                check_sql, check_params = constraint.check_condition.to_sql()
+                constraint_parts.append(f"CHECK ({check_sql})")
+                params.extend(check_params)
 
             if constraint.is_auto_increment:
                 constraint_parts.append("IDENTITY(1,1)")
@@ -625,14 +707,30 @@ class SQLServerDialect(
         if constraint_parts:
             parts.append(' '.join(constraint_parts))
 
+        attr_sql, attr_params = self.format_column_attributes(col_def)
+        if attr_sql:
+            parts.append(attr_sql.strip())
+        params.extend(attr_params)
+
         if col_def.generated_expression is not None:
             gen_sql, gen_params = col_def.generated_expression.to_sql()
             parts.append(gen_sql.lstrip())
             params.extend(gen_params)
 
+        if isinstance(col_def, SQLServerColumnDefinition):
+            if col_def.rowguidcol:
+                parts.append("ROWGUIDCOL")
+            if col_def.sparse:
+                parts.append("SPARSE")
+
         return ' '.join(parts), tuple(params)
 
-    def format_table_constraint(self, t_const: "TableConstraint") -> Tuple[str, tuple]:
+    def format_table_constraint(
+        self,
+        t_const: "TableConstraint",
+        *,
+        memory_optimized: bool = False,
+    ) -> Tuple[str, tuple]:
         """Format a table constraint for SQL Server."""
         from rhosocial.activerecord.backend.expression.statements import (
             TableConstraintType,
@@ -649,11 +747,17 @@ class SQLServerDialect(
         if t_const.constraint_type == TableConstraintType.PRIMARY_KEY:
             if t_const.columns:
                 cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                parts.append(f"PRIMARY KEY ({cols_str})")
+                if memory_optimized:
+                    parts.append(f"PRIMARY KEY NONCLUSTERED ({cols_str})")
+                else:
+                    parts.append(f"PRIMARY KEY ({cols_str})")
         elif t_const.constraint_type == TableConstraintType.UNIQUE:
             if t_const.columns:
                 cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                parts.append(f"UNIQUE ({cols_str})")
+                if memory_optimized:
+                    parts.append(f"UNIQUE NONCLUSTERED ({cols_str})")
+                else:
+                    parts.append(f"UNIQUE ({cols_str})")
         elif t_const.constraint_type == TableConstraintType.FOREIGN_KEY:
             if t_const.columns and t_const.foreign_key_table and t_const.foreign_key_columns:
                 cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
@@ -678,6 +782,20 @@ class SQLServerDialect(
 
     def format_inline_index(self, idx_def: "IndexDefinition") -> Tuple[str, tuple]:
         """Format an inline index definition for SQL Server."""
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+        for option, value in (
+            ("if_not_exists", getattr(idx_def, "if_not_exists", False)),
+            ("tablespace", getattr(idx_def, "tablespace", None)),
+            ("include_columns", getattr(idx_def, "include_columns", None)),
+            ("partial_condition", getattr(idx_def, "partial_condition", None)),
+        ):
+            if value:
+                raise UnsupportedFeatureError(
+                    self.name, f"inline index {option}",
+                    "SQL Server's inline index definition does not render "
+                    f"'{option}'; use a standalone CREATE INDEX statement.",
+                )
         parts = []
 
         if idx_def.unique:
@@ -695,14 +813,13 @@ class SQLServerDialect(
                 col_parts.append(self.format_identifier(str(col)))
         cols_str = ', '.join(col_parts)
 
-        idx_options = getattr(idx_def, "dialect_options", None) or {}
-        if idx_options.get("hash_index"):
+        if getattr(idx_def, "hash_index", False):
             self.check_feature_support(
                 "supports_memory_optimized_tables",
                 "NONCLUSTERED HASH index",
                 "requires SQL Server 2014+ (memory-optimized tables).",
             )
-            bucket_count = idx_options.get("bucket_count")
+            bucket_count = getattr(idx_def, "bucket_count", None)
             if bucket_count is None:
                 raise ValueError("bucket_count is required for a NONCLUSTERED HASH index")
             parts.append(f"NONCLUSTERED HASH ({cols_str}) WITH (BUCKET_COUNT = {bucket_count})")
@@ -714,9 +831,21 @@ class SQLServerDialect(
     def format_create_index_statement(self, expr: "CreateIndexExpression") -> Tuple[str, tuple]:
         """Format CREATE INDEX statement for SQL Server.
 
-        SQL Server doesn't support IF NOT EXISTS for CREATE INDEX.
-        We ignore the if_not_exists flag and generate standard CREATE INDEX.
+        SQL Server doesn't support IF NOT EXISTS for CREATE INDEX, and has no
+        index TABLESPACE concept; declared values are never silently dropped.
         """
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+        if getattr(expr, "if_not_exists", False):
+            raise UnsupportedFeatureError(
+                self.name, "CREATE INDEX IF NOT EXISTS",
+                "SQL Server has no CREATE INDEX IF NOT EXISTS syntax.",
+            )
+        if getattr(expr, "tablespace", None):
+            raise UnsupportedFeatureError(
+                self.name, "index TABLESPACE",
+                "SQL Server has no index tablespace; use a filegroup instead.",
+            )
         all_params = []
         parts = ["CREATE"]
 
@@ -765,6 +894,18 @@ class SQLServerDialect(
         - CYCLE | NO CYCLE, CACHE, NO ORDER (ORDER not supported)
         - No IF NOT EXISTS support, no OWNED BY
         """
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+        if getattr(expr, "if_not_exists", False):
+            raise UnsupportedFeatureError(
+                self.name, "CREATE SEQUENCE IF NOT EXISTS",
+                "SQL Server has no CREATE SEQUENCE IF NOT EXISTS syntax.",
+            )
+        if getattr(expr, "owned_by", None):
+            raise UnsupportedFeatureError(
+                self.name, "SEQUENCE OWNED BY",
+                "SQL Server sequences have no OWNED BY clause.",
+            )
         parts = ["CREATE SEQUENCE"]
         parts.append(self.format_identifier(expr.sequence_name))
         if expr.start is not None:
@@ -839,10 +980,9 @@ class SQLServerDialect(
         on_sql, on_params = expr.on_condition.to_sql()
         all_params.extend(on_params)
 
-        dialect_options = getattr(expr, "dialect_options", {}) or {}
-        output_columns = dialect_options.get("output")
-        output_action = dialect_options.get("output_action", False)
-        holdlock = dialect_options.get("holdlock", False)
+        output_columns = getattr(expr, "output", None)
+        output_action = getattr(expr, "output_action", False)
+        holdlock = getattr(expr, "holdlock", False)
 
         parts = [
             f"MERGE INTO {target_sql}",
@@ -920,7 +1060,7 @@ class SQLServerDialect(
         - Single action per ALTER TABLE statement
         """
         all_params: list = []
-        parts = [f"ALTER TABLE {self.format_identifier(expr.table_name)}"]
+        table_sql = self.format_identifier(expr.table_name)
 
         action_parts = []
         for action in expr.actions:
@@ -928,10 +1068,15 @@ class SQLServerDialect(
             action_parts.append(action_part)
             all_params.extend(action_params)
 
-        if action_parts:
-            parts.append(" ".join(action_parts))
+        if not action_parts:
+            return f"ALTER TABLE {table_sql}", ()
 
-        return " ".join(parts), tuple(all_params)
+        if self.supports_multi_action_alter_table():
+            return f"ALTER TABLE {table_sql} {', '.join(action_parts)}", tuple(all_params)
+
+        # SQL Server requires one action per statement: emit a statement each.
+        stmts = [f"ALTER TABLE {table_sql} {part}" for part in action_parts]
+        return "; ".join(stmts), tuple(all_params)
 
     def format_function_call(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
         """Format a function call, mapping MySQL/generic function names to

@@ -232,10 +232,12 @@ class TestMergeOutputAndHoldlock:
         from rhosocial.activerecord.backend.expression.statements import (
             MergeAction,
             MergeActionType,
-            MergeExpression,
+        )
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerMergeExpression,
         )
 
-        return MergeExpression(
+        return SQLServerMergeExpression(
             dialect=d,
             target_table="tgt",
             source=TableExpression(d, "src"),
@@ -271,28 +273,24 @@ class TestMergeOutputAndHoldlock:
 
     def test_merge_statement_with_output(self, dialect):
         merge = self._build_merge(dialect)
-        merge.dialect_options = {
-            "output": ["inserted.*", "deleted.*"],
-            "output_action": True,
-        }
+        merge.output = ["inserted.*", "deleted.*"]
+        merge.output_action = True
         sql, params = merge.to_sql()
         assert sql.startswith("MERGE INTO [tgt]")
         assert "OUTPUT $action, inserted.*, deleted.*" in sql
 
     def test_merge_statement_with_holdlock(self, dialect):
         merge = self._build_merge(dialect)
-        merge.dialect_options = {"holdlock": True}
+        merge.holdlock = True
         sql, params = merge.to_sql()
         assert sql.startswith("MERGE INTO [tgt] WITH (HOLDLOCK)")
         assert "USING [src]" in sql
 
     def test_merge_statement_with_output_and_holdlock(self, dialect):
         merge = self._build_merge(dialect)
-        merge.dialect_options = {
-            "output": ["inserted.*", "deleted.*"],
-            "output_action": True,
-            "holdlock": True,
-        }
+        merge.output = ["inserted.*", "deleted.*"]
+        merge.output_action = True
+        merge.holdlock = True
         sql, params = merge.to_sql()
         assert sql.startswith("MERGE INTO [tgt] WITH (HOLDLOCK)")
         assert "OUTPUT $action, inserted.*, deleted.*" in sql
@@ -427,21 +425,29 @@ class TestDelegatedFormatters:
         assert dialect.supports_tablesample() is True
 
     def test_format_select_into_statement(self, dialect):
-        from rhosocial.activerecord.backend.expression import Column, QueryExpression
+        from rhosocial.activerecord.backend.expression import Column
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerSelectIntoExpression,
+        )
 
-        query = QueryExpression(
+        query = SQLServerSelectIntoExpression(
             dialect=dialect,
             select=[Column(dialect, "a"), Column(dialect, "b")],
-            dialect_options={"select_into_table": "new_table"},
+            select_into_table="new_table",
         )
         sql, params = dialect.format_select_into_statement(query)
         assert sql == "SELECT [a], [b] INTO [new_table]"
         assert params == ()
 
     def test_format_select_into_requires_target_table(self, dialect):
-        from rhosocial.activerecord.backend.expression import Column, QueryExpression
+        from rhosocial.activerecord.backend.expression import Column
+        from rhosocial.activerecord.backend.impl.sqlserver.expression import (
+            SQLServerSelectIntoExpression,
+        )
 
-        query = QueryExpression(dialect=dialect, select=[Column(dialect, "id")])
+        query = SQLServerSelectIntoExpression(
+            dialect=dialect, select=[Column(dialect, "id")]
+        )
         with pytest.raises(ValueError):
             dialect.format_select_into_statement(query)
 

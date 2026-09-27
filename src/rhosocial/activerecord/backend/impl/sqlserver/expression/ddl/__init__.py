@@ -15,6 +15,14 @@ from .graph import (
     SQLServerAsGraphTableExpression,
     SQLServerEdgeConstraint,
 )
+from .type import (
+    SQLServerTypeNullability,
+    SQLServerAliasTypeDefinition,
+    SQLServerTableTypeDefinition,
+    SQLServerClrTypeDefinition,
+    SQLServerDropTypeExpression,
+    SQLServerRenameTypeExpression,
+)
 
 __all__ = [
     "SQLServerCreateProcedureExpression",
@@ -25,4 +33,10 @@ __all__ = [
     "SQLServerGraphTableKind",
     "SQLServerAsGraphTableExpression",
     "SQLServerEdgeConstraint",
+    "SQLServerTypeNullability",
+    "SQLServerAliasTypeDefinition",
+    "SQLServerTableTypeDefinition",
+    "SQLServerClrTypeDefinition",
+    "SQLServerDropTypeExpression",
+    "SQLServerRenameTypeExpression",
 ]

@@ -36,6 +36,12 @@ from .expression import (
     SQLServerTryConvertExpression,
     SQLServerContainsPredicate,
     SQLServerFreetextPredicate,
+    SQLServerTypeNullability,
+    SQLServerAliasTypeDefinition,
+    SQLServerTableTypeDefinition,
+    SQLServerClrTypeDefinition,
+    SQLServerDropTypeExpression,
+    SQLServerRenameTypeExpression,
 )
 
 from .expression.types import (
@@ -54,7 +60,9 @@ from .mixins import (
     SQLServerBackendMixin,
     SQLServerConcurrencyMixin,
     SQLServerTypeSupportMixin,
+    SQLServerTypeDDLMixin,
 )
+from .protocols import SQLServerUserDefinedTypeSupport
 
 from .schema import SQLServerSchemaDiffer
 
@@ -96,6 +104,12 @@ __all__ = [
     "SQLServerTryConvertExpression",
     "SQLServerContainsPredicate",
     "SQLServerFreetextPredicate",
+    "SQLServerTypeNullability",
+    "SQLServerAliasTypeDefinition",
+    "SQLServerTableTypeDefinition",
+    "SQLServerClrTypeDefinition",
+    "SQLServerDropTypeExpression",
+    "SQLServerRenameTypeExpression",
     # DDL DataType subclasses
     "SQLServerNVarCharType",
     "SQLServerNCharType",
@@ -110,6 +124,8 @@ __all__ = [
     "SQLServerBackendMixin",
     "SQLServerConcurrencyMixin",
     "SQLServerTypeSupportMixin",
+    "SQLServerTypeDDLMixin",
+    "SQLServerUserDefinedTypeSupport",
     # Schema differ
     "SQLServerSchemaDiffer",
     # Type compatibility

@@ -35,3 +35,9 @@ This project is in early development. Key features being implemented:
 ## Version Control and Changelog
 
 This project adheres to the same version control, branching, commit message, and changelog management standards as the main `python-activerecord` project.
+
+## Search Scope
+
+- Use `rg` for repository searches; never use `grep`.
+- Limit searches to this `python-activerecord` repository and its related testsuite/backend directories.
+- Exclude `.git/`, `.venv*/`, `__pycache__/`, `build/`, `dist/`, and other cache directories.

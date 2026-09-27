@@ -59,6 +59,12 @@ class SQLServerViewMixin:
         parts.append(as_sql)
 
         if expr.options and hasattr(expr.options, 'check_option') and expr.options.check_option:
+            if not self.supports_view_check_option():
+                from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+                raise UnsupportedFeatureError(
+                    self.name, "WITH CHECK OPTION",
+                    f"{self.name} does not support WITH CHECK OPTION.",
+                )
             parts.append(f"WITH {expr.options.check_option.value} CHECK OPTION")
 
         return " ".join(parts), query_params
