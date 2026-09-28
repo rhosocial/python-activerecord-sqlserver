@@ -16,7 +16,8 @@ import pytest
 
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
 from rhosocial.activerecord.backend.dialect.protocols import ExplainSupport
-from rhosocial.activerecord.backend.impl import sqlserver as backend_pkg
+from rhosocial.activerecord.backend.impl.sqlserver import backend as backend_pkg
+from rhosocial.activerecord.backend.impl.sqlserver.backend import async_backend as async_backend_mod
 from rhosocial.activerecord.backend.impl.sqlserver.cli import info as info_mod
 from rhosocial.activerecord.backend.impl.sqlserver.cli import query as query_mod
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -426,7 +427,7 @@ class TestQueryErrors:
 class TestQueryAsync:
     def test_async_dispatch_executes_query(self, monkeypatch, capsys):
         cls = _tracking_class(FakeAsyncQueryBackend, "QAsync")
-        monkeypatch.setattr(backend_pkg, "AsyncSQLServerBackend", cls, raising=False)
+        monkeypatch.setattr(async_backend_mod, "AsyncSQLServerBackend", cls, raising=False)
         query_mod.handle(
             make_args(
                 query_mod.create_parser,
@@ -444,7 +445,7 @@ class TestQueryAsync:
         cls = _tracking_class(FakeAsyncQueryBackend, "QAsyncErr")
         cls.connect_error = connect_error
         cls.execute_error = execute_error
-        monkeypatch.setattr(backend_pkg, "AsyncSQLServerBackend", cls, raising=False)
+        monkeypatch.setattr(async_backend_mod, "AsyncSQLServerBackend", cls, raising=False)
         with pytest.raises(SystemExit) as exc:
             query_mod.handle(
                 make_args(query_mod.create_parser, ["query", "--database", "db", "SELECT 1", "--async"])
