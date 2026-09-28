@@ -13,6 +13,43 @@ from typing import Dict, Any, Optional
 import importlib
 
 
+def _find_async_backend(module_path, module, sync_class_name):
+    """Locate ``Async<SyncName>`` for a backend whose classes span modules.
+
+    ``impl.<backend>`` is a namespace package, so the sync and async classes no
+    longer share a facade. Walk up from the module that defined the sync class
+    until the async counterpart shows up, then fall back to the sync class.
+    """
+    wanted = f'Async{sync_class_name}'
+    candidate = module
+    name = module_path
+    while candidate is not None:
+        found = getattr(candidate, wanted, None)
+        if found is not None:
+            return found
+        parent_name = name.rpartition('.')[0]
+        if not parent_name or parent_name == name:
+            break
+        name = parent_name
+        try:
+            candidate = importlib.import_module(parent_name)
+        except ImportError:
+            break
+    # The async class conventionally lives in the backend's own
+    # ``async_backend`` module, which the upward walk cannot reach.
+    parent_name = module_path.rpartition('.')[0]
+    for candidate_name in (f'{parent_name}.async_backend',
+                            f'{module_path.rsplit(".", 1)[0]}.async_backend'):
+        try:
+            sibling = importlib.import_module(candidate_name)
+        except ImportError:
+            continue
+        found = getattr(sibling, wanted, None)
+        if found is not None:
+            return found
+    return getattr(module, sync_class_name)
+
+
 def _configure_model_from_params(params: dict, model_class) -> None:
     """
     Configure model from connection parameters.
@@ -60,16 +97,9 @@ async def _async_configure_model_from_params(params: dict, model_class) -> None:
     # Convert sync backend to async backend if needed
     # e.g., MariaDBBackend -> AsyncMariaDBBackend
     if not backend_class.__name__.startswith('Async'):
-        async_backend_class_name = f'Async{backend_class.__name__}'
-        # Try to get from same module
-        if hasattr(backend_module, async_backend_class_name):
-            backend_class = getattr(backend_module, async_backend_class_name)
-        else:
-            # Try to get from parent module (e.g., mariadb.backend.sync -> mariadb.backend)
-            parent_module_name = '.'.join(params['backend_module'].split('.')[:-1])
-            parent_module = importlib.import_module(parent_module_name)
-            if hasattr(parent_module, async_backend_class_name):
-                backend_class = getattr(parent_module, async_backend_class_name)
+        backend_class = _find_async_backend(
+            params['backend_module'], backend_module, backend_class.__name__
+        )
 
     # Dynamically import config class
     config_module = importlib.import_module(params['config_module'])
