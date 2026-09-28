@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/backend.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/backend/backend.py
 """
 SQL Server-specific implementation of the StorageBackend.
 
@@ -28,10 +28,10 @@ from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.result import QueryResult
 from rhosocial.activerecord.backend.introspection.backend_mixin import IntrospectorBackendMixin
 from rhosocial.activerecord.backend.explain import SyncExplainBackendMixin
-from .config import SQLServerConnectionConfig
-from .dialect import SQLServerDialect
-from .transaction import SQLServerTransactionManager
-from .mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
+from ..config import SQLServerConnectionConfig
+from ..dialect import SQLServerDialect
+from ..transaction import SQLServerTransactionManager
+from ..mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
 
 
 class SQLServerUnicodeDialect(SQLServerDialect):

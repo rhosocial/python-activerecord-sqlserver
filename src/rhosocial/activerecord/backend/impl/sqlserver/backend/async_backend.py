@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/async_backend.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/backend/async_backend.py
 """
 SQL Server asynchronous backend implementation.
 
@@ -25,11 +25,11 @@ from rhosocial.activerecord.backend.errors import (
 )
 from rhosocial.activerecord.backend.result import QueryResult
 from rhosocial.activerecord.backend.introspection.backend_mixin import IntrospectorBackendMixin
-from .config import SQLServerConnectionConfig
-from .dialect import SQLServerDialect
-from .async_transaction import AsyncSQLServerTransactionManager
+from ..config import SQLServerConnectionConfig
+from ..dialect import SQLServerDialect
+from ..async_transaction import AsyncSQLServerTransactionManager
 from .backend import SQLServerUnicodeDialect
-from .mixins import SQLServerBackendMixin
+from ..mixins import SQLServerBackendMixin
 
 try:
     import aioodbc

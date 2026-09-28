@@ -67,7 +67,7 @@ def handle(args):
 
     is_async = getattr(args, "is_async", False)
     if is_async:
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
 
         async_backend = None
 

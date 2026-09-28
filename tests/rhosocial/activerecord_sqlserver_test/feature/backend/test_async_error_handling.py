@@ -7,7 +7,7 @@ from rhosocial.activerecord.backend.errors import (
     DeadlockError,
     OperationalError,
 )
-from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
 
 
 @pytest_asyncio.fixture

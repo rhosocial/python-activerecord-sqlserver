@@ -566,7 +566,7 @@ class BasicAsyncProvider(BasicProviderBase, IBasicAsyncProvider):
     async def _setup_async_model(
         self, model_class: Type[ActiveRecord], scenario_name: str, table_name: str
     ) -> Type[ActiveRecord]:
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         _, config = get_scenario(scenario_name)
         await model_class.configure(config, AsyncSQLServerBackend)
         backend_instance = model_class.__backend__
@@ -604,7 +604,7 @@ class BasicAsyncProvider(BasicProviderBase, IBasicAsyncProvider):
 
     async def setup_type_test_model(self, scenario_name: str) -> Type[ActiveRecord]:
         import pytest
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         _, config = get_scenario(scenario_name)
         temp_backend = AsyncSQLServerBackend(connection_config=config)
         await temp_backend.connect()

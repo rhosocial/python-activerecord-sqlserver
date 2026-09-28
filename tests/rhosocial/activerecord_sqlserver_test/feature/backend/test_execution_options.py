@@ -7,7 +7,7 @@ from rhosocial.activerecord.backend.base import StorageBackend
 from rhosocial.activerecord.backend.errors import DatabaseError
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.options import SQLServerExecutionOptions
-from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
 

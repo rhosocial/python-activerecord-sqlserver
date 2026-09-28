@@ -148,7 +148,7 @@ def handle(args):
     kwargs = {"use_ascii": args.rich_ascii}
 
     if args.is_async:
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         backend = AsyncSQLServerBackend(connection_config=config)
         asyncio.run(_execute_query_async(sql_source, backend, provider, **kwargs))
     else:

@@ -527,7 +527,7 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
     async def _setup_model_async(
         self, model_class: Type[ActiveRecord], scenario_name: str, table_name: str, shared_backend=None
     ) -> Type[ActiveRecord]:
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
         from rhosocial.activerecord.backend.expression import DropTableExpression, TableExpression
@@ -595,7 +595,7 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
 
     async def setup_json_user_fixtures(self, scenario_name: str) -> Tuple[Type[ActiveRecord], ...]:
         import pytest
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         from rhosocial.activerecord.testsuite.feature.query.fixtures.async_json_models import AsyncJsonUser
         _, config = get_scenario(scenario_name)
         await AsyncJsonUser.configure(config, AsyncSQLServerBackend)
@@ -685,7 +685,7 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
         from rhosocial.activerecord.backend.expression import DropTableExpression, TableExpression
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         from providers.fixtures.basic import TABLE_EXPRESSIONS as BASIC_EXPRS
         from providers.fixtures._common import to_sqlserver_ddl_sql
 
@@ -740,7 +740,7 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
 
     async def setup_mixed_schema_fixtures(self, scenario_name: str):
         """(AsyncUser, AsyncOrder, AsyncMixedSchemaOrder) with orders also in SCHEMA_A."""
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         from rhosocial.activerecord.testsuite.feature.query.cross_schema.mixed_schema_models import (
             AsyncMixedSchemaOrder,
         )
@@ -764,7 +764,7 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
 
     async def setup_schema_fixtures(self, scenario_name: str):
         """Two async models in two distinct schemas."""
-        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         from rhosocial.activerecord.testsuite.feature.query.fixtures.schema_models import (
             AsyncSchemaCustomer,
             AsyncSchemaOrder,
