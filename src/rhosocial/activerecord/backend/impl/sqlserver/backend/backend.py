@@ -177,7 +177,7 @@ class SQLServerBackend(
 
     def _register_sqlserver_adapters(self) -> None:
         """Register SQL Server-specific type adapters."""
-        from .adapters import (
+        from ..adapters import (
             SQLServerUUIDAdapter,
             SQLServerDateTimeAdapter,
             SQLServerDateTimeOffsetAdapter,
@@ -650,7 +650,7 @@ class SQLServerBackend(
         Returns:
             SyncSQLServerIntrospector instance
         """
-        from .introspection import SyncSQLServerIntrospector
+        from ..introspection import SyncSQLServerIntrospector
         from rhosocial.activerecord.backend.introspection.executor import SyncIntrospectorExecutor
         return SyncSQLServerIntrospector(self, SyncIntrospectorExecutor(self))
     
@@ -665,6 +665,6 @@ class SQLServerBackend(
         Returns:
             SQLServerExplainResult instance
         """
-        from .explain import SQLServerExplainResult, SQLServerExplainRow
+        from ..explain import SQLServerExplainResult, SQLServerExplainRow
         rows = [SQLServerExplainRow(**r) for r in raw_rows]
         return SQLServerExplainResult(raw_rows=raw_rows, sql=sql, duration=duration, rows=rows)

@@ -145,7 +145,7 @@ class AsyncSQLServerBackend(
     
     def _register_sqlserver_adapters(self) -> None:
         """Register SQL Server-specific type adapters (async mirror)."""
-        from .adapters import (
+        from ..adapters import (
             SQLServerUUIDAdapter,
             SQLServerDateTimeAdapter,
             SQLServerDateTimeOffsetAdapter,
@@ -641,6 +641,6 @@ class AsyncSQLServerBackend(
     
     def _create_introspector(self):
         """Create a SQL Server introspector."""
-        from .introspection import AsyncSQLServerIntrospector
+        from ..introspection import AsyncSQLServerIntrospector
         from rhosocial.activerecord.backend.introspection.executor import AsyncIntrospectorExecutor
         return AsyncSQLServerIntrospector(self, AsyncIntrospectorExecutor(self))
