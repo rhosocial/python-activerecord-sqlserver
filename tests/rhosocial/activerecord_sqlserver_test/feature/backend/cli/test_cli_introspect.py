@@ -292,7 +292,7 @@ class TestHandleErrors:
 class TestHandleAsync:
     def test_async_tables_dispatch(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            backend_pkg,
+            async_backend_mod,
             "AsyncSQLServerBackend",
             _tracking_class(FakeAsyncBackendBase, "AsyncFake"),
             raising=False,
