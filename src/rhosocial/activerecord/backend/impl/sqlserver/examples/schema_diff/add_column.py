@@ -8,7 +8,7 @@ Supported versions: SQL Server 2012+
 """
 
 import os
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
 config = SQLServerConnectionConfig(

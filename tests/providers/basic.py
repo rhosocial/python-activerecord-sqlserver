@@ -520,7 +520,7 @@ class BasicSyncProvider(BasicProviderBase, IBasicSyncProvider, WorkerTestProtoco
         if pooled_db:
             config_dict = {**config_dict, "database": pooled_db}
         return {
-            "backend_module": "rhosocial.activerecord.backend.impl.sqlserver",
+            "backend_module": "rhosocial.activerecord.backend.impl.sqlserver.backend",
             "backend_class_name": backend_class_name,
             "config_class_module": "rhosocial.activerecord.backend.impl.sqlserver.config",
             "config_class_name": "SQLServerConnectionConfig",
@@ -566,7 +566,7 @@ class BasicAsyncProvider(BasicProviderBase, IBasicAsyncProvider):
     async def _setup_async_model(
         self, model_class: Type[ActiveRecord], scenario_name: str, table_name: str
     ) -> Type[ActiveRecord]:
-        from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
         _, config = get_scenario(scenario_name)
         await model_class.configure(config, AsyncSQLServerBackend)
         backend_instance = model_class.__backend__
@@ -604,7 +604,7 @@ class BasicAsyncProvider(BasicProviderBase, IBasicAsyncProvider):
 
     async def setup_type_test_model(self, scenario_name: str) -> Type[ActiveRecord]:
         import pytest
-        from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
         _, config = get_scenario(scenario_name)
         temp_backend = AsyncSQLServerBackend(connection_config=config)
         await temp_backend.connect()

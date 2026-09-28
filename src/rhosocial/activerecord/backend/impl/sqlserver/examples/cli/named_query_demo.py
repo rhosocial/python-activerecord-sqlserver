@@ -152,7 +152,8 @@ def prepare_demo_schema():
     """
     code = (
         "import os;"
-        "from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend, "
+        "from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+        "from rhosocial.activerecord.backend.impl.sqlserver import "
         "SQLServerConnectionConfig;"
         "from rhosocial.activerecord.backend.impl.sqlserver.examples.named_expressions."
         "order_expressions import prepare_orders_demo;"

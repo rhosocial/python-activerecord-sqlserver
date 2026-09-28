@@ -6,7 +6,8 @@ Tests for expression-level COLLATE support on SQL Server.
 import pytest
 
 from rhosocial.activerecord.backend.expression import Column, Literal
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerCollation, SQLServerDialect
+from rhosocial.activerecord.backend.impl.sqlserver.collation import SQLServerCollation
+from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
 
 @pytest.fixture

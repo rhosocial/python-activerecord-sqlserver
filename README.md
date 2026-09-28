@@ -57,7 +57,7 @@ pip install rhosocial-activerecord-sqlserver
 
 ```python
 from rhosocial.activerecord.model import ActiveRecord
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from typing import Optional
 

@@ -5,7 +5,7 @@ Covers the SQL injection hardening changes: every ``_build_*_sql`` method
 now returns parameterized SQL (``?`` placeholders) with separate params,
 instead of string-interpolated values.
 """
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
     SyncSQLServerIntrospector,

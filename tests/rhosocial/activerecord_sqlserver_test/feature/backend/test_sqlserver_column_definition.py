@@ -13,7 +13,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression import (
 
 @pytest.fixture
 def dialect():
-    from rhosocial.activerecord.backend.impl.sqlserver import SQLServerDialect
+    from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
     return SQLServerDialect((2022, 0, 0))
 

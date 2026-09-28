@@ -8,10 +8,8 @@ Connection configuration is loaded from environment variables with defaults.
 
 import os
 
-from rhosocial.activerecord.backend.impl.sqlserver import (
-    SQLServerBackend,
-    SQLServerConnectionConfig,
-)
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
 
 def get_backend():

@@ -5,11 +5,9 @@ import yaml
 import os
 from typing import Dict, Any, Tuple, Type
 
-from rhosocial.activerecord.backend.impl.sqlserver import (
-    SQLServerBackend,
-    AsyncSQLServerBackend,
-    SQLServerConnectionConfig,
-)
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
 
 SCENARIO_MAP: Dict[str, Dict[str, Any]] = {}
 

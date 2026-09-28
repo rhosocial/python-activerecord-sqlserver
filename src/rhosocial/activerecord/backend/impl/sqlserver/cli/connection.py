@@ -221,7 +221,7 @@ def resolve_connection_config_from_args(args):
 
 def create_backend(args):
     """Create, connect, and introspect a SQL Server backend from parsed args."""
-    from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 
     config = resolve_connection_config_from_args(args)
     backend = SQLServerBackend(connection_config=config)

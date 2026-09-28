@@ -8,7 +8,7 @@ ActiveRecord context awareness.
 from typing import Type, Tuple, Optional, List
 
 from rhosocial.activerecord.model import ActiveRecord, AsyncActiveRecord
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.connection.pool import BackendPool, AsyncBackendPool, PoolConfig
 from rhosocial.activerecord.backend.options import ExecutionOptions
@@ -99,7 +99,7 @@ class BasicConnectionProvider(IBasicConnectionProvider):
 
     async def setup_async_pool_and_model(self, scenario_name: str) -> Tuple[AsyncBackendPool, Type[AsyncActiveRecord]]:
         """Setup async connection pool and model for context tests."""
-        from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
 
         _, config = get_scenario(scenario_name)
 

@@ -4,7 +4,7 @@
 named-procedure-graph requires connection arguments, output arguments, and --rich-ascii.
 """
 
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 
 from .connection import create_connection_parent_parser, resolve_connection_config_from_args
 from .output import create_provider
@@ -45,7 +45,7 @@ def handle(args):
     is_async = getattr(args, "is_async", False)
 
     if is_async:
-        from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
 
         async_backend = None
 

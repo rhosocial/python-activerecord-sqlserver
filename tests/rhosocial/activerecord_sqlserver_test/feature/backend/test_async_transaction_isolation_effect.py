@@ -10,7 +10,7 @@ import pytest_asyncio
 import asyncio
 from decimal import Decimal
 
-from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.async_backend import AsyncSQLServerBackend
 from rhosocial.activerecord.backend.transaction import IsolationLevel, TransactionMode
 
 

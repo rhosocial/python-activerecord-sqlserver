@@ -66,7 +66,7 @@ user = User(name="John")  # Will raise "No backend configured"
 user.save()
 
 # CORRECT
-from rhosocial.activerecord.backend.impl.sqlite import SQLiteBackend
+from rhosocial.activerecord.backend.impl.sqlite.backend import SQLiteBackend
 User.configure(SQLiteBackend("sqlite:///app.db"))
 user = User(name="John")
 user.save()

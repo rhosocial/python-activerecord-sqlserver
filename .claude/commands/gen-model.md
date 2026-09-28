@@ -58,7 +58,7 @@ CREATE TABLE users (
 2. Show the SQL migration to create the table
 3. Remind the user to configure the backend:
    ```python
-   from rhosocial.activerecord.backend.impl.sqlite import SQLiteBackend
+   from rhosocial.activerecord.backend.impl.sqlite.backend import SQLiteBackend
    User.configure(SQLiteBackend("sqlite:///app.db"))
    ```
 

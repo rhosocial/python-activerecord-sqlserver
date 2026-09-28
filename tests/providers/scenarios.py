@@ -4,7 +4,7 @@
 import os
 from dataclasses import replace
 from typing import Dict, Any, Tuple, Type
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.testsuite.core.pool import pooled_database_name
 
