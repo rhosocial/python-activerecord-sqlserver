@@ -16,7 +16,7 @@ import threading
 import time
 from decimal import Decimal
 
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.transaction import IsolationLevel
 
 

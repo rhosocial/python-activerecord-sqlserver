@@ -14,7 +14,8 @@ import pytest
 import pytest_asyncio
 import yaml
 
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend, AsyncSQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.connection.pool import (
     PoolConfig,

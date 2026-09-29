@@ -23,8 +23,8 @@ dependencies = [
 
 ```bash
 cd /mnt/i/GitHubRepositories/rhosocial/python-activerecord-sqlserver
-source .venv/bin/activate
-export PYTHONPATH=src
+source .venv3.14-ubuntu26.04/bin/activate
+export PYTHONPATH=src:tests
 pytest tests/ -v
 ```
 
@@ -36,5 +36,5 @@ pytest tests/ -v
 
 ## Reference
 
-- [Core testing guide](../python-activerecord/.claude/testing.md)
-- [SQL Server backend development](../python-activerecord/.claude/backend_development.md)
+- [Core testing guide](../../python-activerecord/.claude/testing.md)
+- [SQL Server backend development](../../../python-activerecord/.claude/backend_development.md)

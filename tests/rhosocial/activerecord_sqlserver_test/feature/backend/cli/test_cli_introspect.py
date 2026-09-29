@@ -11,7 +11,8 @@ import json
 import pytest
 
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
-from rhosocial.activerecord.backend.impl import sqlserver as backend_pkg
+from rhosocial.activerecord.backend.impl.sqlserver import backend as backend_pkg
+from rhosocial.activerecord.backend.impl.sqlserver.backend import async_backend as async_backend_mod
 from rhosocial.activerecord.backend.impl.sqlserver.cli import introspect as introspect_mod
 
 
@@ -291,7 +292,7 @@ class TestHandleErrors:
 class TestHandleAsync:
     def test_async_tables_dispatch(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            backend_pkg,
+            async_backend_mod,
             "AsyncSQLServerBackend",
             _tracking_class(FakeAsyncBackendBase, "AsyncFake"),
             raising=False,
@@ -305,7 +306,7 @@ class TestHandleAsync:
     def test_async_connection_error_exits_nonzero(self, monkeypatch):
         cls = _tracking_class(FakeAsyncBackendBase, "AsyncErr")
         cls.connect_error = ConnectionError("refused")
-        monkeypatch.setattr(backend_pkg, "AsyncSQLServerBackend", cls, raising=False)
+        monkeypatch.setattr(async_backend_mod, "AsyncSQLServerBackend", cls, raising=False)
         with pytest.raises(SystemExit) as exc:
             introspect_mod.handle(
                 make_args(["introspect", "tables", "--database", "db", "--async"])

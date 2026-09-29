@@ -166,7 +166,8 @@ def prepare_orders_demo(backend) -> None:
 if __name__ == "__main__":
     import os
 
-    from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend, SQLServerConnectionConfig
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
     from rhosocial.activerecord.backend.options import ExecutionOptions
     from rhosocial.activerecord.backend.schema import StatementType
 

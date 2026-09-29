@@ -140,7 +140,7 @@ def test_backend_passes_deployment_target_from_connection_config():
 
 def test_async_backend_passes_deployment_target_from_connection_config():
     pytest.importorskip("aioodbc")
-    from rhosocial.activerecord.backend.impl.sqlserver.async_backend import (
+    from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import (
         AsyncSQLServerBackend,
     )
 

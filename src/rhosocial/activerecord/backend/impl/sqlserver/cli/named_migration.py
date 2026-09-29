@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend, AsyncSQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
 
 from .connection import create_connection_parent_parser, resolve_connection_config_from_args
 from .output import create_provider

@@ -13,6 +13,8 @@ from typing import Dict, Any, Optional
 import importlib
 
 
+
+
 def _configure_model_from_params(params: dict, model_class) -> None:
     """
     Configure model from connection parameters.
@@ -60,16 +62,10 @@ async def _async_configure_model_from_params(params: dict, model_class) -> None:
     # Convert sync backend to async backend if needed
     # e.g., MariaDBBackend -> AsyncMariaDBBackend
     if not backend_class.__name__.startswith('Async'):
-        async_backend_class_name = f'Async{backend_class.__name__}'
-        # Try to get from same module
-        if hasattr(backend_module, async_backend_class_name):
-            backend_class = getattr(backend_module, async_backend_class_name)
-        else:
-            # Try to get from parent module (e.g., mariadb.backend.sync -> mariadb.backend)
-            parent_module_name = '.'.join(params['backend_module'].split('.')[:-1])
-            parent_module = importlib.import_module(parent_module_name)
-            if hasattr(parent_module, async_backend_class_name):
-                backend_class = getattr(parent_module, async_backend_class_name)
+        backend_class = getattr(
+            importlib.import_module(f"{params['backend_module']}.async_backend"),
+            f"Async{backend_class.__name__}",
+        )
 
     # Dynamically import config class
     config_module = importlib.import_module(params['config_module'])

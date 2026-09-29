@@ -12,7 +12,7 @@ from dataclasses import asdict, is_dataclass
 from enum import Enum
 from typing import Any
 
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
 from .connection import add_connection_args, resolve_connection_config_from_args
 from .output import create_provider
@@ -138,7 +138,7 @@ def handle(args):
     config = resolve_connection_config_from_args(args)
 
     if args.is_async:
-        from rhosocial.activerecord.backend.impl.sqlserver import AsyncSQLServerBackend
+        from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         backend = AsyncSQLServerBackend(connection_config=config)
         asyncio.run(_handle_introspect_async(args, backend, provider))
     else:

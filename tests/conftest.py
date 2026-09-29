@@ -41,7 +41,7 @@ def _prepare_read_committed_snapshot():
     This fixture only checks and warns if the option is not yet on
     (e.g. when running locally without the workflow).
     """
-    from rhosocial.activerecord.backend.impl.sqlserver import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
     from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
     scenarios = _load_scenario_map()

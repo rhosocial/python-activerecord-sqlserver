@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/backend.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/backend/backend.py
 """
 SQL Server-specific implementation of the StorageBackend.
 
@@ -28,10 +28,10 @@ from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.result import QueryResult
 from rhosocial.activerecord.backend.introspection.backend_mixin import IntrospectorBackendMixin
 from rhosocial.activerecord.backend.explain import SyncExplainBackendMixin
-from .config import SQLServerConnectionConfig
-from .dialect import SQLServerDialect
-from .transaction import SQLServerTransactionManager
-from .mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
+from ..config import SQLServerConnectionConfig
+from ..dialect import SQLServerDialect
+from ..transaction import SQLServerTransactionManager
+from ..mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
 
 
 class SQLServerUnicodeDialect(SQLServerDialect):
@@ -122,7 +122,10 @@ class SQLServerBackend(
             sqlserver_params = [
                 'host', 'port', 'database', 'deployment_target', 'username', 'password',
                 'trusted_connection', 'driver', 'encrypt',
-                'trust_server_certificate', 'timeout', 'query_timeout',
+                'trust_server_certificate',
+                'client_certificate', 'client_key', 'client_key_password',
+                'host_name_in_certificate',
+                'timeout', 'query_timeout',
                 'autocommit', 'charset', 'pool_size', 'pool_timeout',
             ]
             
@@ -177,7 +180,7 @@ class SQLServerBackend(
 
     def _register_sqlserver_adapters(self) -> None:
         """Register SQL Server-specific type adapters."""
-        from .adapters import (
+        from ..adapters import (
             SQLServerUUIDAdapter,
             SQLServerDateTimeAdapter,
             SQLServerDateTimeOffsetAdapter,
@@ -650,7 +653,7 @@ class SQLServerBackend(
         Returns:
             SyncSQLServerIntrospector instance
         """
-        from .introspection import SyncSQLServerIntrospector
+        from ..introspection import SyncSQLServerIntrospector
         from rhosocial.activerecord.backend.introspection.executor import SyncIntrospectorExecutor
         return SyncSQLServerIntrospector(self, SyncIntrospectorExecutor(self))
     
@@ -665,6 +668,6 @@ class SQLServerBackend(
         Returns:
             SQLServerExplainResult instance
         """
-        from .explain import SQLServerExplainResult, SQLServerExplainRow
+        from ..explain import SQLServerExplainResult, SQLServerExplainRow
         rows = [SQLServerExplainRow(**r) for r in raw_rows]
         return SQLServerExplainResult(raw_rows=raw_rows, sql=sql, duration=duration, rows=rows)

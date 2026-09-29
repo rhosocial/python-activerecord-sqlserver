@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/mixins/table.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_table.py
 from typing import Tuple, TYPE_CHECKING
 
 from .version_constants import SQL_SERVER_2016

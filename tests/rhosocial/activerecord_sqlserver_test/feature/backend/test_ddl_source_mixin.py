@@ -22,7 +22,7 @@ from rhosocial.activerecord.backend.expression.statements.ddl_partition import (
     PartitionClause,
     PartitionStrategy,
 )
-from rhosocial.activerecord.backend.impl.sqlserver import SQLServerDialect
+from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.column import (
     SQLServerColumnOptions,
 )

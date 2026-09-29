@@ -12,7 +12,8 @@ import pytest
 
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
 from rhosocial.activerecord.backend.impl.sqlserver.cli import status as status_mod
-from rhosocial.activerecord.backend.impl import sqlserver as backend_pkg
+from rhosocial.activerecord.backend.impl.sqlserver import backend as backend_pkg
+from rhosocial.activerecord.backend.impl.sqlserver.backend import async_backend as async_backend_mod
 
 STATUS_INTROSPECTOR_MODULE = (
     "rhosocial.activerecord.backend.impl.sqlserver.introspection.status_introspector"
@@ -441,7 +442,7 @@ class TestHandleAsync:
             f"{STATUS_INTROSPECTOR_MODULE}.AsyncSQLServerStatusIntrospector",
             AsyncRecordingIntrospector,
         )
-        monkeypatch.setattr(backend_pkg, "AsyncSQLServerBackend", fake_async_backend_cls, raising=False)
+        monkeypatch.setattr(async_backend_mod, "AsyncSQLServerBackend", fake_async_backend_cls, raising=False)
         status_mod.handle(
             make_args(["status", "all", "--database", "db", "-o", "json", "--async"])
         )
@@ -450,7 +451,7 @@ class TestHandleAsync:
 
     def test_async_connection_error_exits_nonzero(self, fake_async_backend_cls, monkeypatch):
         fake_async_backend_cls.connect_error = ConnectionError("refused")
-        monkeypatch.setattr(backend_pkg, "AsyncSQLServerBackend", fake_async_backend_cls, raising=False)
+        monkeypatch.setattr(async_backend_mod, "AsyncSQLServerBackend", fake_async_backend_cls, raising=False)
         with pytest.raises(SystemExit) as exc:
             status_mod.handle(make_args(["status", "all", "--database", "db", "--async"]))
         assert exc.value.code == 1
@@ -463,7 +464,7 @@ class TestHandleAsync:
         monkeypatch.setattr(
             f"{STATUS_INTROSPECTOR_MODULE}.AsyncSQLServerStatusIntrospector", ExplodingAsync
         )
-        monkeypatch.setattr(backend_pkg, "AsyncSQLServerBackend", fake_async_backend_cls, raising=False)
+        monkeypatch.setattr(async_backend_mod, "AsyncSQLServerBackend", fake_async_backend_cls, raising=False)
         with pytest.raises(SystemExit) as exc:
             status_mod.handle(make_args(["status", "all", "--database", "db", "--async"]))
         assert exc.value.code == 1
