@@ -56,7 +56,7 @@ from pydantic import BaseModel, Field
 
 # Local application imports
 from rhosocial.activerecord.model import ActiveRecord
-from rhosocial.activerecord.backend import StorageBackend
+from rhosocial.activerecord.backend.base import StorageBackend
 
 # Relative imports (within same package)
 from .base import BaseActiveRecord
@@ -65,7 +65,7 @@ from ..interface import IActiveRecord
 
 ### Line Length and Wrapping
 
-- Maximum line length: 100 characters
+- Maximum line length: 120 characters (ruff `line-length = 120`; black formats to 100, but 100 is not the limit)
 - Wrap long lines using parentheses:
 
 ```python
@@ -291,7 +291,7 @@ from typing import annotations
 
 import third_party
 
-from rhosocial.activerecord import local
+from rhosocial.activerecord.model import ActiveRecord
 from . import relative
 
 # Constants
@@ -414,12 +414,12 @@ raise DatabaseError(
 """Test module for specific feature."""
 
 import pytest
-from rhosocial.activerecord import Model
+from rhosocial.activerecord.model import ActiveRecord
 
 # Fixtures at top
 @pytest.fixture
 def sample_model():
-    return Model(name="test")
+    return ActiveRecord(name="test")
 
 # Test classes for organization
 class TestCRUDOperations:
@@ -603,13 +603,12 @@ def transaction(backend: StorageBackend):
 ### Mixin Classes
 
 ```python
-class TimestampMixin:
-    """Add timestamp fields to models."""
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: Optional[datetime] = None
-    
-    def before_save(self):
-        self.updated_at = datetime.now()
+# TimestampMixin declares NO fields: it hooks
+# ModelEvent.BEFORE_INSERT / BEFORE_UPDATE and requires the model to
+# declare the fields itself, named per __created_at_field__ /
+# __updated_at_field__. Use DefaultTimestampMixin to get them declared
+# for you. There is no before_save() hook -- lifecycle is registered
+# with instance.on(ModelEvent.X, handler).
 ```
 
 ## Expression-Dialect System Coding Standards
@@ -687,7 +686,7 @@ class MyExpression(mixins.ArithmeticMixin, mixins.ComparisonMixin, bases.SQLValu
 
     def to_sql(self) -> 'bases.SQLQueryAndParams':
         # Delegate formatting to dialect
-        formatted_value = self.dialect.format_string_literal(self.value)
+        formatted_value = self.dialect.format_literal(self.value)
         return formatted_value, (self.value,)
 ```
 
@@ -705,7 +704,7 @@ def format_identifier(self, identifier: str) -> str:
 - [ ] Path comment at file start matches actual location
 - [ ] All functions/classes have docstrings
 - [ ] Type hints on all function signatures
-- [ ] No line exceeds 100 characters
+- [ ] No line exceeds 120 characters
 - [ ] Imports sorted and grouped correctly
 - [ ] No commented-out code
 - [ ] Exception messages are informative

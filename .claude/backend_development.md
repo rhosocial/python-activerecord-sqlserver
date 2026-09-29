@@ -32,7 +32,7 @@ rhosocial-activerecord-{backend}/
 │               └── impl/
 │                   └── {backend}/
 │                       ├── __init__.py
-│                       ├── backend.py       # Main backend implementation
+│                       ├── backend/         # sync + async backend classes
 │                       ├── adapters.py      # Backend-specific type adapters
 │                       ├── config.py        # Connection configuration
 │                       ├── dialect.py       # SQL dialect handling
@@ -114,7 +114,7 @@ Expression.to_sql() -> Dialect.format_*() -> SQL string and parameters
 - `operators.py`: SQL operations (binary, unary, arithmetic expressions)
 - `predicates.py`: SQL predicate expressions (WHERE clause conditions)
 - `query_parts.py`: SQL query clauses (WHERE, GROUP BY, HAVING, ORDER BY, etc.)
-- `statements.py`: DML/DQL/DDL statements (SELECT, INSERT, UPDATE, DELETE, etc.)
+- `statements/`: DML/DQL/DDL statements (a package, not a module) (SELECT, INSERT, UPDATE, DELETE, etc.)
 - `functions.py`: Standalone factory functions for creating SQL expressions
 - `aggregates.py`: SQL aggregation expressions and functions
 - `advanced_functions.py`: Advanced SQL functions (CASE, CAST, EXISTS, window functions)
@@ -149,8 +149,9 @@ Every backend must implement the `StorageBackend` abstract base class. This is t
 ```python
 # backend.py
 from typing import Any, Dict, List, Optional, Tuple, Type
-from ...base import StorageBackend, ConnectionConfig
-from ...type_adapter import SQLTypeAdapter
+from rhosocial.activerecord.backend.base import StorageBackend
+from rhosocial.activerecord.backend.config import ConnectionConfig
+from rhosocial.activerecord.backend.type_adapter import SQLTypeAdapter
 
 class MyBackend(StorageBackend):
     """Implementation of MyDatabase backend using native driver."""
@@ -175,7 +176,8 @@ class MyBackend(StorageBackend):
         """Check if connection is valid."""
         pass
 
-    def execute(self, sql: str, params: Optional[Tuple] = None, returning: Optional[Union[bool, List[str], ReturningOptions]] = None, column_adapters: Optional[Dict[str, Tuple[SQLTypeAdapter, Type]]] = None) -> QueryResult:
+    def execute(self, sql: str, params: Optional[Tuple] = None, *,
+                options: Optional[ExecutionOptions] = None) -> QueryResult:
         """Executes a SQL query."""
         pass
     
@@ -195,10 +197,6 @@ class MyBackend(StorageBackend):
         Backends that don't need version-specific adaptation (e.g., SQLite, Dummy)
         can implement this as a no-op.
         """
-        pass
-
-    def _initialize_capabilities(self) -> DatabaseCapabilities:
-        """Declare all features supported by this backend."""
         pass
 
     def _handle_error(self, error: Exception) -> None:
@@ -241,10 +239,10 @@ Define an immutable configuration class for your backend.
 # config.py
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
-from rhosocial.activerecord.backend.config import BaseConfig
+from rhosocial.activerecord.backend.config import ConnectionConfig
 
-@dataclass(frozen=True)
-class MyDatabaseConfig(BaseConfig):
+@dataclass
+class MyDatabaseConfig(ConnectionConfig):
     host: str = "localhost"
     port: int = 5432
     database: str
@@ -366,34 +364,20 @@ Every dialect inherits from:
 
 ```python
 # dialect.py
-from rhosocial.activerecord.backend.dialect import (
-    SQLDialect, ReturningClauseHandler, TypeMapping
-)
-from typing import Dict, List, Optional
+from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
+from typing import Optional, Tuple
 
-class MyDatabaseDialect(SQLDialect):
+class MyDatabaseDialect(SQLDialectBase):
     def __init__(self):
         super().__init__()
         self.returning_handler = MyDatabaseReturningHandler()
     
-    def quote_identifier(self, identifier: str) -> str: return f'"{identifier}"'
-    def get_placeholder(self, name: str = None) -> str: return "?"
-    
-    def format_limit_offset(self, sql: str, limit: Optional[int], offset: Optional[int]) -> str:
-        if limit is not None: sql += f" LIMIT {limit}"
-        if offset is not None: sql += f" OFFSET {offset}"
-        return sql
-    
-    def get_type_mappings(self) -> Dict[str, TypeMapping]:
-        return {"INTEGER": TypeMapping("INTEGER"), "TEXT": TypeMapping("TEXT"), ...}
+    def get_parameter_placeholder(self, position: int = 0) -> str:
+        return "?"
 
-class MyDatabaseReturningHandler(ReturningClauseHandler):
-    @property
-    def is_supported(self) -> bool: return True
-    
-    def format_clause(self, columns: Optional[List[str]] = None) -> str:
-        cols = "*" if not columns else ', '.join(self.dialect.quote_identifier(c) for c in columns)
-        return f"RETURNING {cols}"
+# Identifier quoting is inherited from SQLDialectBase.format_identifier;
+# LIMIT/OFFSET come from the DQL mixins; type mapping is not a dialect
+# method but a set of SQLTypeAdapter registrations on the backend.
 ```
 
 ### 4. The Type Adaptation System
@@ -565,7 +549,7 @@ This checklist summarizes all the required and recommended steps for creating a 
     - [ ] Implement `get_default_adapter_suggestions` to define the conversion strategy.
 - [ ] Implement `Transaction Management`.
 - [ ] Implement `Error Handling` to map driver exceptions.
-- [ ] Implement `Feature Detection` to declare capabilities.
+- [ ] Implement the `supports_*` capability switches your dialect needs.
 - [ ] If providing an `AsyncStorageBackend`, ensure it has **Functional Equivalence** with the sync version.
 
 ### Required Tests
