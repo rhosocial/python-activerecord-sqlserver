@@ -100,7 +100,10 @@ class AsyncSQLServerBackend(
             sqlserver_params = [
                 'host', 'port', 'database', 'deployment_target', 'username', 'password',
                 'trusted_connection', 'driver', 'encrypt',
-                'trust_server_certificate', 'timeout', 'query_timeout',
+                'trust_server_certificate',
+                'client_certificate', 'client_key', 'client_key_password',
+                'host_name_in_certificate',
+                'timeout', 'query_timeout',
                 'autocommit', 'charset', 'pool_size', 'pool_timeout',
             ]
             

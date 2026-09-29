@@ -72,6 +72,15 @@ class SQLServerConnectionConfig(ConnectionConfig):
     encrypt_connection: Optional[bool] = None
     trust_server_certificate: bool = False
 
+    # Client certificate (mutual TLS). The ODBC driver reads these straight
+    # from the filesystem, so they are PEM/PFX paths rather than material.
+    client_certificate: Optional[str] = None
+    client_key: Optional[str] = None
+    client_key_password: Optional[str] = None
+    # Overrides the name matched against the server certificate. Required when
+    # the certificate CN is not the host name being connected to.
+    host_name_in_certificate: Optional[str] = None
+
     timeout: int = 30
     query_timeout: int = 0
 
@@ -136,7 +145,16 @@ class SQLServerConnectionConfig(ConnectionConfig):
         
         if self.charset and self.charset.upper() != "UTF-8":
             parts.append(f"CharacterSet={self.charset}")
-        
+
+        if self.client_certificate:
+            parts.append(f"ClientCertificate={self.client_certificate}")
+        if self.client_key:
+            parts.append(f"ClientKey={self.client_key}")
+        if self.client_key_password:
+            parts.append(f"ClientKeyPassword={self.client_key_password}")
+        if self.host_name_in_certificate:
+            parts.append(f"HostNameInCertificate={self.host_name_in_certificate}")
+
         for key, value in self.options.items():
             if value is not None:
                 parts.append(f"{key}={value}")
@@ -163,6 +181,11 @@ class SQLServerConnectionConfig(ConnectionConfig):
                 "for production environments. It disables certificate validation.",
                 UserWarning,
                 stacklevel=2
+            )
+
+        if self.client_key and not self.client_certificate:
+            raise ValueError(
+                "client_key requires client_certificate for SQL Server connections"
             )
     
     def __repr__(self) -> str:
