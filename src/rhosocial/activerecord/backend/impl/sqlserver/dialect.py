@@ -71,6 +71,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     CTEMixin,
     WindowFunctionMixin,
     JSONMixin,
+    UUIDMixin,
 
     ArrayMixin,
     ExplainMixin,
@@ -128,6 +129,7 @@ from .mixins.returning import SQLServerReturningMixin
 from .mixins.constraint import SQLServerConstraintMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
+from .mixins.uuid import SQLServerUUIDMixin
 from .mixins.grouping import SQLServerGroupingMixin
 from .mixins.locking import SQLServerLockingMixin
 from .mixins.merge import SQLServerMergeMixin
@@ -266,6 +268,10 @@ class SQLServerDialect(
     CTEMixin,
     WindowFunctionMixin,
     JSONMixin,
+    # SQL Server's UUID spellings (NEWID, UNIQUEIDENTIFIER) must win over the
+    # core UUIDMixin table, which has one fixed spelling per operation.
+    SQLServerUUIDMixin,
+    UUIDMixin,
 
     ArrayMixin,
     ExplainMixin,
@@ -1179,7 +1185,6 @@ class SQLServerDialect(
         dialect.  Keys are disjoint from ``supports_data_types()``.
         """
         from rhosocial.activerecord.backend.expression.types import (
-            UUIDType,
             IntervalType,
             ArrayType,
             EnumType,
@@ -1187,8 +1192,14 @@ class SQLServerDialect(
             TimestampTzType,
             TimeTzType,
         )
+        # "uuid" used to map to the generic UUIDType, whose name equals the
+        # key. A suggestion must name a type this dialect cannot render
+        # itself, so it points at the backend's own UNIQUEIDENTIFIER type
+        # instead. See SQLServerUniqueIdentifierType.
+        from .expression.types import SQLServerUniqueIdentifierType
+
         return {
-            "uuid": UUIDType,
+            "uuid": SQLServerUniqueIdentifierType,
             "interval": IntervalType,
             "array": ArrayType,
             "enum": EnumType,

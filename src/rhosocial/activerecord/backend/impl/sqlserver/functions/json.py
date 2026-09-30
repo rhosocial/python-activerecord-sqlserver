@@ -5,7 +5,7 @@ SQL Server JSON function factories.
 Functions: json_value, json_query, isjson, openjson, json_object, json_array
 """
 
-from typing import Union, Optional, Any, TYPE_CHECKING
+from typing import Union, Optional, Any, NoReturn, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression import bases, core
 
@@ -110,13 +110,43 @@ def json_extract(
 def json_unquote(
     dialect: "SQLServerDialect",
     json_val: Union[str, "bases.BaseExpression"],
-) -> "core.FunctionCall":
-    """Creates a JSON_UNQUOTE function call (approximation).
+    *,
+    path: Optional[str] = None,
+    alias: Optional[str] = None,
+) -> "bases.BaseExpression":
+    """Extract an unquoted scalar, the way SQL Server spells this.
 
-    SQL Server has no JSON_UNQUOTE; JSON_VALUE already returns scalar
-    values without surrounding quotes.
+    T-SQL has no ``JSON_UNQUOTE``. ``JSON_VALUE`` already returns a scalar
+    without surrounding quotes, so a path is required to have anything to
+    extract — hence the mandatory keyword.
+
+    This used to emit ``JSON_UNQUOTE(...)``, which SQL Server does not have,
+    by bypassing the formatter that correctly refuses it.
+
+    Args:
+        dialect: The SQL Server dialect.
+        json_val: The JSON document or column.
+        path: JSON path to extract, e.g. ``"$.name"``.
+        alias: Optional output alias.
+
+    Returns:
+        A ``SQLServerJSONExtractExpression`` rendering ``JSON_VALUE``.
+
+    Raises:
+        UnsupportedFeatureError: If no path is given.
     """
-    return core.FunctionCall(dialect, "JSON_UNQUOTE", [_convert_to_expression(dialect, json_val)])
+    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+    from ..expression.json import SQLServerJSONExtractExpression
+
+    if path is None:
+        raise UnsupportedFeatureError(
+            dialect.name,
+            "json_unquote without a path",
+            "SQL Server has no JSON_UNQUOTE; JSON_VALUE returns scalars "
+            "already unquoted, so a path is required. Use "
+            "json_value(dialect, doc, path).",
+        )
+    return SQLServerJSONExtractExpression(dialect, json_val, path, alias=alias)
 
 
 def json_contains(
@@ -124,12 +154,34 @@ def json_contains(
     target: Union[str, "bases.BaseExpression"],
     candidate: Union[str, "bases.BaseExpression"],
     path: Optional[str] = None,
-) -> "core.FunctionCall":
-    """Creates a JSON_CONTAINS function call (approximation)."""
-    args = [_convert_to_expression(dialect, target), _convert_to_expression(dialect, candidate)]
-    if path is not None:
-        args.append(core.Literal(dialect, path))
-    return core.FunctionCall(dialect, "JSON_CONTAINS", args)
+    *,
+    alias: Optional[str] = None,
+) -> "bases.BaseExpression":
+    """Check whether a JSON array or object contains a value (2016+).
+
+    T-SQL has no ``JSON_CONTAINS``. Membership is expressed as an
+    ``OPENJSON`` predicate, which the formatter already implemented
+    correctly; this factory used to emit ``JSON_CONTAINS(...)`` and bypass it.
+
+    Args:
+        dialect: The SQL Server dialect.
+        target: The JSON document or column to search.
+        candidate: The value to look for.
+        path: Optional path within the document; defaults to ``$``.
+        alias: Optional output alias.
+
+    Returns:
+        A ``SQLServerJSONContainsExpression``.
+    """
+    from ..expression.json import SQLServerJSONContainsExpression
+
+    return SQLServerJSONContainsExpression(
+        dialect,
+        str(target) if not isinstance(target, bases.BaseExpression) else target,
+        str(candidate) if not isinstance(candidate, bases.BaseExpression) else candidate,
+        path,
+        alias=alias,
+    )
 
 
 def json_set(
@@ -172,9 +224,23 @@ def json_remove(
 def json_type(
     dialect: "SQLServerDialect",
     json_val: Union[str, "bases.BaseExpression"],
-) -> "core.FunctionCall":
-    """Creates a JSON_TYPE function call (approximation; SQL Server lacks one)."""
-    return core.FunctionCall(dialect, "JSON_TYPE", [_convert_to_expression(dialect, json_val)])
+) -> "NoReturn":
+    """Always refuse: T-SQL has no ``JSON_TYPE``.
+
+    Args:
+        dialect: The SQL Server dialect.
+        json_val: The JSON document or column.
+
+    Raises:
+        UnsupportedFeatureError: Always.
+    """
+    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+    raise UnsupportedFeatureError(
+        dialect.name,
+        "JSON_TYPE",
+        "SQL Server has no JSON_TYPE; classify values via OPENJSON.",
+    )
 
 
 def json_valid(
@@ -191,9 +257,23 @@ def json_search(
     search_str: str,
     path: Optional[str] = None,
     all_: bool = False,
-) -> "core.FunctionCall":
-    """Creates a JSON_SEARCH function call (approximation; SQL Server lacks one)."""
-    args = [_convert_to_expression(dialect, json_doc), core.Literal(dialect, search_str)]
-    if path is not None:
-        args.append(core.Literal(dialect, path))
-    return core.FunctionCall(dialect, "JSON_SEARCH", args)
+) -> "NoReturn":
+    """Always refuse: T-SQL has no ``JSON_SEARCH``.
+
+    Args:
+        dialect: The SQL Server dialect.
+        json_doc: The JSON document or column.
+        search_str: The value to search for.
+        path: Optional path within the document.
+        all_: Whether to require every match (MySQL semantics).
+
+    Raises:
+        UnsupportedFeatureError: Always.
+    """
+    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+
+    raise UnsupportedFeatureError(
+        dialect.name,
+        "JSON_SEARCH",
+        "SQL Server has no JSON_SEARCH; use OPENJSON with a LIKE predicate.",
+    )

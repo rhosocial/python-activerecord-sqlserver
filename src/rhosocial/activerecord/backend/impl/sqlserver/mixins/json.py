@@ -43,5 +43,15 @@ class SQLServerJSONMixin:
         return sql, params
 
     def supports_json_table(self) -> bool:
-        """OPENJSON provides JSON table functionality since SQL Server 2016."""
-        return self.version >= SQL_SERVER_2016
+        """Always False: this backend has no JSON_TABLE path.
+
+        The probe used to answer True on 2016+, which contradicted
+        ``format_json_table_expression`` — that formatter raises
+        unconditionally and points at OPENJSON. A caller that trusted the
+        probe would be told a table expression was available and then get an
+        exception at render time.
+
+        OPENJSON is the supported route and it is fully implemented, through
+        ``SQLServerOpenJsonExpression``; it just is not JSON_TABLE.
+        """
+        return False

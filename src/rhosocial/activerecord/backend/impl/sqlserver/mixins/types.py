@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import re
-from typing import Tuple
+from typing import TYPE_CHECKING, Tuple
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ..expression.types import SQLServerUniqueIdentifierType
 
 from rhosocial.activerecord.backend.dialect.mixins.ddl_type import DDLTypeMixin
 from rhosocial.activerecord.backend.dialect.protocols import DDLTypeSupport
@@ -74,6 +77,11 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
     def format_data_type_sqlserver_image(self, data_type: "SQLServerImageType") -> Tuple[str, tuple]:
         return "IMAGE", ()
+
+    def format_data_type_sqlserver_uniqueidentifier(
+        self, data_type: "SQLServerUniqueIdentifierType"
+    ) -> Tuple[str, tuple]:
+        return "UNIQUEIDENTIFIER", ()
 
     # --- Core types (pure names) rendered to real SQL Server SQL ---
 
@@ -317,6 +325,11 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         if self._SQLSERVER_BIT_TYPES.match(upper):
             from ..expression.types import SQLServerBitType
             return SQLServerBitType(dialect=self)
+
+        # UNIQUEIDENTIFIER
+        if upper == "UNIQUEIDENTIFIER":
+            from ..expression.types import SQLServerUniqueIdentifierType
+            return SQLServerUniqueIdentifierType(dialect=self)
 
         # Integer family
         if self._SQLSERVER_INTEGER_TYPES.match(upper):

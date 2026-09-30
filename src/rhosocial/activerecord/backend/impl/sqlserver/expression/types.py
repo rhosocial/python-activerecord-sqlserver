@@ -16,6 +16,7 @@ from rhosocial.activerecord.backend.expression.types import (
     BlobType,
     BooleanType,
 )
+from rhosocial.activerecord.backend.expression.types._base import DataType
 
 
 class SQLServerNVarCharType(VarCharType):
@@ -141,7 +142,24 @@ class SQLServerImageType(BlobType):
         return {"BlobType"}
 
 
+class SQLServerUniqueIdentifierType(DataType):
+    """SQL Server ``UNIQUEIDENTIFIER``.
+
+    The native storage for a UUID here. It is a distinct type rather than a
+    rendering of the generic :class:`UUIDType` because SQL Server spells it
+    differently, and because ``suggested_data_types()`` must not suggest a
+    type the dialect can render itself: a suggestion is by definition a type
+    with no ``format_data_type_<name>`` on this backend.
+
+    Named ``sqlserver_uniqueidentifier`` so the dispatch key stays isolated
+    from other backends' ``format_data_type_*`` families.
+    """
+
+    name = "sqlserver_uniqueidentifier"
+
+
 __all__ = [
+    "SQLServerUniqueIdentifierType",
     "SQLServerNVarCharType",
     "SQLServerNCharType",
     "SQLServerNVarCharMaxType",
