@@ -60,9 +60,12 @@ def _provision_statements() -> list:
         "label NVARCHAR(100) NOT NULL, "
         "deleted_at DATETIME2 NULL"
     )
+    # CREATE SCHEMA has to be the first statement in a batch, so the guarded
+    # form has to go through EXEC -- a bare `IF ... CREATE SCHEMA` is a syntax
+    # error near the keyword SCHEMA.
     statements = [
-        f"IF SCHEMA_ID('{SCHEMA_CRM}') IS NULL CREATE SCHEMA [{SCHEMA_CRM}]",
-        f"IF SCHEMA_ID('{SCHEMA_SHOP}') IS NULL CREATE SCHEMA [{SCHEMA_SHOP}]",
+        f"IF SCHEMA_ID('{SCHEMA_CRM}') IS NULL EXEC('CREATE SCHEMA [{SCHEMA_CRM}]')",
+        f"IF SCHEMA_ID('{SCHEMA_SHOP}') IS NULL EXEC('CREATE SCHEMA [{SCHEMA_SHOP}]')",
     ]
     for schema in (None, SCHEMA_CRM):
         prefix = f"[{schema}]." if schema else ""
