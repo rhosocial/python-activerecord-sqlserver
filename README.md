@@ -148,6 +148,37 @@ CreateTableExpression(
 )
 ```
 
+## Schema Names
+
+A `schema_name` names a schema inside the current database:
+
+```python
+class Order(ActiveRecord):
+    __schema_name__ = "app"
+    __tablename__ = "orders"
+```
+
+```sql
+-- generated
+SELECT * FROM [app].[orders]
+```
+
+Two things to keep in mind:
+
+- **Columns take at most two parts.** `` [orders].[id] `` is correct and a
+  three-part reference is a syntax error, so the schema is not repeated on the
+  column. Use a three-part *name* — `database.schema.object` — when you need to
+  address a different database, not to qualify a column.
+- **Every user has a default schema.** `get_current_schema()` reads
+  `SCHEMA_NAME()` and returns the user's default schema, `dbo` unless the user
+  has one of their own. It is never `None` here, unlike PostgreSQL where the
+  search path can resolve to nothing.
+
+DDL statements take a `schema_name` of their own — views, types, indexes,
+sequences, functions and triggers all accept it, defaulting to `None` for an
+unqualified reference. `__schema_name__` is not consulted when DDL is built, so
+a migration names the schema it means.
+
 ## Version Gates
 
 Gates below are the versions at which this backend's own `supports_*`
