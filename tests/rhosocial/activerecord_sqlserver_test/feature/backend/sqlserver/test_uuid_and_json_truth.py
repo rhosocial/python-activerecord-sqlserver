@@ -144,27 +144,34 @@ def test_functions_sql_server_lacks_are_refused(factory, args):
         getattr(json_functions, factory)(_dialect(), *args)
 
 
-def test_no_factory_emits_a_mysql_function_name():
-    """The four factories bypassed the formatter that already refused these."""
+@pytest.mark.parametrize(
+    "factory, args, kwargs",
+    [
+        ("json_unquote", ("data",), {}),                      # no path -> refuses
+        ("json_unquote", ("data",), {"path": "$.a"}),        # -> JSON_VALUE
+        ("json_contains", ("data", "x"), {}),                # -> OPENJSON
+        ("json_contains", ("data", "x"), {"path": "$.tags"}),
+        ("json_type", ("data",), {}),
+        ("json_search", ("data", "x"), {}),
+    ],
+)
+def test_no_factory_emits_a_mysql_function_name(factory, args, kwargs):
+    """The four factories bypassed the formatter that already refused these.
+
+    Scoped to the four factories under test rather than sweeping the module:
+    the other JSON factories take argument shapes a generic call cannot
+    supply — nested path lists — so a sweeping loop fails inside
+    format_function_call on a filler call instead of on the defect. A refusal
+    counts as the correct outcome, since it means the name is unreachable.
+    """
     dialect = _dialect()
-    for name in ("JSON_UNQUOTE", "JSON_CONTAINS", "JSON_TYPE", "JSON_SEARCH"):
-        assert name not in _collect_sql(dialect), f"{name} still reachable"
+    try:
+        rendered = getattr(json_functions, factory)(dialect, *args, **kwargs).to_sql()[0]
+    except UnsupportedFeatureError:
+        return
 
-
-def _collect_sql(dialect):
-    """Render every JSON factory that takes a plain document argument."""
-    produced = []
-    for name in dir(json_functions):
-        if not name.startswith("json_"):
-            continue
-        factory = getattr(json_functions, name)
-        for args in (("data",), ("data", "x")):
-            try:
-                result = factory(dialect, *args)
-                produced.append(result.to_sql()[0])
-            except (UnsupportedFeatureError, TypeError):
-                continue
-    return " ".join(produced)
+    for foreign in ("JSON_UNQUOTE", "JSON_CONTAINS", "JSON_TYPE", "JSON_SEARCH"):
+        assert foreign not in rendered, f"{factory} rendered {rendered!r}"
 
 
 # ---------------------------------------------------------------------------
