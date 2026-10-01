@@ -42,6 +42,7 @@ SCHEMA_CRM = "ar_crm"
 SCHEMA_SHOP = "ar_shop"
 SOFT_TABLE = "ar_soft_orders"
 CUSTOMER_TABLE = "ar_customers"
+SHOP_ORDER_TABLE = "ar_orders"
 
 
 def _ddl_options() -> ExecutionOptions:
@@ -67,7 +68,7 @@ def _provision_statements() -> list:
         f"IF SCHEMA_ID('{SCHEMA_CRM}') IS NULL EXEC('CREATE SCHEMA [{SCHEMA_CRM}]')",
         f"IF SCHEMA_ID('{SCHEMA_SHOP}') IS NULL EXEC('CREATE SCHEMA [{SCHEMA_SHOP}]')",
     ]
-    for schema in (None, SCHEMA_CRM, SCHEMA_SHOP):
+    for schema in (None, SCHEMA_CRM):
         prefix = f"[{schema}]." if schema else ""
         statements.append(f"DROP TABLE IF EXISTS {prefix}[{SOFT_TABLE}]")
         statements.append(f"CREATE TABLE {prefix}[{SOFT_TABLE}] ({soft_columns})")
@@ -76,12 +77,27 @@ def _provision_statements() -> list:
         f"CREATE TABLE [{SCHEMA_CRM}].[{CUSTOMER_TABLE}] ("
         "id INT NOT NULL PRIMARY KEY, name NVARCHAR(100) NOT NULL)"
     )
+    # [ar_shop] holds a differently named table on purpose. SQL Server rejects
+    # a join whose two ranges share an exposed name (error 1013) and wants
+    # correlation names, so joining ar_soft_orders to another ar_soft_orders
+    # would be testing the aliasing requirement rather than the schema
+    # boundary. Same-name coexistence is covered on its own above.
+    statements.append(f"DROP TABLE IF EXISTS [{SCHEMA_SHOP}].[{SHOP_ORDER_TABLE}]")
+    statements.append(
+        f"CREATE TABLE [{SCHEMA_SHOP}].[{SHOP_ORDER_TABLE}] ("
+        "id INT NOT NULL PRIMARY KEY, "
+        "customer_id INT NOT NULL, "
+        "label NVARCHAR(100) NOT NULL)"
+    )
     return statements
 
 
 def _drop_statements() -> list:
-    statements = [f"DROP TABLE IF EXISTS [{SCHEMA_CRM}].[{CUSTOMER_TABLE}]"]
-    for schema in (None, SCHEMA_CRM, SCHEMA_SHOP):
+    statements = [
+        f"DROP TABLE IF EXISTS [{SCHEMA_CRM}].[{CUSTOMER_TABLE}]",
+        f"DROP TABLE IF EXISTS [{SCHEMA_SHOP}].[{SHOP_ORDER_TABLE}]",
+    ]
+    for schema in (None, SCHEMA_CRM):
         prefix = f"[{schema}]." if schema else ""
         statements.append(f"DROP TABLE IF EXISTS {prefix}[{SOFT_TABLE}]")
     for schema in (SCHEMA_CRM, SCHEMA_SHOP):
@@ -134,14 +150,19 @@ class CrmCustomer(ActiveRecord):
 
 
 class ShopOrder(ActiveRecord):
-    """A third namespace, so a join can cross a schema boundary."""
+    """A third namespace, so a join can cross a schema boundary.
 
-    __table_name__ = SOFT_TABLE
+    Deliberately a different table name from the soft-order table: SQL Server
+    rejects a join whose ranges share an exposed name.
+    """
+
+    __table_name__ = SHOP_ORDER_TABLE
     __schema_name__ = SCHEMA_SHOP
     __pk_auto_generated__ = False
     c: ClassVar[FieldProxy] = FieldProxy()
 
     id: Optional[int] = None
+    customer_id: int
     label: str
 
 
@@ -278,16 +299,18 @@ def test_bulk_update_stays_inside_its_namespace(cross_schema):
 
 def test_join_across_two_namespaces(cross_schema):
     """``[ar_crm]`` joined to ``[ar_shop]``, both sides fully qualified."""
-    CrmSoftOrder(id=31, label="from-crm").save()
-    ShopOrder(id=31, label="from-shop").save()
+    CrmCustomer(id=31, name="alice").save()
+    ShopOrder(id=31, customer_id=31, label="from-shop").save()
 
-    joined = CrmSoftOrder.query().join(ShopOrder, on=CrmSoftOrder.c.id == ShopOrder.c.id)
+    joined = CrmCustomer.query().join(
+        ShopOrder, on=CrmCustomer.c.id == ShopOrder.c.customer_id
+    )
     assert joined.count() == 1, "Expected the join to match across both schemas"
 
-    joined_sql, _ = joined.select(CrmSoftOrder.c.label).to_sql()
+    joined_sql, _ = joined.select(CrmCustomer.c.name).to_sql()
     normed = _norm(joined_sql)
-    assert "[ar_crm].[ar_soft_orders]" in normed, f"Got: {joined_sql}"
-    assert "[ar_shop].[ar_soft_orders]" in normed, (
+    assert "[ar_crm].[ar_customers]" in normed, f"Got: {joined_sql}"
+    assert "[ar_shop].[ar_orders]" in normed, (
         f"Expected the joined range to keep its own schema, got: {joined_sql}"
     )
 
