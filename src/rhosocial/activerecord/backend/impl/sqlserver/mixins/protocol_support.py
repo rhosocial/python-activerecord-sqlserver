@@ -386,7 +386,7 @@ class SQLServerProtocolSupportMixin:
             "requires SQL Server 2005+.",
         )
         parts = ["CREATE VIEW"]
-        parts.append(self.format_identifier(expr.view_name))
+        parts.append(self._format_view_name(expr))
 
         if expr.column_aliases:
             cols = ", ".join(self.format_identifier(c) for c in expr.column_aliases)

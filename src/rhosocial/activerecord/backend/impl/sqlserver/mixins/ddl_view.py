@@ -46,7 +46,7 @@ class SQLServerViewMixin:
         if expr.replace:
             parts = ["CREATE OR ALTER VIEW"]
 
-        parts.append(self.format_identifier(expr.view_name))
+        parts.append(self._format_view_name(expr))
 
         if expr.column_aliases:
             cols = ", ".join(self.format_identifier(c) for c in expr.column_aliases)
@@ -78,7 +78,7 @@ class SQLServerViewMixin:
         if expr.if_exists and self.supports_if_exists_view():
             parts.append("IF EXISTS")
 
-        parts.append(self.format_identifier(expr.view_name))
+        parts.append(self._format_view_name(expr))
 
         return " ".join(parts), ()
 
