@@ -231,6 +231,9 @@ class SQLServerDialect(
     SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
     SQLServerTypeDDLMixin,
+    # Before DDLColumnMixin: the backend block below comes later, so
+    # supports_fk_match answered for the core. Same value by coincidence.
+    SQLServerConstraintMixin,
     DDLColumnMixin,
     DDLTypeMixin,
     UserDefinedTypeMixin,
@@ -241,7 +244,6 @@ class SQLServerDialect(
     SQLServerWindowMixin,
     SQLServerJSONMixin,
     SQLServerReturningMixin,
-    SQLServerConstraintMixin,
     SQLServerGroupingMixin,
     SQLServerLockingMixin,
     SQLServerMergeMixin,
