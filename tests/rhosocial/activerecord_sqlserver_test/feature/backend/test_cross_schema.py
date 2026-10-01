@@ -248,7 +248,7 @@ def test_restore_writes_only_into_its_own_namespace(cross_schema):
     scoped.save()
     plain.save()
 
-    scoped.soft_delete()
+    scoped.delete()
     assert CrmSoftOrder.query_only_deleted().count() == 1
     assert PlainSoftOrder.query_only_deleted().count() == 0
 
@@ -324,7 +324,7 @@ async def test_async_restore_writes_only_into_its_own_namespace(cross_schema):
         await scoped.save()
         await plain.save()
 
-        await scoped.soft_delete()
+        await scoped.delete()
         assert await AsyncCrmSoftOrder.query_only_deleted().count() == 1
         assert await AsyncPlainSoftOrder.query_only_deleted().count() == 0
 
