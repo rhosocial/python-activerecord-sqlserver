@@ -521,6 +521,27 @@ class AsyncSQLServerBackend(
         
         return self._version
     
+    async def get_current_schema(self) -> Optional[str]:
+        """Get the schema an unqualified reference currently resolves against.
+        
+        Asks the server via SCHEMA_NAME(), which returns the user's default
+        schema. Unlike most backends this is never NULL: SQL Server always
+        resolves an unqualified name against a default schema, dbo unless the
+        user has one of their own.
+        """
+        from ....expression.statements.dql import QueryExpression
+        from ..functions.schema import current_schema
+        
+        query = QueryExpression(
+            dialect=self.dialect,
+            select=[current_schema(self.dialect)],
+        )
+        sql, params = query.to_sql()
+        row = await self.fetch_one(sql, params)
+        if not row:
+            return None
+        return next(iter(row.values()), None)
+    
     async def ping(self, reconnect: bool = True) -> bool:
         """Ping the SQL Server asynchronously.
         
