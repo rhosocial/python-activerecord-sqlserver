@@ -67,7 +67,7 @@ def _provision_statements() -> list:
         f"IF SCHEMA_ID('{SCHEMA_CRM}') IS NULL EXEC('CREATE SCHEMA [{SCHEMA_CRM}]')",
         f"IF SCHEMA_ID('{SCHEMA_SHOP}') IS NULL EXEC('CREATE SCHEMA [{SCHEMA_SHOP}]')",
     ]
-    for schema in (None, SCHEMA_CRM):
+    for schema in (None, SCHEMA_CRM, SCHEMA_SHOP):
         prefix = f"[{schema}]." if schema else ""
         statements.append(f"DROP TABLE IF EXISTS {prefix}[{SOFT_TABLE}]")
         statements.append(f"CREATE TABLE {prefix}[{SOFT_TABLE}] ({soft_columns})")
@@ -80,11 +80,10 @@ def _provision_statements() -> list:
 
 
 def _drop_statements() -> list:
-    statements = [
-        f"DROP TABLE IF EXISTS [{SCHEMA_CRM}].[{CUSTOMER_TABLE}]",
-        f"DROP TABLE IF EXISTS [{SCHEMA_CRM}].[{SOFT_TABLE}]",
-        f"DROP TABLE IF EXISTS [{SOFT_TABLE}]",
-    ]
+    statements = [f"DROP TABLE IF EXISTS [{SCHEMA_CRM}].[{CUSTOMER_TABLE}]"]
+    for schema in (None, SCHEMA_CRM, SCHEMA_SHOP):
+        prefix = f"[{schema}]." if schema else ""
+        statements.append(f"DROP TABLE IF EXISTS {prefix}[{SOFT_TABLE}]")
     for schema in (SCHEMA_CRM, SCHEMA_SHOP):
         statements.append(f"DROP SCHEMA IF EXISTS [{schema}]")
     return statements
