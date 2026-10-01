@@ -199,6 +199,9 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
     def supports_data_type_sqlserver_nchar(self) -> bool:
         return True
 
+    def supports_data_type_sqlserver_uniqueidentifier(self) -> bool:
+        return True
+
     def supports_data_type_sqlserver_nvarchar_max(self) -> bool:
         return True
 

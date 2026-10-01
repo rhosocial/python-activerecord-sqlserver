@@ -82,6 +82,7 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.OrderedSetAggregationSupport,
     dialect_protocols.PartitionSupport,
     dialect_protocols.QualifyClauseSupport,
+    dialect_protocols.UUIDSupport,
     dialect_protocols.ReturningSupport,
     dialect_protocols.SQLFunctionSupport,
     dialect_protocols.SchemaSupport,
