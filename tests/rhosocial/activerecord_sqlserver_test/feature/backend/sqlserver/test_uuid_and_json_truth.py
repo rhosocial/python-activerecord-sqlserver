@@ -44,7 +44,12 @@ def test_generation_uses_newid():
 
 
 def test_generation_carries_its_alias():
-    assert UUIDGenerationExpression(_dialect(), alias="u").to_sql() == ('NEWID() AS "u"', ())
+    dialect = _dialect()
+    ident = dialect.format_identifier("u")
+    assert UUIDGenerationExpression(dialect, alias="u").to_sql() == (
+        f"NEWID() AS {ident}",
+        (),
+    )
 
 
 def test_generation_needs_no_extension():
