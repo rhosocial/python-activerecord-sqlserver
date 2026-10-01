@@ -187,7 +187,14 @@ class AsyncPlainSoftOrder(DefaultAsyncSoftDeleteMixin, AsyncActiveRecord):
 
 @pytest.fixture(scope="module")
 def cross_schema():
-    """Provision both schemas on whichever scenario this job registered."""
+    """Provision both schemas on whichever scenario this job registered.
+
+    Yields the connection config alongside the backend because the async test
+    has to reuse it. Asking for the scenario a second time would not return
+    the same database: the pool holds a slot only for the duration of one
+    test, so a later ``get_scenario()`` can hand out a different slot and the
+    tables this fixture created would not be there.
+    """
     scenarios = get_enabled_scenarios()
     if not scenarios:
         pytest.skip("no SQL Server scenario registered for this job")
@@ -204,7 +211,7 @@ def cross_schema():
         AsyncPlainSoftOrder,
     ):
         _bind(model, config, backend_class, backend)
-    yield backend
+    yield config
     _run(backend, _drop_statements())
     backend.disconnect()
 
@@ -333,13 +340,11 @@ async def test_async_restore_writes_only_into_its_own_namespace(cross_schema):
         AsyncSQLServerBackend,
     )
 
-    scenarios = get_enabled_scenarios()
-    backend_class, config = get_scenario(next(iter(scenarios)))
-    backend = AsyncSQLServerBackend(connection_config=config)
+    backend = AsyncSQLServerBackend(connection_config=cross_schema)
     await backend.connect()
     try:
         for model in (AsyncCrmSoftOrder, AsyncPlainSoftOrder):
-            _bind(model, config, AsyncSQLServerBackend, backend)
+            _bind(model, cross_schema, AsyncSQLServerBackend, backend)
 
         scoped = AsyncCrmSoftOrder(id=41, label="scoped")
         plain = AsyncPlainSoftOrder(id=41, label="plain")
