@@ -190,11 +190,11 @@ def test_json_table_error_points_at_openjson():
 @pytest.mark.parametrize("column_class", [Column, ColumnBase])
 def test_output_clause_recognises_both_column_kinds(column_class):
     """A typed column must not fall through to the expressions branch."""
-    from rhosocial.activerecord.backend.expression.query_sources import ReturningClause
+    from rhosocial.activerecord.backend.expression.statements.dml import ReturningClause
 
     dialect = _dialect()
     clause = ReturningClause(
-        expressions=[column_class(dialect, "id", table="INSERTED")], clause_type="RETURNING"
+        dialect, expressions=[column_class(dialect, "id", table="INSERTED")]
     )
     sql, params = dialect.format_returning_clause(clause)
     assert sql.startswith("OUTPUT INSERTED.")
