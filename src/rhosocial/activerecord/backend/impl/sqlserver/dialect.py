@@ -439,6 +439,16 @@ class SQLServerDialect(
         """
         return SQLServerIdentifierMixin.format_identifier(self, identifier, need_quote)
 
+    def format_column(self, expr) -> Tuple[str, tuple]:
+        """Format a column reference, dropping the schema part.
+
+        Declared on the dialect for the same reason as ``format_identifier``:
+        ``DDLColumnMixin`` precedes the feature mixins in the MRO and would
+        otherwise win. The implementation lives in the mixin; this only makes
+        it reachable.
+        """
+        return SQLServerSchemaMixin.format_column(self, expr)
+
     def __init__(
         self,
         version: Optional[Tuple[int, int, int]] = None,
