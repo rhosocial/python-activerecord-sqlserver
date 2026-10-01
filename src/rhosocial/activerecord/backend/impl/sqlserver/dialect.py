@@ -1187,10 +1187,10 @@ class SQLServerDialect(
         from rhosocial.activerecord.backend.expression.types import (
             IntervalType,
             ArrayType,
-            EnumType,
             JsonBType,
             TimestampTzType,
             TimeTzType,
+            VarCharType,
         )
         # "uuid" used to map to the generic UUIDType, whose name equals the
         # key. A suggestion must name a type this dialect cannot render
@@ -1202,7 +1202,10 @@ class SQLServerDialect(
             "uuid": SQLServerUniqueIdentifierType,
             "interval": IntervalType,
             "array": ArrayType,
-            "enum": EnumType,
+            # Was EnumType, which this dialect cannot render either — swapping
+            # one for the other failed identically. SQL Server has no enum, so
+            # the value is stored as text and constrained by a CHECK.
+            "enum": VarCharType,
             "jsonb": JsonBType,
             "timestamptz": TimestampTzType,
             "timetz": TimeTzType,
