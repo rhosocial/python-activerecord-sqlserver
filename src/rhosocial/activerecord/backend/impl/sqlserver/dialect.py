@@ -7,6 +7,7 @@ based on the SQL Server version provided at initialization.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from ...expression.core import TableExpression
 import copy
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
@@ -868,9 +869,9 @@ class SQLServerDialect(
                 parts.append(index_type)
 
         parts.append("INDEX")
-        parts.append(self.format_identifier(expr.index_name))
+        parts.append(TableExpression(self, expr.index_name, schema_name=expr.schema_name).to_sql()[0])
         parts.append("ON")
-        parts.append(self.format_identifier(expr.table_name))
+        parts.append(TableExpression(self, expr.table_name, schema_name=expr.schema_name).to_sql()[0])
 
         col_parts = []
         for col in expr.columns:
@@ -917,7 +918,7 @@ class SQLServerDialect(
                 "SQL Server sequences have no OWNED BY clause.",
             )
         parts = ["CREATE SEQUENCE"]
-        parts.append(self.format_identifier(expr.sequence_name))
+        parts.append(TableExpression(self, expr.sequence_name, schema_name=expr.schema_name).to_sql()[0])
         if expr.start is not None:
             parts.append(f"START WITH {expr.start}")
         if expr.increment is not None:
@@ -939,12 +940,12 @@ class SQLServerDialect(
         parts = ["DROP SEQUENCE"]
         if expr.if_exists and self.version >= SQL_SERVER_2012:
             parts.append("IF EXISTS")
-        parts.append(self.format_identifier(expr.sequence_name))
+        parts.append(TableExpression(self, expr.sequence_name, schema_name=expr.schema_name).to_sql()[0])
         return " ".join(parts), ()
 
     def format_alter_sequence_statement(self, expr: "AlterSequenceExpression") -> Tuple[str, tuple]:
         """Format ALTER SEQUENCE for SQL Server."""
-        parts = [f"ALTER SEQUENCE {self.format_identifier(expr.sequence_name)}"]
+        parts = [f"ALTER SEQUENCE {TableExpression(self, expr.sequence_name, schema_name=expr.schema_name).to_sql()[0]}"]
         if expr.restart is not None:
             parts.append(f"RESTART WITH {expr.restart}")
         if expr.increment is not None:
@@ -965,7 +966,7 @@ class SQLServerDialect(
         TRUNCATE TABLE is a DDL operation (minimal logging).
         Does not support RESTART IDENTITY or CASCADE.
         """
-        sql = f"TRUNCATE TABLE {self.format_identifier(expr.table_name)}"
+        sql = f"TRUNCATE TABLE {TableExpression(self, expr.table_name, schema_name=expr.schema_name).to_sql()[0]}"
         return sql, ()
 
     def format_merge_statement(self, expr: "MergeExpression") -> Tuple[str, tuple]:
@@ -1070,7 +1071,7 @@ class SQLServerDialect(
         - Single action per ALTER TABLE statement
         """
         all_params: list = []
-        table_sql = self.format_identifier(expr.table_name)
+        table_sql = TableExpression(self, expr.table_name, schema_name=expr.schema_name).to_sql()[0]
 
         action_parts = []
         for action in expr.actions:

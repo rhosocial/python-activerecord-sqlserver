@@ -13,6 +13,7 @@ Version notes:
 """
 
 from typing import Tuple, TYPE_CHECKING
+from ....expression.core import TableExpression
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
@@ -171,7 +172,7 @@ class SQLServerPartitionMixin:
             [ALL] TO (filegroup1, filegroup2, ...)
         """
         scheme_name = self.format_identifier(expr.scheme_name)  # type: ignore[attr-defined]
-        func_name = self.format_identifier(expr.function_name)  # type: ignore[attr-defined]
+        func_name = TableExpression(self, expr.function_name, schema_name=expr.schema_name).to_sql()[0]  # type: ignore[attr-defined]
 
         if expr.all_filegroup:
             fg_quoted = self.format_identifier(expr.all_filegroup)  # type: ignore[attr-defined]
