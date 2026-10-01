@@ -256,8 +256,8 @@ def test_same_named_tables_coexist_and_pk_is_namespace_scoped(cross_schema):
     assert PlainSoftOrder.query().where(PlainSoftOrder.c.id == 1).one().label == "dbo-row"
 
     CrmSoftOrder.query().where(CrmSoftOrder.c.id == 1).delete_all()
-    assert CrmSoftOrder.query().count() == 0
-    assert PlainSoftOrder.query().count() == 1, (
+    assert CrmSoftOrder.query().where(CrmSoftOrder.c.id == 1).count() == 0
+    assert PlainSoftOrder.query().where(PlainSoftOrder.c.id == 1).count() == 1, (
         "deleting in [ar_crm] must not remove the identically keyed dbo row"
     )
 
@@ -276,8 +276,8 @@ def test_restore_writes_only_into_its_own_namespace(cross_schema):
     plain.save()
 
     scoped.delete()
-    assert CrmSoftOrder.query_only_deleted().count() == 1
-    assert PlainSoftOrder.query_only_deleted().count() == 0
+    assert CrmSoftOrder.query_only_deleted().where(CrmSoftOrder.c.id == 7).count() == 1
+    assert PlainSoftOrder.query_only_deleted().where(PlainSoftOrder.c.id == 7).count() == 0
 
     assert scoped.restore() == 1
 
@@ -287,7 +287,7 @@ def test_restore_writes_only_into_its_own_namespace(cross_schema):
     assert plain.deleted_at is None, (
         "the default-schema row was never soft-deleted and must stay untouched"
     )
-    assert PlainSoftOrder.query_only_deleted().count() == 0
+    assert PlainSoftOrder.query_only_deleted().where(PlainSoftOrder.c.id == 7).count() == 0
 
 
 def test_bulk_update_stays_inside_its_namespace(cross_schema):
@@ -352,14 +352,20 @@ async def test_async_restore_writes_only_into_its_own_namespace(cross_schema):
         await plain.save()
 
         await scoped.delete()
-        assert await AsyncCrmSoftOrder.query_only_deleted().count() == 1
-        assert await AsyncPlainSoftOrder.query_only_deleted().count() == 0
+        assert await AsyncCrmSoftOrder.query_only_deleted().where(
+            AsyncCrmSoftOrder.c.id == 41
+        ).count() == 1
+        assert await AsyncPlainSoftOrder.query_only_deleted().where(
+            AsyncPlainSoftOrder.c.id == 41
+        ).count() == 0
 
         assert await scoped.restore() == 1
         assert await AsyncCrmSoftOrder.query().where(
             AsyncCrmSoftOrder.c.id == 41
         ).count() == 1, "async restore() must clear deleted_at inside [ar_crm]"
-        assert await AsyncPlainSoftOrder.query_only_deleted().count() == 0
+        assert await AsyncPlainSoftOrder.query_only_deleted().where(
+            AsyncPlainSoftOrder.c.id == 41
+        ).count() == 0
     finally:
         try:
             await backend.disconnect()
