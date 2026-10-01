@@ -387,7 +387,7 @@ class SQLServerProtocolSupportMixin:
             "requires SQL Server 2005+.",
         )
         parts = ["CREATE VIEW"]
-        parts.append(self.format_view_name(expr))
+        parts.append(TableExpression(self, expr.view_name, schema_name=expr.schema_name).to_sql()[0])
 
         if expr.column_aliases:
             cols = ", ".join(self.format_identifier(c) for c in expr.column_aliases)
