@@ -161,6 +161,13 @@ class SQLServerDropTypeExpression(DropTypeExpression):
         cascade: bool = False,
         restrict: bool = False,
     ) -> None:
+        """
+        Args:
+            schema_name: Namespace to qualify the type with, e.g. ``app``.
+                None leaves the name unqualified. An empty string raises
+                ValueError, and a dialect with no namespace raises
+                UnsupportedFeatureError.
+        """
         if not isinstance(cascade, bool) or not isinstance(restrict, bool):
             raise TypeError("cascade and restrict must be bools")
         if cascade and restrict:
@@ -190,6 +197,13 @@ class SQLServerRenameTypeExpression(BaseExpression):
         *,
         schema_name: Optional[str] = None,
     ) -> None:
+        """
+        Args:
+            schema_name: Namespace to qualify the type with, e.g. ``app``.
+                None leaves the name unqualified. An empty string raises
+                ValueError, and a dialect with no namespace raises
+                UnsupportedFeatureError.
+        """
         super().__init__(dialect)
         _validate_name(type_name, "type_name")
         _validate_name(new_name, "new_name")

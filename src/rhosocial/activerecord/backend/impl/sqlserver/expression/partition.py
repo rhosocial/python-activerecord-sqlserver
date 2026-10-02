@@ -81,6 +81,13 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
         schema_name: Optional[str] = None,
         range_direction: SQLServerPartitionRangeDirection = SQLServerPartitionRangeDirection.RIGHT,
     ):
+        """
+        Args:
+            schema_name: Namespace to qualify the function with, e.g. ``app``.
+                None leaves the name unqualified. An empty string raises
+                ValueError, and a dialect with no namespace raises
+                UnsupportedFeatureError.
+        """
         super().__init__(dialect)
         self.function_name = function_name
         self.schema_name = _validate_schema_name(schema_name, type(self).__name__)
@@ -115,6 +122,13 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         all_filegroup: Optional[str] = None,
         schema_name: Optional[str] = None,
     ):
+        """
+        Args:
+            schema_name: Namespace to qualify the scheme with, e.g. ``app``.
+                None leaves the name unqualified. An empty string raises
+                ValueError, and a dialect with no namespace raises
+                UnsupportedFeatureError.
+        """
         super().__init__(dialect)
         self.scheme_name = scheme_name
         self.schema_name = _validate_schema_name(schema_name, type(self).__name__)

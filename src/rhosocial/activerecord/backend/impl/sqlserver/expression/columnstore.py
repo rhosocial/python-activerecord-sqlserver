@@ -52,6 +52,13 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
         order_columns: Sequence[str] = (),
         schema_name: Optional[str] = None,
     ):
+        """
+        Args:
+            schema_name: Namespace to qualify the index with, e.g. ``app``.
+                None leaves the name unqualified. An empty string raises
+                ValueError, and a dialect with no namespace raises
+                UnsupportedFeatureError.
+        """
         super().__init__(dialect)
         self.index_name = index_name
         self.schema_name = _validate_schema_name(schema_name, type(self).__name__)
