@@ -1,6 +1,6 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_view.py
 from typing import Tuple, TYPE_CHECKING
-from ....expression.core import TableExpression
+from rhosocial.activerecord.backend.expression.core import TableExpression
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .version_constants import SQL_SERVER_2005, SQL_SERVER_2016

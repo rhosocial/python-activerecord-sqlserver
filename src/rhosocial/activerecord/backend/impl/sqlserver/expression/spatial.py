@@ -1,6 +1,7 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/expression/spatial.py
 """SQL Server spatial expression classes for format_* signature compliance."""
 
+from rhosocial.activerecord.backend.expression.core import _validate_schema_name
 from typing import Optional, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import SQLValueExpression
@@ -251,9 +252,11 @@ class SQLServerCreateSpatialIndexExpression(AliasableMixin, ComparisonMixin, SQL
         column: str,
         *,
         alias: Optional[str] = None,
+        schema_name: Optional[str] = None,
     ):
         super().__init__(dialect)
         self.index_name = index_name
+        self.schema_name = _validate_schema_name(schema_name, type(self).__name__)
         self.table_name = table_name
         self.column = column
         self.alias = alias

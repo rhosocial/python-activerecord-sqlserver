@@ -13,7 +13,7 @@ silently returning a stub.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
-from ....expression.core import TableExpression
+from rhosocial.activerecord.backend.expression.core import TableExpression
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 

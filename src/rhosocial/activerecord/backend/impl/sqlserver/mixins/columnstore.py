@@ -10,7 +10,7 @@ by ``SQLServerColumnstoreIndexExpression`` with version gating:
 """
 
 from typing import Tuple, TYPE_CHECKING
-from ....expression.core import TableExpression
+from rhosocial.activerecord.backend.expression.core import TableExpression
 
 if TYPE_CHECKING:
     from ..expression.columnstore import SQLServerColumnstoreIndexExpression

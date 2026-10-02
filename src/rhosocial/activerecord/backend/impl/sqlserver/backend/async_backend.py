@@ -529,7 +529,7 @@ class AsyncSQLServerBackend(
         resolves an unqualified name against a default schema, dbo unless the
         user has one of their own.
         """
-        from ....expression.statements.dql import QueryExpression
+        from rhosocial.activerecord.backend.expression.statements.dql import QueryExpression
         from ..functions.schema import current_schema
         
         query = QueryExpression(
