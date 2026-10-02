@@ -177,10 +177,27 @@ class TestSQLServerPartitionFunction:
     def test_partition_function_schema_qualified(self):
         d = SQLServerDialect(SQL_SERVER_2022)
         pf = SQLServerPartitionFunctionExpression(
-            d, "dbo.pf_sales", "DATE", ["2020-01-01"],
+            d, "pf_sales", "DATE", ["2020-01-01"], schema_name="dbo",
         )
         sql, _ = pf.to_sql()
         assert "[dbo].[pf_sales]" in sql
+
+    def test_dotted_name_is_one_identifier(self):
+        """A dot in the name is part of the name, not a schema.
+
+        This used to be split on "." and quoted half by half, which made
+        "dbo.pf_sales" render as [dbo].[pf_sales]. That reads as a qualifier, but
+        SQL Server also allows a period inside an identifier, so the string was
+        doing the schema's job and a name that genuinely contained a period could
+        not be expressed. The schema is a parameter now; a name that contains a
+        period is quoted as the single identifier it is.
+        """
+        d = SQLServerDialect(SQL_SERVER_2022)
+        pf = SQLServerPartitionFunctionExpression(
+            d, "dbo.pf_sales", "DATE", ["2020-01-01"],
+        )
+        sql, _ = pf.to_sql()
+        assert "[dbo.pf_sales]" in sql
 
 
 class TestSQLServerPartitionScheme:
