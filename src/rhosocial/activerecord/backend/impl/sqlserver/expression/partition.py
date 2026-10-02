@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Any, Optional, Sequence, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.core import _validate_schema_name
 from rhosocial.activerecord.backend.expression.statements import PartitionClause, PartitionStrategy
 
 if TYPE_CHECKING:
@@ -64,6 +65,10 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
     Example:
         CREATE PARTITION FUNCTION pf_name (DATE)
         AS RANGE RIGHT FOR VALUES ('2020-01-01', '2021-01-01')
+
+    schema_name qualifies function_name. A partition scheme that references this
+    function must be created in the same schema, so the two expressions take
+    the schema independently and have to agree.
     """
 
     def __init__(
@@ -73,10 +78,12 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
         data_type: str,
         boundary_values: Sequence[Any],
         *,
+        schema_name: Optional[str] = None,
         range_direction: SQLServerPartitionRangeDirection = SQLServerPartitionRangeDirection.RIGHT,
     ):
         super().__init__(dialect)
         self.function_name = function_name
+        self.schema_name = _validate_schema_name(schema_name, type(self).__name__)
         self.data_type = data_type
         self.boundary_values = list(boundary_values)
         self.range_direction = range_direction
@@ -93,6 +100,9 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         CREATE PARTITION SCHEME ps_name
         AS PARTITION pf_name
         TO ([PRIMARY], fg1, fg2)
+
+    schema_name qualifies both the scheme and the function it references, since
+    SQL Server requires the two to live in the same schema.
     """
 
     def __init__(
@@ -103,9 +113,11 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         filegroups: Sequence[str],
         *,
         all_filegroup: Optional[str] = None,
+        schema_name: Optional[str] = None,
     ):
         super().__init__(dialect)
         self.scheme_name = scheme_name
+        self.schema_name = _validate_schema_name(schema_name, type(self).__name__)
         self.function_name = function_name
         self.filegroups = list(filegroups)
         if all_filegroup and filegroups:

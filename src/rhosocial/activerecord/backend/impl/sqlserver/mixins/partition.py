@@ -144,19 +144,13 @@ class SQLServerPartitionMixin:
         for value in expr.boundary_values:
             boundary_parts.append(self.inline_sql_literal(value))
 
-        func_name = expr.function_name
-        # Support schema-qualified names
-        if "." in func_name:
-            func_parts = func_name.split(".")
-            quoted = ".".join(self.format_identifier(p) for p in func_parts)  # type: ignore[attr-defined]
-        else:
-            quoted = self.format_identifier(func_name)  # type: ignore[attr-defined]
+        func_name = TableExpression(self, expr.function_name, schema_name=expr.schema_name).to_sql()[0]
 
         data_type = expr.data_type
         direction = expr.range_direction.value
 
         sql = (
-            f"CREATE PARTITION FUNCTION {quoted} ({data_type}) "
+            f"CREATE PARTITION FUNCTION {func_name} ({data_type}) "
             f"AS RANGE {direction} FOR VALUES ({', '.join(boundary_parts)})"
         )
         return sql, ()
@@ -171,8 +165,8 @@ class SQLServerPartitionMixin:
             AS PARTITION function_name
             [ALL] TO (filegroup1, filegroup2, ...)
         """
-        scheme_name = self.format_identifier(expr.scheme_name)  # type: ignore[attr-defined]
-        func_name = TableExpression(self, expr.function_name, schema_name=expr.schema_name).to_sql()[0]  # type: ignore[attr-defined]
+        scheme_name = TableExpression(self, expr.scheme_name, schema_name=expr.schema_name).to_sql()[0]
+        func_name = TableExpression(self, expr.function_name, schema_name=expr.schema_name).to_sql()[0]
 
         if expr.all_filegroup:
             fg_quoted = self.format_identifier(expr.all_filegroup)  # type: ignore[attr-defined]

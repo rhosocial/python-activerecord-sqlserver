@@ -95,6 +95,42 @@ class TestQualifiedStatementsRender:
         qualified = SQLServerDropTypeExpression(dialect, "my_type", schema_name="dbo")
         assert "dbo" in qualified.to_sql()[0], qualified.to_sql()[0]
 
+    def test_partition_function_and_scheme_qualify_together(self, dialect):
+        """A partition scheme cannot be qualified on its own.
+
+        SQL Server requires a scheme and the function it references to sit in the
+        same schema, so CREATE PARTITION SCHEME has to qualify both names or
+        neither. The function expression had no schema field at all and its
+        formatter compensated by splitting on a dot in the name, which put the
+        qualification in the string instead of on the statement -- the one place
+        the rest of the file cannot see it.
+        """
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
+            SQLServerPartitionFunctionExpression,
+            SQLServerPartitionSchemeExpression,
+        )
+
+        def build(schema_name=None):
+            function = SQLServerPartitionFunctionExpression(
+                dialect, "pf_orders", "DATE", ["2024-01-01"], schema_name=schema_name
+            )
+            scheme = SQLServerPartitionSchemeExpression(
+                dialect, "ps_orders", "pf_orders", ["fg1"], schema_name=schema_name
+            )
+            return function.to_sql()[0], scheme.to_sql()[0]
+
+        assert build() == (
+            "CREATE PARTITION FUNCTION [pf_orders] (DATE) "
+            "AS RANGE RIGHT FOR VALUES ('2024-01-01')",
+            "CREATE PARTITION SCHEME [ps_orders] AS PARTITION [pf_orders] TO ([fg1])",
+        )
+        assert build("sales") == (
+            "CREATE PARTITION FUNCTION [sales].[pf_orders] (DATE) "
+            "AS RANGE RIGHT FOR VALUES ('2024-01-01')",
+            "CREATE PARTITION SCHEME [sales].[ps_orders] "
+            "AS PARTITION [sales].[pf_orders] TO ([fg1])",
+        )
+
 
 class TestExpressionSignatures:
     """The expressions this backend's formatters qualify must take the field."""
