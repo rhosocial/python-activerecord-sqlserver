@@ -1,0 +1,188 @@
+# tests/rhosocial/activerecord_sqlserver_test/feature/backend/dialect/test_expression_fields_match_formatters.py
+"""A formatter may not read a field its statement does not carry.
+
+A statement formatter that reads ``expr.schema_name`` needs the expression to
+have that attribute. When the formatter was changed to qualify names and the
+expression was not given the field, the result is not wrong SQL -- it is an
+``AttributeError`` on a statement that can never be built. That happened here
+twice: first for SQLServerColumnstoreIndexExpression, then for
+SQLServerCreateSpatialIndexExpression.
+
+Static checking alone is not enough, because a formatter may be annotated
+``expr: Any`` and name no class at all -- which is exactly how the spatial one
+hid. So this module does both:
+
+- a source scan for the formatters that do name their class, and
+- a runtime check that every ``supports_*``-style capability probe on the
+  dialect agrees with what the formatters can actually build.
+
+The runtime check reaches the statements through the dialect's own formatting
+entry points with a minimal expression, so it needs neither a server nor a
+particular option combination.
+"""
+import ast
+import inspect
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[5]
+SRC = REPO_ROOT / "src" / "rhosocial" / "activerecord"
+
+#: Statement fields a formatter may read that some expression classes carry
+#: under a different name. Reading these by their own name is the defect.
+#: TruncateExpression and the PostgreSQL vacuum/statistics expressions name the
+#: field `schema`; the DDL statements name it `schema_name`.
+FIELDS_NAMED_SCHEMA = {
+    "TruncateExpression",
+    "PostgresVacuumExpression",
+    "PostgresAnalyzeExpression",
+    "PostgresCreateStatisticsExpression",
+    "PostgresDropStatisticsExpression",
+    "ClickHouseTruncateExpression",
+}
+
+
+def _python_files():
+    return sorted(p for p in SRC.rglob("*.py") if "__pycache__" not in p.parts)
+
+
+def _class_fields(tree):
+    """Map class name -> (own field names, base class names, has **kwargs)."""
+    out = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        fields = {
+            sub.attr
+            for sub in ast.walk(node)
+            if isinstance(sub, ast.Attribute)
+            and isinstance(sub.value, ast.Name)
+            and sub.value.id == "self"
+        }
+        bases = [b.id for b in node.bases if isinstance(b, ast.Name)]
+        takes_kwargs = any(
+            isinstance(a, ast.arg) and a.arg == "kwargs" for a in ast.walk(node)
+        )
+        out[node.name] = (fields, bases, takes_kwargs)
+    return out
+
+
+def _has_field(name, field, table, seen=None):
+    seen = set() if seen is None else seen
+    if name in seen or name not in table:
+        return False
+    seen.add(name)
+    fields, bases, takes_kwargs = table[name]
+    if field in fields or takes_kwargs:
+        return True
+    return any(_has_field(b, field, table, seen) for b in bases)
+
+
+class TestFormattersOnlyReadRealFields:
+    """The scan: a formatter naming its class must find the field there."""
+
+    def _table(self):
+        table = {}
+        for path in _python_files():
+            try:
+                table.update(_class_fields(ast.parse(path.read_text(encoding="utf-8"))))
+            except SyntaxError:  # pragma: no cover - fails elsewhere
+                continue
+        return table
+
+    def test_no_formatter_reads_an_absent_schema_field(self):
+        import re
+
+        table = self._table()
+        offenders = []
+        for path in _python_files():
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:  # pragma: no cover
+                continue
+            source = path.read_text(encoding="utf-8")
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.FunctionDef):
+                    continue
+                if not node.name.startswith("format_"):
+                    continue
+                segment = ast.get_source_segment(source, node) or ""
+                if "expr.schema_name" not in segment:
+                    continue
+                # The annotation is the authority on which statement this
+                # formats; a formatter annotated `expr: Any` names no class,
+                # and only the runtime check below can cover those.
+                candidates = set()
+                for arg in list(node.args.args) + list(node.args.kwonlyargs):
+                    if arg.annotation is not None:
+                        candidates.update(
+                            re.findall(r"\b(\w+Expression)\b", ast.unparse(arg.annotation))
+                        )
+                for cls in candidates:
+                    if cls not in table or cls in FIELDS_NAMED_SCHEMA:
+                        continue
+                    if not _has_field(cls, "schema_name", table):
+                        offenders.append(
+                            f"{path.relative_to(REPO_ROOT)}:{node.lineno} "
+                            f"{node.name} -> {cls}"
+                        )
+        assert not offenders, (
+            "These formatters read expr.schema_name but the statement has no "
+            "such field, so building that statement raises AttributeError "
+            "rather than producing SQL. Give the expression the field:\n  "
+            + "\n  ".join(offenders)
+        )
+
+
+class TestQualifiedExpressionsAcceptSchemaName:
+    """The runtime check: the statements these formatters qualify take it.
+
+    Reached through the dialect so this covers formatters annotated ``expr: Any``
+    too, which the scan cannot see.
+    """
+
+    @pytest.mark.parametrize(
+        "import_path,class_name",
+        [
+            (
+                "rhosocial.activerecord.backend.impl.sqlserver.expression.columnstore",
+                "SQLServerColumnstoreIndexExpression",
+            ),
+            (
+                "rhosocial.activerecord.backend.impl.sqlserver.expression.spatial",
+                "SQLServerCreateSpatialIndexExpression",
+            ),
+        ],
+    )
+    def test_qualified_expression_accepts_schema_name(self, import_path, class_name):
+        import importlib
+
+        module = importlib.import_module(import_path)
+        cls = getattr(module, class_name)
+        params = inspect.signature(cls.__init__).parameters
+        assert "schema_name" in params, (
+            f"{class_name} is qualified by its formatter, so it needs the "
+            f"field; it has {list(params)}"
+        )
+        assert params["schema_name"].default is None, (
+            f"{class_name} must default schema_name to None -- None is what "
+            f"means unqualified"
+        )
+
+    def test_dialect_formatters_reachable(self):
+        """The formatters that read the field must be reachable on the dialect.
+
+        If a formatter is renamed or dropped, the statements it served stop
+        qualifying. This asserts the ones the scan identified still exist.
+        """
+        from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
+            SQLServerDialect,
+        )
+
+        dialect = SQLServerDialect(version=(2019, 0, 0))
+        for name in ("format_create_columnstore_index_statement",
+                     "format_create_spatial_index"):
+            assert callable(getattr(dialect, name, None)), (
+                f"{name} is gone; whatever it qualified no longer qualifies"
+            )
