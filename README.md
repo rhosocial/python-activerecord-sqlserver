@@ -232,11 +232,17 @@ PYTHONPATH=tests .venv3.14-ubuntu26.04/bin/pytest \
 
 ## Documentation
 
-This repository has no `docs/` tree. Backend notes live in
-[.claude/architecture.md](.claude/architecture.md) and
-[.claude/testing.md](.claude/testing.md); core library documentation is at
-[python-activerecord/docs](https://github.com/rhosocial/python-activerecord/tree/main/docs).
+This repository has a bilingual `docs/` tree:
 
+- [English Documentation](docs/en_US/README.md)
+- [中文文档 (Chinese)](docs/zh_CN/README.md)
+
+Start with the [Schema Namespaces](docs/en_US/sqlserver_specific_features/schema_namespace.md) guide, which
+covers `__schema_name__`, the DDL `schema_name` parameter, identifier quoting, and this
+backend's column-reference rules.
+
+Backend notes also live in [.claude/architecture.md](.claude/architecture.md) and [.claude/testing.md](.claude/testing.md); core library documentation is at
+[python-activerecord/docs](https://github.com/rhosocial/python-activerecord/tree/main/docs).
 ## Contributing
 
 See [CONTRIBUTING.md](https://github.com/rhosocial/python-activerecord/blob/main/CONTRIBUTING.md).

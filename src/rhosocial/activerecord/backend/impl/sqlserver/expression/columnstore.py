@@ -11,7 +11,6 @@ SQL generation and version gating are delegated to the dialect's
 ``format_create_columnstore_index_statement`` formatter.
 """
 
-from rhosocial.activerecord.backend.expression.core import _validate_schema_name
 from typing import Optional, Sequence, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
@@ -61,7 +60,7 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
         """
         super().__init__(dialect)
         self.index_name = index_name
-        self.schema_name = _validate_schema_name(schema_name, type(self).__name__)
+        self.schema_name = schema_name
         self.table_name = table_name
         self.columns = list(columns)
         self.clustered = clustered

@@ -16,7 +16,6 @@ from enum import Enum
 from typing import Any, Optional, Sequence, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
-from rhosocial.activerecord.backend.expression.core import _validate_schema_name
 from rhosocial.activerecord.backend.expression.statements import PartitionClause, PartitionStrategy
 
 if TYPE_CHECKING:
@@ -90,7 +89,7 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
         """
         super().__init__(dialect)
         self.function_name = function_name
-        self.schema_name = _validate_schema_name(schema_name, type(self).__name__)
+        self.schema_name = schema_name
         self.data_type = data_type
         self.boundary_values = list(boundary_values)
         self.range_direction = range_direction
@@ -131,7 +130,7 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         """
         super().__init__(dialect)
         self.scheme_name = scheme_name
-        self.schema_name = _validate_schema_name(schema_name, type(self).__name__)
+        self.schema_name = schema_name
         self.function_name = function_name
         self.filegroups = list(filegroups)
         if all_filegroup and filegroups:
