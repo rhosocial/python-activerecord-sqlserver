@@ -11,6 +11,7 @@ from rhosocial.activerecord.backend.expression.statements import (
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
     from rhosocial.activerecord.backend.expression.bases import BaseExpression
+    from rhosocial.activerecord.backend.expression.core import TableExpression
 
 
 class SQLServerMergeExpression(MergeExpression):
@@ -25,7 +26,7 @@ class SQLServerMergeExpression(MergeExpression):
     def __init__(
         self,
         dialect: "SQLDialectBase",
-        target_table,
+        target_table: "TableExpression",
         source,
         on_condition,
         when_matched=None,

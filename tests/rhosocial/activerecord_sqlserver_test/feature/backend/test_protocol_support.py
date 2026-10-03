@@ -239,7 +239,7 @@ class TestMergeOutputAndHoldlock:
 
         return SQLServerMergeExpression(
             dialect=d,
-            target_table="tgt",
+            target_table=TableExpression(d, "tgt"),
             source=TableExpression(d, "src"),
             on_condition=ComparisonPredicate(
                 d, "=", Column(d, "id", "tgt"), Column(d, "id", "src")
