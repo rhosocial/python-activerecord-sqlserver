@@ -966,7 +966,7 @@ class SQLServerDialect(
         TRUNCATE TABLE is a DDL operation (minimal logging).
         Does not support RESTART IDENTITY or CASCADE.
         """
-        sql = f"TRUNCATE TABLE {TableExpression(self, expr.table_name, schema_name=expr.schema_name).to_sql()[0]}"
+        sql = f"TRUNCATE TABLE {expr.table.to_sql()[0]}"
         return sql, ()
 
     def format_merge_statement(self, expr: "MergeExpression") -> Tuple[str, tuple]:

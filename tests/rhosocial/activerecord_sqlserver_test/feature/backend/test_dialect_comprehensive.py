@@ -273,11 +273,12 @@ class TestSQLServerDialectTruncate:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_truncate_table(self, dialect):
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         from rhosocial.activerecord.backend.expression.statements import TruncateExpression
 
         expr = TruncateExpression(
             dialect=dialect,
-            table_name="users",
+            table=TableExpression(dialect, "users"),
         )
         sql, params = dialect.format_truncate_statement(expr)
         assert sql == "TRUNCATE TABLE [users]"
