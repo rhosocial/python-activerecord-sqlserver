@@ -1,4 +1,5 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/schema.py
+from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from typing import Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.mixins.ddl_column import DDLColumnMixin
@@ -63,8 +64,18 @@ class SQLServerSchemaMixin:
         """Format CREATE SCHEMA for SQL Server.
 
         SQL Server uses CREATE SCHEMA schema_name [AUTHORIZATION owner_name].
-        Does not support IF NOT EXISTS.
+        There is no IF NOT EXISTS clause, so asking for one is refused rather
+        than dropped: a caller who set the flag would otherwise get a statement
+        that fails on an existing schema instead of the no-op it asked for.
         """
+        if expr.if_not_exists and not self.supports_schema_if_not_exists():
+            raise UnsupportedFeatureError(
+                self.name,
+                "CREATE SCHEMA IF NOT EXISTS",
+                f"{self.name} has no IF NOT EXISTS clause for CREATE SCHEMA. "
+                f"Drop the flag, or guard the call yourself.",
+            )
+
         parts = ["CREATE SCHEMA"]
         parts.append(self.format_identifier(expr.schema_name))
         if expr.authorization:
@@ -75,8 +86,25 @@ class SQLServerSchemaMixin:
         """Format DROP SCHEMA for SQL Server.
 
         SQL Server requires schema to be empty before dropping.
-        Does not support IF EXISTS or CASCADE.
+        There is neither an IF EXISTS nor a CASCADE clause, so asking for one
+        is refused rather than dropped: a caller who set the flag would
+        otherwise get a statement that fails instead of the no-op it asked for.
         """
+        if expr.if_exists and not self.supports_schema_if_exists():
+            raise UnsupportedFeatureError(
+                self.name,
+                "DROP SCHEMA IF EXISTS",
+                f"{self.name} has no IF EXISTS clause for DROP SCHEMA. "
+                f"Drop the flag, or guard the call yourself.",
+            )
+        if expr.cascade and not self.supports_schema_cascade():
+            raise UnsupportedFeatureError(
+                self.name,
+                "DROP SCHEMA CASCADE",
+                f"{self.name} cannot drop a schema together with its contents. "
+                f"Empty it first, or drop the flag.",
+            )
+
         parts = ["DROP SCHEMA"]
         parts.append(self.format_identifier(expr.schema_name))
         return " ".join(parts), ()

@@ -56,7 +56,50 @@ class TestSchemaDDLFormatting:
         assert sql == "DROP SCHEMA [app]" or sql == "DROP SCHEMA app"
         assert "IF EXISTS" not in sql
 
-    def test_drop_schema_rejects_unsupported_if_exists(self):
-        """The formatter must never emit IF EXISTS even if requested."""
-        sql, _ = DropSchemaExpression(self._dialect(), "app", if_exists=True).to_sql()
-        assert "IF EXISTS" not in sql
+    def test_create_schema_refuses_if_not_exists(self):
+        """SQL Server has no IF NOT EXISTS; the flag is refused, not dropped.
+
+        Rendering the statement without the clause would turn a requested
+        no-op into a failure on an existing schema.
+        """
+        import pytest
+
+        from rhosocial.activerecord.backend.dialect.exceptions import (
+            UnsupportedFeatureError,
+        )
+
+        with pytest.raises(
+            UnsupportedFeatureError, match="CREATE SCHEMA IF NOT EXISTS"
+        ):
+            CreateSchemaExpression(
+                self._dialect(), "app", if_not_exists=True
+            ).to_sql()
+
+    def test_drop_schema_refuses_if_exists(self):
+        import pytest
+
+        from rhosocial.activerecord.backend.dialect.exceptions import (
+            UnsupportedFeatureError,
+        )
+
+        with pytest.raises(UnsupportedFeatureError, match="DROP SCHEMA IF EXISTS"):
+            DropSchemaExpression(self._dialect(), "app", if_exists=True).to_sql()
+
+    def test_drop_schema_refuses_cascade(self):
+        """SQL Server cannot drop a schema together with its contents."""
+        import pytest
+
+        from rhosocial.activerecord.backend.dialect.exceptions import (
+            UnsupportedFeatureError,
+        )
+
+        with pytest.raises(UnsupportedFeatureError, match="DROP SCHEMA CASCADE"):
+            DropSchemaExpression(self._dialect(), "app", cascade=True).to_sql()
+
+    def test_authorization_is_rendered(self):
+        """AUTHORIZATION is the one option SQL Server does support."""
+        sql, params = CreateSchemaExpression(
+            self._dialect(), "app", authorization="sa"
+        ).to_sql()
+        assert sql == "CREATE SCHEMA [app] AUTHORIZATION [sa]"
+        assert params == ()
