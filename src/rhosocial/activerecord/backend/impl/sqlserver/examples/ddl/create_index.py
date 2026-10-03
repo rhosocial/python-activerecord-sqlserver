@@ -59,11 +59,12 @@ backend.execute(sql, params, options=ddl_options)
 # SECTION: Business Logic (the pattern to learn)
 # ============================================================
 from rhosocial.activerecord.backend.expression import CreateIndexExpression
+from rhosocial.activerecord.backend.expression.core import TableExpression  # noqa: E402
 
 create_idx = CreateIndexExpression(
     dialect=dialect,
     index_name='idx_users_email',
-    table_name='users',
+    table=TableExpression(dialect, 'users'),
     columns=['email'],
     unique=True,
     if_not_exists=True,

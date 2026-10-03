@@ -6,6 +6,7 @@ This module tests SQL Server dialect formatting methods.
 """
 import pytest
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.expression.core import TableExpression  # noqa: E402
 
 
 class TestSQLServerDialect:
@@ -138,7 +139,7 @@ class TestSQLServerDialectStatements:
         expr = CreateIndexExpression(
             dialect=dialect,
             index_name="idx_test",
-            table_name="test_table",
+            table=TableExpression(dialect, "test_table"),
             columns=["id", "name"],
         )
         sql, params = dialect.format_create_index_statement(expr)
@@ -154,7 +155,7 @@ class TestSQLServerDialectStatements:
         expr = CreateIndexExpression(
             dialect=dialect,
             index_name="idx_unique",
-            table_name="users",
+            table=TableExpression(dialect, "users"),
             columns=["email"],
             unique=True,
         )

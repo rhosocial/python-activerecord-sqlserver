@@ -6,6 +6,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
     SQLServerDialect,
     SQL_SERVER_2012, SQL_SERVER_2016, SQL_SERVER_2019, SQL_SERVER_2022,
 )
+from rhosocial.activerecord.backend.expression.core import TableExpression  # noqa: E402
 
 
 class TestSQLServerDialectCore:
@@ -825,7 +826,7 @@ class TestSQLServerDialectDDL:
         expr = CreateIndexExpression(
             dialect=dialect,
             index_name="idx_users_email_include",
-            table_name="users",
+            table=TableExpression(dialect, "users"),
             columns=["email"],
             include=["id", "name"],
         )

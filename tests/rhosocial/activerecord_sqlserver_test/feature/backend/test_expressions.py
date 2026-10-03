@@ -7,6 +7,7 @@ OFFSET FETCH, OUTPUT clause, and other SQL Server features.
 """
 import pytest
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.expression.core import TableExpression  # noqa: E402
 
 
 class TestOffsetFetchExpression:
@@ -136,7 +137,7 @@ class TestCreateIndexExpression:
         idx = CreateIndexExpression(
             dialect=dialect,
             index_name="idx_users_email",
-            table_name="users",
+            table=TableExpression(dialect, "users"),
             columns=["email"],
         )
 
@@ -152,7 +153,7 @@ class TestCreateIndexExpression:
         idx = CreateIndexExpression(
             dialect=dialect,
             index_name="idx_users_email_unique",
-            table_name="users",
+            table=TableExpression(dialect, "users"),
             columns=["email"],
             unique=True,
         )
@@ -167,7 +168,7 @@ class TestCreateIndexExpression:
         idx = CreateIndexExpression(
             dialect=dialect,
             index_name="idx_orders_composite",
-            table_name="orders",
+            table=TableExpression(dialect, "orders"),
             columns=["user_id", "created_at"],
         )
 
