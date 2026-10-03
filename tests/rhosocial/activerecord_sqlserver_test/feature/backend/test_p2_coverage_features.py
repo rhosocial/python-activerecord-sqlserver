@@ -520,7 +520,7 @@ class TestTriggerDdl:
 
     def test_create_trigger_after_insert(self, dialect):
         expr = SQLServerCreateTriggerExpression(
-            dialect, "trg", "t", timing="AFTER", events=["INSERT"], body="SELECT 1;"
+            dialect, "trg", TableExpression(dialect, "t"), timing="AFTER", events=["INSERT"], body="SELECT 1;"
         )
         sql, params = expr.to_sql()
         assert sql == (
@@ -532,7 +532,7 @@ class TestTriggerDdl:
         expr = SQLServerCreateTriggerExpression(
             dialect,
             "trg",
-            "t",
+            TableExpression(dialect, "t"),
             timing="INSTEAD OF",
             events=["DELETE"],
             body="RAISERROR('blocked', 16, 1);",
@@ -547,7 +547,7 @@ class TestTriggerDdl:
         expr = SQLServerCreateTriggerExpression(
             dialect,
             "trg",
-            "t",
+            TableExpression(dialect, "t"),
             timing="AFTER",
             events=["INSERT", "UPDATE", "DELETE"],
             body="SELECT 1;",
@@ -559,7 +559,7 @@ class TestTriggerDdl:
 
     def test_create_trigger_or_alter(self, dialect):
         expr = SQLServerCreateTriggerExpression(
-            dialect, "trg", "t", events=["INSERT"], body="SELECT 1;", or_alter=True
+            dialect, "trg", TableExpression(dialect, "t"), events=["INSERT"], body="SELECT 1;", or_alter=True
         )
         sql, _ = expr.to_sql()
         assert sql == (
@@ -585,12 +585,12 @@ class TestTriggerDdl:
 
     def test_validation(self, dialect):
         with pytest.raises(ValueError):
-            SQLServerCreateTriggerExpression(dialect, "trg", "t", events=[], body="SELECT 1;").validate()
+            SQLServerCreateTriggerExpression(dialect, "trg", TableExpression(dialect, "t"), events=[], body="SELECT 1;").validate()
         with pytest.raises(ValueError):
-            SQLServerCreateTriggerExpression(dialect, "trg", "t", events=["INSERT"], body="").validate()
+            SQLServerCreateTriggerExpression(dialect, "trg", TableExpression(dialect, "t"), events=["INSERT"], body="").validate()
         with pytest.raises(ValueError):
             SQLServerCreateTriggerExpression(
-                dialect, "trg", "t", timing="BEFORE", events=["INSERT"], body="SELECT 1;"
+                dialect, "trg", TableExpression(dialect, "t"), timing="BEFORE", events=["INSERT"], body="SELECT 1;"
             ).validate()
         with pytest.raises(ValueError):
             SQLServerDropTriggerExpression(dialect, "").validate()
@@ -598,7 +598,7 @@ class TestTriggerDdl:
     def test_version_boundary_supported_at_2005(self):
         d = SQLServerDialect(SQL_SERVER_2005)
         expr = SQLServerCreateTriggerExpression(
-            d, "trg", "t", events=["INSERT"], body="SELECT 1;"
+            d, "trg", TableExpression(d, "t"), events=["INSERT"], body="SELECT 1;"
         )
         assert expr.to_sql()[0] == (
             "CREATE TRIGGER [trg] ON [t] AFTER INSERT AS BEGIN SELECT 1; END;"

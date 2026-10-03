@@ -13,7 +13,8 @@ formatters. Bodies are passed through verbatim as raw T-SQL strings.
 
 from typing import List, Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
+from rhosocial.activerecord.backend.expression.core import TableExpression, SQLQueryAndParams
 
 if TYPE_CHECKING:
     from ...dialect import SQLServerDialect
@@ -43,7 +44,7 @@ class SQLServerCreateTriggerExpression(BaseExpression):
         self,
         dialect: "SQLServerDialect",
         name: str,
-        table: str,
+        table: TableExpression,
         timing: str = "AFTER",
         events: Optional[List[str]] = None,
         body: str = "",

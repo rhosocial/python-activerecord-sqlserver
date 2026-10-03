@@ -75,8 +75,8 @@ class SQLServerTriggerDdlMixin:
         name = self._get_trigger_name(expr)
         if not name:
             raise ValueError("trigger name is required")
-        table = getattr(expr, "table_name", None) or getattr(expr, "table", None)
-        if not table:
+        table = expr.table
+        if table is None:
             raise ValueError("trigger table is required")
 
         timing = getattr(expr, "timing", "AFTER").upper()
@@ -98,7 +98,7 @@ class SQLServerTriggerDdlMixin:
         parts.append("TRIGGER")
         parts.append(self.format_identifier(name))  # type: ignore[attr-defined]
         parts.append("ON")
-        parts.append(self.format_identifier(table))  # type: ignore[attr-defined]
+        parts.append(table.to_sql()[0])
         parts.append(timing)
         parts.append(", ".join(events))
         parts.append(f"AS BEGIN {expr.body} END;")
