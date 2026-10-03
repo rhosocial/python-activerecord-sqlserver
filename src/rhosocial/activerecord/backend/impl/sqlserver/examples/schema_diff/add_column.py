@@ -31,6 +31,7 @@ from rhosocial.activerecord.backend.expression import (
 from rhosocial.activerecord.backend.expression.types import (
     IntegerType, VarCharType,
 )
+from rhosocial.activerecord.backend.expression.core import TableExpression  # noqa: E402
 
 expr = DropTableExpression(dialect, "users", if_exists=True)
 sql, params = expr.to_sql()
@@ -61,7 +62,7 @@ snap_before = builder.build()
 
 # Add a column
 alter = AlterTableExpression(
-    dialect=dialect, table_name="users",
+    dialect=dialect, table=TableExpression(dialect, "users"),
     actions=[
         AddColumn(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
     ],

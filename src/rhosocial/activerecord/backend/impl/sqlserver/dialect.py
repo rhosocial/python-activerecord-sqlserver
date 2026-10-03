@@ -1071,7 +1071,7 @@ class SQLServerDialect(
         - Single action per ALTER TABLE statement
         """
         all_params: list = []
-        table_sql = TableExpression(self, expr.table_name, schema_name=expr.schema_name).to_sql()[0]
+        table_sql = expr.table.to_sql()[0]
 
         action_parts = []
         for action in expr.actions:
