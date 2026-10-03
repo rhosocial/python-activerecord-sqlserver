@@ -6,6 +6,7 @@ DDL is semantically equivalent to the reference ``.sql`` schema files under
 ``tests/rhosocial/activerecord_sqlserver_test/feature/basic/schema/``.
 """
 
+from rhosocial.activerecord.backend.expression.core import TableExpression
 from typing import Callable, Dict
 
 from rhosocial.activerecord.backend.expression import (
@@ -52,7 +53,7 @@ def to_sql(expr: CreateTableExpression):
 def create_users_table(dialect, table_name: str = "users") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -79,7 +80,7 @@ def create_users_table(dialect, table_name: str = "users") -> CreateTableExpress
 def create_type_cases_table(dialect, table_name: str = "type_cases") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", CharType(dialect, length=36),
@@ -112,7 +113,7 @@ def create_type_cases_table(dialect, table_name: str = "type_cases") -> CreateTa
 def create_type_tests_table(dialect, table_name: str = "type_tests") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", CharType(dialect, length=36),
@@ -144,7 +145,7 @@ def create_type_tests_table(dialect, table_name: str = "type_tests") -> CreateTa
 def create_validated_field_users_table(dialect, table_name: str = "validated_field_users") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -170,7 +171,7 @@ def create_validated_field_users_table(dialect, table_name: str = "validated_fie
 def create_validated_users_table(dialect, table_name: str = "validated_users") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -189,7 +190,7 @@ def create_pydantic_validated_models_table(
 ) -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -210,7 +211,7 @@ def create_pydantic_validated_models_table(
 def create_bulk_users_table(dialect, table_name: str = "bulk_users") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -228,7 +229,7 @@ def create_bulk_users_table(dialect, table_name: str = "bulk_users") -> CreateTa
 def create_posts_table(dialect, table_name: str = "posts") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -255,7 +256,7 @@ def create_posts_table(dialect, table_name: str = "posts") -> CreateTableExpress
 def create_comments_table(dialect, table_name: str = "comments") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -290,7 +291,7 @@ def create_column_mapping_items_table(
 ) -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -309,7 +310,7 @@ def create_mixed_annotation_items_table(
 ) -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -329,7 +330,7 @@ def create_type_adapter_tests_table(
 ) -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=True,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -352,7 +353,7 @@ def create_composite_pk_order_items_table(
 ) -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "order_id", IntegerType(dialect),
@@ -375,7 +376,7 @@ def create_composite_pk_order_items_table(
 def create_store_inventory_table(dialect, table_name: str = "store_inventory") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "store_id", IntegerType(dialect),
@@ -398,7 +399,7 @@ def create_store_inventory_table(dialect, table_name: str = "store_inventory") -
 def create_orders_table(dialect, table_name: str = "orders") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -414,7 +415,7 @@ def create_orders_table(dialect, table_name: str = "orders") -> CreateTableExpre
 def create_product_table(dialect, table_name: str = "product") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=TableExpression(dialect, table_name),
         if_not_exists=True,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),

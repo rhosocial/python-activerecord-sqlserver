@@ -13,6 +13,7 @@ maps those to SQL Server equivalents:
 These tests verify the rendered SQL and execute it against a real database
 in both DDL DEFAULT and SELECT contexts.
 """
+from rhosocial.activerecord.backend.expression.core import TableExpression
 import pytest
 
 from rhosocial.activerecord.backend.expression import (
@@ -115,12 +116,12 @@ class TestSQLServerNiladicDDLContext:
 
         # Clean up
         sqlserver_backend.execute(*DropTableExpression(
-            dialect=dialect, table=table_name, if_exists=True
+            dialect=dialect, table=TableExpression(dialect, table_name), if_exists=True
         ).to_sql())
 
         create = CreateTableExpression(
             dialect=dialect,
-            table=table_name,
+            table=TableExpression(dialect, table_name),
             columns=[
                 ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
                     ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
@@ -145,7 +146,7 @@ class TestSQLServerNiladicDDLContext:
             assert 'ts' in col_names
         finally:
             sqlserver_backend.execute(*DropTableExpression(
-                dialect=dialect, table=table_name, if_exists=True
+                dialect=dialect, table=TableExpression(dialect, table_name), if_exists=True
             ).to_sql())
 
     def test_ddl_default_sysdatetime(self, sqlserver_backend):
@@ -155,12 +156,12 @@ class TestSQLServerNiladicDDLContext:
 
         # Clean up
         sqlserver_backend.execute(*DropTableExpression(
-            dialect=dialect, table=table_name, if_exists=True
+            dialect=dialect, table=TableExpression(dialect, table_name), if_exists=True
         ).to_sql())
 
         create = CreateTableExpression(
             dialect=dialect,
-            table=table_name,
+            table=TableExpression(dialect, table_name),
             columns=[
                 ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
                     ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
@@ -184,7 +185,7 @@ class TestSQLServerNiladicDDLContext:
             assert 'ts' in col_names
         finally:
             sqlserver_backend.execute(*DropTableExpression(
-                dialect=dialect, table=table_name, if_exists=True
+                dialect=dialect, table=TableExpression(dialect, table_name), if_exists=True
             ).to_sql())
 
 
@@ -216,12 +217,12 @@ class TestAsyncSQLServerNiladicDDLContext:
 
         # Clean up
         await async_sqlserver_backend.execute(*DropTableExpression(
-            dialect=dialect, table=table_name, if_exists=True
+            dialect=dialect, table=TableExpression(dialect, table_name), if_exists=True
         ).to_sql())
 
         create = CreateTableExpression(
             dialect=dialect,
-            table=table_name,
+            table=TableExpression(dialect, table_name),
             columns=[
                 ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
                     ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
@@ -243,5 +244,5 @@ class TestAsyncSQLServerNiladicDDLContext:
             assert 'ts' in col_names
         finally:
             await async_sqlserver_backend.execute(*DropTableExpression(
-                dialect=dialect, table=table_name, if_exists=True
+                dialect=dialect, table=TableExpression(dialect, table_name), if_exists=True
             ).to_sql())
