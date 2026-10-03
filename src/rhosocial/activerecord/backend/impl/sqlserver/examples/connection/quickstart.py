@@ -65,7 +65,7 @@ def execute_expression(expression, options=None):
 # Create demo tables
 users_table = CreateTableExpression(
     dialect=dialect,
-    table_name='quickstart_users',
+    table=TableExpression(dialect, 'quickstart_users'),
     columns=[
         ColumnDefinition(
             'id',
@@ -88,7 +88,7 @@ execute_expression(users_table, ddl_options)
 
 logs_table = CreateTableExpression(
     dialect=dialect,
-    table_name='quickstart_logs',
+    table=TableExpression(dialect, 'quickstart_logs'),
     columns=[
         ColumnDefinition(
             'id',
@@ -228,12 +228,12 @@ except Exception as error:
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
 drop_logs = DropTableExpression(
-    dialect=dialect, table_name='quickstart_logs', if_exists=True
+    dialect=dialect, table=TableExpression(dialect, 'quickstart_logs'), if_exists=True
 )
 execute_expression(drop_logs, ddl_options)
 
 drop_users = DropTableExpression(
-    dialect=dialect, table_name='quickstart_users', if_exists=True
+    dialect=dialect, table=TableExpression(dialect, 'quickstart_users'), if_exists=True
 )
 execute_expression(drop_users, ddl_options)
 

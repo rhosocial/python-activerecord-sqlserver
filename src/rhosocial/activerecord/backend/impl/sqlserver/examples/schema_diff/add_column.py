@@ -33,13 +33,13 @@ from rhosocial.activerecord.backend.expression.types import (
 )
 from rhosocial.activerecord.backend.expression.core import TableExpression  # noqa: E402
 
-expr = DropTableExpression(dialect, "users", if_exists=True)
+expr = DropTableExpression(dialect, TableExpression(dialect, "users"), if_exists=True)
 sql, params = expr.to_sql()
 backend.execute(sql, params)
 
 # Baseline table: ID, NAME
 expr = CreateTableExpression(
-    dialect=dialect, table="users", columns=[
+    dialect=dialect, table=TableExpression(dialect, "users"), columns=[
         ColumnDefinition(dialect, "id", IntegerType(dialect),
             constraints=[
                 ColumnConstraint(constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True),

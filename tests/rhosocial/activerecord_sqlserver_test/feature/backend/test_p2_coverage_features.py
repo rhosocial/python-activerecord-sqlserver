@@ -69,7 +69,7 @@ class TestMemoryOptimizedTables:
 
     def _create_table(self, d, memory_optimized=True, durability="SCHEMA_ONLY",
                       hash_indexes=None):
-        from rhosocial.activerecord.backend.expression import CreateTableExpression
+        from rhosocial.activerecord.backend.expression import CreateTableExpression, TableExpression
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraint,
             ColumnConstraintType,
@@ -101,7 +101,7 @@ class TestMemoryOptimizedTables:
                 d, memory_optimized=True, durability=durability
             )
         return CreateTableExpression(
-            d, "t", [col], indexes=indexes, table_options=table_options
+            d, TableExpression(d, "t"), [col], indexes=indexes, table_options=table_options
         )
 
     def test_mixin_registered(self, dialect):
@@ -198,7 +198,7 @@ class TestMemoryOptimizedTables:
         assert params == ()
 
     def test_create_table_with_hash_index_missing_bucket_count(self, dialect):
-        from rhosocial.activerecord.backend.expression import CreateTableExpression
+        from rhosocial.activerecord.backend.expression import CreateTableExpression, TableExpression
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraint,
             ColumnConstraintType,
@@ -214,7 +214,7 @@ class TestMemoryOptimizedTables:
         col.constraints.append(ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY))
         ct = CreateTableExpression(
             dialect,
-            "t",
+            TableExpression(dialect, "t"),
             [col],
             indexes=[SQLServerIndexDefinition(dialect, "ix", ["id"], hash_index=True)],
             table_options=SQLServerCreateTableOptions(dialect, memory_optimized=True),
@@ -519,6 +519,7 @@ class TestTriggerDdl:
         assert d.supports_drop_trigger() is True
 
     def test_create_trigger_after_insert(self, dialect):
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = SQLServerCreateTriggerExpression(
             dialect, "trg", TableExpression(dialect, "t"), timing="AFTER", events=["INSERT"], body="SELECT 1;"
         )
@@ -529,6 +530,7 @@ class TestTriggerDdl:
         assert params == ()
 
     def test_create_trigger_instead_of(self, dialect):
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = SQLServerCreateTriggerExpression(
             dialect,
             "trg",
@@ -544,6 +546,7 @@ class TestTriggerDdl:
         )
 
     def test_create_trigger_multiple_events(self, dialect):
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = SQLServerCreateTriggerExpression(
             dialect,
             "trg",
@@ -558,6 +561,7 @@ class TestTriggerDdl:
         )
 
     def test_create_trigger_or_alter(self, dialect):
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = SQLServerCreateTriggerExpression(
             dialect, "trg", TableExpression(dialect, "t"), events=["INSERT"], body="SELECT 1;", or_alter=True
         )
@@ -585,6 +589,7 @@ class TestTriggerDdl:
 
     def test_validation(self, dialect):
         with pytest.raises(ValueError):
+            from rhosocial.activerecord.backend.expression.core import TableExpression
             SQLServerCreateTriggerExpression(dialect, "trg", TableExpression(dialect, "t"), events=[], body="SELECT 1;").validate()
         with pytest.raises(ValueError):
             SQLServerCreateTriggerExpression(dialect, "trg", TableExpression(dialect, "t"), events=["INSERT"], body="").validate()
@@ -597,6 +602,7 @@ class TestTriggerDdl:
 
     def test_version_boundary_supported_at_2005(self):
         d = SQLServerDialect(SQL_SERVER_2005)
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = SQLServerCreateTriggerExpression(
             d, "trg", TableExpression(d, "t"), events=["INSERT"], body="SELECT 1;"
         )

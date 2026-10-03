@@ -30,8 +30,9 @@ def _pk(dialect):
 
 
 def _build_table(dialect):
+    from rhosocial.activerecord.backend.expression.core import TableExpression
     return CreateTableExpression(
-        dialect=dialect, table="test_tbl",
+        dialect=dialect, table=TableExpression(dialect, "test_tbl"),
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=_pk(dialect)),
             ColumnDefinition(dialect, "name", TextType(dialect),
@@ -57,8 +58,9 @@ class TestAutoIncrementDDL:
         assert isinstance(params, tuple)
 
     def test_boolean_default_true(self, dialect):
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = CreateTableExpression(
-            dialect=dialect, table="bool_test",
+            dialect=dialect, table=TableExpression(dialect, "bool_test"),
             columns=[
                 ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=_pk(dialect)),
                 ColumnDefinition(dialect, "flag", BooleanType(dialect),
@@ -70,8 +72,9 @@ class TestAutoIncrementDDL:
         assert "BIT" in sql.upper()
 
     def test_timestamp_type(self, dialect):
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = CreateTableExpression(
-            dialect=dialect, table="ts_test",
+            dialect=dialect, table=TableExpression(dialect, "ts_test"),
             columns=[
                 ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=_pk(dialect)),
                 ColumnDefinition(dialect, "created_at", TimestampType(dialect)),

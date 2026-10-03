@@ -94,9 +94,10 @@ class TestSQLServerCreateTableLike:
                 ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY)
             ]),
         ]
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         create_expr = CreateTableExpression(
             dialect=dialect,
-            table="temp_users",
+            table=TableExpression(dialect, "temp_users"),
             columns=columns,
             temporary=True,
         )
@@ -118,9 +119,10 @@ class TestSQLServerCreateTableLike:
                 ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)
             ])
         ]
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         create_expr = CreateTableExpression(
             dialect=dialect,
-            table="users",
+            table=TableExpression(dialect, "users"),
             columns=columns
         )
         sql, params = create_expr.to_sql()

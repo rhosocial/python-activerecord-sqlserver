@@ -25,7 +25,7 @@ class TestSQLServerTableCapabilityGating:
         dialect = SQLServerDialect(version=(16, 0, 0))
         expression = CreateTableExpression(
             dialect,
-            "plain_table_defaults",
+            TableExpression(dialect, "plain_table_defaults"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
         )
         sql, params = expression.to_sql()
@@ -39,7 +39,7 @@ class TestSQLServerTableCapabilityGating:
         dialect = SQLServerDialect(version=(16, 0, 0))
         expression = CreateTableExpression(
             dialect,
-            "inheriting_table",
+            TableExpression(dialect, "inheriting_table"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
             inherits=["parent_a", "parent_b"],
         )
@@ -52,7 +52,7 @@ class TestSQLServerTableCapabilityGating:
         dialect = SQLServerDialect(version=(16, 0, 0))
         expression = CreateTableExpression(
             dialect,
-            "tablespaced_table",
+            TableExpression(dialect, "tablespaced_table"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
             tablespace="ts_data",
         )

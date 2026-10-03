@@ -26,7 +26,7 @@ backend = SQLServerBackend(connection_config=config)
 backend.connect()
 dialect = backend.dialect
 
-from rhosocial.activerecord.backend.expression import CreateTableExpression
+from rhosocial.activerecord.backend.expression import CreateTableExpression, TableExpression
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
@@ -39,7 +39,7 @@ ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='users',
+    table=TableExpression(dialect, 'users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -85,7 +85,7 @@ print("Index created: idx_users_email")
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table=TableExpression(dialect, 'users'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

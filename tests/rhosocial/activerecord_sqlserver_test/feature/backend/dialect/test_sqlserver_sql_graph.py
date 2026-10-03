@@ -291,8 +291,9 @@ class TestDdl:
         dialect = SQLServerDialect(version=(13, 0, 0))
         expr = SQLServerAsGraphTableExpression(dialect, kind)
         if create_table:
+            from rhosocial.activerecord.backend.expression.core import TableExpression
             expr = SQLServerCreateTableExpression(
-                dialect, table="graph_table",
+                dialect, table=TableExpression(dialect, "graph_table"),
                 columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
                 graph_table_kind=kind,
             )
@@ -328,8 +329,9 @@ class TestDdl:
     )
     def test_create_graph_table(self, major, kind, expected):
         dialect = SQLServerDialect(version=(major, 0, 0))
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = SQLServerCreateTableExpression(
-            dialect, table="graph_table",
+            dialect, table=TableExpression(dialect, "graph_table"),
             columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
             graph_table_kind=kind,
         )
@@ -338,8 +340,9 @@ class TestDdl:
     @pytest.mark.parametrize("major", [14, 15, 16, 17])
     def test_create_table_edge_with_constraint(self, major):
         dialect = SQLServerDialect(version=(major, 0, 0))
+        from rhosocial.activerecord.backend.expression.core import TableExpression
         expr = SQLServerCreateTableExpression(
-            dialect, table="friend",
+            dialect, table=TableExpression(dialect, "friend"),
             columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
             graph_table_kind=SQLServerGraphTableKind.EDGE,
             edge_constraints=[SQLServerEdgeConstraint(dialect, "Person", "Person", name="ec_friend")],
