@@ -22,6 +22,11 @@
 PYTHONPATH=src .venv3.14-ubuntu26.04/bin/python
 ```
 
+对应的核心库是 `fix/schema-name-propagation-gaps` 分支上的
+`rhosocial-activerecord` 1.0.0.dev30。核心库这一项很关键：从 `main` 安装的
+`python-activerecord` 早于下面描述的这套改写，DDL 与 DML 仍然接受裸的表名字符串，用它
+渲染出来的片段与文中所写并不相同。
+
 描述服务端而非渲染器的部分——错误号、`DEFAULT_SCHEMA` 的语义、`CREATE SCHEMA`
 必须独占一个批处理、跨 database 的名字——来自 SQL Server 自身的行为，本仓库没有
 在真实实例上验证过。凡属此类内容均在正文中标明；因缺少实例而无法确认的每一点，都在
@@ -42,6 +47,7 @@ dialect.supports_schema()                # True
 dialect.supports_create_schema()         # True
 dialect.supports_drop_schema()           # True
 dialect.supports_schema_authorization()  # True
+dialect.supports_index_schema_qualification()  # True
 
 dialect.supports_schema_if_not_exists()  # False
 dialect.supports_schema_if_exists()      # False
@@ -51,6 +57,11 @@ dialect.supports_schema_cascade()        # False
 后三个 `False` 说的是语句语法，不是命名空间能力：`IF NOT EXISTS`、`IF EXISTS`
 与 `CASCADE` 这三种子句都不是 T-SQL 的写法，参见
 [创建与删除 schema](#创建与删除-schema)。
+
+`supports_index_schema_qualification()` 回答的是另一个问题——索引**名**能不能带命名
+空间——SQL Server 答 `True`，因为它的 `CREATE INDEX` 接受带限定的索引名。语法上禁止
+这一形式的方言答 `False`，并在渲染时抛 `UnsupportedFeatureError`。见
+[索引各自选择命名空间](#索引各自选择命名空间)。
 
 渲染用方括号，每一段各自成为一个带方括号的标识符：
 
@@ -284,33 +295,128 @@ CTEQuery(backend).with_cte(
 
 ## DDL 单独传 schema
 
-`__schema_name__` 决定的是读写的命名空间，构建 DDL 时**不读**它——迁移脚本要自己说
-明它指的是哪个 schema。凡是涉及带 schema 对象的语句都接受自己的 `schema_name`，不必
-再手工拼限定名。
+凡是**指名一张表**的语句，收的都是 `TableExpression`；凡是涉及带 schema 对象的语句，
+都接受属于自己的 `schema_name`，不必再手工拼限定名。传裸字符串会被拒绝——而且是在
+**构造期**就拒绝，不是渲染期：
+
+| 表达式 | 参数 |
+|---|---|
+| `CreateTableExpression` | `table` |
+| `DropTableExpression` | `table` |
+| `TruncateExpression` | `table` |
+| `AlterTableExpression` | `table` |
+| `CreateIndexExpression` | `table` |
+| `DropIndexExpression` | `table`（可为 `None`） |
+| `CreateFulltextIndexExpression` | `table` |
+| `DropFulltextIndexExpression` | `table` |
+| `CreateTriggerExpression` | `table`、`function_name`（可为 `None`） |
+| `DropTriggerExpression` | `table`（可为 `None`） |
+| `InsertExpression` | `into` |
+| `DeleteExpression` | `tables`（单个或 list，逐元素检查） |
+| `UpdateExpression` | `table` |
+| `MergeExpression` | `target_table` |
+
+报错信息会指明是哪个参数，而且每条都不一样：
+
+```
+TypeError: table must be a TableExpression, got str
+TypeError: into must be a TableExpression, got str
+TypeError: tables must be a TableExpression, got str
+TypeError: every table in tables must be a TableExpression, got str
+TypeError: target_table must be a TableExpression, got str
+TypeError: function_name must be a TableExpression, got str
+```
+
+`DropTableExpression` 与 `TruncateExpression` **根本没有** `schema_name` 参数。
+`TruncateExpression(d, "orders", schema_name="app")` 会以
+`TypeError: ... got an unexpected keyword argument 'schema_name'` 失败——这两条语句
+的命名空间只有一个落点，就是传进去的表引用。
 
 ```python
 DropTableExpression(d, TableExpression(d, "orders", schema_name="app"),
                     if_exists=True).to_sql()[0]
 # DROP TABLE IF EXISTS [app].[orders]
 
-TruncateExpression(d, "orders", schema_name="app").to_sql()[0]
+TruncateExpression(d, TableExpression(d, "orders", schema_name="app")).to_sql()[0]
 # TRUNCATE TABLE [app].[orders]
-
-CreateIndexExpression(d, "idx_orders_id", "orders", ["id"], schema_name="app").to_sql()[0]
-# CREATE INDEX [app].[idx_orders_id] ON [app].[orders] ([id])
 
 DropIndexExpression(d, "idx_orders_id", schema_name="app").to_sql()[0]
 # DROP INDEX [app].[idx_orders_id]
 
-CreateViewExpression(d, "v_orders", query, schema_name="app", replace=True).to_sql()[0]
-# CREATE OR ALTER VIEW [app].[v_orders] AS SELECT [id] FROM [shop].[orders]
+CreateViewExpression(d, "v_orders", Order.query().select(Order.c.id),
+                     schema_name="app", replace=True).to_sql()[0]
+# CREATE OR ALTER VIEW [app].[v_orders] AS SELECT [orders].[id] FROM [shop].[orders]
 
 DropViewExpression(d, "v_orders", schema_name="app", if_exists=True).to_sql()[0]
 # DROP VIEW IF EXISTS [app].[v_orders]
 ```
 
-`CREATE INDEX` 只有一个 `schema_name`，同时覆盖两个名字：索引与它所依附的表落在同一个
-schema。
+### 索引各自选择命名空间
+
+索引语句上的 `schema_name` 只限定**索引名**。表由它自己的 `TableExpression` 限定，
+两者互不影响，渲染器允许它们不同：
+
+```python
+CreateIndexExpression(
+    d, "idx_shared",
+    TableExpression(d, "orders", schema_name="sales"),
+    ["id"], schema_name="app",
+).to_sql()[0]
+# CREATE INDEX [app].[idx_shared] ON [sales].[orders] ([id])
+```
+
+SQL Server 在这一点上比 Oracle 宽松：T-SQL 允许**非聚集**索引建在与它的表不同的
+schema 里，所以上面这条语句服务端是接受的——同样一句放到 Oracle 上则会被拒绝。这是
+SQL Server 文档化的行为，此处没有在真实实例上验证；两种情况下的渲染结果都是实测的。
+两个命名空间仍然是各自独立的字段，把一个字符串同时给两者才会产出服务端拒绝的语句。
+模型工厂的 `index_schema_name` 就是用来单独挪动索引的：
+
+```python
+Order.build_create_index_statement(
+    dialect, "idx_orders_id", ["id"], index_schema_name="ops").to_sql()[0]
+# CREATE INDEX [ops].[idx_orders_id] ON [shop].[orders] ([id])
+```
+
+### 从模型构建 DDL
+
+```python
+class Order(ActiveRecord):
+    __table_name__ = "orders"
+    __schema_name__ = "shop"
+
+Order.build_table_reference(dialect).to_sql()[0]       # [shop].[orders]
+Order.build_table_reference(dialect, alias="o").to_sql()[0]
+# [shop].[orders] AS [o]
+
+Order.build_truncate_statement(dialect).to_sql()[0]
+# TRUNCATE TABLE [shop].[orders]
+
+Order.build_create_index_statement(
+    dialect, "idx_orders_id", ["id"]).to_sql()[0]
+# CREATE INDEX [shop].[idx_orders_id] ON [shop].[orders] ([id])
+
+Order.build_create_index_statement(
+    dialect, "idx_orders_id", ["id"], index_schema_name="ops").to_sql()[0]
+# CREATE INDEX [ops].[idx_orders_id] ON [shop].[orders] ([id])
+
+Order.build_drop_index_statement(dialect, "idx_orders_id").to_sql()[0]
+# DROP INDEX [shop].[idx_orders_id] ON [shop].[orders]
+```
+
+七个工厂全都经由 `build_table_reference()`，因此一次迁移不可能把一条语句限定在模型
+的 schema 里、下一条却限定在别处。完整签名见核心库文档。
+
+注意最后一行里的 `ON [shop].[orders]`：T-SQL 的 `DROP INDEX` 要指名表，工厂因此把模型
+的范围一并传给了它。不传表的 `DropIndexExpression` 渲染出的是裸名，那同样是合法的
+T-SQL：
+
+```python
+DropIndexExpression(d, "idx_orders_id", schema_name="app").to_sql()[0]
+# DROP INDEX [app].[idx_orders_id]
+```
+
+**手工拼装的语句不会白拿 `__schema_name__`。** 模型上的 `build_*` 工厂会读它，
+除此之外没有别的地方读；自己拼的语句必须自己把命名空间递进去。
 
 DML 语句的限定方式相同，传入带限定的 `TableExpression` 即可：
 
@@ -361,6 +467,11 @@ SQLServerPartitionByRangeClause(d, [Column(d, "created_at")], "ps_orders").to_sq
 默认 schema 时才解析——此处未经验证；位于默认 schema 之外的分区方案，也无法通过这个
 表达式以限定名引用。
 
+在本后端，这是仅剩两处「本该放命名空间的地方却收字符串」之一，而且两处都不是表目标。
+另一处是 `Column.table`——用来限定列的**名字**，类型是 `str`，与同一表达式的
+`schema_name` 配对。凡是指名一张表的表达式都要求 `TableExpression`，见
+[DDL 单独传 schema](#ddl-单独传-schema)。
+
 ### 创建与删除 schema
 
 在这两条语句里，schema 不是限定符，它本身就是对象：
@@ -384,22 +495,37 @@ T-SQL 有两条约束决定了这两条语句该怎么下发，渲染器都不�
 - `DROP SCHEMA` 要求该 schema 已经清空，先删除其中的对象。
 
 `IF NOT EXISTS`、`IF EXISTS` 与 `CASCADE` 在能力标志上属于不支持——上面三个标志都是
-`False`——但本方言覆盖了这两个渲染器，覆盖后的实现直接渲染不带这些子句的语句，而不会
-因为传了标志而拒绝：
+`False`——而本方言覆盖了这两个渲染器，覆盖后的实现是**拒绝这个标志**而不是把它丢掉。
+否则设了标志的调用方拿到的是一条在 schema 不存在时失败的语句，而不是他要的空操作：
 
 ```python
 CreateSchemaExpression(d, "ar_crm", if_not_exists=True).to_sql()[0]
-# CREATE SCHEMA [ar_crm]
+# UnsupportedFeatureError: 'SQL Server' dialect does not support CREATE SCHEMA
+#   IF NOT EXISTS.
+#   Suggestion: SQL Server has no IF NOT EXISTS clause for CREATE SCHEMA. Drop
+#   the flag, or guard the call yourself.
 
 DropSchemaExpression(d, "ar_crm", if_exists=True).to_sql()[0]
-# DROP SCHEMA [ar_crm]
+# UnsupportedFeatureError: 'SQL Server' dialect does not support DROP SCHEMA
+#   IF EXISTS.
+#   Suggestion: SQL Server has no IF EXISTS clause for DROP SCHEMA. Drop the flag,
+#   or guard the call yourself.
 
-DropSchemaExpression(d, "ar_crm", if_exists=True, cascade=True).to_sql()[0]
-# DROP SCHEMA [ar_crm]
+DropSchemaExpression(d, "ar_crm", cascade=True).to_sql()[0]
+# UnsupportedFeatureError: 'SQL Server' dialect does not support DROP SCHEMA
+#   CASCADE.
+#   Suggestion: SQL Server cannot drop a schema together with its contents. Empty
+#   it first, or drop the flag.
 ```
 
-既不抛出异常，标志也没有出现在 SQL 里。要做条件判断，请用 `EXEC` 配合
-`SCHEMA_ID(...)`，不要依赖守卫标志。
+`DROP SCHEMA` 先检查 `if_exists` 再检查 `cascade`，因此两个一起传时只报第一个：
+
+```
+DropSchemaExpression(d, "ar_crm", if_exists=True, cascade=True).to_sql()[0]
+# UnsupportedFeatureError: 'SQL Server' dialect does not support DROP SCHEMA IF EXISTS.
+```
+
+要做条件判断，请用 `EXEC` 配合 `SCHEMA_ID(...)`，不要依赖守卫标志。
 
 ## 不加限定的名字落在哪个 schema
 
@@ -526,15 +652,32 @@ TableExpression(d, "orders", schema_name="app.public").to_sql()[0]
 **连接同名表时不给关联名。** 列前缀渲染出来完全相同，服务端会拒绝这条语句，见
 [同名的两个范围](#同名的两个范围)。
 
-**指望构造时报错。** 在语句渲染出来之前，没有任何环节会拒绝不合法的 `schema_name`。
-模型上的错误因此能一路存活到查询构建完成的那一刻，在拼装 SQL 时才失败。
+**给 DDL 或 DML 语句传一个裸表名。** 它在构造期抛 `TypeError`，报错信息会指明是哪个
+参数——`table`、`into`、`tables` 或 `target_table`。解法是传入带限定的
+`TableExpression`，而不是字符串。
+
+**给 `DropTableExpression` 或 `TruncateExpression` 传 `schema_name`。** 这两个没有这个
+参数，会因为收到未知关键字而抛 `TypeError`。命名空间要放在作为表传进去的
+`TableExpression` 上。
+
+**手工拼 DDL 并指望 `__schema_name__` 自己流进去。** 只有模型上的 `build_*` 工厂读这个
+声明。手工拼装的表达式只带着你给它的命名空间。
+
+**把索引语句上的 `schema_name` 当成表的命名空间。** 它只限定索引名；表的命名空间来自
+它自己的 `TableExpression`，两者互相独立，见
+[索引各自选择命名空间](#索引各自选择命名空间)。
+
+**指望构造时报错。** 表目标是例外：那里传裸字符串会在**构造期**抛 `TypeError`。但不合法的
+`schema_name` 值不是这样——在语句渲染出来之前没有任何环节会拒绝它，模型上的这类错误能
+一路存活到查询构建完成的那一刻，在拼装 SQL 时才失败，见
+[空串，以及它在哪一步被拦下](#空串以及它在哪一步被拦下)。
 
 **用 `IF ... CREATE SCHEMA` 做条件创建。** `CREATE SCHEMA` 必须独占一个批处理，
 要用 `EXEC`，见[创建与删除 schema](#创建与删除-schema)。
 
 **依赖 `if_not_exists`、`if_exists` 或 `cascade`。** 在 `CREATE SCHEMA` 与
-`DROP SCHEMA` 上这些标志会被接受然后丢弃，渲染出的语句不带守卫条件，见
-[创建与删除 schema](#创建与删除-schema)。
+`DROP SCHEMA` 上这些标志会抛 `UnsupportedFeatureError`——它们是被拒绝，而不是被接受
+后丢弃，见[创建与删除 schema](#创建与删除-schema)。
 
 **把默认 schema 当成连接设置。** 它是服务端用户上的属性，需要在服务端修改，本后端的
 连接配置没有对应字段，见[不加限定的名字落在哪个 schema](#不加限定的名字落在哪个-schema)。

@@ -25,6 +25,12 @@ Every SQL fragment below was rendered by the expression layer with
 PYTHONPATH=src .venv3.14-ubuntu26.04/bin/python
 ```
 
+Measured against the `fix/schema-name-propagation-gaps` core —
+`rhosocial-activerecord` 1.0.0.dev30. The core matters: an installed
+`python-activerecord` from `main` predates the rewrite below and still accepts
+bare table-name strings in DDL and DML, so the fragments rendered against it
+differ from the ones shown here.
+
 Statements that describe the server rather than the renderer — error numbers,
 the semantics of `DEFAULT_SCHEMA`, `CREATE SCHEMA` as a batch, cross-database
 names — are SQL Server's own behaviour and were not exercised against a live
@@ -47,6 +53,7 @@ dialect.supports_schema()                # True
 dialect.supports_create_schema()         # True
 dialect.supports_drop_schema()           # True
 dialect.supports_schema_authorization()  # True
+dialect.supports_index_schema_qualification()  # True
 
 dialect.supports_schema_if_not_exists()  # False
 dialect.supports_schema_if_exists()      # False
@@ -57,6 +64,12 @@ The three `False` flags are properties of the statement grammar rather than of
 the namespace layer: `CREATE SCHEMA IF NOT EXISTS`, `DROP SCHEMA IF EXISTS` and
 `DROP SCHEMA CASCADE` are not T-SQL. See
 [`CREATE SCHEMA` / `DROP SCHEMA`](#create-schema--drop-schema).
+
+`supports_index_schema_qualification()` answers a separate question — whether an
+index *name* may carry a namespace — and SQL Server answers `True`, because its
+`CREATE INDEX` accepts a qualified index name. A dialect whose grammar forbids it
+answers `False` and raises `UnsupportedFeatureError` while rendering. See
+[Indexes choose a namespace](#indexes-choose-a-namespace).
 
 Rendering uses square brackets, one bracketed identifier per segment:
 
@@ -311,34 +324,133 @@ CTEQuery(backend).with_cte(
 
 ## DDL takes a schema of its own
 
-`__schema_name__` selects the read/write namespace. It is **not** consulted when
-DDL is built — a migration has to name the schema it means — but every statement
+Every statement that names a table takes a `TableExpression`, and every statement
 that names a schema-bearing object accepts a `schema_name` of its own, so
-qualification no longer has to be assembled by hand.
+qualification no longer has to be assembled by hand. A bare string is refused —
+at construction, not at render time:
+
+| Expression | Argument |
+|---|---|
+| `CreateTableExpression` | `table` |
+| `DropTableExpression` | `table` |
+| `TruncateExpression` | `table` |
+| `AlterTableExpression` | `table` |
+| `CreateIndexExpression` | `table` |
+| `DropIndexExpression` | `table` (may be `None`) |
+| `CreateFulltextIndexExpression` | `table` |
+| `DropFulltextIndexExpression` | `table` |
+| `CreateTriggerExpression` | `table`, `function_name` (may be `None`) |
+| `DropTriggerExpression` | `table` (may be `None`) |
+| `InsertExpression` | `into` |
+| `DeleteExpression` | `tables` (one or a list, checked element by element) |
+| `UpdateExpression` | `table` |
+| `MergeExpression` | `target_table` |
+
+The message names the argument at fault, and each one reads differently:
+
+```
+TypeError: table must be a TableExpression, got str
+TypeError: into must be a TableExpression, got str
+TypeError: tables must be a TableExpression, got str
+TypeError: every table in tables must be a TableExpression, got str
+TypeError: target_table must be a TableExpression, got str
+TypeError: function_name must be a TableExpression, got str
+```
+
+`DropTableExpression` and `TruncateExpression` have no `schema_name` parameter at
+all — `TruncateExpression(d, "orders", schema_name="app")` fails with
+`TypeError: ... got an unexpected keyword argument 'schema_name'`, because the
+namespace has exactly one home on those two, and it is the table reference.
 
 ```python
 DropTableExpression(d, TableExpression(d, "orders", schema_name="app"),
                     if_exists=True).to_sql()[0]
 # DROP TABLE IF EXISTS [app].[orders]
 
-TruncateExpression(d, "orders", schema_name="app").to_sql()[0]
+TruncateExpression(d, TableExpression(d, "orders", schema_name="app")).to_sql()[0]
 # TRUNCATE TABLE [app].[orders]
-
-CreateIndexExpression(d, "idx_orders_id", "orders", ["id"], schema_name="app").to_sql()[0]
-# CREATE INDEX [app].[idx_orders_id] ON [app].[orders] ([id])
 
 DropIndexExpression(d, "idx_orders_id", schema_name="app").to_sql()[0]
 # DROP INDEX [app].[idx_orders_id]
 
-CreateViewExpression(d, "v_orders", query, schema_name="app", replace=True).to_sql()[0]
-# CREATE OR ALTER VIEW [app].[v_orders] AS SELECT [id] FROM [shop].[orders]
+CreateViewExpression(d, "v_orders", Order.query().select(Order.c.id),
+                     schema_name="app", replace=True).to_sql()[0]
+# CREATE OR ALTER VIEW [app].[v_orders] AS SELECT [orders].[id] FROM [shop].[orders]
 
 DropViewExpression(d, "v_orders", schema_name="app", if_exists=True).to_sql()[0]
 # DROP VIEW IF EXISTS [app].[v_orders]
 ```
 
-`CREATE INDEX` has one `schema_name` and it covers both names: the index and the
-table it is built on land in the same schema.
+A hand-assembled expression does not get `__schema_name__` for free. The model's
+`build_*` factories read it and nothing else does — see
+[DDL built from a model](#ddl-built-from-a-model).
+
+### Indexes choose a namespace
+
+`schema_name` on an index statement qualifies **the index name**. The table is
+qualified by its own `TableExpression`, and the renderer lets the two differ:
+
+```python
+CreateIndexExpression(
+    d, "idx_shared",
+    TableExpression(d, "orders", schema_name="sales"),
+    ["id"], schema_name="app",
+).to_sql()[0]
+# CREATE INDEX [app].[idx_shared] ON [sales].[orders] ([id])
+```
+
+SQL Server is more permissive here than Oracle. T-SQL lets a **nonclustered**
+index be created in a schema other than its table's, so the statement above is
+one the server accepts — unlike the same statement on Oracle, which refuses it.
+That is SQL Server's documented behaviour and was not exercised against a live
+instance here; the rendering is measured either way. The two namespaces remain
+independent fields, and the model factory's `index_schema_name` is what moves an
+index on its own:
+
+```python
+Order.build_create_index_statement(
+    dialect, "idx_orders_id", ["id"], index_schema_name="ops").to_sql()[0]
+# CREATE INDEX [ops].[idx_orders_id] ON [shop].[orders] ([id])
+```
+
+### DDL built from a model
+
+```python
+class Order(ActiveRecord):
+    __table_name__ = "orders"
+    __schema_name__ = "shop"
+
+Order.build_table_reference(dialect).to_sql()[0]       # [shop].[orders]
+Order.build_table_reference(dialect, alias="o").to_sql()[0]
+# [shop].[orders] AS [o]
+
+Order.build_truncate_statement(dialect).to_sql()[0]
+# TRUNCATE TABLE [shop].[orders]
+
+Order.build_create_index_statement(
+    dialect, "idx_orders_id", ["id"]).to_sql()[0]
+# CREATE INDEX [shop].[idx_orders_id] ON [shop].[orders] ([id])
+
+Order.build_create_index_statement(
+    dialect, "idx_orders_id", ["id"], index_schema_name="ops").to_sql()[0]
+# CREATE INDEX [ops].[idx_orders_id] ON [shop].[orders] ([id])
+
+Order.build_drop_index_statement(dialect, "idx_orders_id").to_sql()[0]
+# DROP INDEX [shop].[idx_orders_id] ON [shop].[orders]
+```
+
+Every one of the seven factories goes through `build_table_reference()`, so a
+migration cannot qualify one statement in the model's schema and the next in
+another. The full signatures are in the core guide.
+
+Note the `ON [shop].[orders]` on that last line: T-SQL's `DROP INDEX` names the
+table, and the factory supplies the model's range for it. `DropIndexExpression`
+handed no table renders the bare name, which is also valid T-SQL:
+
+```python
+DropIndexExpression(d, "idx_orders_id", schema_name="app").to_sql()[0]
+# DROP INDEX [app].[idx_orders_id]
+```
 
 The DML statements qualify the same way, taking a qualified `TableExpression`:
 
@@ -393,6 +505,13 @@ against the table's own schema, or only when it is the default one — was not
 verified here, and a partition scheme outside the default schema cannot be
 referred to by a qualified name through this expression.
 
+On this backend this is one of only two places left where a string is accepted
+where a namespace would otherwise go, and neither of them is a table target. The
+other is `Column.table` — the *name* used to qualify a column, which is a `str`
+and pairs with the same expression's `schema_name`. Everything that names a table
+requires a `TableExpression`; see
+[DDL takes a schema of its own](#ddl-takes-a-schema-of-its-own).
+
 ### `CREATE SCHEMA` / `DROP SCHEMA`
 
 There, the schema is not a qualifier — it *is* the object:
@@ -418,22 +537,41 @@ renderer:
 - `DROP SCHEMA` requires the schema to be empty. Drop its objects first.
 
 `IF NOT EXISTS`, `IF EXISTS` and `CASCADE` are reported as unsupported — the three
-flags above answer `False` — but this dialect overrides both formatters, and the
-override renders the bare statement instead of refusing the flag:
+flags above answer `False` — and this dialect overrides both formatters to
+**refuse the flag** rather than drop it. A caller who set `if_exists` would
+otherwise get a statement that fails on a missing schema instead of the no-op it
+asked for:
 
 ```python
 CreateSchemaExpression(d, "ar_crm", if_not_exists=True).to_sql()[0]
-# CREATE SCHEMA [ar_crm]
+# UnsupportedFeatureError: 'SQL Server' dialect does not support CREATE SCHEMA
+#   IF NOT EXISTS.
+#   Suggestion: SQL Server has no IF NOT EXISTS clause for CREATE SCHEMA. Drop
+#   the flag, or guard the call yourself.
 
 DropSchemaExpression(d, "ar_crm", if_exists=True).to_sql()[0]
-# DROP SCHEMA [ar_crm]
+# UnsupportedFeatureError: 'SQL Server' dialect does not support DROP SCHEMA
+#   IF EXISTS.
+#   Suggestion: SQL Server has no IF EXISTS clause for DROP SCHEMA. Drop the flag,
+#   or guard the call yourself.
 
-DropSchemaExpression(d, "ar_crm", if_exists=True, cascade=True).to_sql()[0]
-# DROP SCHEMA [ar_crm]
+DropSchemaExpression(d, "ar_crm", cascade=True).to_sql()[0]
+# UnsupportedFeatureError: 'SQL Server' dialect does not support DROP SCHEMA
+#   CASCADE.
+#   Suggestion: SQL Server cannot drop a schema together with its contents. Empty
+#   it first, or drop the flag.
 ```
 
-Nothing is raised, and the flag is not rendered either. Test the namespace with
-`SCHEMA_ID(...)` inside an `EXEC`, rather than relying on a guard flag.
+`DROP SCHEMA` checks `if_exists` before `cascade`, so asking for both reports only
+the first:
+
+```
+DropSchemaExpression(d, "ar_crm", if_exists=True, cascade=True).to_sql()[0]
+# UnsupportedFeatureError: 'SQL Server' dialect does not support DROP SCHEMA IF EXISTS.
+```
+
+To make either statement conditional, test the namespace with `SCHEMA_ID(...)`
+inside an `EXEC` rather than relying on a guard flag.
 
 ## Which schema an unqualified name resolves against
 
@@ -580,17 +718,38 @@ correct spelling; see [Columns take at most two parts](#columns-take-at-most-two
 column prefixes come out identical and the server refuses the statement. See
 [Two ranges that expose the same name](#two-ranges-that-expose-the-same-name).
 
-**Expecting construction to raise.** Nothing rejects a bad `schema_name` until
-the statement renders. A model-level mistake therefore survives every step up to
-and including query building, and fails at the point the SQL is assembled.
+**Expecting construction to raise for a bad `schema_name`.** A table *target* is
+the exception — a bare string there raises `TypeError` at construction. A bad
+`schema_name` value is not: nothing rejects it until the statement renders, so a
+model-level mistake survives every step up to and including query building and
+fails at the point the SQL is assembled. See
+[The empty string](#the-empty-string-and-when-it-is-caught).
+
+**Handing a DDL or DML statement a bare table name.** It raises `TypeError` at
+construction, and the message names the argument at fault — `table`, `into`,
+`tables` or `target_table`. The fix is a qualified `TableExpression`, not a
+string.
+
+**Passing `schema_name` to `DropTableExpression` or `TruncateExpression`.** Those
+two have no such parameter and raise `TypeError` for the unexpected keyword. Put
+the namespace on the `TableExpression` you pass as the table.
+
+**Building DDL by hand and expecting `__schema_name__` to reach it.** Only the
+model factories read the declaration. An expression assembled at a call site
+carries whatever namespaces it was given.
+
+**Reading a `schema_name` on an index statement as the table's namespace.** It
+qualifies the index name only; the table's namespace comes from its own
+`TableExpression`, and the two are independent. See
+[Indexes choose a namespace](#indexes-choose-a-namespace).
 
 **Guarding `CREATE SCHEMA` with `IF ... CREATE SCHEMA`.** `CREATE SCHEMA` must be
 alone in its batch; use `EXEC`. See
 [`CREATE SCHEMA` / `DROP SCHEMA`](#create-schema--drop-schema).
 
 **Relying on `if_not_exists`, `if_exists` or `cascade`.** On `CREATE SCHEMA` and
-`DROP SCHEMA` these flags are accepted and then dropped: the statement renders
-without the guard. See
+`DROP SCHEMA` these flags raise `UnsupportedFeatureError` — they are refused, not
+accepted and dropped. See
 [`CREATE SCHEMA` / `DROP SCHEMA`](#create-schema--drop-schema).
 
 **Treating the default schema as a connection setting.** It is a property of the
