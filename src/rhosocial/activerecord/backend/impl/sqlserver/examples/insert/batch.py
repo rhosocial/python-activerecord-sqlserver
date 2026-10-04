@@ -71,7 +71,7 @@ users = [
 # Create batch insert with multiple value rows
 insert_expr = InsertExpression(
     dialect=dialect,
-    into='batch_users',
+    into=TableExpression(dialect, 'batch_users'),
     columns=['name', 'email'],
     source=ValuesSource(
         dialect,

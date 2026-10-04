@@ -111,7 +111,7 @@ execute_expression(logs_table, ddl_options)
 # Seed demo data
 insert_users = InsertExpression(
     dialect=dialect,
-    into='quickstart_users',
+    into=TableExpression(dialect, 'quickstart_users'),
     columns=['name', 'status'],
     source=ValuesSource(
         dialect,
@@ -197,7 +197,7 @@ print(f"Parameterized query result: {result.data}")
 with backend.transaction():
     insert_log = InsertExpression(
         dialect=dialect,
-        into='quickstart_logs',
+        into=TableExpression(dialect, 'quickstart_logs'),
         columns=['message'],
         source=ValuesSource(dialect, [[Literal(dialect, 'quickstart transaction')]]),
     )

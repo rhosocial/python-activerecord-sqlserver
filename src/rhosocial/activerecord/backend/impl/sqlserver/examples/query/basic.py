@@ -70,7 +70,7 @@ users = [
 for row in users:
     insert_expr = InsertExpression(
         dialect=dialect,
-        into='query_users',
+        into=TableExpression(dialect, 'query_users'),
         columns=['name', 'age', 'status'],
         source=ValuesSource(dialect, [[Literal(dialect, v) for v in row]]),
     )

@@ -68,7 +68,7 @@ json_literal = '{"name": "John", "age": 30, "hobbies": ["reading", "coding"]}'
 
 insert_expr = InsertExpression(
     dialect=dialect,
-    into='json_data',
+    into=TableExpression(dialect, 'json_data'),
     columns=['data'],
     source=ValuesSource(dialect, [[Literal(dialect, json_literal)]]),
 )

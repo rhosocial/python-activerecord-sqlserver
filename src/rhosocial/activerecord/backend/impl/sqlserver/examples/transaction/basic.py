@@ -66,7 +66,7 @@ from rhosocial.activerecord.backend.expression.core import Literal
 with backend.transaction():
     insert_expr = InsertExpression(
         dialect=dialect,
-        into='txn_users',
+        into=TableExpression(dialect, 'txn_users'),
         columns=['name'],
         source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
     )
@@ -75,7 +75,7 @@ with backend.transaction():
     
     insert_expr2 = InsertExpression(
         dialect=dialect,
-        into='txn_users',
+        into=TableExpression(dialect, 'txn_users'),
         columns=['name'],
         source=ValuesSource(dialect, [[Literal(dialect, 'Bob')]]),
     )

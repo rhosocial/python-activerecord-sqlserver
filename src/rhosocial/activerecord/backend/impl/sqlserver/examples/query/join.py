@@ -89,7 +89,7 @@ users = [('Alice',), ('Bob',)]
 for user in users:
     insert_expr = InsertExpression(
         dialect=dialect,
-        into='join_users',
+        into=TableExpression(dialect, 'join_users'),
         columns=['name'],
         source=ValuesSource(dialect, [[Literal(dialect, v) for v in user]]),
     )
@@ -104,7 +104,7 @@ orders = [
 for row in orders:
     insert_expr = InsertExpression(
         dialect=dialect,
-        into='join_orders',
+        into=TableExpression(dialect, 'join_orders'),
         columns=['user_id', 'amount'],
         source=ValuesSource(dialect, [[Literal(dialect, v) for v in row]]),
     )
