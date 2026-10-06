@@ -18,6 +18,7 @@ from rhosocial.activerecord.backend.expression.statements import (
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.expression.objects import Table
 
 
 class TestSQLServerCreateTableLike:
@@ -32,8 +33,8 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         create_expr = CreateTableLikeExpression(
             dialect=dialect,
-            table="users_copy",
-            like_table="users",
+            table=Table(dialect, "users_copy"),
+            like_table=Table(dialect, "users"),
         )
         with pytest.raises(UnsupportedFeatureError):
             create_expr.to_sql()
@@ -43,8 +44,8 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         create_expr = CreateTableLikeExpression(
             dialect=dialect,
-            table="users_copy",
-            like_table="users",
+            table=Table(dialect, "users_copy"),
+            like_table=Table(dialect, "users"),
             if_not_exists=True,
         )
         with pytest.raises(UnsupportedFeatureError):
@@ -55,8 +56,8 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         create_expr = CreateTableLikeExpression(
             dialect=dialect,
-            table="temp_users",
-            like_table="users",
+            table=Table(dialect, "temp_users"),
+            like_table=Table(dialect, "users"),
             temporary=True,
         )
         with pytest.raises(UnsupportedFeatureError):
@@ -67,8 +68,8 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         create_expr = CreateTableLikeExpression(
             dialect=dialect,
-            table="users_copy",
-            like_table=("production", "users"),
+            table=Table(dialect, "users_copy"),
+            like_table=Table(dialect, "users", schema_name="production"),
         )
         with pytest.raises(UnsupportedFeatureError):
             create_expr.to_sql()
@@ -78,8 +79,8 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         create_expr = CreateTableLikeExpression(
             dialect=dialect,
-            table="temp_users_copy",
-            like_table=("test_db", "users"),
+            table=Table(dialect, "temp_users_copy"),
+            like_table=Table(dialect, "users", catalog_name="test_db"),
             temporary=True,
             if_not_exists=True,
         )
@@ -96,7 +97,7 @@ class TestSQLServerCreateTableLike:
         ]
         create_expr = CreateTableExpression(
             dialect=dialect,
-            table="temp_users",
+            table=Table(dialect, "temp_users"),
             columns=columns,
             temporary=True,
         )
@@ -120,7 +121,7 @@ class TestSQLServerCreateTableLike:
         ]
         create_expr = CreateTableExpression(
             dialect=dialect,
-            table="users",
+            table=Table(dialect, "users"),
             columns=columns
         )
         sql, params = create_expr.to_sql()

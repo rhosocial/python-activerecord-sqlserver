@@ -9,6 +9,7 @@ detection and the ``NEXT VALUE FOR`` expression formatter used by
 from typing import Any, Tuple
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.expression.objects import Sequence
 
 
 _SQL_SERVER_NEXT_VALUE_FOR_VERSION = (11, 0, 0)
@@ -43,12 +44,12 @@ class SQLServerSequenceMixin:
         if sequence_name is None:
             sequence_name = str(sequence)
 
-        if "." in sequence_name:
-            quoted = ".".join(
-                self.format_identifier(part) for part in sequence_name.split(".")  # type: ignore[attr-defined]
-            )
-        else:
-            quoted = self.format_identifier(sequence_name)  # type: ignore[attr-defined]
+        # The sequence expressions hold one flat name string, and
+        # ``NEXT VALUE FOR dbo.my_seq`` is the documented spelling for a
+        # schema-qualified sequence. The namespace is therefore read out of the
+        # text once, into a Sequence object, and rendered from there -- the
+        # formatter itself never re-derives which part is the schema.
+        quoted = self.qualified_object_name_from_dotted(Sequence, sequence_name)
 
         return f"NEXT VALUE FOR {quoted}", ()
 

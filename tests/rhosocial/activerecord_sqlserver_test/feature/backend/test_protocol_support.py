@@ -205,13 +205,14 @@ class TestNextValueFor:
 
     def test_next_value_for_in_insert_values(self):
         d = SQLServerDialect(SQL_SERVER_2022)
-        from rhosocial.activerecord.backend.expression import InsertExpression, TableExpression
+        from rhosocial.activerecord.backend.expression import InsertExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import ValuesSource
 
         seq = SQLServerNextValueForExpression(d, "my_seq")
         insert = InsertExpression(
             dialect=d,
-            into=TableExpression(d, "t"),
+            into=Table(d, "t"),
             columns=["id"],
             source=ValuesSource(d, [[seq]]),
         )
@@ -227,7 +228,8 @@ class TestMergeOutputAndHoldlock:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def _build_merge(self, d):
-        from rhosocial.activerecord.backend.expression import Column, TableExpression
+        from rhosocial.activerecord.backend.expression import Column
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
         from rhosocial.activerecord.backend.expression.statements import (
             MergeAction,
@@ -239,8 +241,8 @@ class TestMergeOutputAndHoldlock:
 
         return SQLServerMergeExpression(
             dialect=d,
-            target_table="tgt",
-            source=TableExpression(d, "src"),
+            target_table=Table(d, "tgt"),
+            source=Table(d, "src"),
             on_condition=ComparisonPredicate(
                 d, "=", Column(d, "id", "tgt"), Column(d, "id", "src")
             ),
@@ -513,15 +515,14 @@ class TestDelegatedFormatters:
             Column,
             CreateViewExpression,
             QueryExpression,
-            TableExpression,
         )
-
+        from rhosocial.activerecord.backend.expression.objects import Table, View
         query = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id"), Column(dialect, "name")],
-            from_=TableExpression(dialect, "users"),
+            from_=Table(dialect, "users"),
         )
-        view = CreateViewExpression(dialect, "user_ids", query)
+        view = CreateViewExpression(dialect, View(dialect, "user_ids"), query)
         sql, params = dialect.format_create_indexed_view_statement(view)
         assert sql == (
             "CREATE VIEW [user_ids] WITH SCHEMABINDING AS "

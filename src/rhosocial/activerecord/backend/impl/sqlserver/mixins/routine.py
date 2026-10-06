@@ -11,6 +11,8 @@ provides the capability switches and the formatters used by the
 
 from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.expression.objects import Function, Procedure
+
 if TYPE_CHECKING:
     from ..expression.ddl.routine import (
         SQLServerCreateFunctionExpression,
@@ -45,19 +47,26 @@ class SQLServerRoutineMixin:
         """DROP FUNCTION is supported since SQL Server 2005."""
         return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
 
-    def _format_object_name(self, name: str, schema: Optional[str] = None) -> str:
-        """Quote a (possibly schema-qualified) object name with brackets."""
-        parts = []
-        if schema:
-            parts.append(self.format_identifier(schema))  # type: ignore[attr-defined]
-        if "." in name:
-            parts.extend(
-                self.format_identifier(part)  # type: ignore[attr-defined]
-                for part in name.split(".")
-            )
-        else:
-            parts.append(self.format_identifier(name))  # type: ignore[attr-defined]
-        return ".".join(parts)
+    def _routine_object_name(
+        self,
+        kind: str,
+        name: str,
+        schema: Optional[str] = None,
+    ) -> str:
+        """The qualified SQL name of a routine.
+
+        T-SQL spells a routine ``[schema.]name`` -- and ``schema.name`` with the
+        dot left in is accepted too, which is why the name may arrive either as
+        one dotted string or as a name plus a separate schema. Both are read
+        into the same :class:`Procedure` / :class:`Function` object and
+        rendered through the shared qualified-name entry point; a name that
+        supplies both ways at once is rejected there rather than resolved one
+        way or the other.
+        """
+        routine_class = Function if kind.upper() == "FUNCTION" else Procedure
+        return self.qualified_object_name_from_dotted(
+            routine_class, name, schema_name=schema
+        )
 
     @staticmethod
     def _format_params(parameters: List[Any]) -> str:
@@ -66,6 +75,11 @@ class SQLServerRoutineMixin:
         Accepts either raw parameter strings (``"@x INT"``) or dictionaries
         with ``name`` / ``type`` keys (matching the core
         ``CreateFunctionExpression`` convention).
+
+        Raises:
+            TypeError: A parameter is neither a string nor a dict. A parameter is
+                part of the statement's signature rather than a bind value, so a
+                wrong kind cannot render.
         """
         parts = []
         for param in parameters:
@@ -116,7 +130,7 @@ class SQLServerRoutineMixin:
         if getattr(expr, "or_alter", False):
             parts.append("OR ALTER")
         parts.append("PROCEDURE")
-        parts.append(self._format_object_name(name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name("PROCEDURE", name, getattr(expr, "schema", None)))
 
         parameters = getattr(expr, "parameters", None) or []
         if parameters:
@@ -155,7 +169,7 @@ class SQLServerRoutineMixin:
         if getattr(expr, "or_alter", False):
             parts.append("OR ALTER")
         parts.append("FUNCTION")
-        parts.append(self._format_object_name(name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name("FUNCTION", name, getattr(expr, "schema", None)))
 
         parameters = getattr(expr, "parameters", None) or []
         parts.append(f"({self._format_params(list(parameters))})")
@@ -194,5 +208,5 @@ class SQLServerRoutineMixin:
         parts = ["DROP", kind]
         if getattr(expr, "if_exists", False) and self.version >= _SQL_SERVER_DROP_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
             parts.append("IF EXISTS")
-        parts.append(self._format_object_name(name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name(kind, name, getattr(expr, "schema", None)))
         return " ".join(parts), ()

@@ -2,6 +2,7 @@
 from typing import Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.expression.objects import View
 from .version_constants import SQL_SERVER_2005, SQL_SERVER_2016
 
 _SUGGESTION_MATERIALIZED_VIEW = "SQL Server does not support materialized views. Consider using indexed views."
@@ -40,13 +41,25 @@ class SQLServerViewMixin:
     def format_create_view_statement(
         self, expr: "CreateViewExpression"
     ) -> Tuple[str, tuple]:
-        """Format CREATE VIEW statement for SQL Server."""
-        parts = ["CREATE VIEW"]
+        """Format CREATE VIEW statement for SQL Server.
 
-        if expr.replace:
-            parts = ["CREATE OR ALTER VIEW"]
+        SQL Server spells the replacement form ``CREATE OR ALTER VIEW``, and
+        ``WITH SCHEMABINDING`` is an indexed view's requirement rather than an
+        option -- see ``format_create_indexed_view_statement``.
 
-        parts.append(self.format_identifier(expr.view_name))
+        Raises:
+            TypeError: ``expr.view`` is not a View. A table or a materialized
+                view handed here would render as a well-formed ``CREATE VIEW``
+                over that object's name.
+        """
+        if not isinstance(expr.view, View):
+            raise TypeError(
+                f"CreateViewExpression.view must be a View, "
+                f"got {type(expr.view).__name__}"
+            )
+        parts = ["CREATE OR ALTER VIEW" if expr.replace else "CREATE VIEW"]
+
+        parts.append(expr.view.to_sql()[0])
 
         if expr.column_aliases:
             cols = ", ".join(self.format_identifier(c) for c in expr.column_aliases)
@@ -72,13 +85,27 @@ class SQLServerViewMixin:
     def format_drop_view_statement(
         self, expr: "DropViewExpression"
     ) -> Tuple[str, tuple]:
-        """Format DROP VIEW statement for SQL Server."""
+        """Format DROP VIEW statement for SQL Server.
+
+        ``IF EXISTS`` is rendered only on SQL Server 2016+; a request for it on
+        an older version is a no-op rather than a syntax error, which is the
+        spelling this dialect has always produced.
+
+        Raises:
+            TypeError: ``expr.view`` is not a View. A table handed here would
+                render as a well-formed ``DROP VIEW`` over that table's name.
+        """
+        if not isinstance(expr.view, View):
+            raise TypeError(
+                f"DropViewExpression.view must be a View, "
+                f"got {type(expr.view).__name__}"
+            )
         parts = ["DROP VIEW"]
 
         if expr.if_exists and self.supports_if_exists_view():
             parts.append("IF EXISTS")
 
-        parts.append(self.format_identifier(expr.view_name))
+        parts.append(expr.view.to_sql()[0])
 
         return " ".join(parts), ()
 

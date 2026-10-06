@@ -10,6 +10,7 @@ from rhosocial.activerecord.backend.expression import (
     CreateTableExpression,
     ColumnDefinition,
 )
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     PartitionClause,
     PartitionStrategy,
@@ -234,7 +235,7 @@ class TestSQLServerCreateTableWithPartition:
         )
 
         stmt = CreateTableExpression(
-            d, "orders",
+            d, Table(d, "orders"),
             columns=[col_def, col_def2, col_def3],
             partition=partition,
         )
@@ -249,7 +250,7 @@ class TestSQLServerCreateTableWithPartition:
         pk = ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY)
         col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
         stmt = CreateTableExpression(
-            d, "users",
+            d, Table(d, "users"),
             columns=[col_def],
         )
         sql, params = stmt.to_sql()
@@ -265,7 +266,7 @@ class TestSQLServerCreateTableWithPartition:
         col = Column(d, "id")
         partition = SQLServerPartitionByRangeClause(d, [col], "ps_test")
         stmt = CreateTableExpression(
-            d, "test",
+            d, Table(d, "test"),
             columns=[col_def],
             partition=partition,
         )

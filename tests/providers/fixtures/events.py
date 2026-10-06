@@ -9,6 +9,7 @@ from typing import Callable, Dict
 from rhosocial.activerecord.backend.expression import (
     CreateTableExpression,
 )
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
@@ -31,7 +32,7 @@ def to_sql(expr: CreateTableExpression):
 def create_event_tests_table(dialect, table_name: str = "event_tests") -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=Table(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),
@@ -56,7 +57,7 @@ def create_event_tracking_models_table(
 ) -> CreateTableExpression:
     return CreateTableExpression(
         dialect=dialect,
-        table=table_name,
+        table=Table(dialect, table_name),
         if_not_exists=False,
         columns=[
             ColumnDefinition(dialect, "id", IntegerType(dialect),

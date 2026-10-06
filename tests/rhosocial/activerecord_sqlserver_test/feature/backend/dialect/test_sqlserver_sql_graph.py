@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.expression.objects import NodeTable, Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     CreateTableExpression,
@@ -292,7 +293,7 @@ class TestDdl:
         expr = SQLServerAsGraphTableExpression(dialect, kind)
         if create_table:
             expr = SQLServerCreateTableExpression(
-                dialect, table="graph_table",
+                dialect, Table(dialect, "graph_table"),
                 columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
                 graph_table_kind=kind,
             )
@@ -329,7 +330,7 @@ class TestDdl:
     def test_create_graph_table(self, major, kind, expected):
         dialect = SQLServerDialect(version=(major, 0, 0))
         expr = SQLServerCreateTableExpression(
-            dialect, table="graph_table",
+            dialect, Table(dialect, "graph_table"),
             columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
             graph_table_kind=kind,
         )
@@ -339,7 +340,7 @@ class TestDdl:
     def test_create_table_edge_with_constraint(self, major):
         dialect = SQLServerDialect(version=(major, 0, 0))
         expr = SQLServerCreateTableExpression(
-            dialect, table="friend",
+            dialect, Table(dialect, "friend"),
             columns=[ColumnDefinition(dialect, "ID", IntegerType(dialect))],
             graph_table_kind=SQLServerGraphTableKind.EDGE,
             edge_constraints=[SQLServerEdgeConstraint(dialect, "Person", "Person", name="ec_friend")],
@@ -438,7 +439,7 @@ class TestCorePgqStillRejected:
     def test_core_match_clause_rejected(self, dialect):
         from rhosocial.activerecord.backend.expression.graph import GraphVertex, MatchClause
 
-        clause = MatchClause(dialect, GraphVertex(dialect, "p", "Person"))
+        clause = MatchClause(dialect, GraphVertex(dialect, "p", NodeTable(dialect, "Person")))
         with pytest.raises(UnsupportedFeatureError, match="graph MATCH clause"):
             dialect.format_match_clause(clause)
 

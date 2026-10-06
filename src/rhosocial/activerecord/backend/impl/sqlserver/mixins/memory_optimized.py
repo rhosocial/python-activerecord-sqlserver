@@ -15,6 +15,8 @@ path (via the typed ``SQLServerCreateTableOptions``).
 
 from typing import Optional, Sequence
 
+from rhosocial.activerecord.backend.expression.objects import Index
+
 _SQL_SERVER_MEMORY_OPTIMIZED_VERSION = (12, 0, 0)
 
 _DURABILITY_OPTIONS = ("SCHEMA_ONLY", "SCHEMA_AND_DATA")
@@ -95,7 +97,7 @@ class SQLServerMemoryOptimizedMixin:
         if unique:
             parts.append("UNIQUE")
         if name:
-            parts.append(f"INDEX {self.format_identifier(name)}")  # type: ignore[attr-defined]
+            parts.append(f"INDEX {self.qualified_object_name(Index, name)}")
         columns_str = ", ".join(
             self.format_identifier(col)  # type: ignore[attr-defined]
             for col in columns

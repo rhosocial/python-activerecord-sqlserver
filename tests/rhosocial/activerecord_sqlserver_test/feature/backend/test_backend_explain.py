@@ -3,9 +3,13 @@ import pytest_asyncio
 
 from rhosocial.activerecord.backend.explain import SyncExplainBackendProtocol
 from rhosocial.activerecord.backend.expression import (
-    QueryExpression, TableExpression, Column, WildcardExpression, Literal, WhereClause,
+    QueryExpression,
+    Column,
+    WildcardExpression,
+    Literal,
+    WhereClause,
 )
-
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.impl.sqlserver.explain import SQLServerExplainResult, SQLServerExplainRow
 
 
@@ -91,7 +95,7 @@ class TestSyncExplainBuildSQL:
         expr = QueryExpression(
             dialect,
             select=[WildcardExpression(dialect)],
-            from_=TableExpression(dialect, "t")
+            from_=Table(dialect, "t")
         )
         sql, params = backend._build_explain_sql(expr)
         assert isinstance(sql, str)

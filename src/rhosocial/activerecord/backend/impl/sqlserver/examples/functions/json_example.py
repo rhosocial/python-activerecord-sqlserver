@@ -12,7 +12,8 @@ from rhosocial.activerecord.backend.impl.sqlserver.functions import (
     json_object,
     json_array,
 )
-from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+from rhosocial.activerecord.backend.expression import QueryExpression, Column
+from rhosocial.activerecord.backend.expression.objects import Table
 
 dialect = SQLServerDialect(version=(16, 0, 0))
 
@@ -54,7 +55,7 @@ query = QueryExpression(
         json_value(dialect, "data", "$.name").as_("name"),
         json_value(dialect, "data", "$.age").as_("age"),
     ],
-    from_=TableExpression(dialect, "users"),
+    from_=Table(dialect, "users"),
 )
 sql, params = query.to_sql()
 print(f"  SQL: {sql}")

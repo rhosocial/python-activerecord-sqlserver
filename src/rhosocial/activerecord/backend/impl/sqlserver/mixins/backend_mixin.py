@@ -169,8 +169,7 @@ class SQLServerBackendMixin:
         cursor.close()
 
     def set_identity_insert(self, table: str, on: bool = True) -> None:
-        state = "ON" if on else "OFF"
-        sql = f"SET IDENTITY_INSERT {self.dialect.format_identifier(table)} {state}"
+        sql, _params = self.dialect.format_set_identity_insert(table, on)
         cursor = self._get_cursor()
         cursor.execute(sql)
         cursor.close()

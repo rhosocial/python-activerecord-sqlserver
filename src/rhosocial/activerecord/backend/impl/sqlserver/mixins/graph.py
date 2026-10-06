@@ -12,6 +12,7 @@ stays ``False`` and the core ``MatchClause`` remains rejected.
 from typing import Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.expression.objects import NodeTable, Table
 
 from .version_constants import SQL_SERVER_2017, SQL_SERVER_2019
 
@@ -89,8 +90,11 @@ class SQLServerGraphMixin:
         parts = []
         if constraint.name:
             parts.append(f"CONSTRAINT {self.format_identifier(constraint.name)}")
-        from_table = self.format_identifier(constraint.from_table)
-        to_table = self.format_identifier(constraint.to_table)
+        # The two endpoints are graph *node* tables, so they are rendered as
+        # NodeTable objects: same three slots, same one rendering path, and the
+        # kind now says what they are.
+        from_table = self.qualified_object_name(NodeTable, constraint.from_table)
+        to_table = self.qualified_object_name(NodeTable, constraint.to_table)
         parts.append(f"CONNECTION ({from_table} TO {to_table})")
         return " ".join(parts), ()
 
@@ -220,13 +224,24 @@ class SQLServerGraphMixin:
     def format_sqlserver_for_path_table(
         self, table: "SQLServerForPathTable"
     ) -> Tuple[str, tuple]:
-        """Format a ``<table> FOR PATH [AS <alias>]`` FROM item."""
+        """Format a ``<table> FOR PATH [AS <alias>]`` FROM item.
+
+        A graph node or edge table is an ordinary schema-scoped table, so the
+        name is rendered as a :class:`Table` object -- catalog, schema and name
+        -- rather than assembled from the raw ``table`` string.
+        """
         if not self.supports_shortest_path():
             raise UnsupportedFeatureError(
                 self.name, "FOR PATH",
                 "FOR PATH requires SQL Server 2019 or later.",
             )
-        sql = f"{self.format_identifier(table.table)} FOR PATH"
+        table_object = self.schema_object(
+            Table,
+            table.table,
+            catalog_name=table.catalog_name,
+            schema_name=table.schema_name,
+        )
+        sql = f"{table_object.to_sql()[0]} FOR PATH"
         if table.alias:
             sql += f" AS {self.format_identifier(table.alias)}"
         return sql, ()

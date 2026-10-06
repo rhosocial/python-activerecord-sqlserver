@@ -27,6 +27,7 @@ backend.connect()
 dialect = backend.dialect
 
 from rhosocial.activerecord.backend.expression import CreateTableExpression
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
@@ -39,7 +40,7 @@ ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='batch_users',
+    table=Table(dialect, 'batch_users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -71,7 +72,7 @@ users = [
 # Create batch insert with multiple value rows
 insert_expr = InsertExpression(
     dialect=dialect,
-    into='batch_users',
+    into=Table(dialect, 'batch_users'),
     columns=['name', 'email'],
     source=ValuesSource(
         dialect,
@@ -90,12 +91,12 @@ result = backend.execute(sql, params)
 print(f"Affected rows: {result.affected_rows}")
 
 # Verify insertion
-from rhosocial.activerecord.backend.expression import QueryExpression, TableExpression, Column
+from rhosocial.activerecord.backend.expression import QueryExpression, Column
 
 query = QueryExpression(
     dialect=dialect,
     select=[Column(dialect, 'id'), Column(dialect, 'name'), Column(dialect, 'email')],
-    from_=TableExpression(dialect, 'batch_users'),
+    from_=Table(dialect, 'batch_users'),
 )
 sql, params = query.to_sql()
 dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
@@ -109,7 +110,7 @@ for row in result.data or []:
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='batch_users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'batch_users'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

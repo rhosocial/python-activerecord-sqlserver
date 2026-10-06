@@ -9,8 +9,8 @@ from rhosocial.activerecord.backend.expression import (
     CreateTableExpression,
     CreateViewExpression,
     QueryExpression,
-    TableExpression,
 )
+from rhosocial.activerecord.backend.expression.objects import Table, View
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ViewCheckOption,
@@ -25,7 +25,7 @@ class TestSQLServerTableCapabilityGating:
         dialect = SQLServerDialect(version=(16, 0, 0))
         expression = CreateTableExpression(
             dialect,
-            "plain_table_defaults",
+            Table(dialect, "plain_table_defaults"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
         )
         sql, params = expression.to_sql()
@@ -39,7 +39,7 @@ class TestSQLServerTableCapabilityGating:
         dialect = SQLServerDialect(version=(16, 0, 0))
         expression = CreateTableExpression(
             dialect,
-            "inheriting_table",
+            Table(dialect, "inheriting_table"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
             inherits=["parent_a", "parent_b"],
         )
@@ -52,7 +52,7 @@ class TestSQLServerTableCapabilityGating:
         dialect = SQLServerDialect(version=(16, 0, 0))
         expression = CreateTableExpression(
             dialect,
-            "tablespaced_table",
+            Table(dialect, "tablespaced_table"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
             tablespace="ts_data",
         )
@@ -69,11 +69,11 @@ class TestSQLServerViewCapabilityGating:
         """WITH CHECK OPTION must fail fast when the capability is off."""
         dialect = SQLServerDialect()
         query = QueryExpression(
-            dialect, select=[Column(dialect, "id")], from_=TableExpression(dialect, "t")
+            dialect, select=[Column(dialect, "id")], from_=Table(dialect, "t")
         )
         expr = CreateViewExpression(
             dialect,
-            view_name="v",
+            view=View(dialect, "v"),
             query=query,
             options=ViewOptions(check_option=ViewCheckOption.CASCADED),
         )

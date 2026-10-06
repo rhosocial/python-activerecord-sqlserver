@@ -180,10 +180,13 @@ class TestOtherVersionGates:
         assert d.supports_readpast() is readpast
 
     def test_if_exists_rendering_turns_on_in_2016(self):
+        from rhosocial.activerecord.backend.expression.objects import View
         from rhosocial.activerecord.backend.expression.statements.ddl_view import DropViewExpression
 
-        pre = DropViewExpression(SQLServerDialect((11, 0, 0)), "v", if_exists=True).to_sql()
-        post = DropViewExpression(SQLServerDialect((13, 0, 0)), "v", if_exists=True).to_sql()
+        pre_dialect = SQLServerDialect((11, 0, 0))
+        post_dialect = SQLServerDialect((13, 0, 0))
+        pre = DropViewExpression(pre_dialect, View(pre_dialect, "v"), if_exists=True).to_sql()
+        post = DropViewExpression(post_dialect, View(post_dialect, "v"), if_exists=True).to_sql()
         assert pre[0] == "DROP VIEW [v]"
         assert post[0] == "DROP VIEW IF EXISTS [v]"
 
@@ -207,7 +210,7 @@ class TestOtherVersionGates:
 
 class TestRenderingSnapshots:
     def test_temporary_table_gets_hash_prefix(self):
-        from rhosocial.activerecord.backend.expression.core import TableExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnDefinition,
             CreateTableExpression,
@@ -217,7 +220,7 @@ class TestRenderingSnapshots:
         d = SQLServerDialect((16, 0, 0))
         expr = CreateTableExpression(
             dialect=d,
-            table=TableExpression(d, "stage_users"),
+            table=Table(d, "stage_users"),
             columns=[ColumnDefinition(d, name="id", data_type=IntegerType(d))],
             temporary=True,
         )
@@ -226,7 +229,7 @@ class TestRenderingSnapshots:
         assert params == ()
 
     def test_temporary_table_keeps_schema_prefix_order(self):
-        from rhosocial.activerecord.backend.expression.core import TableExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnDefinition,
             CreateTableExpression,
@@ -236,13 +239,14 @@ class TestRenderingSnapshots:
         d = SQLServerDialect((16, 0, 0))
         expr = CreateTableExpression(
             dialect=d,
-            table=TableExpression(d, "t", "dbo"),
+            table=Table(d, "t", schema_name="dbo"),
             columns=[ColumnDefinition(d, name="id", data_type=IntegerType(d))],
             temporary=True,
         )
         assert expr.to_sql()[0] == "CREATE TABLE [dbo].[#t] ([id] INT)"
 
     def test_create_table_like_is_unsupported(self):
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import (
             CreateTableLikeExpression,
         )
@@ -251,8 +255,8 @@ class TestRenderingSnapshots:
         assert d.supports_create_table_like() is False
         expr = CreateTableLikeExpression(
             dialect=d,
-            table="copy",
-            like_table="original",
+            table=Table(d, "copy"),
+            like_table=Table(d, "original"),
         )
         with pytest.raises(UnsupportedFeatureError):
             expr.to_sql()
@@ -282,7 +286,11 @@ class TestRenderingSnapshots:
         assert sql == "WITH (UPDLOCK, ROWLOCK, READPAST)"
 
     def test_merge_output_action_snapshot(self):
-        from rhosocial.activerecord.backend.expression import Column, QueryExpression, TableExpression
+        from rhosocial.activerecord.backend.expression import (
+            Column,
+            QueryExpression,
+        )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
         from rhosocial.activerecord.backend.expression.statements import (
             MergeAction,
@@ -295,11 +303,11 @@ class TestRenderingSnapshots:
         d = SQLServerDialect((16, 0, 0))
         merge = SQLServerMergeExpression(
             dialect=d,
-            target_table=TableExpression(d, "target"),
+            target_table=Table(d, "target"),
             source=QueryExpression(
                 dialect=d,
                 select=[Column(d, "id"), Column(d, "name")],
-                from_=TableExpression(d, "source"),
+                from_=Table(d, "source"),
             ),
             on_condition=ComparisonPredicate(
                 d, "=", Column(d, "id", "target"), Column(d, "id", "source")
@@ -324,7 +332,11 @@ class TestRenderingSnapshots:
         assert params == ()
 
     def test_merge_without_options_has_no_output(self):
-        from rhosocial.activerecord.backend.expression import Column, QueryExpression, TableExpression
+        from rhosocial.activerecord.backend.expression import (
+            Column,
+            QueryExpression,
+        )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
         from rhosocial.activerecord.backend.expression.statements import (
             MergeAction,
@@ -335,8 +347,8 @@ class TestRenderingSnapshots:
         d = SQLServerDialect((16, 0, 0))
         merge = MergeExpression(
             dialect=d,
-            target_table=TableExpression(d, "t"),
-            source=QueryExpression(dialect=d, select=[Column(d, "id")], from_=TableExpression(d, "s")),
+            target_table=Table(d, "t"),
+            source=QueryExpression(dialect=d, select=[Column(d, "id")], from_=Table(d, "s")),
             on_condition=ComparisonPredicate(d, "=", Column(d, "id", "t"), Column(d, "id", "s")),
             when_matched=[MergeAction(dialect=d, action_type=MergeActionType.DELETE)],
         )
@@ -382,11 +394,33 @@ class TestRenderingSnapshots:
         assert d.format_top_n_clause(5, percentage=True) == ("TOP 5 PERCENT", ())
 
     def test_lateral_renders_as_apply(self):
+        from rhosocial.activerecord.backend.expression.core import Literal, Subquery
+        from rhosocial.activerecord.backend.expression.objects import Table
+        from rhosocial.activerecord.backend.expression.query_sources import (
+            LateralExpression,
+        )
+        from rhosocial.activerecord.backend.expression.statements.dql import (
+            QueryExpression,
+        )
+
         d = SQLServerDialect((16, 0, 0))
-        cross = d.format_lateral_expression("SELECT 1", (), "x")
-        outer = d.format_lateral_expression("SELECT 1", (), "x", join_type="LEFT")
-        assert cross == ("CROSS APPLY (SELECT 1) AS [x]", ())
-        assert outer == ("OUTER APPLY (SELECT 1) AS [x]", ())
+
+        def lateral(join_type):
+            # The formatter takes the LateralExpression node, which is what
+            # to_sql() passes; it no longer takes the node's pieces.
+            query = QueryExpression(
+                d, select=[Literal(d, 1)], from_=Table(d, "items")
+            )
+            return LateralExpression(
+                d, Subquery(d, query), join_type=join_type, alias="x"
+            )
+
+        cross = d.format_lateral_expression(lateral("INNER"))
+        outer = d.format_lateral_expression(lateral("LEFT"))
+        assert cross[0].startswith("CROSS APPLY (")
+        assert cross[0].endswith(") AS [x]")
+        assert outer[0].startswith("OUTER APPLY (")
+        assert outer[0].endswith(") AS [x]")
 
 
 class TestGroupingAndUpsertBasics:
@@ -404,6 +438,7 @@ class TestGroupingAndUpsertBasics:
             assert d.get_upsert_syntax_type() == "MERGE"
 
     def test_sequence_ddl_snapshots(self):
+        from rhosocial.activerecord.backend.expression.objects import Sequence
         from rhosocial.activerecord.backend.expression.statements import (
             CreateSequenceExpression,
             DropSequenceExpression,
@@ -411,7 +446,7 @@ class TestGroupingAndUpsertBasics:
 
         d16 = SQLServerDialect((16, 0, 0))
         create_sql, create_params = CreateSequenceExpression(
-            d16, "seq", start=1, increment=2, minvalue=1, maxvalue=100, cycle=False, cache=10
+            d16, Sequence(d16, "seq"), start=1, increment=2, minvalue=1, maxvalue=100, cycle=False, cache=10
         ).to_sql()
         assert create_sql == (
             "CREATE SEQUENCE [seq] START WITH 1 INCREMENT BY 2 "
@@ -419,7 +454,10 @@ class TestGroupingAndUpsertBasics:
         )
         assert create_params == ()
         # IF EXISTS only appears from 2012 onwards.
-        assert DropSequenceExpression(SQLServerDialect((10, 0, 0)), "seq", if_exists=True).to_sql()[0] == (
-            "DROP SEQUENCE [seq]"
-        )
-        assert DropSequenceExpression(d16, "seq", if_exists=True).to_sql()[0] == "DROP SEQUENCE IF EXISTS [seq]"
+        d10 = SQLServerDialect((10, 0, 0))
+        assert DropSequenceExpression(
+            d10, Sequence(d10, "seq"), if_exists=True
+        ).to_sql()[0] == "DROP SEQUENCE [seq]"
+        assert DropSequenceExpression(
+            d16, Sequence(d16, "seq"), if_exists=True
+        ).to_sql()[0] == "DROP SEQUENCE IF EXISTS [seq]"

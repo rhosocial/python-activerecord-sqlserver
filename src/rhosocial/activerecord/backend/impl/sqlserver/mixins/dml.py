@@ -1,6 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/dml.py
 from typing import Any, List, Tuple, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.expression.objects import Table
+
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import (
         InsertExpression,
@@ -20,7 +22,17 @@ class SQLServerDMLMixin:
         - OUTPUT clause for returning inserted rows
         - INSERT TOP (n) for limiting rows
         - DEFAULT VALUES
+
+        Raises:
+            TypeError: ``expr.into`` is not a Table. A view or a sequence handed
+                here would render as a well-formed ``INSERT INTO`` over that
+                object's name.
         """
+        if not isinstance(expr.into, Table):
+            raise TypeError(
+                f"InsertExpression.into must be a Table, "
+                f"got {type(expr.into).__name__}"
+            )
         if self.strict_validation:
             expr.validate(strict=True)
 
@@ -71,7 +83,17 @@ class SQLServerDMLMixin:
         return sql, tuple(all_params)
 
     def format_update_statement(self, expr: "UpdateExpression") -> Tuple[str, tuple]:
-        """Format UPDATE statement with OUTPUT clause support."""
+        """Format UPDATE statement with OUTPUT clause support.
+
+        Raises:
+            TypeError: ``expr.table`` is not a Table. A view handed here would
+                render as a well-formed ``UPDATE`` over that view's name.
+        """
+        if not isinstance(expr.table, Table):
+            raise TypeError(
+                f"UpdateExpression.table must be a Table, "
+                f"got {type(expr.table).__name__}"
+            )
         if self.strict_validation:
             expr.validate(strict=True)
 
@@ -103,7 +125,19 @@ class SQLServerDMLMixin:
         return " ".join(parts), tuple(all_params)
 
     def format_delete_statement(self, expr: "DeleteExpression") -> Tuple[str, tuple]:
-        """Format DELETE statement with OUTPUT clause support."""
+        """Format DELETE statement with OUTPUT clause support.
+
+        Raises:
+            TypeError: An entry of ``expr.tables`` is not a Table. Any other
+                object kind would have its own name rendered as a delete
+                target.
+        """
+        for _table in expr.tables or ():
+            if not isinstance(_table, Table):
+                raise TypeError(
+                    f"DeleteExpression.tables must hold Table instances, "
+                    f"got {type(_table).__name__}"
+                )
         if self.strict_validation:
             expr.validate(strict=True)
 

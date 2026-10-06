@@ -44,7 +44,7 @@ def get_all_protocol_methods(proto: type) -> set:
 
 
 def get_all_generic_protocols() -> dict:
-    """Discover every generic dialect protocol defined in protocols.py."""
+    """Discover every generic dialect protocol defined in the protocols package."""
     from typing import Protocol
 
     discovered = {}
@@ -54,6 +54,21 @@ def get_all_generic_protocols() -> dict:
     return discovered
 
 
+def _classified_keys(protocols) -> set:
+    """Every exported name whose protocol is in *protocols*.
+
+    Keyed by the names the protocols package exports rather than by
+    ``__name__``, so an alias (``DDLTypeSupport`` is kept as a second name for
+    ``DataTypeSupport``) counts as classified when its target is listed.
+    """
+    listed = {id(protocol) for protocol in protocols}
+    return {
+        name
+        for name, protocol in get_all_generic_protocols().items()
+        if id(protocol) in listed
+    }
+
+
 # Generic protocols SQLServerDialect satisfies.
 SQLSERVER_PROTOCOLS = [
     dialect_protocols.AdvancedGroupingSupport,
@@ -61,18 +76,16 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.ArraySupport,
     dialect_protocols.AutoIncrementSupport,
     dialect_protocols.CTESupport,
-    dialect_protocols.ColumnAttributeSupport,
     dialect_protocols.CollationSupport,
+    dialect_protocols.ColumnAttributeSupport,
     dialect_protocols.ConstraintSupport,
     dialect_protocols.DataTypeSupport,
-    dialect_protocols.UserDefinedTypeSupport,
+    dialect_protocols.DDLTypeSupport,
     dialect_protocols.ExplainSupport,
     dialect_protocols.FilterClauseSupport,
-    dialect_protocols.FunctionSupport,
     dialect_protocols.GeneratedColumnSupport,
     dialect_protocols.GraphSupport,
     dialect_protocols.ILIKESupport,
-    dialect_protocols.IndexSupport,
     dialect_protocols.IntrospectionSupport,
     dialect_protocols.JSONSupport,
     dialect_protocols.JoinSupport,
@@ -84,18 +97,57 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.QualifyClauseSupport,
     dialect_protocols.ReturningSupport,
     dialect_protocols.SQLFunctionSupport,
-    dialect_protocols.SchemaSupport,
-    dialect_protocols.SequenceSupport,
     dialect_protocols.SetOperationSupport,
-    dialect_protocols.TableSupport,
     dialect_protocols.TemporalTableSupport,
     dialect_protocols.TransactionControlSupport,
-    dialect_protocols.TriggerSupport,
     dialect_protocols.TruncateSupport,
     dialect_protocols.UpsertSupport,
-    dialect_protocols.ViewSupport,
     dialect_protocols.WildcardSupport,
     dialect_protocols.WindowFunctionSupport,
+    # The object protocols: one per kind. SQL Server is the engine that renders
+    # all three namespace levels, so it inherits NamespaceSupport and every
+    # kind's protocol, each naming a format_<kind>_object the dialect provides.
+    dialect_protocols.NamespaceSupport,
+    dialect_protocols.TableObjectSupport,
+    dialect_protocols.ViewObjectSupport,
+    dialect_protocols.MaterializedViewObjectSupport,
+    dialect_protocols.ForeignTableObjectSupport,
+    dialect_protocols.IndexObjectSupport,
+    dialect_protocols.SequenceObjectSupport,
+    dialect_protocols.TriggerObjectSupport,
+    dialect_protocols.RoutineObjectSupport,
+    dialect_protocols.TypeObjectSupport,
+    dialect_protocols.SynonymObjectSupport,
+    # DDL, one protocol per statement expression.
+    dialect_protocols.CreateTableSupport,
+    dialect_protocols.CreateTableAsSupport,
+    dialect_protocols.CreateTableCloneSupport,
+    dialect_protocols.CreateTableLikeSupport,
+    dialect_protocols.CreateTableUsingTemplateSupport,
+    dialect_protocols.DropTableSupport,
+    dialect_protocols.AlterTableSupport,
+    dialect_protocols.CreateViewSupport,
+    dialect_protocols.DropViewSupport,
+    dialect_protocols.MaterializedViewSupport,
+    dialect_protocols.CreateIndexSupport,
+    dialect_protocols.DropIndexSupport,
+    dialect_protocols.FulltextIndexSupport,
+    dialect_protocols.CreateSequenceSupport,
+    dialect_protocols.DropSequenceSupport,
+    dialect_protocols.AlterSequenceSupport,
+    dialect_protocols.CreateTriggerSupport,
+    dialect_protocols.DropTriggerSupport,
+    dialect_protocols.CreateRoutineSupport,
+    dialect_protocols.DropRoutineSupport,
+    dialect_protocols.CreateTypeSupport,
+    dialect_protocols.DropTypeSupport,
+    dialect_protocols.AlterTypeSupport,
+    dialect_protocols.CreateSchemaSupport,
+    dialect_protocols.DropSchemaSupport,
+    dialect_protocols.AlterDatabaseSupport,
+    dialect_protocols.DateTimeSupport,
+    dialect_protocols.DqlOrderSupport,
+    dialect_protocols.PivotSupport,
 ]
 
 
@@ -109,9 +161,17 @@ SQLSERVER_NOT_IMPLEMENTED = [
     # SQL Server has no standalone COMMENT ON statement; comments use
     # sp_addextendedproperty (not modelled as a COMMENT ON expression).
     dialect_protocols.CommentSupport,
-    # The generic DatabaseSupport protocol is not composed by SQLServerDialect.
-    dialect_protocols.DatabaseSupport,
-    dialect_protocols.DomainSupport,
+    # CREATE/DROP DATABASE are rendered by SQLServerDatabaseMixin, but the
+    # per-statement protocols also require the generic option probes
+    # (supports_database_encoding, supports_undrop_database, and the rest),
+    # which SQL Server has no spelling for. Tracked gap rather than an
+    # omission of intent.
+    dialect_protocols.CreateDatabaseSupport,
+    dialect_protocols.DropDatabaseSupport,
+    # SQL Server has no CREATE/ALTER/DROP DOMAIN.
+    dialect_protocols.CreateDomainSupport,
+    dialect_protocols.AlterDomainSupport,
+    dialect_protocols.DropDomainSupport,
     # SQL Server's native XML/XQuery (FOR XML, OPENXML, .query()/.value()) is not
     # the standard SQL/XML feature set, so no SQL/XML formatters are exposed.
     dialect_protocols.SQLXMLSupport,
@@ -159,16 +219,9 @@ class TestSQLServerDialectNegativeProtocolConformance:
 
     def test_positive_and_negative_lists_partition_all_protocols(self):
         """Every generic protocol must be classified for SQL Server."""
-        all_protos = {
-            protocol.__name__
-            for protocol in get_all_generic_protocols().values()
-        }
-        positive = {
-            p.__name__
-            for p in SQLSERVER_PROTOCOLS
-            if p.__module__ == dialect_protocols.__name__
-        }
-        negative = {p.__name__ for p in SQLSERVER_NOT_IMPLEMENTED}
+        all_protos = set(get_all_generic_protocols())
+        positive = _classified_keys(SQLSERVER_PROTOCOLS)
+        negative = _classified_keys(SQLSERVER_NOT_IMPLEMENTED)
 
         overlap = positive & negative
         assert not overlap, f"Protocols in BOTH lists: {sorted(overlap)}"

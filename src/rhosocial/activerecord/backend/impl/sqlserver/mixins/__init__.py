@@ -35,6 +35,7 @@ from .generated_column import SQLServerGeneratedColumnMixin
 from .set_operation import SQLServerSetOperationMixin
 from .ddl_table import SQLServerTableMixin
 from .identifier import SQLServerIdentifierMixin
+from .namespace import SQLServerNamespaceMixin
 from .transaction import SQLServerTransactionMixin
 from .function import SQLServerFunctionMixin
 from .ddl_type import SQLServerTypeDDLMixin
@@ -76,6 +77,7 @@ __all__ = [
     "SQLServerSetOperationMixin",
     "SQLServerTableMixin",
     "SQLServerIdentifierMixin",
+    "SQLServerNamespaceMixin",
     "SQLServerTransactionMixin",
     "SQLServerFunctionMixin",
     "SQLServerTypeDDLMixin",

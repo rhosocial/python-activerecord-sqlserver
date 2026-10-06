@@ -30,6 +30,7 @@ backend.connect()
 dialect = backend.dialect
 
 from rhosocial.activerecord.backend.expression import CreateTableExpression
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
@@ -43,7 +44,7 @@ dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='json_data',
+    table=Table(dialect, 'json_data'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -68,7 +69,7 @@ json_literal = '{"name": "John", "age": 30, "hobbies": ["reading", "coding"]}'
 
 insert_expr = InsertExpression(
     dialect=dialect,
-    into='json_data',
+    into=Table(dialect, 'json_data'),
     columns=['data'],
     source=ValuesSource(dialect, [[Literal(dialect, json_literal)]]),
 )
@@ -81,13 +82,13 @@ print("JSON data inserted")
 # ============================================================
 # For JSON queries, we use raw SQL since JSON_VALUE/JSON_QUERY
 # are SQL Server specific functions not yet available as expressions
-from rhosocial.activerecord.backend.expression import QueryExpression, TableExpression, Column
+from rhosocial.activerecord.backend.expression import QueryExpression, Column
 
 # Basic query to get the JSON data
 query = QueryExpression(
     dialect=dialect,
     select=[Column(dialect, 'id'), Column(dialect, 'data')],
-    from_=TableExpression(dialect, 'json_data'),
+    from_=Table(dialect, 'json_data'),
 )
 sql, params = query.to_sql()
 result = backend.execute(sql, params, options=dql_options)
@@ -100,7 +101,7 @@ for row in result.data or []:
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='json_data', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'json_data'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

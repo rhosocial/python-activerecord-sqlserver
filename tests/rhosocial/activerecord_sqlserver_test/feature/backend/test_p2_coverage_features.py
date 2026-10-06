@@ -15,6 +15,7 @@ Version boundaries use the real SQL Server releases: 2005=(9,0,0),
 import pytest
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.expression.objects import Table, View
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.fulltext import (
     SQLServerCreateFullTextCatalogExpression,
@@ -50,12 +51,11 @@ SQL_SERVER_2022 = (16, 0, 0)
 
 
 def _make_query(d, columns=("id", "name"), from_="users", where=None):
-    from rhosocial.activerecord.backend.expression import Column, QueryExpression, TableExpression
-
+    from rhosocial.activerecord.backend.expression import Column, QueryExpression
     return QueryExpression(
         dialect=d,
         select=[Column(d, col) for col in columns],
-        from_=TableExpression(d, from_),
+        from_=Table(d, from_),
         where=where,
     )
 
@@ -101,7 +101,7 @@ class TestMemoryOptimizedTables:
                 d, memory_optimized=True, durability=durability
             )
         return CreateTableExpression(
-            d, "t", [col], indexes=indexes, table_options=table_options
+            d, Table(d, "t"), [col], indexes=indexes, table_options=table_options
         )
 
     def test_mixin_registered(self, dialect):
@@ -214,7 +214,7 @@ class TestMemoryOptimizedTables:
         col.constraints.append(ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY))
         ct = CreateTableExpression(
             dialect,
-            "t",
+            Table(dialect, "t"),
             [col],
             indexes=[SQLServerIndexDefinition(dialect, "ix", ["id"], hash_index=True)],
             table_options=SQLServerCreateTableOptions(dialect, memory_optimized=True),
@@ -251,7 +251,7 @@ class TestIndexedView:
     def _view(self, d, view_name="v", columns=("id", "name")):
         from rhosocial.activerecord.backend.expression import CreateViewExpression
 
-        return CreateViewExpression(d, view_name, _make_query(d, columns))
+        return CreateViewExpression(d, View(d, view_name), _make_query(d, columns))
 
     def test_supports_indexed_view(self):
         assert SQLServerDialect(SQL_SERVER_2005).supports_indexed_view() is True
@@ -281,7 +281,10 @@ class TestIndexedView:
         )
 
         view = CreateViewExpression(
-            dialect, "v", _make_query(dialect), options=ViewOptions(schemabinding=True)
+            dialect,
+            View(dialect, "v"),
+            _make_query(dialect),
+            options=ViewOptions(schemabinding=True),
         )
         sql, _ = view.to_sql()
         assert sql == "CREATE VIEW [v] WITH SCHEMABINDING AS SELECT [id], [name] FROM [users]"

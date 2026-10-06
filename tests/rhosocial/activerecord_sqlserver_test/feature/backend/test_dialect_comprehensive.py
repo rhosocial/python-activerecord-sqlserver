@@ -86,11 +86,11 @@ class TestSQLServerDialectDML:
         from rhosocial.activerecord.backend.expression import (
             InsertExpression, ValuesSource, ReturningClause, Column,
         )
-        from rhosocial.activerecord.backend.expression.core import Literal, TableExpression
-
+        from rhosocial.activerecord.backend.expression.core import Literal
+        from rhosocial.activerecord.backend.expression.objects import Table
         insert = InsertExpression(
             dialect=dialect,
-            into=TableExpression(dialect, "users"),
+            into=Table(dialect, "users"),
             columns=["name"],
             source=ValuesSource(dialect, [[Literal(dialect, "Alice")]]),
             returning=ReturningClause(dialect, [Column(dialect, "id")]),
@@ -105,11 +105,10 @@ class TestSQLServerDialectDML:
         from rhosocial.activerecord.backend.expression import (
             InsertExpression, DefaultValuesSource,
         )
-        from rhosocial.activerecord.backend.expression.core import TableExpression
-
+        from rhosocial.activerecord.backend.expression.objects import Table
         insert = InsertExpression(
             dialect=dialect,
-            into=TableExpression(dialect, "log"),
+            into=Table(dialect, "log"),
             source=DefaultValuesSource(dialect),
         )
 
@@ -121,11 +120,11 @@ class TestSQLServerDialectDML:
         from rhosocial.activerecord.backend.expression import (
             UpdateExpression, ReturningClause, Column,
         )
-        from rhosocial.activerecord.backend.expression.core import Literal, TableExpression
-
+        from rhosocial.activerecord.backend.expression.core import Literal
+        from rhosocial.activerecord.backend.expression.objects import Table
         update = UpdateExpression(
             dialect=dialect,
-            table=TableExpression(dialect, "users"),
+            table=Table(dialect, "users"),
             assignments={"name": Literal(dialect, "Bob")},
             returning=ReturningClause(dialect, [Column(dialect, "id")]),
         )
@@ -137,12 +136,14 @@ class TestSQLServerDialectDML:
 
     def test_delete_with_output(self, dialect):
         from rhosocial.activerecord.backend.expression import (
-            DeleteExpression, ReturningClause, Column, TableExpression,
+            DeleteExpression,
+            ReturningClause,
+            Column,
         )
-
+        from rhosocial.activerecord.backend.expression.objects import Table
         delete = DeleteExpression(
             dialect=dialect,
-            tables=[TableExpression(dialect, "users")],
+            tables=[Table(dialect, "users")],
             returning=ReturningClause(dialect, [Column(dialect, "id")]),
         )
 
@@ -152,13 +153,16 @@ class TestSQLServerDialectDML:
 
     def test_insert_top(self, dialect):
         from rhosocial.activerecord.backend.expression import (
-            InsertExpression, ValuesSource, Column, TableExpression,
+            InsertExpression,
+            ValuesSource,
+            Column,
         )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.core import Literal
 
         insert = InsertExpression(
             dialect=dialect,
-            into=TableExpression(dialect, "users"),
+            into=Table(dialect, "users"),
             columns=["name"],
             source=ValuesSource(dialect, [
                 [Literal(dialect, "A")],
@@ -179,11 +183,12 @@ class TestSQLServerDialectSequence:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_create_sequence(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Sequence
         from rhosocial.activerecord.backend.expression.statements import CreateSequenceExpression
 
         expr = CreateSequenceExpression(
             dialect=dialect,
-            sequence_name="test_seq",
+            sequence=Sequence(dialect, "test_seq"),
             start=1,
             increment=1,
         )
@@ -193,11 +198,12 @@ class TestSQLServerDialectSequence:
         assert "INCREMENT BY 1" in sql
 
     def test_create_sequence_full(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Sequence
         from rhosocial.activerecord.backend.expression.statements import CreateSequenceExpression
 
         expr = CreateSequenceExpression(
             dialect=dialect,
-            sequence_name="order_seq",
+            sequence=Sequence(dialect, "order_seq"),
             start=1000,
             increment=10,
             minvalue=1,
@@ -214,11 +220,12 @@ class TestSQLServerDialectSequence:
         assert "CACHE 20" in sql
 
     def test_drop_sequence_if_exists(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Sequence
         from rhosocial.activerecord.backend.expression.statements import DropSequenceExpression
 
         expr = DropSequenceExpression(
             dialect=dialect,
-            sequence_name="test_seq",
+            sequence=Sequence(dialect, "test_seq"),
             if_exists=True,
         )
         sql, params = dialect.format_drop_sequence_statement(expr)
@@ -233,21 +240,23 @@ class TestSQLServerDialectSchema:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_create_schema(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Schema
         from rhosocial.activerecord.backend.expression.statements import CreateSchemaExpression
 
         expr = CreateSchemaExpression(
             dialect=dialect,
-            schema_name="sales",
+            schema=Schema(dialect, "sales"),
         )
         sql, params = dialect.format_create_schema_statement(expr)
         assert "CREATE SCHEMA [sales]" in sql
 
     def test_create_schema_with_authorization(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Schema
         from rhosocial.activerecord.backend.expression.statements import CreateSchemaExpression
 
         expr = CreateSchemaExpression(
             dialect=dialect,
-            schema_name="sales",
+            schema=Schema(dialect, "sales"),
             authorization="dbo",
         )
         sql, params = dialect.format_create_schema_statement(expr)
@@ -255,11 +264,12 @@ class TestSQLServerDialectSchema:
         assert "AUTHORIZATION [dbo]" in sql
 
     def test_drop_schema(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Schema
         from rhosocial.activerecord.backend.expression.statements import DropSchemaExpression
 
         expr = DropSchemaExpression(
             dialect=dialect,
-            schema_name="sales",
+            schema=Schema(dialect, "sales"),
         )
         sql, params = dialect.format_drop_schema_statement(expr)
         assert "DROP SCHEMA [sales]" in sql
@@ -273,11 +283,12 @@ class TestSQLServerDialectTruncate:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_truncate_table(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import TruncateExpression
 
         expr = TruncateExpression(
             dialect=dialect,
-            table_name="users",
+            table=Table(dialect, "users"),
         )
         sql, params = dialect.format_truncate_statement(expr)
         assert sql == "TRUNCATE TABLE [users]"
@@ -290,19 +301,48 @@ class TestSQLServerDialectLateral:
     def dialect(self):
         return SQLServerDialect(SQL_SERVER_2022)
 
+    @staticmethod
+    def _lateral(dialect, join_type):
+        """A LateralExpression over a one-row query, as core builds it.
+
+        The formatter takes the node, not the pieces it is made of: that is
+        what ``LateralExpression.to_sql()`` passes, and the previous signature
+        made every LateralExpression on SQL Server raise TypeError.
+        """
+        from rhosocial.activerecord.backend.expression.core import Literal, Subquery
+        from rhosocial.activerecord.backend.expression.objects import Table
+        from rhosocial.activerecord.backend.expression.query_sources import (
+            LateralExpression,
+        )
+        from rhosocial.activerecord.backend.expression.statements.dql import (
+            QueryExpression,
+        )
+
+        query = QueryExpression(
+            dialect, select=[Literal(dialect, 1)], from_=Table(dialect, "items")
+        )
+        return LateralExpression(
+            dialect, Subquery(dialect, query), join_type=join_type, alias="i"
+        )
+
     def test_cross_apply(self, dialect):
         sql, params = dialect.format_lateral_expression(
-            "SELECT * FROM [items]", (), "i", "CROSS APPLY"
+            self._lateral(dialect, "INNER")
         )
         assert "CROSS APPLY" in sql
         assert "AS [i]" in sql
 
     def test_outer_apply(self, dialect):
         sql, params = dialect.format_lateral_expression(
-            "SELECT * FROM [items]", (), "i", "LEFT JOIN"
+            self._lateral(dialect, "LEFT JOIN")
         )
         assert "OUTER APPLY" in sql
         assert "AS [i]" in sql
+
+    def test_renders_through_to_sql(self, dialect):
+        """The node renders, which is the assertion the old signature broke."""
+        sql, _ = self._lateral(dialect, "INNER").to_sql()
+        assert "CROSS APPLY" in sql
 
 
 class TestSQLServerDialectSetOperation:
@@ -313,18 +353,22 @@ class TestSQLServerDialectSetOperation:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_union_all(self, dialect):
-        from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression import (
+            QueryExpression,
+            Column,
+        )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id")],
-            from_=TableExpression(dialect, "users"),
+            from_=Table(dialect, "users"),
         )
         right = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id")],
-            from_=TableExpression(dialect, "admins"),
+            from_=Table(dialect, "admins"),
         )
 
         expr = SetOperationExpression(
@@ -336,18 +380,22 @@ class TestSQLServerDialectSetOperation:
         assert "[admins]" in sql
 
     def test_intersect(self, dialect):
-        from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression import (
+            QueryExpression,
+            Column,
+        )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id")],
-            from_=TableExpression(dialect, "orders"),
+            from_=Table(dialect, "orders"),
         )
         right = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id")],
-            from_=TableExpression(dialect, "shipments"),
+            from_=Table(dialect, "shipments"),
         )
 
         expr = SetOperationExpression(
@@ -357,18 +405,22 @@ class TestSQLServerDialectSetOperation:
         assert "INTERSECT" in sql
 
     def test_except(self, dialect):
-        from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression import (
+            QueryExpression,
+            Column,
+        )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 
         left = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id")],
-            from_=TableExpression(dialect, "employees"),
+            from_=Table(dialect, "employees"),
         )
         right = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id")],
-            from_=TableExpression(dialect, "managers"),
+            from_=Table(dialect, "managers"),
         )
 
         expr = SetOperationExpression(
@@ -412,18 +464,20 @@ class TestSQLServerDialectMerge:
             MergeExpression, MergeActionType, MergeAction,
         )
         from rhosocial.activerecord.backend.expression import (
-            QueryExpression, Column, TableExpression,
+            QueryExpression,
+            Column,
         )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
         from rhosocial.activerecord.backend.expression.core import Literal
 
         merge = MergeExpression(
             dialect=dialect,
-            target_table=TableExpression(dialect, "target"),
+            target_table=Table(dialect, "target"),
             source=QueryExpression(
                 dialect=dialect,
                 select=[Column(dialect, "id"), Column(dialect, "name")],
-                from_=TableExpression(dialect, "source"),
+                from_=Table(dialect, "source"),
             ),
             on_condition=ComparisonPredicate(
                 dialect, "=",
@@ -663,10 +717,13 @@ class TestSQLServerDialectTemporal:
         assert "PERIOD FOR SYSTEM_TIME ([StartTime], [EndTime])" in sql
 
     def test_system_versioning(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.impl.sqlserver.expression import (
             SQLServerSystemVersioningClause,
         )
-        expr = SQLServerSystemVersioningClause(dialect, "TestTableHistory", "dbo")
+        expr = SQLServerSystemVersioningClause(
+            dialect, Table(dialect, "TestTableHistory", schema_name="dbo")
+        )
         sql, params = expr.to_sql()
         assert "SYSTEM_VERSIONING = ON" in sql
         assert "[dbo].[TestTableHistory]" in sql
@@ -775,14 +832,14 @@ class TestSQLServerDialectDDL:
             CreateTableExpression, ColumnDefinition, ColumnConstraint,
             ColumnConstraintType,
         )
-        from rhosocial.activerecord.backend.expression.core import TableExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.types import (
             IntegerType, VarCharType,
         )
 
         expr = CreateTableExpression(
             dialect=dialect,
-            table=TableExpression(dialect, "users"),
+            table=Table(dialect, "users"),
             columns=[
                 ColumnDefinition(dialect,
                     name="id",
@@ -808,23 +865,23 @@ class TestSQLServerDialectDDL:
         from rhosocial.activerecord.backend.expression.statements import (
             DropTableExpression,
         )
-        from rhosocial.activerecord.backend.expression.core import TableExpression
-
+        from rhosocial.activerecord.backend.expression.objects import Table
         expr = DropTableExpression(
             dialect=dialect,
-            table=TableExpression(dialect, "users"),
+            table=Table(dialect, "users"),
             if_exists=True,
         )
         sql, params = dialect.format_drop_table_statement(expr)
         assert "DROP TABLE IF EXISTS [users]" in sql
 
     def test_create_index_with_includes(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Index, Table
         from rhosocial.activerecord.backend.expression.statements import CreateIndexExpression
 
         expr = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_users_email_include",
-            table_name="users",
+            index=Index(dialect, "idx_users_email_include"),
+            table=Table(dialect, "users"),
             columns=["email"],
             include=["id", "name"],
         )

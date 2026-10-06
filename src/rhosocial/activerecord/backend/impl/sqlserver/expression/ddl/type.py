@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any, Dict, Optional, Sequence, Union, cast
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
+from rhosocial.activerecord.backend.expression.objects import Type
 from rhosocial.activerecord.backend.expression.serialization import ExpressionRegistry
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnDefinition,
@@ -149,14 +150,19 @@ class SQLServerClrTypeDefinition(TypeDefinition):
 
 
 class SQLServerDropTypeExpression(DropTypeExpression):
-    """SQL Server DROP TYPE expression with explicit unsupported behavior flags."""
+    """SQL Server DROP TYPE expression with explicit unsupported behavior flags.
+
+    ``type`` is the :class:`~rhosocial.activerecord.backend.expression.objects.Type`
+    being dropped, namespace and all; SQL Server has neither ``CASCADE`` nor
+    ``RESTRICT`` for ``DROP TYPE``, and asking for one is an error here rather
+    than a silently dropped token.
+    """
 
     def __init__(
         self,
         dialect: Any,
-        type_name: str,
+        type: Type,
         *,
-        schema_name: Optional[str] = None,
         if_exists: bool = False,
         cascade: bool = False,
         restrict: bool = False,
@@ -165,12 +171,7 @@ class SQLServerDropTypeExpression(DropTypeExpression):
             raise TypeError("cascade and restrict must be bools")
         if cascade and restrict:
             raise ValueError("CASCADE and RESTRICT are mutually exclusive")
-        super().__init__(
-            dialect,
-            type_name,
-            schema_name=schema_name,
-            if_exists=if_exists,
-        )
+        super().__init__(dialect, type, if_exists=if_exists)
         self.cascade = cascade
         self.restrict = restrict
 

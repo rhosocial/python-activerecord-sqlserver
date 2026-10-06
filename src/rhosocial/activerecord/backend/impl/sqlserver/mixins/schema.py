@@ -1,6 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/schema.py
 from typing import Tuple, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.expression.objects import Schema
+
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import (
         CreateSchemaExpression,
@@ -32,9 +34,19 @@ class SQLServerSchemaMixin:
 
         SQL Server uses CREATE SCHEMA schema_name [AUTHORIZATION owner_name].
         Does not support IF NOT EXISTS.
+
+        Raises:
+            TypeError: ``expr.schema`` is not a Schema. A table handed here
+                would render as a well-formed ``CREATE SCHEMA`` over that
+                table's name.
         """
+        if not isinstance(expr.schema, Schema):
+            raise TypeError(
+                f"CreateSchemaExpression.schema must be a Schema, "
+                f"got {type(expr.schema).__name__}"
+            )
         parts = ["CREATE SCHEMA"]
-        parts.append(self.format_identifier(expr.schema_name))
+        parts.append(expr.schema.to_sql()[0])
         if expr.authorization:
             parts.append(f"AUTHORIZATION {self.format_identifier(expr.authorization)}")
         return " ".join(parts), ()
@@ -44,7 +56,15 @@ class SQLServerSchemaMixin:
 
         SQL Server requires schema to be empty before dropping.
         Does not support IF EXISTS or CASCADE.
+
+        Raises:
+            TypeError: ``expr.schema`` is not a Schema. A table handed here
+                would render as a well-formed ``DROP SCHEMA`` over that table's
+                name.
         """
-        parts = ["DROP SCHEMA"]
-        parts.append(self.format_identifier(expr.schema_name))
-        return " ".join(parts), ()
+        if not isinstance(expr.schema, Schema):
+            raise TypeError(
+                f"DropSchemaExpression.schema must be a Schema, "
+                f"got {type(expr.schema).__name__}"
+            )
+        return f"DROP SCHEMA {expr.schema.to_sql()[0]}", ()

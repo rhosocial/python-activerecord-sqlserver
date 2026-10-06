@@ -28,6 +28,7 @@ backend.connect()
 dialect = backend.dialect
 
 from rhosocial.activerecord.backend.expression import CreateTableExpression
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
@@ -40,7 +41,7 @@ ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='txn_users',
+    table=Table(dialect, 'txn_users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -66,7 +67,7 @@ from rhosocial.activerecord.backend.expression.core import Literal
 with backend.transaction():
     insert_expr = InsertExpression(
         dialect=dialect,
-        into='txn_users',
+        into=Table(dialect, 'txn_users'),
         columns=['name'],
         source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
     )
@@ -75,7 +76,7 @@ with backend.transaction():
     
     insert_expr2 = InsertExpression(
         dialect=dialect,
-        into='txn_users',
+        into=Table(dialect, 'txn_users'),
         columns=['name'],
         source=ValuesSource(dialect, [[Literal(dialect, 'Bob')]]),
     )
@@ -90,12 +91,12 @@ print("Transaction committed")
 # ============================================================
 # SECTION: Execution (verify results)
 # ============================================================
-from rhosocial.activerecord.backend.expression import QueryExpression, TableExpression, Column
+from rhosocial.activerecord.backend.expression import QueryExpression, Column
 
 query = QueryExpression(
     dialect=dialect,
     select=[Column(dialect, 'id'), Column(dialect, 'name')],
-    from_=TableExpression(dialect, 'txn_users'),
+    from_=Table(dialect, 'txn_users'),
 )
 sql, params = query.to_sql()
 dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
@@ -109,7 +110,7 @@ for row in result.data or []:
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='txn_users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'txn_users'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

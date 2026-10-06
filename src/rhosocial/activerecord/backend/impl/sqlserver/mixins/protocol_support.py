@@ -15,6 +15,7 @@ silently returning a stub.
 from typing import Any, Dict, List, Optional, Tuple
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.expression.objects import Index, Table, View
 
 
 class SQLServerProtocolSupportMixin:
@@ -107,6 +108,11 @@ class SQLServerProtocolSupportMixin:
         SQL Syntax:
             CREATE FULLTEXT INDEX ON table (column, ...)
             KEY INDEX unique_index ON catalog_name
+
+        The table and the key index are schema-scoped objects and go through the
+        shared qualified-name entry point. The full-text catalog is **not** a
+        schema object: SQL Server scopes it to the database, not to a schema,
+        so it stays a plain identifier.
         """
         self.check_feature_support(
             "supports_fulltext_catalog",
@@ -115,8 +121,10 @@ class SQLServerProtocolSupportMixin:
         )
         columns_str = ", ".join(self.format_identifier(col) for col in columns)
         sql = (
-            f"CREATE FULLTEXT INDEX ON {self.format_identifier(table)} "
-            f"({columns_str}) KEY INDEX {self.format_identifier(key_index)} "
+            f"CREATE FULLTEXT INDEX ON "
+            f"{self.qualified_object_name(Table, table)} "
+            f"({columns_str}) KEY INDEX "
+            f"{self.qualified_object_name(Index, key_index)} "
             f"ON {self.format_identifier(catalog_name)}"
         )
         return sql, ()
@@ -132,7 +140,10 @@ class SQLServerProtocolSupportMixin:
             "FULLTEXT indexes",
             "requires SQL Server 2005+.",
         )
-        return f"DROP FULLTEXT INDEX ON {self.format_identifier(table)}", ()
+        return (
+            f"DROP FULLTEXT INDEX ON {self.qualified_object_name(Table, table)}",
+            (),
+        )
 
     def format_contains_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a CONTAINS predicate delegating to format_fulltext_match."""
@@ -152,7 +163,7 @@ class SQLServerProtocolSupportMixin:
         """Format a CONTAINSTABLE full-text table function."""
         escaped = search_string.replace("'", "''")
         sql = (
-            f"CONTAINSTABLE({self.format_identifier(table)}, "
+            f"CONTAINSTABLE({self.qualified_object_name(Table, table)}, "
             f"{self.format_identifier(column)}, '{escaped}'"
         )
         if top_n is not None:
@@ -275,7 +286,7 @@ class SQLServerProtocolSupportMixin:
             select_head = full_sql[:from_index]
             tail = full_sql[from_index:]
 
-        into_sql = f"INTO {self.format_identifier(into_table)}"
+        into_sql = f"INTO {self.qualified_object_name(Table, into_table)}"
         return f"{select_head} {into_sql}{tail}", tuple(params)
 
     def _format_select_head(self, expr: Any) -> str:
@@ -360,7 +371,8 @@ class SQLServerProtocolSupportMixin:
     def format_set_identity_insert(self, table: str, on: bool) -> Tuple[str, tuple]:
         """Format SET IDENTITY_INSERT table {ON|OFF}."""
         state = "ON" if on else "OFF"
-        return f"SET IDENTITY_INSERT {self.format_identifier(table)} {state}", ()
+        name_sql = self.qualified_object_name(Table, table)
+        return f"SET IDENTITY_INSERT {name_sql} {state}", ()
 
     def format_create_indexed_view_statement(self, expr: Any) -> Tuple[str, tuple]:
         """Format CREATE VIEW WITH SCHEMABINDING (indexed view) (2005+).
@@ -379,14 +391,23 @@ class SQLServerProtocolSupportMixin:
 
         Returns:
             Tuple of (SQL string, params tuple).
+
+        Raises:
+            TypeError: ``expr.view`` is not a View. A table handed here would
+                render as a well-formed ``CREATE VIEW`` over that table's name.
         """
         self.check_feature_support(
             "supports_indexed_view",
             "indexed views",
             "requires SQL Server 2005+.",
         )
+        if not isinstance(expr.view, View):
+            raise TypeError(
+                f"CreateViewExpression.view must be a View, "
+                f"got {type(expr.view).__name__}"
+            )
         parts = ["CREATE VIEW"]
-        parts.append(self.format_identifier(expr.view_name))
+        parts.append(expr.view.to_sql()[0])
 
         if expr.column_aliases:
             cols = ", ".join(self.format_identifier(c) for c in expr.column_aliases)
@@ -704,8 +725,10 @@ class SQLServerProtocolSupportMixin:
             "requires SQL Server 2008+.",
         )
         sql = (
-            f"CREATE SPATIAL INDEX {self.format_identifier(expr.index_name)} "
-            f"ON {self.format_identifier(expr.table_name)} ({self.format_identifier(expr.column)}) "
+            f"CREATE SPATIAL INDEX "
+            f"{self.qualified_object_name(Index, expr.index_name)} "
+            f"ON {self.qualified_object_name(Table, expr.table_name)} "
+            f"({self.format_identifier(expr.column)}) "
             f"WITH (BOUNDING_BOX = (0, 0, 100, 100))"
         )
         return sql, ()

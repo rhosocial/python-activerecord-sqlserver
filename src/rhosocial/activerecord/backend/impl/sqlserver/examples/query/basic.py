@@ -34,6 +34,7 @@ from rhosocial.activerecord.backend.expression import (
     ValuesSource,
 )
 from rhosocial.activerecord.backend.expression.core import Literal
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
@@ -45,7 +46,7 @@ dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='query_users',
+    table=Table(dialect, 'query_users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -70,7 +71,7 @@ users = [
 for row in users:
     insert_expr = InsertExpression(
         dialect=dialect,
-        into='query_users',
+        into=Table(dialect, 'query_users'),
         columns=['name', 'age', 'status'],
         source=ValuesSource(dialect, [[Literal(dialect, v) for v in row]]),
     )
@@ -82,7 +83,6 @@ for row in users:
 # ============================================================
 from rhosocial.activerecord.backend.expression import (
     QueryExpression,
-    TableExpression,
     Column,
     WhereClause,
     OrderByClause,
@@ -97,7 +97,7 @@ query = QueryExpression(
         Column(dialect, 'name'),
         Column(dialect, 'age'),
     ],
-    from_=TableExpression(dialect, 'query_users'),
+    from_=Table(dialect, 'query_users'),
     where=WhereClause(
         dialect,
         condition=ComparisonPredicate(
@@ -131,7 +131,7 @@ for row in result.data or []:
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='query_users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'query_users'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

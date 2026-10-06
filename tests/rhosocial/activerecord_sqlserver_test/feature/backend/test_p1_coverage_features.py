@@ -48,7 +48,8 @@ SQL_SERVER_2022 = (16, 0, 0)
 
 
 def _make_query(d, columns=("a", "b"), where=None, select_into_table=None):
-    from rhosocial.activerecord.backend.expression import Column, TableExpression
+    from rhosocial.activerecord.backend.expression import Column
+    from rhosocial.activerecord.backend.expression.objects import Table
     from rhosocial.activerecord.backend.impl.sqlserver.expression import (
         SQLServerSelectIntoExpression,
     )
@@ -56,7 +57,7 @@ def _make_query(d, columns=("a", "b"), where=None, select_into_table=None):
     return SQLServerSelectIntoExpression(
         dialect=d,
         select=[Column(d, col) for col in columns],
-        from_=TableExpression(d, "t"),
+        from_=Table(d, "t"),
         where=where,
         select_into_table=select_into_table,
     )
@@ -345,9 +346,10 @@ class TestAlterColumn:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def _alter(self, d, action):
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import AlterTableExpression
 
-        return AlterTableExpression(d, "t", actions=[action]).to_sql()[0]
+        return AlterTableExpression(d, Table(d, "t"), actions=[action]).to_sql()[0]
 
     def _alter_column(self, d, column_name="c", operation="SET DATA TYPE", new_value=None, **options):
         from rhosocial.activerecord.backend.impl.sqlserver.expression import (
