@@ -453,11 +453,27 @@ class TestGroupingAndUpsertBasics:
             "MINVALUE 1 MAXVALUE 100 NO CYCLE CACHE 10"
         )
         assert create_params == ()
-        # IF EXISTS only appears from 2012 onwards.
+        # The sequence object itself arrives in 2012, so a version without one
+        # refuses the statement instead of rendering it. DROP SEQUENCE IF EXISTS
+        # is a 2016 (13.x) addition, and a requested IF EXISTS the version cannot
+        # spell raises rather than being dropped.
         d10 = SQLServerDialect((10, 0, 0))
+        with pytest.raises(UnsupportedFeatureError):
+            DropSequenceExpression(
+                d10, Sequence(d10, "seq"), if_exists=True
+            ).to_sql()
+        d11 = SQLServerDialect(SQL_SERVER_2012)
         assert DropSequenceExpression(
-            d10, Sequence(d10, "seq"), if_exists=True
+            d11, Sequence(d11, "seq")
         ).to_sql()[0] == "DROP SEQUENCE [seq]"
+        with pytest.raises(UnsupportedFeatureError):
+            DropSequenceExpression(
+                d11, Sequence(d11, "seq"), if_exists=True
+            ).to_sql()
+        d13 = SQLServerDialect(SQL_SERVER_2016)
+        assert DropSequenceExpression(
+            d13, Sequence(d13, "seq"), if_exists=True
+        ).to_sql()[0] == "DROP SEQUENCE IF EXISTS [seq]"
         assert DropSequenceExpression(
             d16, Sequence(d16, "seq"), if_exists=True
         ).to_sql()[0] == "DROP SEQUENCE IF EXISTS [seq]"

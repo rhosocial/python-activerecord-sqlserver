@@ -220,8 +220,6 @@ if TYPE_CHECKING:
         DropTableExpression,
         CreateSchemaExpression,
         DropSchemaExpression,
-        CreateSequenceExpression,
-        DropSequenceExpression,
         AlterSequenceExpression,
         MergeExpression,
         TruncateExpression,
@@ -1018,100 +1016,102 @@ class SQLServerDialect(
 
     # --- SQL Server-specific format overrides ---
 
-    def format_create_sequence_statement(self, expr: "CreateSequenceExpression") -> Tuple[str, tuple]:
-        """Format CREATE SEQUENCE for SQL Server (2012+).
-
-        SQL Server uses:
-        - CREATE SEQUENCE [schema.]name
-        - START WITH, INCREMENT BY, MINVALUE, MAXVALUE
-        - CYCLE | NO CYCLE, CACHE, NO ORDER (ORDER not supported)
-        - No IF NOT EXISTS support, no OWNED BY
-
-        Raises:
-            TypeError: ``expr.sequence`` is not a Sequence. A table handed here
-                would render as a well-formed ``CREATE SEQUENCE`` over that
-                table's name.
-        """
-        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-
-        if not isinstance(expr.sequence, Sequence):
-            raise TypeError(
-                f"CreateSequenceExpression.sequence must be a Sequence, "
-                f"got {type(expr.sequence).__name__}"
-            )
-        if getattr(expr, "if_not_exists", False):
-            raise UnsupportedFeatureError(
-                self.name, "CREATE SEQUENCE IF NOT EXISTS",
-                "SQL Server has no CREATE SEQUENCE IF NOT EXISTS syntax.",
-            )
-        if getattr(expr, "owned_by", None):
-            raise UnsupportedFeatureError(
-                self.name, "SEQUENCE OWNED BY",
-                "SQL Server sequences have no OWNED BY clause.",
-            )
-        parts = ["CREATE SEQUENCE"]
-        parts.append(expr.sequence.to_sql()[0])
-        if expr.start is not None:
-            parts.append(f"START WITH {expr.start}")
-        if expr.increment is not None:
-            parts.append(f"INCREMENT BY {expr.increment}")
-        if expr.minvalue is not None:
-            parts.append(f"MINVALUE {expr.minvalue}")
-        if expr.maxvalue is not None:
-            parts.append(f"MAXVALUE {expr.maxvalue}")
-        if expr.cycle:
-            parts.append("CYCLE")
-        else:
-            parts.append("NO CYCLE")
-        if expr.cache is not None:
-            parts.append(f"CACHE {expr.cache}")
-        return " ".join(parts), ()
-
-    def format_drop_sequence_statement(self, expr: "DropSequenceExpression") -> Tuple[str, tuple]:
-        """Format DROP SEQUENCE for SQL Server (2012+).
-
-        Raises:
-            TypeError: ``expr.sequence`` is not a Sequence. A table handed here
-                would render as a well-formed ``DROP SEQUENCE`` over that
-                table's name.
-        """
-        if not isinstance(expr.sequence, Sequence):
-            raise TypeError(
-                f"DropSequenceExpression.sequence must be a Sequence, "
-                f"got {type(expr.sequence).__name__}"
-            )
-        parts = ["DROP SEQUENCE"]
-        if expr.if_exists and self.version >= SQL_SERVER_2012:
-            parts.append("IF EXISTS")
-        parts.append(expr.sequence.to_sql()[0])
-        return " ".join(parts), ()
+    # CREATE SEQUENCE and DROP SEQUENCE have no local copy: SQL Server's
+    # spelling is exactly the one core's SequenceMixin emits, and that mixin now
+    # consults supports_sequence() and the option probes before every clause.
+    # Answering the probes in SQLServerSequenceMixin is therefore the whole
+    # implementation, and one renderer serves every dialect.
 
     def format_alter_sequence_statement(self, expr: "AlterSequenceExpression") -> Tuple[str, tuple]:
         """Format ALTER SEQUENCE for SQL Server.
+
+        SQL Server's ALTER SEQUENCE grammar differs from the standard form core
+        renders: it changes the start point with ``RESTART WITH`` and has no
+        ``START WITH`` clause -- the engine rejects that argument with error
+        11710 -- and it has no ``ORDER``/``OWNED BY`` clause either. The
+        formatter is kept here rather than deferred to ``SequenceMixin`` so
+        those words are never emitted, while the option probes still decide
+        which of the shared options this version accepts.
 
         Raises:
             TypeError: ``expr.sequence`` is not a Sequence. A table handed here
                 would render as a well-formed ``ALTER SEQUENCE`` over that
                 table's name.
+            UnsupportedFeatureError: If the dialect has no sequence object, or
+                the expression asks for an option SQL Server's ALTER SEQUENCE
+                cannot spell.
         """
         if not isinstance(expr.sequence, Sequence):
             raise TypeError(
                 f"AlterSequenceExpression.sequence must be a Sequence, "
                 f"got {type(expr.sequence).__name__}"
             )
+        if not self.supports_sequence():
+            raise UnsupportedFeatureError(
+                self.name, "ALTER SEQUENCE",
+                f"{self.name} has no sequence object to alter."
+            )
         parts = [f"ALTER SEQUENCE {expr.sequence.to_sql()[0]}"]
         if expr.restart is not None:
             parts.append(f"RESTART WITH {expr.restart}")
+        if expr.start is not None:
+            # ALTER SEQUENCE changes the start point with RESTART WITH, not
+            # START WITH; ``supports_sequence_start`` answers for CREATE, where
+            # the words are legal, so this is a statement-grammar fact.
+            raise UnsupportedFeatureError(
+                self.name, "ALTER SEQUENCE START",
+                "SQL Server's ALTER SEQUENCE has no START WITH clause; use "
+                "RESTART WITH to change the start point.",
+            )
         if expr.increment is not None:
+            if not self.supports_sequence_increment():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE INCREMENT",
+                    f"{self.name} does not support the INCREMENT BY sequence option."
+                )
             parts.append(f"INCREMENT BY {expr.increment}")
         if expr.minvalue is not None:
+            if not self.supports_sequence_minvalue():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE MINVALUE",
+                    f"{self.name} does not support the MINVALUE sequence option."
+                )
             parts.append(f"MINVALUE {expr.minvalue}")
         if expr.maxvalue is not None:
+            if not self.supports_sequence_maxvalue():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE MAXVALUE",
+                    f"{self.name} does not support the MAXVALUE sequence option."
+                )
             parts.append(f"MAXVALUE {expr.maxvalue}")
         if expr.cycle is not None:
-            parts.append("CYCLE" if expr.cycle else "NO CYCLE")
+            if expr.cycle:
+                if not self.supports_sequence_cycle():
+                    raise UnsupportedFeatureError(
+                        self.name, "ALTER SEQUENCE CYCLE",
+                        f"{self.name} does not support the CYCLE sequence option."
+                    )
+                parts.append("CYCLE")
+            elif self.supports_sequence_cycle():
+                # NO CYCLE is the default; only spell it where it is legal.
+                parts.append("NO CYCLE")
         if expr.cache is not None:
+            if not self.supports_sequence_cache():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE CACHE",
+                    f"{self.name} does not support the CACHE sequence option."
+                )
             parts.append(f"CACHE {expr.cache}")
+        if expr.order is not None:
+            raise UnsupportedFeatureError(
+                self.name, "ALTER SEQUENCE ORDER",
+                f"{self.name} does not support the ORDER sequence option."
+            )
+        if expr.owned_by is not None:
+            raise UnsupportedFeatureError(
+                self.name, "ALTER SEQUENCE OWNED BY",
+                f"{self.name} does not support the OWNED BY sequence option."
+            )
         return " ".join(parts), ()
 
     def format_truncate_statement(self, expr: "TruncateExpression") -> Tuple[str, tuple]:
