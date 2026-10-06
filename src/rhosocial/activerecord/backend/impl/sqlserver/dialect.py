@@ -132,6 +132,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
 
     TransactionControlMixin,
     AutoIncrementMixin,
+    IdentityColumnMixin,
     GeneratedColumnMixin,
     TriggerMixin,
     PartitionMixin,
@@ -145,6 +146,7 @@ from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
+from .mixins.identity_column import SQLServerIdentityColumnMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
 from .mixins.graph import SQLServerGraphMixin
@@ -289,6 +291,7 @@ class SQLServerDialect(
     SQLServerAlterColumnModifierMixin,  # Before DDLColumnMixin to override format_*_action
     SQLServerProtocolSupportMixin,  # SQL Server protocol contract implementations
     SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
+    SQLServerIdentityColumnMixin,  # IDENTITY(seed, increment) formatter + probes
     SQLServerPivotMixin,  # PIVOT / UNPIVOT formatters (2005+)
     SQLServerGraphMixin,  # SQL Graph: node/edge tables + MATCH predicate (2017+/2019+)
     SQLServerColumnstoreIndexMixin,  # columnstore index DDL (2012+/2014+/2022+)
@@ -356,6 +359,7 @@ class SQLServerDialect(
 
     TransactionControlMixin,
     AutoIncrementMixin,
+    IdentityColumnMixin,
     GeneratedColumnMixin,
     TriggerMixin,
     PartitionMixin,
@@ -728,12 +732,6 @@ class SQLServerDialect(
             all_params.extend(kind_params)
 
         return if_not_exists_guard + ' '.join(parts), tuple(all_params)
-
-    def format_identity_clause(self, expr) -> Tuple[str, tuple]:
-        """SQL Server renders identity as ``IDENTITY(seed, increment)``."""
-        seed = expr.start if expr.start is not None else 1
-        increment = expr.increment if expr.increment is not None else 1
-        return f" IDENTITY({seed}, {increment})", ()
 
     def format_column_definition(
         self,
