@@ -20,7 +20,8 @@ uses, and the rendered statement is handed to
 
 Measured on 2019 / 2022 / 2025: ``IDENTITY(seed, increment)`` executes and
 honours seed/increment; the standard ``GENERATED ... AS IDENTITY`` grammar is
-refused by the server; MINVALUE / MAXVALUE / CYCLE have no spelling.
+refused by the server; MINVALUE / MAXVALUE / CYCLE / ORDER / CACHE have no
+spelling.
 """
 
 import pytest
@@ -38,7 +39,10 @@ from rhosocial.activerecord.backend.expression.execution_testing import (
     confirm_expression_execution,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements import AutoIncrementClause
+from rhosocial.activerecord.backend.expression.statements import (
+    AutoIncrementClause,
+    IdentityClause,
+)
 from rhosocial.activerecord.backend.expression.types import IntegerType, TextType
 
 
@@ -189,6 +193,33 @@ class TestUnsupportedRequestsAreNotRendered:
         )
         assert outcome is ExecutionOutcome.NOT_RENDERED
 
+    @pytest.mark.parametrize(
+        "identity_kwargs,feature",
+        [
+            ({"order": True}, "IDENTITY ORDER"),
+            ({"order": False}, "IDENTITY ORDER"),
+            ({"cache": 10}, "IDENTITY CACHE"),
+            ({"cache": 0}, "IDENTITY CACHE"),
+        ],
+        ids=["order", "no-order", "cache", "no-cache"],
+    )
+    def test_order_and_cache_requests_are_not_rendered(
+        self, sqlserver_backend, identity_kwargs, feature
+    ):
+        """ORDER / CACHE have no spelling in ``IDENTITY(seed, increment)``.
+
+        The AR-layer ``IdentityAttribute`` does not carry these fields yet, so
+        the request is built at the clause level -- the unit the formatter
+        gates. The verdict is NOT_RENDERED: the dialect refuses before the
+        server is ever asked, and the refusal names the option.
+        """
+        dialect = sqlserver_backend.dialect
+        expr = IdentityClause(dialect, **identity_kwargs)
+        outcome = confirm_expression_execution(sqlserver_backend, expr)
+        assert outcome is ExecutionOutcome.NOT_RENDERED
+        with pytest.raises(UnsupportedFeatureError, match=feature):
+            expr.to_sql()
+
 
 class TestServerRefusesTheStandardSpellings:
     """The declarations are measured, not assumed: the server's own answers.
@@ -221,8 +252,34 @@ class TestServerRefusesTheStandardSpellings:
                 "ar_identity_std_cycle",
                 "CREATE TABLE dbo.{name} (id INT IDENTITY(1,1) CYCLE)",
             ),
+            (
+                "ar_identity_std_order",
+                "CREATE TABLE dbo.{name} (id INT IDENTITY(1,1) ORDER)",
+            ),
+            (
+                "ar_identity_std_no_order",
+                "CREATE TABLE dbo.{name} (id INT IDENTITY(1,1) NO ORDER)",
+            ),
+            (
+                "ar_identity_std_cache",
+                "CREATE TABLE dbo.{name} (id INT IDENTITY(1,1) CACHE 10)",
+            ),
+            (
+                "ar_identity_std_no_cache",
+                "CREATE TABLE dbo.{name} (id INT IDENTITY(1,1) NO CACHE)",
+            ),
         ],
-        ids=["always", "by-default", "minvalue", "maxvalue", "cycle"],
+        ids=[
+            "always",
+            "by-default",
+            "minvalue",
+            "maxvalue",
+            "cycle",
+            "order",
+            "no-order",
+            "cache",
+            "no-cache",
+        ],
     )
     def test_standard_spelling_is_rejected(self, sqlserver_backend, table_name, statement):
         _drop(sqlserver_backend, table_name)

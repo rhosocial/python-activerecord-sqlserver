@@ -12,10 +12,10 @@ standard clause its own spelling can express:
   Server 2019 / 2022 / 2025;
 * ``seed`` / ``increment`` are the two parameters the property takes;
 * the generation mode ``ALWAYS`` and the sequence attributes
-  MINVALUE / MAXVALUE / CYCLE have no spelling in the property at all.
-  Every candidate spelling was measured refused by all three servers, so
-  those probes answer ``False`` and the formatter refuses a request for them
-  by name instead of silently dropping it.
+  MINVALUE / MAXVALUE / CYCLE / ORDER / CACHE have no spelling in the
+  property at all. Every candidate spelling was measured refused by all
+  three servers, so those probes answer ``False`` and the formatter refuses
+  a request for them by name instead of silently dropping it.
 
 ``AUTO_INCREMENT`` is a different mechanism again -- a *parameterless* column
 marker carried by ``AutoIncrementClause`` -- and SQL Server has no such
@@ -90,6 +90,22 @@ class SQLServerIdentityColumnMixin:
         """
         return False
 
+    def supports_identity_order(self) -> bool:
+        """SQL Server's identity property has no ORDER option.
+
+        Measured on 2019 / 2022 / 2025: both candidate spellings (``ORDER``,
+        ``NO ORDER``) are refused as syntax errors.
+        """
+        return False
+
+    def supports_identity_cache(self) -> bool:
+        """SQL Server's identity property has no CACHE option.
+
+        Measured on 2019 / 2022 / 2025: both candidate spellings
+        (``CACHE <n>``, ``NO CACHE``) are refused as syntax errors.
+        """
+        return False
+
     def supports_auto_increment_column(self) -> bool:
         """SQL Server has no bare ``AUTO_INCREMENT`` column marker.
 
@@ -112,8 +128,9 @@ class SQLServerIdentityColumnMixin:
           is refused, never silently rendered as the bare property);
         * :meth:`supports_identity_start` / ``_increment`` gate the seed and
           increment, the two parameters the property actually takes;
-        * :meth:`supports_identity_minvalue` / ``_maxvalue`` / ``_cycle``
-          gate the sequence attributes the property cannot spell.
+        * :meth:`supports_identity_minvalue` / ``_maxvalue`` / ``_cycle`` /
+          ``_order`` / ``_cache`` gate the sequence attributes the property
+          cannot spell.
 
         Args:
             expr: The ``IdentityClause`` carrying the identity parameters.
@@ -174,6 +191,20 @@ class SQLServerIdentityColumnMixin:
                     self.name,  # type: ignore[attr-defined]
                     "IDENTITY CYCLE",
                     f"{self.name} does not support the CYCLE identity option.",  # type: ignore[attr-defined]
+                )
+        if expr.cache is not None:
+            if not self.supports_identity_cache():
+                raise UnsupportedFeatureError(
+                    self.name,  # type: ignore[attr-defined]
+                    "IDENTITY CACHE",
+                    f"{self.name} does not support the CACHE identity option.",  # type: ignore[attr-defined]
+                )
+        if expr.order is not None:
+            if not self.supports_identity_order():
+                raise UnsupportedFeatureError(
+                    self.name,  # type: ignore[attr-defined]
+                    "IDENTITY ORDER",
+                    f"{self.name} does not support the ORDER identity option.",  # type: ignore[attr-defined]
                 )
         seed = expr.start if expr.start is not None else 1
         increment = expr.increment if expr.increment is not None else 1
