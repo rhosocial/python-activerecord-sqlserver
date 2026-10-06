@@ -207,6 +207,18 @@ class TestOtherVersionGates:
     def test_sequence_objects_2012_gate(self, version, sequence):
         assert SQLServerDialect(version).supports_create_sequence() is sequence
 
+    def test_alter_sequence_start_is_refused_at_every_version(self):
+        """ALTER SEQUENCE never accepts START WITH, whatever the version.
+
+        The CREATE-side probe is version-gated on the 2012 introduction; the
+        ALTER-side probe is not, because no version of the engine spells the
+        clause. Keeping the two apart is what this asserts.
+        """
+        for version in VERSIONS.values():
+            d = SQLServerDialect(version)
+            assert d.supports_sequence_start() is (version >= SQL_SERVER_2012)
+            assert d.supports_alter_sequence_start() is False
+
 
 class TestRenderingSnapshots:
     def test_temporary_table_gets_hash_prefix(self):

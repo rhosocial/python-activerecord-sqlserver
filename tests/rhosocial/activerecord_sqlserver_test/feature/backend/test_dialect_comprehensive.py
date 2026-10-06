@@ -231,6 +231,49 @@ class TestSQLServerDialectSequence:
         sql, params = dialect.format_drop_sequence_statement(expr)
         assert "DROP SEQUENCE IF EXISTS [test_seq]" in sql
 
+    def test_alter_sequence_start_probe_is_false(self, dialect):
+        """The ALTER-side START question is separate from CREATE's and is False."""
+        assert dialect.supports_sequence_start() is True
+        assert dialect.supports_alter_sequence_start() is False
+
+    def test_alter_sequence_start_is_refused(self, dialect):
+        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+        from rhosocial.activerecord.backend.expression.objects import Sequence
+        from rhosocial.activerecord.backend.expression.statements import AlterSequenceExpression
+
+        expr = AlterSequenceExpression(
+            dialect=dialect,
+            sequence=Sequence(dialect, "test_seq"),
+            start=5,
+        )
+        with pytest.raises(UnsupportedFeatureError) as exc_info:
+            expr.to_sql()
+        assert "ALTER SEQUENCE START" in str(exc_info.value)
+
+    def test_alter_sequence_restart_renders(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Sequence
+        from rhosocial.activerecord.backend.expression.statements import AlterSequenceExpression
+
+        sql, params = AlterSequenceExpression(
+            dialect=dialect,
+            sequence=Sequence(dialect, "test_seq"),
+            restart=5,
+        ).to_sql()
+        assert sql == "ALTER SEQUENCE [test_seq] RESTART WITH 5"
+        assert params == ()
+
+    def test_alter_sequence_increment_renders(self, dialect):
+        from rhosocial.activerecord.backend.expression.objects import Sequence
+        from rhosocial.activerecord.backend.expression.statements import AlterSequenceExpression
+
+        sql, params = AlterSequenceExpression(
+            dialect=dialect,
+            sequence=Sequence(dialect, "test_seq"),
+            increment=5,
+        ).to_sql()
+        assert sql == "ALTER SEQUENCE [test_seq] INCREMENT BY 5"
+        assert params == ()
+
 
 class TestSQLServerDialectSchema:
     """SCHEMA DDL tests."""

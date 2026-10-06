@@ -1031,7 +1031,11 @@ class SQLServerDialect(
         11710 -- and it has no ``ORDER``/``OWNED BY`` clause either. The
         formatter is kept here rather than deferred to ``SequenceMixin`` so
         those words are never emitted, while the option probes still decide
-        which of the shared options this version accepts.
+        which of the shared options this version accepts. A requested ``start``
+        is gated on :meth:`supports_alter_sequence_start`, the ALTER-side
+        question, rather than on the CREATE-side
+        :meth:`supports_sequence_start`; the two clauses are different and only
+        the former decides this statement.
 
         Raises:
             TypeError: ``expr.sequence`` is not a Sequence. A table handed here
@@ -1056,13 +1060,16 @@ class SQLServerDialect(
             parts.append(f"RESTART WITH {expr.restart}")
         if expr.start is not None:
             # ALTER SEQUENCE changes the start point with RESTART WITH, not
-            # START WITH; ``supports_sequence_start`` answers for CREATE, where
-            # the words are legal, so this is a statement-grammar fact.
-            raise UnsupportedFeatureError(
-                self.name, "ALTER SEQUENCE START",
-                "SQL Server's ALTER SEQUENCE has no START WITH clause; use "
-                "RESTART WITH to change the start point.",
-            )
+            # START WITH. ``supports_alter_sequence_start`` is the ALTER-side
+            # question and is kept apart from ``supports_sequence_start``,
+            # which answers for CREATE, where the words are legal.
+            if not self.supports_alter_sequence_start():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE START",
+                    "SQL Server's ALTER SEQUENCE has no START WITH clause; use "
+                    "RESTART WITH to change the start point.",
+                )
+            parts.append(f"START WITH {expr.start}")
         if expr.increment is not None:
             if not self.supports_sequence_increment():
                 raise UnsupportedFeatureError(

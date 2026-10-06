@@ -98,6 +98,23 @@ class SQLServerSequenceMixin:
         """CREATE SEQUENCE accepts START WITH from SQL Server 2012."""
         return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
 
+    def supports_alter_sequence_start(self) -> bool:
+        """Whether ALTER SEQUENCE accepts the START WITH option.
+
+        SQL Server does not. ALTER SEQUENCE changes the start point with
+        RESTART WITH, and the engine rejects START WITH there outright with
+        argument error 11710. The CREATE-side spelling is legal, so
+        :meth:`supports_sequence_start` answers a different question and cannot
+        stand in for this one.
+
+        Stated explicitly rather than left to the shared default, because the
+        direction of that default is what keeps the dialect honest: a probe that
+        answered ``True`` by default would let a formatter emit START WITH on
+        ALTER SEQUENCE and hand the server SQL it rejects. Answering ``False``
+        fails closed.
+        """
+        return False
+
     def supports_sequence_increment(self) -> bool:
         """CREATE/ALTER SEQUENCE accept INCREMENT BY from SQL Server 2012."""
         return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
