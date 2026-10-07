@@ -1028,12 +1028,14 @@ class SQLServerDialect(
         ``START WITH`` clause -- the engine rejects that argument with error
         11710 -- and it has no ``ORDER``/``OWNED BY`` clause either. The
         formatter is kept here rather than deferred to ``SequenceMixin`` so
-        those words are never emitted, while the option probes still decide
-        which of the shared options this version accepts. A requested ``start``
-        is gated on :meth:`supports_alter_sequence_start`, the ALTER-side
-        question, rather than on the CREATE-side
-        :meth:`supports_sequence_start`; the two clauses are different and only
-        the former decides this statement.
+        every option is gated on this dialect's own probe before its clause is
+        emitted; a probe that answers ``False`` makes the formatter refuse the
+        request by name rather than drop the clause. Both ``ORDER`` and
+        ``OWNED BY`` answer ``False``, so those words are never emitted for
+        this dialect. A requested ``start`` is gated on
+        :meth:`supports_alter_sequence_start`, the ALTER-side question, rather
+        than on the CREATE-side :meth:`supports_sequence_start`; the two
+        clauses are different and only the former decides this statement.
 
         Raises:
             TypeError: ``expr.sequence`` is not a Sequence. A table handed here
@@ -1108,15 +1110,22 @@ class SQLServerDialect(
                 )
             parts.append(f"CACHE {expr.cache}")
         if expr.order is not None:
-            raise UnsupportedFeatureError(
-                self.name, "ALTER SEQUENCE ORDER",
-                f"{self.name} does not support the ORDER sequence option."
-            )
+            if not self.supports_sequence_order():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE ORDER",
+                    f"{self.name} does not support the ORDER sequence option."
+                )
+            parts.append("ORDER" if expr.order else "NO ORDER")
         if expr.owned_by is not None:
-            raise UnsupportedFeatureError(
-                self.name, "ALTER SEQUENCE OWNED BY",
-                f"{self.name} does not support the OWNED BY sequence option."
-            )
+            if not self.supports_sequence_owned_by():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE OWNED BY",
+                    f"{self.name} does not support the OWNED BY sequence option."
+                )
+            if expr.owned_by:
+                parts.append(f"OWNED BY {expr.owned_by}")
+            else:
+                parts.append("OWNED BY NONE")
         return " ".join(parts), ()
 
     def format_truncate_statement(self, expr: "TruncateExpression") -> Tuple[str, tuple]:
