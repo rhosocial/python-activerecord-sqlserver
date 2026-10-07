@@ -23,6 +23,13 @@ dialect's in all three cases, so all three statements are walked. Probes that
 answer about the statement or object rather than one of its options are named
 in :data:`NON_OPTION_PROBES` and are outside the walk.
 
+Round update: each two-spelling option now has one parameter per spelling
+(``cycle`` / ``no_cycle``, ``order`` / ``no_order``, ``cache`` /
+``no_cache``). The walk requests the explicit negative spellings through their
+own parameters, and an explicit spelling whose probe is ``False`` is refused
+by name rather than dropped -- which is what the ``NO CYCLE`` polarity check
+asserts.
+
 The guard is deliberately able to fail: ``test_hardcoded_order_refusal_...``
 feeds the comparison a dialect whose formatter ignores a probe (the shape this
 method had before the gates existed) and asserts the guard reports it
@@ -160,7 +167,7 @@ SEQUENCE_OPTION_PROBES = [
     _ProbeCase(
         "alter-no-order", "ALTER", AlterSequenceExpression,
         "NO ORDER", "ALTER SEQUENCE ORDER",
-        "supports_sequence_order", {"order": False},
+        "supports_sequence_order", {"no_order": True},
     ),
     _ProbeCase(
         "alter-owned-by", "ALTER", AlterSequenceExpression,
@@ -336,11 +343,13 @@ class TestTheWalkCoversEveryProbe:
 
 
 class TestTheDefaultPolarityAlsoFollowsTheProbe:
-    """``cycle=False`` changes the SQL while both dialects keep rendering.
+    """An explicit ``NO CYCLE`` follows the probe; it is never silently dropped.
 
-    Flipping ``supports_sequence_cycle`` must remove the ``NO CYCLE`` clause,
-    not just flip a refusal: this is the "different SQL" half of load-bearing,
-    which the rendered/refused walk alone cannot see.
+    The round's rule: the parameter selects the spelling and the probe decides
+    whether the dialect can express the option at all. Flipping
+    ``supports_sequence_cycle`` must therefore turn the rendered ``NO CYCLE``
+    into a refusal that names it -- not remove the clause while still
+    rendering, which would silently drop the request.
     """
 
     @pytest.mark.parametrize(
@@ -356,18 +365,18 @@ class TestTheDefaultPolarityAlsoFollowsTheProbe:
     ):
         flipped = _flipped_dialect("supports_sequence_cycle")
         stock_kind, stock_detail = _render_outcome(
-            expression_cls, dialect, {"cycle": False}
+            expression_cls, dialect, {"no_cycle": True}
         )
         flipped_kind, flipped_detail = _render_outcome(
-            expression_cls, flipped, {"cycle": False}
+            expression_cls, flipped, {"no_cycle": True}
         )
         assert stock_kind == "rendered", (statement, stock_detail)
-        assert flipped_kind == "rendered", (statement, flipped_detail)
-        stock_sql = stock_detail[0]
-        flipped_sql = flipped_detail[0]
-        assert stock_sql != flipped_sql, (statement, stock_sql)
-        assert "NO CYCLE" in stock_sql, (statement, stock_sql)
-        assert "NO CYCLE" not in flipped_sql, (statement, flipped_sql)
+        assert "NO CYCLE" in stock_detail[0], (statement, stock_detail)
+        assert flipped_kind == "refused", (statement, flipped_detail)
+        # CREATE renders through core's formatter, whose refusal names the
+        # option ("SEQUENCE CYCLE"); ALTER names the requested spelling too.
+        # Either way the request is refused, never silently dropped.
+        assert "CYCLE" in flipped_detail, (statement, flipped_detail)
 
 
 class TestTheGuardCanSeeADecorativeProbe:
@@ -388,7 +397,7 @@ class TestTheGuardCanSeeADecorativeProbe:
                 return True
 
             def format_alter_sequence_statement(self, expr):
-                if expr.order is not None:
+                if expr.order or expr.no_order:
                     raise UnsupportedFeatureError(
                         self.name,
                         "ALTER SEQUENCE ORDER",

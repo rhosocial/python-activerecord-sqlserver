@@ -1,5 +1,5 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/transaction.py
-from typing import Tuple, TYPE_CHECKING
+from typing import Any, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.transaction import (
@@ -31,6 +31,30 @@ class SQLServerTransactionMixin:
         """SQL Server doesn't support DEFERRABLE mode."""
         return False
 
+    def _refuse_deferrable_transaction(self, expr: Any) -> None:
+        """Refuse an explicitly requested [NOT] DEFERRABLE transaction mode.
+
+        SQL Server has no such mode (measured on 2019 / 2022 / 2025: the only
+        ``BEGIN TRANSACTION`` spelling that parses is the transaction *name*,
+        so ``BEGIN TRANSACTION DEFERRABLE`` names the transaction, and the
+        ``NOT DEFERRABLE`` form is a syntax error). A requested spelling is
+        refused by name rather than silently dropped.
+        """
+        from rhosocial.activerecord.backend.dialect.exceptions import (
+            UnsupportedFeatureError,
+        )
+
+        params = expr.get_params()
+        if params.get("deferrable") or params.get("not_deferrable"):
+            spelling = (
+                "DEFERRABLE" if params.get("deferrable") else "NOT DEFERRABLE"
+            )
+            raise UnsupportedFeatureError(
+                self.name,
+                "DEFERRABLE transaction",
+                f"{self.name} does not support the {spelling} transaction mode.",
+            )
+
     def format_begin_transaction(
         self, expr: "BeginTransactionExpression"
     ) -> Tuple[str, tuple]:
@@ -38,6 +62,7 @@ class SQLServerTransactionMixin:
         from rhosocial.activerecord.backend.errors import UnsupportedTransactionModeError
         from rhosocial.activerecord.backend.transaction import TransactionMode
 
+        self._refuse_deferrable_transaction(expr)
         params = expr.get_params()
         mode = params.get("mode")
 
@@ -58,6 +83,7 @@ class SQLServerTransactionMixin:
         from rhosocial.activerecord.backend.errors import UnsupportedTransactionModeError
         from rhosocial.activerecord.backend.transaction import TransactionMode
 
+        self._refuse_deferrable_transaction(expr)
         params = expr.get_params()
         mode = params.get("mode")
 

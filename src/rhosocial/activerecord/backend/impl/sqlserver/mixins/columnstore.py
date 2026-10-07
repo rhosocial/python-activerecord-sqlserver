@@ -61,7 +61,7 @@ class SQLServerColumnstoreIndexMixin:
         """
         parts = ["CREATE"]
 
-        if expr.clustered is False:
+        if expr.nonclustered:
             self.check_feature_support(  # type: ignore[attr-defined]
                 "supports_nonclustered_columnstore",
                 "NONCLUSTERED COLUMNSTORE INDEX",
@@ -75,7 +75,7 @@ class SQLServerColumnstoreIndexMixin:
                 "CLUSTERED COLUMNSTORE INDEX",
                 "requires SQL Server 2014+.",
             )
-            if expr.clustered is True:
+            if expr.clustered:
                 parts.append("CLUSTERED")
 
         parts.append("COLUMNSTORE")

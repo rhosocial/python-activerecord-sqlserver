@@ -132,6 +132,13 @@ class SQLServerIdentityColumnMixin:
           ``_order`` / ``_cache`` gate the sequence attributes the property
           cannot spell.
 
+        Each two-spelling option carries one parameter per spelling --
+        ``cycle`` / ``no_cycle``, ``cache`` / ``no_cache``, ``order`` /
+        ``no_order``. An unset pair renders nothing; an explicit spelling whose
+        probe is ``False`` is refused naming the requested spelling. The
+        refusal never falls through to the bare property, which would be a
+        silent downgrade.
+
         Args:
             expr: The ``IdentityClause`` carrying the identity parameters.
 
@@ -185,26 +192,35 @@ class SQLServerIdentityColumnMixin:
                     "IDENTITY MAXVALUE",
                     f"{self.name} does not support the MAXVALUE identity option.",  # type: ignore[attr-defined]
                 )
-        if expr.cycle is not None:
+        if expr.cycle or expr.no_cycle:
             if not self.supports_identity_cycle():
                 raise UnsupportedFeatureError(
-                    self.name,  # type: ignore[attr-defined]
+                    self.name,
                     "IDENTITY CYCLE",
-                    f"{self.name} does not support the CYCLE identity option.",  # type: ignore[attr-defined]
+                    f"{self.name} does not support the "
+                    f"{'CYCLE' if expr.cycle else 'NO CYCLE'} identity option.",
                 )
         if expr.cache is not None:
             if not self.supports_identity_cache():
                 raise UnsupportedFeatureError(
-                    self.name,  # type: ignore[attr-defined]
+                    self.name,
                     "IDENTITY CACHE",
-                    f"{self.name} does not support the CACHE identity option.",  # type: ignore[attr-defined]
+                    f"{self.name} does not support the CACHE identity option.",
                 )
-        if expr.order is not None:
+        if expr.no_cache:
+            if not self.supports_identity_cache():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    "IDENTITY CACHE",
+                    f"{self.name} does not support the NO CACHE identity option.",
+                )
+        if expr.order or expr.no_order:
             if not self.supports_identity_order():
                 raise UnsupportedFeatureError(
-                    self.name,  # type: ignore[attr-defined]
+                    self.name,
                     "IDENTITY ORDER",
-                    f"{self.name} does not support the ORDER identity option.",  # type: ignore[attr-defined]
+                    f"{self.name} does not support the "
+                    f"{'ORDER' if expr.order else 'NO ORDER'} identity option.",
                 )
         seed = expr.start if expr.start is not None else 1
         increment = expr.increment if expr.increment is not None else 1

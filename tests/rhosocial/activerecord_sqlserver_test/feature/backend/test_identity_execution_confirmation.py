@@ -197,9 +197,9 @@ class TestUnsupportedRequestsAreNotRendered:
         "identity_kwargs,feature",
         [
             ({"order": True}, "IDENTITY ORDER"),
-            ({"order": False}, "IDENTITY ORDER"),
+            ({"no_order": True}, "IDENTITY ORDER"),
             ({"cache": 10}, "IDENTITY CACHE"),
-            ({"cache": 0}, "IDENTITY CACHE"),
+            ({"no_cache": True}, "IDENTITY CACHE"),
         ],
         ids=["order", "no-order", "cache", "no-cache"],
     )

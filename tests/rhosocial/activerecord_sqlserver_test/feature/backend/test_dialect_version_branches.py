@@ -458,7 +458,7 @@ class TestGroupingAndUpsertBasics:
 
         d16 = SQLServerDialect((16, 0, 0))
         create_sql, create_params = CreateSequenceExpression(
-            d16, Sequence(d16, "seq"), start=1, increment=2, minvalue=1, maxvalue=100, cycle=False, cache=10
+            d16, Sequence(d16, "seq"), start=1, increment=2, minvalue=1, maxvalue=100, no_cycle=True, cache=10
         ).to_sql()
         assert create_sql == (
             "CREATE SEQUENCE [seq] START WITH 1 INCREMENT BY 2 "

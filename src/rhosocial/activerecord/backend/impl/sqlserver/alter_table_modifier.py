@@ -122,8 +122,9 @@ class SQLServerAlterColumnModifierMixin:
         if collate:
             parts.append(f"COLLATE {collate}")
 
-        not_null = getattr(action, "not_null", None)
-        if not_null is not None:
+        not_null = getattr(action, "not_null", False)
+        nullable = getattr(action, "nullable", False)
+        if not_null or nullable:
             parts.append("NOT NULL" if not_null else "NULL")
 
         if getattr(action, "sparse", False):

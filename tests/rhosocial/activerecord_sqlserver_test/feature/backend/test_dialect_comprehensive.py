@@ -442,7 +442,7 @@ class TestSQLServerDialectSetOperation:
         )
 
         expr = SetOperationExpression(
-            dialect, left=left, right=right, operation="INTERSECT", all_=False
+            dialect, left=left, right=right, operation="INTERSECT"
         )
         sql, params = dialect.format_set_operation_expression(expr)
         assert "INTERSECT" in sql
@@ -467,7 +467,7 @@ class TestSQLServerDialectSetOperation:
         )
 
         expr = SetOperationExpression(
-            dialect, left=left, right=right, operation="EXCEPT", all_=False
+            dialect, left=left, right=right, operation="EXCEPT"
         )
         sql, params = dialect.format_set_operation_expression(expr)
         assert "EXCEPT" in sql

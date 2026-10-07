@@ -91,14 +91,30 @@ class SQLServerViewMixin:
         an older version is a no-op rather than a syntax error, which is the
         spelling this dialect has always produced.
 
+        SQL Server has neither ``CASCADE`` nor ``RESTRICT`` on ``DROP VIEW``
+        (measured refused on 2019 / 2022 / 2025). This override replaces core's
+        gated formatter, so an explicitly requested behavior is refused by name
+        rather than silently dropped.
+
         Raises:
             TypeError: ``expr.view`` is not a View. A table handed here would
                 render as a well-formed ``DROP VIEW`` over that table's name.
+            UnsupportedFeatureError: If CASCADE or RESTRICT was requested.
         """
         if not isinstance(expr.view, View):
             raise TypeError(
                 f"DropViewExpression.view must be a View, "
                 f"got {type(expr.view).__name__}"
+            )
+        if expr.cascade and not self.supports_cascade_view():
+            raise UnsupportedFeatureError(
+                self.name, "DROP VIEW CASCADE",
+                f"{self.name} does not support DROP VIEW CASCADE."
+            )
+        if expr.restrict and not self.supports_restrict_view():
+            raise UnsupportedFeatureError(
+                self.name, "DROP VIEW RESTRICT",
+                f"{self.name} does not support DROP VIEW RESTRICT."
             )
         parts = ["DROP VIEW"]
 

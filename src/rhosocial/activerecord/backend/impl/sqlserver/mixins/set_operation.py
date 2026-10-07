@@ -43,6 +43,7 @@ class SQLServerSetOperationMixin:
         left, right = expr.left, expr.right
         operation = expr.operation
         all_ = expr.all_
+        distinct = expr.distinct
         alias = expr.alias
         order_by_clause = expr.order_by_clause
         limit_offset_clause = expr.limit_offset_clause
@@ -57,7 +58,21 @@ class SQLServerSetOperationMixin:
 
         left_sql, left_params = left.to_sql()
         right_sql, right_params = right.to_sql()
-        all_str = " ALL" if all_ else ""
+        if all_:
+            all_str = " ALL"
+        elif distinct:
+            # T-SQL has no DISTINCT keyword in set operations; plain UNION is
+            # already the distinct form. An explicit DISTINCT request is
+            # refused rather than dropped -- measured refused on 2019 / 2022 /
+            # 2025 (``Incorrect syntax near the keyword 'DISTINCT'``).
+            raise UnsupportedFeatureError(
+                self.name,
+                f"{operation} DISTINCT",
+                f"{self.name} has no DISTINCT keyword in set operations; "
+                f"the DISTINCT spelling is not part of T-SQL.",
+            )
+        else:
+            all_str = ""
 
         base_sql = f"{left_sql} {operation}{all_str} {right_sql}"
 

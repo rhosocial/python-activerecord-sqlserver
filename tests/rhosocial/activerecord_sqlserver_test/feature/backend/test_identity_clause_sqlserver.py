@@ -145,11 +145,11 @@ class TestUnspellableOptionsAreRefusedByName:
             ({"minvalue": 1}, "IDENTITY MINVALUE"),
             ({"maxvalue": 100}, "IDENTITY MAXVALUE"),
             ({"cycle": True}, "IDENTITY CYCLE"),
-            ({"cycle": False}, "IDENTITY CYCLE"),
+            ({"no_cycle": True}, "IDENTITY CYCLE"),
             ({"order": True}, "IDENTITY ORDER"),
-            ({"order": False}, "IDENTITY ORDER"),
+            ({"no_order": True}, "IDENTITY ORDER"),
             ({"cache": 10}, "IDENTITY CACHE"),
-            ({"cache": 0}, "IDENTITY CACHE"),
+            ({"no_cache": True}, "IDENTITY CACHE"),
         ],
         ids=[
             "minvalue",
@@ -180,7 +180,18 @@ if hasattr(types, "UnionType"):  # Python 3.10+
 # whatever ``IdentityClause.__init__`` declares; this set only proves the
 # signature introspection did not silently shrink to nothing.
 _OPTIONS_AT_WALK_BIRTH = frozenset(
-    {"start", "increment", "minvalue", "maxvalue", "cycle", "order", "cache"}
+    {
+        "start",
+        "increment",
+        "minvalue",
+        "maxvalue",
+        "cycle",
+        "no_cycle",
+        "order",
+        "no_order",
+        "cache",
+        "no_cache",
+    }
 )
 
 
@@ -197,11 +208,13 @@ def _option_fields() -> dict:
 def _probe_values(field_name: str, param: inspect.Parameter) -> tuple:
     """Non-default probe values for one option field.
 
-    Both sides of the domain are probed for the types the options use today:
-    ``True`` and ``False`` for a flag (``NO ORDER`` is as much a request as
-    ``ORDER``), ``100`` and ``0`` for a number (``CACHE 0`` is as much a
-    request as ``CACHE 10``). A field with an unknown type fails the walk
-    with the reason instead of being probed with a meaningless value.
+    A bool option is one *spelling* of a two-spelling pair: ``True`` requests
+    that spelling, ``False`` is the "not requested" state, so only ``True`` is
+    a request worth probing. An int option takes a positive count; ``0`` is
+    refused at construction (``cache must be a positive integer``) and is
+    pinned by its own sentinel test, not probed here. A field with an unknown
+    type fails the walk with the reason instead of being probed with a
+    meaningless value.
     """
     annotation = param.annotation
     if annotation is inspect.Parameter.empty:
@@ -215,9 +228,9 @@ def _probe_values(field_name: str, param: inspect.Parameter) -> tuple:
         )
         annotation = args[0] if args else annotation
     if annotation is bool:
-        return (True, False)
+        return (True,)
     if annotation is int:
-        return (100, 0)
+        return (100,)
     raise AssertionError(
         f"no probe value is known for IdentityClause option {field_name!r} "
         f"(type {annotation!r}); extend this walk so the new option is still "
@@ -242,12 +255,15 @@ def _walk_options(dialect) -> dict:
     bare_sql, _ = IdentityClause(dialect).to_sql()
     verdicts = {}
     for name, param in options.items():
+        # ``no_cycle`` is the NO CYCLE spelling of the ``cycle`` pair; the
+        # refusal names the clause ("IDENTITY CYCLE"), not the parameter.
+        option_name = name[3:] if name.startswith("no_") else name
         for value in _probe_values(name, param):
             clause = IdentityClause(dialect, **{name: value})
             try:
                 sql, _ = clause.to_sql()
             except UnsupportedFeatureError as exc:
-                if f"IDENTITY {name.upper()}" not in str(exc):
+                if f"IDENTITY {option_name.upper()}" not in str(exc):
                     raise AssertionError(
                         f"option {name!r}={value!r} was refused without "
                         f"naming it: {exc}"
@@ -278,9 +294,20 @@ class TestNoOptionIsSilentlyDropped:
         # that only ever saw one of them could look healthy while blind.
         assert "refused" in verdicts.values(), verdicts
         assert "rendered" in verdicts.values(), verdicts
-        # The two fields this round added: both sides of each request refused.
-        for key in (("order", True), ("order", False), ("cache", 100), ("cache", 0)):
+        # The fields this round split into pairs: every explicit spelling is
+        # refused by name.
+        for key in (
+            ("order", True),
+            ("no_order", True),
+            ("cache", 100),
+            ("no_cache", True),
+        ):
             assert verdicts[key] == "refused", verdicts
+
+    def test_cache_zero_is_refused_at_construction(self, dialect):
+        """``cache=0`` is not a spelling of NO CACHE (round rule 4)."""
+        with pytest.raises(ValueError, match="cache must be a positive integer"):
+            IdentityClause(dialect, cache=0)
 
     def test_the_walk_rejects_a_formatter_that_drops_options(self):
         """The walk is live: a formatter that drops an option must fail it.

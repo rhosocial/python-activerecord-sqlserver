@@ -357,12 +357,37 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             or constraint.foreign_key_columns
         ):
             raise ValueError("CHECK constraints cannot carry key or foreign key fields")
-        for field_name in ("deferrable", "initially_deferred", "validation", "enforced"):
-            if getattr(constraint, field_name, None) is not None:
-                raise UnsupportedFeatureError(
-                    self.name,
-                    f"TYPE table constraint option {field_name}",
-                )
+        # The enforcement / deferrability options are two-spelling pairs on the
+        # node now: their defaults are ``False``, not ``None``, so an
+        # ``is not None`` test would refuse every constraint. Only an
+        # explicitly requested spelling is refused, and it is named.
+        if constraint.deferrable or constraint.not_deferrable:
+            spelling = "DEFERRABLE" if constraint.deferrable else "NOT DEFERRABLE"
+            raise UnsupportedFeatureError(
+                self.name,
+                f"TYPE table constraint option {spelling}",
+            )
+        if constraint.initially_deferred or constraint.initially_immediate:
+            spelling = (
+                "INITIALLY DEFERRED"
+                if constraint.initially_deferred
+                else "INITIALLY IMMEDIATE"
+            )
+            raise UnsupportedFeatureError(
+                self.name,
+                f"TYPE table constraint option {spelling}",
+            )
+        if constraint.enforced or constraint.not_enforced:
+            spelling = "ENFORCED" if constraint.enforced else "NOT ENFORCED"
+            raise UnsupportedFeatureError(
+                self.name,
+                f"TYPE table constraint option {spelling}",
+            )
+        if constraint.validation is not None:
+            raise UnsupportedFeatureError(
+                self.name,
+                "TYPE table constraint option validation",
+            )
         if constraint.constraint_type in {
             TableConstraintType.PRIMARY_KEY,
             TableConstraintType.UNIQUE,

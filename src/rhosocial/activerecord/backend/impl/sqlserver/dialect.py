@@ -796,6 +796,63 @@ class SQLServerDialect(
                 constraint_parts.append(f"CHECK ({check_sql})")
                 params.extend(check_params)
 
+            # The node's two-spelling constraint attributes are consumed here
+            # even though SQL Server cannot spell any of them: this override
+            # replaces core's column formatter, so an explicitly requested
+            # attribute is refused by name rather than silently dropped.
+            # Measured refused on 2019 / 2022 / 2025.
+            from rhosocial.activerecord.backend.dialect.mixins.ddl_table import (
+                normalize_column_constraint_type,
+            )
+
+            if constraint.enforced or constraint.not_enforced:
+                normalized = normalize_column_constraint_type(
+                    constraint.constraint_type
+                )
+                if normalized not in {
+                    ColumnConstraintType.CHECK,
+                    ColumnConstraintType.FOREIGN_KEY,
+                }:
+                    raise ValueError(
+                        "ENFORCED/NOT ENFORCED is only valid for CHECK and "
+                        "FOREIGN KEY constraints"
+                    )
+                spelling = "ENFORCED" if constraint.enforced else "NOT ENFORCED"
+                if not self.supports_constraint_enforced():
+                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+                    raise UnsupportedFeatureError(
+                        self.name,
+                        f"constraint {spelling}",
+                        f"{self.name} does not support the {spelling} constraint.",
+                    )
+                constraint_parts.append(spelling)
+            if constraint.deferrable or constraint.not_deferrable:
+                spelling = (
+                    "DEFERRABLE" if constraint.deferrable else "NOT DEFERRABLE"
+                )
+                if not self.supports_deferrable_constraint():
+                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+                    raise UnsupportedFeatureError(
+                        self.name,
+                        f"constraint {spelling}",
+                        f"{self.name} does not support the {spelling} constraint.",
+                    )
+                constraint_parts.append(spelling)
+            if constraint.initially_deferred or constraint.initially_immediate:
+                spelling = (
+                    "INITIALLY DEFERRED"
+                    if constraint.initially_deferred
+                    else "INITIALLY IMMEDIATE"
+                )
+                if not self.supports_deferrable_constraint():
+                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+                    raise UnsupportedFeatureError(
+                        self.name,
+                        f"constraint {spelling}",
+                        f"{self.name} does not support the {spelling} constraint.",
+                    )
+                constraint_parts.append(spelling)
+
             if constraint.is_auto_increment:
                 constraint_parts.append("IDENTITY(1,1)")
 
@@ -890,6 +947,59 @@ class SQLServerDialect(
             check_sql, check_params = t_const.check_condition.to_sql()
             parts.append(f"CHECK ({check_sql})")
             params.extend(check_params)
+
+        # The node's two-spelling constraint attributes are consumed here even
+        # though SQL Server cannot spell any of them: this override replaces
+        # core's formatter, so an explicitly requested attribute is refused by
+        # name rather than silently dropped. Measured refused on 2019 / 2022 /
+        # 2025 (ENFORCED, NOT ENFORCED, DEFERRABLE, NOT DEFERRABLE, INITIALLY
+        # DEFERRED, INITIALLY IMMEDIATE). The probes gate the refusals, and the
+        # spelling is rendered when a probe answers True, so neither is
+        # decorative.
+        from rhosocial.activerecord.backend.dialect.mixins.ddl_table import (
+            normalize_table_constraint_type,
+        )
+
+        normalized_type = normalize_table_constraint_type(t_const.constraint_type)
+        if t_const.enforced or t_const.not_enforced:
+            if normalized_type not in {
+                TableConstraintType.CHECK,
+                TableConstraintType.FOREIGN_KEY,
+            }:
+                raise ValueError(
+                    "ENFORCED/NOT ENFORCED is only valid for CHECK and "
+                    "FOREIGN KEY constraints"
+                )
+            spelling = "ENFORCED" if t_const.enforced else "NOT ENFORCED"
+            if not self.supports_constraint_enforced():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    f"constraint {spelling}",
+                    f"{self.name} does not support the {spelling} constraint.",
+                )
+            parts.append(spelling)
+        if t_const.deferrable or t_const.not_deferrable:
+            spelling = "DEFERRABLE" if t_const.deferrable else "NOT DEFERRABLE"
+            if not self.supports_deferrable_constraint():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    f"constraint {spelling}",
+                    f"{self.name} does not support the {spelling} constraint.",
+                )
+            parts.append(spelling)
+        if t_const.initially_deferred or t_const.initially_immediate:
+            spelling = (
+                "INITIALLY DEFERRED"
+                if t_const.initially_deferred
+                else "INITIALLY IMMEDIATE"
+            )
+            if not self.supports_deferrable_constraint():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    f"constraint {spelling}",
+                    f"{self.name} does not support the {spelling} constraint.",
+                )
+            parts.append(spelling)
 
         return ' '.join(parts), tuple(params)
 
@@ -1037,6 +1147,13 @@ class SQLServerDialect(
         than on the CREATE-side :meth:`supports_sequence_start`; the two
         clauses are different and only the former decides this statement.
 
+        Each two-spelling option carries one parameter per spelling --
+        ``cycle`` / ``no_cycle``, ``cache`` / ``no_cache``, ``order`` /
+        ``no_order``. The parameter selects the spelling; the probe answers
+        whether the dialect can express the option at all. An unset pair
+        renders nothing, and an explicit spelling whose probe is ``False``
+        raises naming the requested spelling.
+
         Raises:
             TypeError: ``expr.sequence`` is not a Sequence. A table handed here
                 would render as a well-formed ``ALTER SEQUENCE`` over that
@@ -1091,17 +1208,18 @@ class SQLServerDialect(
                     f"{self.name} does not support the MAXVALUE sequence option."
                 )
             parts.append(f"MAXVALUE {expr.maxvalue}")
-        if expr.cycle is not None:
-            if expr.cycle:
-                if not self.supports_sequence_cycle():
-                    raise UnsupportedFeatureError(
-                        self.name, "ALTER SEQUENCE CYCLE",
-                        f"{self.name} does not support the CYCLE sequence option."
-                    )
-                parts.append("CYCLE")
-            elif self.supports_sequence_cycle():
-                # NO CYCLE is the default; only spell it where it is legal.
-                parts.append("NO CYCLE")
+        if expr.cycle or expr.no_cycle:
+            # One parameter per spelling: ``cycle`` selects CYCLE, ``no_cycle``
+            # selects NO CYCLE, and neither renders nothing. The probe answers
+            # whether the option can be expressed at all; an explicit spelling
+            # whose probe is False is refused by name, never dropped.
+            if not self.supports_sequence_cycle():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE CYCLE",
+                    f"{self.name} does not support the "
+                    f"{'CYCLE' if expr.cycle else 'NO CYCLE'} sequence option."
+                )
+            parts.append("CYCLE" if expr.cycle else "NO CYCLE")
         if expr.cache is not None:
             if not self.supports_sequence_cache():
                 raise UnsupportedFeatureError(
@@ -1109,11 +1227,19 @@ class SQLServerDialect(
                     f"{self.name} does not support the CACHE sequence option."
                 )
             parts.append(f"CACHE {expr.cache}")
-        if expr.order is not None:
+        if expr.no_cache:
+            if not self.supports_sequence_cache():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE CACHE",
+                    f"{self.name} does not support the NO CACHE sequence option."
+                )
+            parts.append("NO CACHE")
+        if expr.order or expr.no_order:
             if not self.supports_sequence_order():
                 raise UnsupportedFeatureError(
                     self.name, "ALTER SEQUENCE ORDER",
-                    f"{self.name} does not support the ORDER sequence option."
+                    f"{self.name} does not support the "
+                    f"{'ORDER' if expr.order else 'NO ORDER'} sequence option."
                 )
             parts.append("ORDER" if expr.order else "NO ORDER")
         if expr.owned_by is not None:
@@ -1133,17 +1259,44 @@ class SQLServerDialect(
 
         SQL Server's TRUNCATE TABLE is a DDL operation (minimal logging) with
         no modifiers, so the statement renders the table object and nothing
-        else.
+        else. The node's modifier pairs (``cascade`` / ``restrict``,
+        ``restart_identity`` / ``continue_identity``) are still consumed: this
+        override replaces core's gated formatter, so an explicitly requested
+        modifier is refused by name -- measured refused on 2019 / 2022 / 2025 --
+        rather than silently dropped.
 
         Raises:
             TypeError: ``expr.table`` is not a Table. A view or a sequence
                 handed here would render as a well-formed ``TRUNCATE TABLE``
                 over that object's name.
+            UnsupportedFeatureError: If a TRUNCATE modifier SQL Server cannot
+                spell was requested.
         """
         if not isinstance(expr.table, Table):
             raise TypeError(
                 f"TruncateExpression.table must be a Table, "
                 f"got {type(expr.table).__name__}"
+            )
+        if (
+            expr.restart_identity or expr.continue_identity
+        ) and not self.supports_truncate_restart_identity():
+            feature = (
+                "TRUNCATE RESTART IDENTITY"
+                if expr.restart_identity
+                else "TRUNCATE CONTINUE IDENTITY"
+            )
+            raise UnsupportedFeatureError(
+                self.name, feature, f"{self.name} does not support {feature}."
+            )
+        if expr.cascade and not self.supports_truncate_cascade():
+            raise UnsupportedFeatureError(
+                self.name, "TRUNCATE CASCADE",
+                f"{self.name} does not support TRUNCATE with CASCADE."
+            )
+        if expr.restrict and not self.supports_truncate_restrict():
+            raise UnsupportedFeatureError(
+                self.name, "TRUNCATE RESTRICT",
+                f"{self.name} does not support TRUNCATE with RESTRICT."
             )
         return f"TRUNCATE TABLE {expr.table.to_sql()[0]}", ()
 
