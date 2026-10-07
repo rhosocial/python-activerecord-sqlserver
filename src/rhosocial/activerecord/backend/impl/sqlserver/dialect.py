@@ -1277,6 +1277,11 @@ class SQLServerDialect(
                 f"TruncateExpression.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
+        if not self.supports_truncate():
+            raise UnsupportedFeatureError(
+                self.name, "TRUNCATE",
+                f"{self.name} does not support TRUNCATE.",
+            )
         if (
             expr.restart_identity or expr.continue_identity
         ) and not self.supports_truncate_restart_identity():

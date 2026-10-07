@@ -17,6 +17,15 @@ if TYPE_CHECKING:
 class SQLServerTableMixin:
     """SQL Server table DDL capability declarations."""
 
+    def supports_truncate(self) -> bool:
+        """SQL Server supports ``TRUNCATE TABLE``.
+
+        Measured accepted on 2019 / 2022 / 2025 (``{SQL Server}`` driver) and
+        the table is emptied; the modifier pair (``CASCADE`` / ``RESTRICT``) is
+        refused by the formatter, not by this master probe.
+        """
+        return True
+
     def supports_if_exists_table(self) -> bool:
         """SQL Server supports DROP TABLE IF EXISTS (2016+)."""
         return self.version >= SQL_SERVER_2016

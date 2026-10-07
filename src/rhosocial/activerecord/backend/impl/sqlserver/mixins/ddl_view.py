@@ -34,6 +34,18 @@ class SQLServerViewMixin:
         """SQL Server supports DROP VIEW IF EXISTS (2016+)."""
         return self.version >= SQL_SERVER_2016
 
+    def supports_with_data_clause(self) -> bool:
+        """SQL Server has no ``WITH [NO] DATA`` population clause.
+
+        Measured on 2019 / 2022 / 2025 (``{SQL Server}`` driver):
+        ``SELECT ... INTO <table>`` -- SQL Server's CTAS spelling -- is
+        accepted, while the same statement with ``WITH DATA`` or
+        ``WITH NO DATA`` is a syntax error near ``with``, and
+        ``CREATE TABLE ... AS`` is not SQL Server syntax at all.  A requested
+        clause is refused by name rather than emitted.
+        """
+        return False
+
     def supports_view_check_option(self) -> bool:
         """SQL Server supports WITH CHECK OPTION."""
         return True
