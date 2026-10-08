@@ -48,7 +48,8 @@ SQL_SERVER_2022 = (16, 0, 0)
 
 
 def _make_query(d, columns=("a", "b"), where=None, select_into_table=None):
-    from rhosocial.activerecord.backend.expression import Column, TableExpression
+    from rhosocial.activerecord.backend.expression import Column
+    from rhosocial.activerecord.backend.expression.objects import Table
     from rhosocial.activerecord.backend.impl.sqlserver.expression import (
         SQLServerSelectIntoExpression,
     )
@@ -56,7 +57,7 @@ def _make_query(d, columns=("a", "b"), where=None, select_into_table=None):
     return SQLServerSelectIntoExpression(
         dialect=d,
         select=[Column(d, col) for col in columns],
-        from_=TableExpression(d, "t"),
+        from_=Table(d, "t"),
         where=where,
         select_into_table=select_into_table,
     )
@@ -262,7 +263,7 @@ class TestColumnstoreIndex:
 
     def test_nonclustered_columnstore(self, dialect):
         expr = SQLServerColumnstoreIndexExpression(
-            dialect, "ncci", "t", columns=["c"], clustered=False
+            dialect, "ncci", "t", columns=["c"], nonclustered=True
         )
         sql, params = expr.to_sql()
         assert sql == "CREATE NONCLUSTERED COLUMNSTORE INDEX [ncci] ON [t] ([c])"
@@ -280,8 +281,14 @@ class TestColumnstoreIndex:
     def test_ncci_validation(self, dialect):
         with pytest.raises(ValueError):
             SQLServerColumnstoreIndexExpression(
-                dialect, "ncci", "t", clustered=False
+                dialect, "ncci", "t", nonclustered=True
             ).validate()
+
+    def test_clustered_and_nonclustered_are_mutually_exclusive(self, dialect):
+        with pytest.raises(ValueError, match="clustered and nonclustered"):
+            SQLServerColumnstoreIndexExpression(
+                dialect, "cci", "t", clustered=True, nonclustered=True
+            )
 
     def test_cci_forbids_columns(self, dialect):
         with pytest.raises(ValueError):
@@ -291,7 +298,7 @@ class TestColumnstoreIndex:
 
     def test_ncci_gate_below_2012(self):
         d = SQLServerDialect(SQL_SERVER_2008)
-        expr = SQLServerColumnstoreIndexExpression(d, "ncci", "t", columns=["c"], clustered=False)
+        expr = SQLServerColumnstoreIndexExpression(d, "ncci", "t", columns=["c"], nonclustered=True)
         with pytest.raises(UnsupportedFeatureError) as exc_info:
             expr.to_sql()
         assert exc_info.value.feature_name == "NONCLUSTERED COLUMNSTORE INDEX"
@@ -299,7 +306,7 @@ class TestColumnstoreIndex:
 
     def test_ncci_supported_on_2012(self):
         d = SQLServerDialect(SQL_SERVER_2012)
-        expr = SQLServerColumnstoreIndexExpression(d, "ncci", "t", columns=["c"], clustered=False)
+        expr = SQLServerColumnstoreIndexExpression(d, "ncci", "t", columns=["c"], nonclustered=True)
         assert expr.to_sql()[0] == (
             "CREATE NONCLUSTERED COLUMNSTORE INDEX [ncci] ON [t] ([c])"
         )
@@ -345,9 +352,10 @@ class TestAlterColumn:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def _alter(self, d, action):
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import AlterTableExpression
 
-        return AlterTableExpression(d, "t", actions=[action]).to_sql()[0]
+        return AlterTableExpression(d, Table(d, "t"), actions=[action]).to_sql()[0]
 
     def _alter_column(self, d, column_name="c", operation="SET DATA TYPE", new_value=None, **options):
         from rhosocial.activerecord.backend.impl.sqlserver.expression import (
@@ -365,8 +373,12 @@ class TestAlterColumn:
         )
 
     def test_alter_column_type_nullable(self, dialect):
-        action = self._alter_column(dialect, new_value="INT", not_null=False)
+        action = self._alter_column(dialect, new_value="INT", nullable=True)
         assert self._alter(dialect, action) == "ALTER TABLE [t] ALTER COLUMN [c] INT NULL"
+
+    def test_alter_column_both_nullability_spellings_are_refused(self, dialect):
+        with pytest.raises(ValueError, match="not_null and nullable"):
+            self._alter_column(dialect, new_value="INT", not_null=True, nullable=True)
 
     def test_alter_column_type_collate(self, dialect):
         action = self._alter_column(dialect, new_value="VARCHAR(100)", collate="Latin1_General_CS_AS")

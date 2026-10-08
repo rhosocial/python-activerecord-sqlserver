@@ -18,13 +18,17 @@ class TestOffsetFetchExpression:
 
     def test_offset_fetch_basic(self, dialect):
         """Test basic OFFSET FETCH formatting."""
-        from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression import (
+            QueryExpression,
+            Column,
+        )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.query_parts import LimitOffsetClause
 
         query = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id"), Column(dialect, "name")],
-            from_=TableExpression(dialect, "users"),
+            from_=Table(dialect, "users"),
             limit_offset=LimitOffsetClause(dialect, limit=10, offset=0),
         )
 
@@ -34,13 +38,17 @@ class TestOffsetFetchExpression:
 
     def test_offset_fetch_with_offset(self, dialect):
         """Test OFFSET FETCH with non-zero offset."""
-        from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression import (
+            QueryExpression,
+            Column,
+        )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.query_parts import LimitOffsetClause
 
         query = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id")],
-            from_=TableExpression(dialect, "products"),
+            from_=Table(dialect, "products"),
             limit_offset=LimitOffsetClause(dialect, limit=20, offset=10),
         )
 
@@ -50,7 +58,11 @@ class TestOffsetFetchExpression:
 
     def test_offset_only_no_fetch(self, dialect):
         """Test OFFSET with LIMIT (SQL Server requires LIMIT with OFFSET)."""
-        from rhosocial.activerecord.backend.expression import QueryExpression, Column, TableExpression
+        from rhosocial.activerecord.backend.expression import (
+            QueryExpression,
+            Column,
+        )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.query_parts import LimitOffsetClause
 
         # In SQL Server, you cannot have OFFSET without LIMIT
@@ -58,7 +70,7 @@ class TestOffsetFetchExpression:
         query = QueryExpression(
             dialect=dialect,
             select=[Column(dialect, "id")],
-            from_=TableExpression(dialect, "items"),
+            from_=Table(dialect, "items"),
             limit_offset=LimitOffsetClause(dialect, limit=10, offset=5),
         )
 
@@ -81,13 +93,13 @@ class TestOutputClauseExpression:
             ValuesSource,
             ReturningClause,
             Column,
-            TableExpression,
         )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.core import Literal
 
         insert = InsertExpression(
             dialect=dialect,
-            into=TableExpression(dialect, "users"),
+            into=Table(dialect, "users"),
             columns=["name"],
             source=ValuesSource(dialect, [[Literal(dialect, "Alice")]]),
             returning=ReturningClause(dialect, [Column(dialect, "id")]),
@@ -105,13 +117,13 @@ class TestOutputClauseExpression:
             ValuesSource,
             ReturningClause,
             Column,
-            TableExpression,
         )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.core import Literal
 
         insert = InsertExpression(
             dialect=dialect,
-            into=TableExpression(dialect, "products"),
+            into=Table(dialect, "products"),
             columns=["name", "price"],
             source=ValuesSource(dialect, [[Literal(dialect, "Widget"), Literal(dialect, 9.99)]]),
             returning=ReturningClause(dialect, [Column(dialect, "id"), Column(dialect, "created_at")]),
@@ -132,11 +144,12 @@ class TestCreateIndexExpression:
     def test_basic_index(self, dialect):
         """Test basic CREATE INDEX."""
         from rhosocial.activerecord.backend.expression import CreateIndexExpression
+        from rhosocial.activerecord.backend.expression.objects import Index, Table
 
         idx = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_users_email",
-            table_name="users",
+            index=Index(dialect, "idx_users_email"),
+            table=Table(dialect, "users"),
             columns=["email"],
         )
 
@@ -148,11 +161,12 @@ class TestCreateIndexExpression:
     def test_unique_index(self, dialect):
         """Test CREATE UNIQUE INDEX."""
         from rhosocial.activerecord.backend.expression import CreateIndexExpression
+        from rhosocial.activerecord.backend.expression.objects import Index, Table
 
         idx = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_users_email_unique",
-            table_name="users",
+            index=Index(dialect, "idx_users_email_unique"),
+            table=Table(dialect, "users"),
             columns=["email"],
             unique=True,
         )
@@ -163,11 +177,12 @@ class TestCreateIndexExpression:
     def test_composite_index(self, dialect):
         """Test CREATE INDEX with multiple columns."""
         from rhosocial.activerecord.backend.expression import CreateIndexExpression
+        from rhosocial.activerecord.backend.expression.objects import Index, Table
 
         idx = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_orders_composite",
-            table_name="orders",
+            index=Index(dialect, "idx_orders_composite"),
+            table=Table(dialect, "orders"),
             columns=["user_id", "created_at"],
         )
 
@@ -187,16 +202,17 @@ class TestJoinClause:
         """Test INNER JOIN formatting."""
         from rhosocial.activerecord.backend.expression import (
             QueryExpression,
-            TableExpression,
             Column,
             JoinClause,
         )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
+        from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
 
         join = JoinClause(
             dialect=dialect,
-            left_table=TableExpression(dialect, "users", alias="u"),
-            right_table=TableExpression(dialect, "orders", alias="o"),
+            left_table=NamedRelationRef(dialect, Table(dialect, "users"), alias="u"),
+            right_table=NamedRelationRef(dialect, Table(dialect, "orders"), alias="o"),
             join_type="INNER JOIN",
             condition=ComparisonPredicate(
                 dialect,
@@ -221,16 +237,17 @@ class TestJoinClause:
         """Test LEFT JOIN formatting."""
         from rhosocial.activerecord.backend.expression import (
             QueryExpression,
-            TableExpression,
             Column,
             JoinClause,
         )
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
+        from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
 
         join = JoinClause(
             dialect=dialect,
-            left_table=TableExpression(dialect, "users", alias="u"),
-            right_table=TableExpression(dialect, "profiles", alias="p"),
+            left_table=NamedRelationRef(dialect, Table(dialect, "users"), alias="u"),
+            right_table=NamedRelationRef(dialect, Table(dialect, "profiles"), alias="p"),
             join_type="LEFT JOIN",
             condition=ComparisonPredicate(
                 dialect,

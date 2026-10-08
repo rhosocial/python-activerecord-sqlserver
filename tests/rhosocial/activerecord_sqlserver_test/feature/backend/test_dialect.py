@@ -98,13 +98,17 @@ class TestSQLServerDialectStatements:
         ],
     )
     def test_format_alter_database_owner(self, database_dialect, database, owner, expected):
+        from rhosocial.activerecord.backend.expression.objects import Database
         from rhosocial.activerecord.backend.expression.statements.ddl_database import (
             AlterDatabaseAction,
             AlterDatabaseExpression,
         )
 
         expr = AlterDatabaseExpression(
-            database_dialect, database, AlterDatabaseAction.OWNER_TO, target=owner
+            database_dialect,
+            Database(database_dialect, database),
+            AlterDatabaseAction.OWNER_TO,
+            target=owner,
         )
         assert database_dialect.format_alter_database_statement(expr) == (expected, ())
         assert expr.to_sql() == (expected, ())
@@ -121,24 +125,29 @@ class TestSQLServerDialectStatements:
         ],
     )
     def test_format_alter_database_other_actions(self, database_dialect, action, target, expected):
+        from rhosocial.activerecord.backend.expression.objects import Database
         from rhosocial.activerecord.backend.expression.statements.ddl_database import (
             AlterDatabaseAction,
             AlterDatabaseExpression,
         )
 
         expr = AlterDatabaseExpression(
-            database_dialect, "app_db", AlterDatabaseAction[action], target=target
+            database_dialect,
+            Database(database_dialect, "app_db"),
+            AlterDatabaseAction[action],
+            target=target,
         )
         assert expr.to_sql() == (expected, ())
 
     def test_format_create_index_basic(self, dialect: SQLServerDialect):
         """Test basic CREATE INDEX formatting."""
+        from rhosocial.activerecord.backend.expression.objects import Index, Table
         from rhosocial.activerecord.backend.expression.statements import CreateIndexExpression
 
         expr = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_test",
-            table_name="test_table",
+            index=Index(dialect, "idx_test"),
+            table=Table(dialect, "test_table"),
             columns=["id", "name"],
         )
         sql, params = dialect.format_create_index_statement(expr)
@@ -149,12 +158,13 @@ class TestSQLServerDialectStatements:
 
     def test_format_create_unique_index(self, dialect: SQLServerDialect):
         """Test CREATE UNIQUE INDEX formatting."""
+        from rhosocial.activerecord.backend.expression.objects import Index, Table
         from rhosocial.activerecord.backend.expression.statements import CreateIndexExpression
 
         expr = CreateIndexExpression(
             dialect=dialect,
-            index_name="idx_unique",
-            table_name="users",
+            index=Index(dialect, "idx_unique"),
+            table=Table(dialect, "users"),
             columns=["email"],
             unique=True,
         )

@@ -12,6 +12,7 @@ import copy
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, ToSQLProtocol
+from rhosocial.activerecord.backend.expression.objects import Index, Sequence, Table
 from rhosocial.activerecord.backend.dialect.protocols import (
     CollationSupport,
     CTESupport,
@@ -32,19 +33,26 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     LateralJoinSupport,
     WildcardSupport,
     JoinSupport,
-    ViewSupport,
     SetOperationSupport,
     TruncateSupport,
-    SchemaSupport,
-    IndexSupport,
-    SequenceSupport,
-    TableSupport,
+    NamespaceSupport,
+    TableObjectSupport,
+    ViewObjectSupport,
+    MaterializedViewObjectSupport,
+    ForeignTableObjectSupport,
+    IndexObjectSupport,
+    SequenceObjectSupport,
+    TriggerObjectSupport,
+    RoutineObjectSupport,
+    TypeObjectSupport,
+    SynonymObjectSupport,
     ConstraintSupport,
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
     DDLTypeSupport,
-    UserDefinedTypeSupport,
+    CreateTypeSupport,
+    DropTypeSupport,
 )
 from .protocols import (
     SQLServerTableSupport,
@@ -69,6 +77,28 @@ from .protocols import (
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
     CTEMixin,
+    # Named objects: each *NameMixin renders one object kind through
+    # NamespaceMixin.format_qualified_name, so they precede it. A statement that
+    # now holds an object -- CREATE INDEX's index and table, TRUNCATE's table --
+    # has nowhere else to render it.
+    TableNameMixin,
+    ViewNameMixin,
+    MaterializedViewNameMixin,
+    ForeignTableNameMixin,
+    IndexNameMixin,
+    SequenceNameMixin,
+    TriggerNameMixin,
+    FunctionNameMixin,
+    ProcedureNameMixin,
+    TypeNameMixin,
+    DomainNameMixin,
+    SynonymNameMixin,
+    SchemaNameMixin,
+    DatabaseNameMixin,
+    PropertyGraphNameMixin,
+    # NamespaceMixin itself: what every *NameMixin above falls back on, and
+    # what SQLServerNamespaceMixin refines.
+    NamespaceMixin,
     WindowFunctionMixin,
     JSONMixin,
 
@@ -102,16 +132,21 @@ from rhosocial.activerecord.backend.dialect.mixins import (
 
     TransactionControlMixin,
     AutoIncrementMixin,
+    IdentityColumnMixin,
     GeneratedColumnMixin,
     TriggerMixin,
     PartitionMixin,
     ILIKEMixin,
     FunctionMixin,
+    # The FROM side of a named object: an alias and a temporal clause, which the
+    # relation itself has no room for. The name comes from the relation.
+    RelationSourceMixin,
 )
 from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
+from .mixins.identity_column import SQLServerIdentityColumnMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
 from .mixins.graph import SQLServerGraphMixin
@@ -144,7 +179,9 @@ from .mixins.index import SQLServerIndexMixin
 from .mixins.generated_column import SQLServerGeneratedColumnMixin
 from .mixins.set_operation import SQLServerSetOperationMixin
 from .mixins.ddl_table import SQLServerTableMixin
+from .mixins.namespace import SQLServerNamespaceMixin
 from .mixins.identifier import SQLServerIdentifierMixin
+from .expression.objects import SQLServerTable
 from .mixins.transaction import SQLServerTransactionMixin
 from .mixins.function import SQLServerFunctionMixin
 from .mixins.version_constants import (
@@ -183,11 +220,8 @@ if TYPE_CHECKING:
         CreateTableExpression,
         CreateIndexExpression,
         DropTableExpression,
-        AlterTableExpression,
         CreateSchemaExpression,
         DropSchemaExpression,
-        CreateSequenceExpression,
-        DropSequenceExpression,
         AlterSequenceExpression,
         MergeExpression,
         TruncateExpression,
@@ -212,6 +246,41 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 
 
 class SQLServerDialect(
+    # ``SQLDialectBase`` quotes identifiers with double quotes. Python resolves
+    # base classes left to right, so the bracket-quoting mixin has to precede it
+    # to win. This is also why the dialect body declares no ``format_identifier``
+    # of its own: there is exactly one, and it lives in the mixin.
+    SQLServerIdentifierMixin,
+    # Which namespace levels a name carries, and what SQL Server will accept as
+    # one. The per-kind rendering lives in the core *NameMixin classes listed
+    # below, which is where every object kind is spelled.
+    SQLServerNamespaceMixin,
+    # A JOIN side is a row source, not an object: it carries the alias the
+    # object has no room for, and renders the relation's name through that
+    # relation's own format_<kind>_object.
+    RelationSourceMixin,
+    # One renderer per object kind. Each inherits NamespaceMixin, which is what
+    # SQLServerNamespaceMixin refines, so they follow it here and precede it in
+    # the MRO -- and a statement that holds a Table or an Index has somewhere to
+    # render it without a formatter of its own.
+    TableNameMixin,
+    ViewNameMixin,
+    MaterializedViewNameMixin,
+    ForeignTableNameMixin,
+    IndexNameMixin,
+    SequenceNameMixin,
+    TriggerNameMixin,
+    FunctionNameMixin,
+    ProcedureNameMixin,
+    TypeNameMixin,
+    DomainNameMixin,
+    SynonymNameMixin,
+    SchemaNameMixin,
+    DatabaseNameMixin,
+    PropertyGraphNameMixin,
+    # NamespaceMixin itself: the base every *NameMixin above falls back on,
+    # and the one SQLServerNamespaceMixin refines.
+    NamespaceMixin,
     SQLDialectBase,
     # Core infrastructure mixins (provide base implementations
     # that the dialect overrides as needed)
@@ -222,6 +291,7 @@ class SQLServerDialect(
     SQLServerAlterColumnModifierMixin,  # Before DDLColumnMixin to override format_*_action
     SQLServerProtocolSupportMixin,  # SQL Server protocol contract implementations
     SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
+    SQLServerIdentityColumnMixin,  # IDENTITY(seed, increment) formatter + probes
     SQLServerPivotMixin,  # PIVOT / UNPIVOT formatters (2005+)
     SQLServerGraphMixin,  # SQL Graph: node/edge tables + MATCH predicate (2017+/2019+)
     SQLServerColumnstoreIndexMixin,  # columnstore index DDL (2012+/2014+/2022+)
@@ -232,7 +302,6 @@ class SQLServerDialect(
     DDLColumnMixin,
     DDLTypeMixin,
     UserDefinedTypeMixin,
-    SQLServerIdentifierMixin,
     SQLServerCollationMixin,
     CollationMixin,
     SQLServerCTEMixin,
@@ -290,6 +359,7 @@ class SQLServerDialect(
 
     TransactionControlMixin,
     AutoIncrementMixin,
+    IdentityColumnMixin,
     GeneratedColumnMixin,
     TriggerMixin,
     PartitionMixin,
@@ -317,22 +387,35 @@ class SQLServerDialect(
     LateralJoinSupport,
     WildcardSupport,
     JoinSupport,
-    ViewSupport,
     SetOperationSupport,
     TruncateSupport,
-    SchemaSupport,
-    IndexSupport,
-    SequenceSupport,
-    SQLServerTableSupport,  # Before TableSupport
-    TableSupport,
+    # The object protocols: one per kind, each naming its format_<kind>_object
+    # method and inheriting NamespaceSupport, so a subclass precedes its base and
+    # NamespaceSupport follows every one of them. SQL Server has all three
+    # namespace levels and renders every one of them, which is what
+    # NamespaceSupport says.
+    SQLServerTableSupport,  # Before TableObjectSupport (subclass precedes base)
+    TableObjectSupport,
+    ViewObjectSupport,
+    MaterializedViewObjectSupport,
+    ForeignTableObjectSupport,
+    IndexObjectSupport,
+    SequenceObjectSupport,
+    TriggerObjectSupport,
+    RoutineObjectSupport,
+    TypeObjectSupport,
+    SynonymObjectSupport,
+    NamespaceSupport,
     ConstraintSupport,
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
     # DataType Support Protocol
     DDLTypeSupport,
-    SQLServerUserDefinedTypeSupport,
-    UserDefinedTypeSupport,
+    # TYPE DDL: SQL Server has CREATE TYPE and DROP TYPE but no ALTER TYPE.
+    SQLServerUserDefinedTypeSupport,  # Before its core bases (subclass precedes base)
+    CreateTypeSupport,
+    DropTypeSupport,
     # SQL Server-specific protocols (marker classes for isinstance() checks;
     # implementations live in SQLServerProtocolSupportMixin / SQLServerSequenceMixin)
     SQLServerOutputSupport,
@@ -431,14 +514,6 @@ class SQLServerDialect(
         "bit_shift_right": (SQL_SERVER_2022, None),
     }
 
-    def format_identifier(self, identifier: str, need_quote: bool = True) -> str:
-        """Format an identifier with SQL Server square brackets.
-
-        Declared on the dialect so it is not shadowed by ``SQLDialectBase``
-        (double quotes), which precedes the feature mixins in the MRO.
-        """
-        return SQLServerIdentifierMixin.format_identifier(self, identifier, need_quote)
-
     def __init__(
         self,
         version: Optional[Tuple[int, int, int]] = None,
@@ -526,11 +601,29 @@ class SQLServerDialect(
         SQL Server has no CREATE TABLE ... LIKE (``supports_create_table_like``
         stays ``False``), so the gated
         ``format_create_table_like_statement`` raises
-        ``UnsupportedFeatureError``.         Temporary tables use a ``#``-prefixed
-        table name instead of the ``TEMPORARY`` keyword.
+        ``UnsupportedFeatureError``.
+
+        ``expr.table`` is already the object being named, so the only decision
+        left here is whether it is the temporary form: SQL Server spells a
+        temporary table by prefixing its *name* with ``#``, which is a fact
+        about the table rather than a rendering choice. Both places the name
+        appears -- the ``OBJECT_ID`` guard and the ``CREATE TABLE`` header --
+        then render that one object, so the temporary and ordinary paths cannot
+        disagree about what they named.
+
+        Raises:
+            TypeError: ``expr.table`` is not a Table. A view or an index handed
+                here would render as a well-formed ``CREATE TABLE`` over that
+                object's name, because the object carries its own
+                ``format_method`` and the dialect has no other way to tell.
         """
         from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
+        if not isinstance(expr.table, Table):
+            raise TypeError(
+                f"CreateTableExpression.table must be a Table, "
+                f"got {type(expr.table).__name__}"
+            )
         if getattr(expr, "tablespace", None):
             raise UnsupportedFeatureError(
                 self.name,
@@ -552,29 +645,37 @@ class SQLServerDialect(
                 "SQL Server has no inline table comment; comments are "
                 "annotated through sp_addextendedproperty (not implemented).",
             )
+
+        # The caller may hand over a plain ``Table`` even for a temporary, so
+        # the temporary form is settled here: one ``SQLServerTable`` whose name
+        # already carries the ``#``. Nothing below reads ``expr.temporary``
+        # again.
+        table = expr.table
+        if expr.temporary and not isinstance(table, SQLServerTable):
+            table = SQLServerTable(
+                self,
+                table.name,
+                catalog_name=table.catalog_name,
+                schema_name=table.schema_name,
+                catalog_need_quote=table.catalog_need_quote,
+                schema_need_quote=table.schema_need_quote,
+                name_need_quote=table.name_need_quote,
+                temporary=True,
+            )
+
         if_not_exists_guard = ""
         if expr.if_not_exists:
             # SQL Server has no CREATE TABLE IF NOT EXISTS syntax; the
             # idempotent form is the IF OBJECT_ID(...) IS NULL batch guard.
-            target = expr.table.name
-            if expr.table.schema_name:
-                target = f"{expr.table.schema_name}.{target}"
-            escaped_target = target.replace("'", "''")
-            if_not_exists_guard = f"IF OBJECT_ID(N'{escaped_target}', N'U') IS NULL\n"
+            # OBJECT_ID names an object rather than quoting an identifier, so
+            # this is the one unbracketed shape -- see format_object_id_name.
+            target = self.format_object_id_name(table).replace("'", "''")
+            if_not_exists_guard = f"IF OBJECT_ID(N'{target}', N'U') IS NULL\n"
         all_params: List[Any] = []
 
         parts = ["CREATE TABLE"]
 
-        if expr.temporary:
-            temp_name = expr.table.name
-            if not temp_name.startswith("#"):
-                temp_name = f"#{temp_name}"
-            table_sql = self.format_identifier(temp_name)
-            if expr.table.schema_name:
-                table_sql = f"{self.format_identifier(expr.table.schema_name)}.{table_sql}"
-            table_params = ()
-        else:
-            table_sql, table_params = expr.table.to_sql()
+        table_sql, table_params = table.to_sql()
         all_params.extend(table_params)
         parts.append(table_sql)
 
@@ -631,12 +732,6 @@ class SQLServerDialect(
             all_params.extend(kind_params)
 
         return if_not_exists_guard + ' '.join(parts), tuple(all_params)
-
-    def format_identity_clause(self, expr) -> Tuple[str, tuple]:
-        """SQL Server renders identity as ``IDENTITY(seed, increment)``."""
-        seed = expr.start if expr.start is not None else 1
-        increment = expr.increment if expr.increment is not None else 1
-        return f" IDENTITY({seed}, {increment})", ()
 
     def format_column_definition(
         self,
@@ -701,6 +796,63 @@ class SQLServerDialect(
                 constraint_parts.append(f"CHECK ({check_sql})")
                 params.extend(check_params)
 
+            # The node's two-spelling constraint attributes are consumed here
+            # even though SQL Server cannot spell any of them: this override
+            # replaces core's column formatter, so an explicitly requested
+            # attribute is refused by name rather than silently dropped.
+            # Measured refused on 2019 / 2022 / 2025.
+            from rhosocial.activerecord.backend.dialect.mixins.ddl_table import (
+                normalize_column_constraint_type,
+            )
+
+            if constraint.enforced or constraint.not_enforced:
+                normalized = normalize_column_constraint_type(
+                    constraint.constraint_type
+                )
+                if normalized not in {
+                    ColumnConstraintType.CHECK,
+                    ColumnConstraintType.FOREIGN_KEY,
+                }:
+                    raise ValueError(
+                        "ENFORCED/NOT ENFORCED is only valid for CHECK and "
+                        "FOREIGN KEY constraints"
+                    )
+                spelling = "ENFORCED" if constraint.enforced else "NOT ENFORCED"
+                if not self.supports_constraint_enforced():
+                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+                    raise UnsupportedFeatureError(
+                        self.name,
+                        f"constraint {spelling}",
+                        f"{self.name} does not support the {spelling} constraint.",
+                    )
+                constraint_parts.append(spelling)
+            if constraint.deferrable or constraint.not_deferrable:
+                spelling = (
+                    "DEFERRABLE" if constraint.deferrable else "NOT DEFERRABLE"
+                )
+                if not self.supports_deferrable_constraint():
+                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+                    raise UnsupportedFeatureError(
+                        self.name,
+                        f"constraint {spelling}",
+                        f"{self.name} does not support the {spelling} constraint.",
+                    )
+                constraint_parts.append(spelling)
+            if constraint.initially_deferred or constraint.initially_immediate:
+                spelling = (
+                    "INITIALLY DEFERRED"
+                    if constraint.initially_deferred
+                    else "INITIALLY IMMEDIATE"
+                )
+                if not self.supports_deferrable_constraint():
+                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+                    raise UnsupportedFeatureError(
+                        self.name,
+                        f"constraint {spelling}",
+                        f"{self.name} does not support the {spelling} constraint.",
+                    )
+                constraint_parts.append(spelling)
+
             if constraint.is_auto_increment:
                 constraint_parts.append("IDENTITY(1,1)")
 
@@ -731,7 +883,25 @@ class SQLServerDialect(
         *,
         memory_optimized: bool = False,
     ) -> Tuple[str, tuple]:
-        """Format a table constraint for SQL Server."""
+        """Format a table constraint for SQL Server.
+
+        The memory-optimized variants are why this overrides core's formatter at
+        all: ``PRIMARY KEY NONCLUSTERED`` and ``UNIQUE NONCLUSTERED`` are the
+        spellings a memory-optimized table needs.
+
+        Raises:
+            TypeError: ``t_const.foreign_key_table`` is not a Table. Another
+                object kind would have had its own name rendered as the
+                referenced relation, because the constraint renders that slot
+                through ``to_sql()``.
+        """
+        if t_const.foreign_key_table is not None and not isinstance(
+            t_const.foreign_key_table, Table
+        ):
+            raise TypeError(
+                f"TableConstraint.foreign_key_table must be a Table, "
+                f"got {type(t_const.foreign_key_table).__name__}"
+            )
         from rhosocial.activerecord.backend.expression.statements import (
             TableConstraintType,
             ForeignKeyConstraint,
@@ -764,7 +934,7 @@ class SQLServerDialect(
                 ref_cols_str = ', '.join(
                     self.format_identifier(c) for c in t_const.foreign_key_columns
                 )
-                ref_table = self.format_identifier(t_const.foreign_key_table)
+                ref_table = t_const.foreign_key_table.to_sql()[0]
                 parts.append(
                     f"FOREIGN KEY ({cols_str}) REFERENCES {ref_table} ({ref_cols_str})"
                 )
@@ -777,6 +947,59 @@ class SQLServerDialect(
             check_sql, check_params = t_const.check_condition.to_sql()
             parts.append(f"CHECK ({check_sql})")
             params.extend(check_params)
+
+        # The node's two-spelling constraint attributes are consumed here even
+        # though SQL Server cannot spell any of them: this override replaces
+        # core's formatter, so an explicitly requested attribute is refused by
+        # name rather than silently dropped. Measured refused on 2019 / 2022 /
+        # 2025 (ENFORCED, NOT ENFORCED, DEFERRABLE, NOT DEFERRABLE, INITIALLY
+        # DEFERRED, INITIALLY IMMEDIATE). The probes gate the refusals, and the
+        # spelling is rendered when a probe answers True, so neither is
+        # decorative.
+        from rhosocial.activerecord.backend.dialect.mixins.ddl_table import (
+            normalize_table_constraint_type,
+        )
+
+        normalized_type = normalize_table_constraint_type(t_const.constraint_type)
+        if t_const.enforced or t_const.not_enforced:
+            if normalized_type not in {
+                TableConstraintType.CHECK,
+                TableConstraintType.FOREIGN_KEY,
+            }:
+                raise ValueError(
+                    "ENFORCED/NOT ENFORCED is only valid for CHECK and "
+                    "FOREIGN KEY constraints"
+                )
+            spelling = "ENFORCED" if t_const.enforced else "NOT ENFORCED"
+            if not self.supports_constraint_enforced():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    f"constraint {spelling}",
+                    f"{self.name} does not support the {spelling} constraint.",
+                )
+            parts.append(spelling)
+        if t_const.deferrable or t_const.not_deferrable:
+            spelling = "DEFERRABLE" if t_const.deferrable else "NOT DEFERRABLE"
+            if not self.supports_deferrable_constraint():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    f"constraint {spelling}",
+                    f"{self.name} does not support the {spelling} constraint.",
+                )
+            parts.append(spelling)
+        if t_const.initially_deferred or t_const.initially_immediate:
+            spelling = (
+                "INITIALLY DEFERRED"
+                if t_const.initially_deferred
+                else "INITIALLY IMMEDIATE"
+            )
+            if not self.supports_deferrable_constraint():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    f"constraint {spelling}",
+                    f"{self.name} does not support the {spelling} constraint.",
+                )
+            parts.append(spelling)
 
         return ' '.join(parts), tuple(params)
 
@@ -802,7 +1025,7 @@ class SQLServerDialect(
             parts.append("UNIQUE")
 
         parts.append("INDEX")
-        parts.append(self.format_identifier(idx_def.name))
+        parts.append(self.qualified_object_name(Index, idx_def.name))
 
         col_parts = []
         for col in idx_def.columns:
@@ -833,9 +1056,25 @@ class SQLServerDialect(
 
         SQL Server doesn't support IF NOT EXISTS for CREATE INDEX, and has no
         index TABLESPACE concept; declared values are never silently dropped.
+
+        Raises:
+            TypeError: ``expr.index`` is not an Index. A table handed here would
+                render as a well-formed ``CREATE INDEX`` over that table's name.
+            TypeError: ``expr.table`` is not a Table. An index handed here would
+                render as a well-formed ``CREATE INDEX ... ON <index>``.
         """
         from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
+        if not isinstance(expr.index, Index):
+            raise TypeError(
+                f"CreateIndexExpression.index must be an Index, "
+                f"got {type(expr.index).__name__}"
+            )
+        if not isinstance(expr.table, Table):
+            raise TypeError(
+                f"CreateIndexExpression.table must be a Table, "
+                f"got {type(expr.table).__name__}"
+            )
         if getattr(expr, "if_not_exists", False):
             raise UnsupportedFeatureError(
                 self.name, "CREATE INDEX IF NOT EXISTS",
@@ -858,9 +1097,9 @@ class SQLServerDialect(
                 parts.append(index_type)
 
         parts.append("INDEX")
-        parts.append(self.format_identifier(expr.index_name))
+        parts.append(expr.index.to_sql()[0])
         parts.append("ON")
-        parts.append(self.format_identifier(expr.table_name))
+        parts.append(expr.table.to_sql()[0])
 
         col_parts = []
         for col in expr.columns:
@@ -885,78 +1124,186 @@ class SQLServerDialect(
 
     # --- SQL Server-specific format overrides ---
 
-    def format_create_sequence_statement(self, expr: "CreateSequenceExpression") -> Tuple[str, tuple]:
-        """Format CREATE SEQUENCE for SQL Server (2012+).
-
-        SQL Server uses:
-        - CREATE SEQUENCE [schema.]name
-        - START WITH, INCREMENT BY, MINVALUE, MAXVALUE
-        - CYCLE | NO CYCLE, CACHE, NO ORDER (ORDER not supported)
-        - No IF NOT EXISTS support, no OWNED BY
-        """
-        from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-
-        if getattr(expr, "if_not_exists", False):
-            raise UnsupportedFeatureError(
-                self.name, "CREATE SEQUENCE IF NOT EXISTS",
-                "SQL Server has no CREATE SEQUENCE IF NOT EXISTS syntax.",
-            )
-        if getattr(expr, "owned_by", None):
-            raise UnsupportedFeatureError(
-                self.name, "SEQUENCE OWNED BY",
-                "SQL Server sequences have no OWNED BY clause.",
-            )
-        parts = ["CREATE SEQUENCE"]
-        parts.append(self.format_identifier(expr.sequence_name))
-        if expr.start is not None:
-            parts.append(f"START WITH {expr.start}")
-        if expr.increment is not None:
-            parts.append(f"INCREMENT BY {expr.increment}")
-        if expr.minvalue is not None:
-            parts.append(f"MINVALUE {expr.minvalue}")
-        if expr.maxvalue is not None:
-            parts.append(f"MAXVALUE {expr.maxvalue}")
-        if expr.cycle:
-            parts.append("CYCLE")
-        else:
-            parts.append("NO CYCLE")
-        if expr.cache is not None:
-            parts.append(f"CACHE {expr.cache}")
-        return " ".join(parts), ()
-
-    def format_drop_sequence_statement(self, expr: "DropSequenceExpression") -> Tuple[str, tuple]:
-        """Format DROP SEQUENCE for SQL Server (2012+)."""
-        parts = ["DROP SEQUENCE"]
-        if expr.if_exists and self.version >= SQL_SERVER_2012:
-            parts.append("IF EXISTS")
-        parts.append(self.format_identifier(expr.sequence_name))
-        return " ".join(parts), ()
+    # CREATE SEQUENCE and DROP SEQUENCE have no local copy: SQL Server's
+    # spelling is exactly the one core's SequenceMixin emits, and that mixin now
+    # consults supports_sequence() and the option probes before every clause.
+    # Answering the probes in SQLServerSequenceMixin is therefore the whole
+    # implementation, and one renderer serves every dialect.
 
     def format_alter_sequence_statement(self, expr: "AlterSequenceExpression") -> Tuple[str, tuple]:
-        """Format ALTER SEQUENCE for SQL Server."""
-        parts = [f"ALTER SEQUENCE {self.format_identifier(expr.sequence_name)}"]
+        """Format ALTER SEQUENCE for SQL Server.
+
+        SQL Server's ALTER SEQUENCE grammar differs from the standard form core
+        renders: it changes the start point with ``RESTART WITH`` and has no
+        ``START WITH`` clause -- the engine rejects that argument with error
+        11710 -- and it has no ``ORDER``/``OWNED BY`` clause either. The
+        formatter is kept here rather than deferred to ``SequenceMixin`` so
+        every option is gated on this dialect's own probe before its clause is
+        emitted; a probe that answers ``False`` makes the formatter refuse the
+        request by name rather than drop the clause. Both ``ORDER`` and
+        ``OWNED BY`` answer ``False``, so those words are never emitted for
+        this dialect. A requested ``start`` is gated on
+        :meth:`supports_alter_sequence_start`, the ALTER-side question, rather
+        than on the CREATE-side :meth:`supports_sequence_start`; the two
+        clauses are different and only the former decides this statement.
+
+        Each two-spelling option carries one parameter per spelling --
+        ``cycle`` / ``no_cycle``, ``cache`` / ``no_cache``, ``order`` /
+        ``no_order``. The parameter selects the spelling; the probe answers
+        whether the dialect can express the option at all. An unset pair
+        renders nothing, and an explicit spelling whose probe is ``False``
+        raises naming the requested spelling.
+
+        Raises:
+            TypeError: ``expr.sequence`` is not a Sequence. A table handed here
+                would render as a well-formed ``ALTER SEQUENCE`` over that
+                table's name.
+            UnsupportedFeatureError: If the dialect has no sequence object, or
+                the expression asks for an option SQL Server's ALTER SEQUENCE
+                cannot spell.
+        """
+        if not isinstance(expr.sequence, Sequence):
+            raise TypeError(
+                f"AlterSequenceExpression.sequence must be a Sequence, "
+                f"got {type(expr.sequence).__name__}"
+            )
+        if not self.supports_sequence():
+            raise UnsupportedFeatureError(
+                self.name, "ALTER SEQUENCE",
+                f"{self.name} has no sequence object to alter."
+            )
+        parts = [f"ALTER SEQUENCE {expr.sequence.to_sql()[0]}"]
         if expr.restart is not None:
             parts.append(f"RESTART WITH {expr.restart}")
+        if expr.start is not None:
+            # ALTER SEQUENCE changes the start point with RESTART WITH, not
+            # START WITH. ``supports_alter_sequence_start`` is the ALTER-side
+            # question and is kept apart from ``supports_sequence_start``,
+            # which answers for CREATE, where the words are legal.
+            if not self.supports_alter_sequence_start():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE START",
+                    "SQL Server's ALTER SEQUENCE has no START WITH clause; use "
+                    "RESTART WITH to change the start point.",
+                )
+            parts.append(f"START WITH {expr.start}")
         if expr.increment is not None:
+            if not self.supports_sequence_increment():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE INCREMENT",
+                    f"{self.name} does not support the INCREMENT BY sequence option."
+                )
             parts.append(f"INCREMENT BY {expr.increment}")
         if expr.minvalue is not None:
+            if not self.supports_sequence_minvalue():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE MINVALUE",
+                    f"{self.name} does not support the MINVALUE sequence option."
+                )
             parts.append(f"MINVALUE {expr.minvalue}")
         if expr.maxvalue is not None:
+            if not self.supports_sequence_maxvalue():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE MAXVALUE",
+                    f"{self.name} does not support the MAXVALUE sequence option."
+                )
             parts.append(f"MAXVALUE {expr.maxvalue}")
-        if expr.cycle is not None:
+        if expr.cycle or expr.no_cycle:
+            # One parameter per spelling: ``cycle`` selects CYCLE, ``no_cycle``
+            # selects NO CYCLE, and neither renders nothing. The probe answers
+            # whether the option can be expressed at all; an explicit spelling
+            # whose probe is False is refused by name, never dropped.
+            if not self.supports_sequence_cycle():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE CYCLE",
+                    f"{self.name} does not support the "
+                    f"{'CYCLE' if expr.cycle else 'NO CYCLE'} sequence option."
+                )
             parts.append("CYCLE" if expr.cycle else "NO CYCLE")
         if expr.cache is not None:
+            if not self.supports_sequence_cache():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE CACHE",
+                    f"{self.name} does not support the CACHE sequence option."
+                )
             parts.append(f"CACHE {expr.cache}")
+        if expr.no_cache:
+            if not self.supports_sequence_cache():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE CACHE",
+                    f"{self.name} does not support the NO CACHE sequence option."
+                )
+            parts.append("NO CACHE")
+        if expr.order or expr.no_order:
+            if not self.supports_sequence_order():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE ORDER",
+                    f"{self.name} does not support the "
+                    f"{'ORDER' if expr.order else 'NO ORDER'} sequence option."
+                )
+            parts.append("ORDER" if expr.order else "NO ORDER")
+        if expr.owned_by is not None:
+            if not self.supports_sequence_owned_by():
+                raise UnsupportedFeatureError(
+                    self.name, "ALTER SEQUENCE OWNED BY",
+                    f"{self.name} does not support the OWNED BY sequence option."
+                )
+            if expr.owned_by:
+                parts.append(f"OWNED BY {expr.owned_by}")
+            else:
+                parts.append("OWNED BY NONE")
         return " ".join(parts), ()
 
     def format_truncate_statement(self, expr: "TruncateExpression") -> Tuple[str, tuple]:
         """Format TRUNCATE TABLE for SQL Server.
 
-        TRUNCATE TABLE is a DDL operation (minimal logging).
-        Does not support RESTART IDENTITY or CASCADE.
+        SQL Server's TRUNCATE TABLE is a DDL operation (minimal logging) with
+        no modifiers, so the statement renders the table object and nothing
+        else. The node's modifier pairs (``cascade`` / ``restrict``,
+        ``restart_identity`` / ``continue_identity``) are still consumed: this
+        override replaces core's gated formatter, so an explicitly requested
+        modifier is refused by name -- measured refused on 2019 / 2022 / 2025 --
+        rather than silently dropped.
+
+        Raises:
+            TypeError: ``expr.table`` is not a Table. A view or a sequence
+                handed here would render as a well-formed ``TRUNCATE TABLE``
+                over that object's name.
+            UnsupportedFeatureError: If a TRUNCATE modifier SQL Server cannot
+                spell was requested.
         """
-        sql = f"TRUNCATE TABLE {self.format_identifier(expr.table_name)}"
-        return sql, ()
+        if not isinstance(expr.table, Table):
+            raise TypeError(
+                f"TruncateExpression.table must be a Table, "
+                f"got {type(expr.table).__name__}"
+            )
+        if not self.supports_truncate():
+            raise UnsupportedFeatureError(
+                self.name, "TRUNCATE",
+                f"{self.name} does not support TRUNCATE.",
+            )
+        if (
+            expr.restart_identity or expr.continue_identity
+        ) and not self.supports_truncate_restart_identity():
+            feature = (
+                "TRUNCATE RESTART IDENTITY"
+                if expr.restart_identity
+                else "TRUNCATE CONTINUE IDENTITY"
+            )
+            raise UnsupportedFeatureError(
+                self.name, feature, f"{self.name} does not support {feature}."
+            )
+        if expr.cascade and not self.supports_truncate_cascade():
+            raise UnsupportedFeatureError(
+                self.name, "TRUNCATE CASCADE",
+                f"{self.name} does not support TRUNCATE with CASCADE."
+            )
+        if expr.restrict and not self.supports_truncate_restrict():
+            raise UnsupportedFeatureError(
+                self.name, "TRUNCATE RESTRICT",
+                f"{self.name} does not support TRUNCATE with RESTRICT."
+            )
+        return f"TRUNCATE TABLE {expr.table.to_sql()[0]}", ()
 
     def format_merge_statement(self, expr: "MergeExpression") -> Tuple[str, tuple]:
         """Format MERGE statement for SQL Server (2008+).
@@ -966,8 +1313,18 @@ class SQLServerDialect(
         WHEN MATCHED [AND condition] THEN UPDATE/DELETE
         WHEN NOT MATCHED [BY TARGET] [AND condition] THEN INSERT
         WHEN NOT MATCHED BY SOURCE [AND condition] THEN UPDATE/DELETE
+
+        Raises:
+            TypeError: ``expr.target_table`` is not a Table. Any other object kind
+                would have its own name rendered as the MERGE target.
         """
         from rhosocial.activerecord.backend.expression.statements import MergeActionType
+
+        if not isinstance(expr.target_table, Table):
+            raise TypeError(
+                f"MergeExpression.target_table must be a Table, "
+                f"got {type(expr.target_table).__name__}"
+            )
 
         all_params: list = []
 
@@ -1047,36 +1404,6 @@ class SQLServerDialect(
 
         # T-SQL requires a MERGE statement to be terminated by a semi-colon.
         return " ".join(parts) + ";", tuple(all_params)
-
-    def format_alter_table_statement(self, expr: "AlterTableExpression") -> Tuple[str, tuple]:
-        """Format ALTER TABLE for SQL Server.
-
-        SQL Server supports:
-        - ADD column
-        - DROP COLUMN
-        - ALTER COLUMN (modify data type)
-        - ADD CONSTRAINT (PRIMARY KEY, UNIQUE, CHECK, FOREIGN KEY)
-        - DROP CONSTRAINT
-        - Single action per ALTER TABLE statement
-        """
-        all_params: list = []
-        table_sql = self.format_identifier(expr.table_name)
-
-        action_parts = []
-        for action in expr.actions:
-            action_part, action_params = action.to_sql()
-            action_parts.append(action_part)
-            all_params.extend(action_params)
-
-        if not action_parts:
-            return f"ALTER TABLE {table_sql}", ()
-
-        if self.supports_multi_action_alter_table():
-            return f"ALTER TABLE {table_sql} {', '.join(action_parts)}", tuple(all_params)
-
-        # SQL Server requires one action per statement: emit a statement each.
-        stmts = [f"ALTER TABLE {table_sql} {part}" for part in action_parts]
-        return "; ".join(stmts), tuple(all_params)
 
     def format_function_call(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
         """Format a function call, mapping MySQL/generic function names to

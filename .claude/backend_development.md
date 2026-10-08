@@ -269,35 +269,72 @@ Every dialect inherits from:
 
 ##### Current Protocols and Mixins (Main Package)
 
+Names below are the ones the core package actually defines, checked against
+`backend/dialect/protocols/` and `backend/dialect/mixins/`. A few of the
+protocols have no mixin of their own — their formatter lives in a broader one,
+and the column says which. `NamespaceSupport` is the naming protocol, not a DDL
+one: it answers whether a name may be *qualified* with a catalog or a schema,
+which is a different question from whether the engine has those objects at all
+(`CreateSchemaSupport` / `CreateDatabaseSupport`).
+
 | Protocol | Mixin | Description |
 |----------|-------|-------------|
 | `WindowFunctionSupport` | `WindowFunctionMixin` | Window functions (OVER, PARTITION BY) |
 | `CTESupport` | `CTEMixin` | Common Table Expressions (WITH clause) |
-| `AdvancedGroupingSupport` | `AdvancedGroupingMixin` | ROLLUP, CUBE, GROUPING SETS |
-| `ReturningSupport` | `ReturningMixin` | RETURNING clause |
+| `AdvancedGroupingSupport` | `DQLMixin` | ROLLUP, CUBE, GROUPING SETS (`format_grouping_clause`) |
+| `DqlOrderSupport` | `DQLMixin` | ORDER BY in a query part |
+| `ReturningSupport` | `DMLMixin` | RETURNING clause (`format_returning_clause`) |
 | `UpsertSupport` | `UpsertMixin` | UPSERT operations (ON CONFLICT) |
 | `LateralJoinSupport` | `LateralJoinMixin` | LATERAL joins |
 | `ArraySupport` | `ArrayMixin` | Array types and operations |
 | `JSONSupport` | `JSONMixin` | JSON types and operations |
 | `ExplainSupport` | `ExplainMixin` | EXPLAIN statement |
-| `FilterClauseSupport` | `FilterClauseMixin` | FILTER clause for aggregates |
-| `OrderedSetAggregationSupport` | `OrderedSetAggregationMixin` | WITHIN GROUP (ORDER BY) |
+| `FilterClauseSupport` | `ExpressionMixin` | FILTER clause for aggregates |
+| `OrderedSetAggregationSupport` | `ExpressionMixin` | WITHIN GROUP (ORDER BY) |
 | `MergeSupport` | `MergeMixin` | MERGE statement |
 | `TemporalTableSupport` | `TemporalTableMixin` | FOR SYSTEM_TIME queries |
-| `QualifyClauseSupport` | `QualifyClauseMixin` | QUALIFY clause |
-| `LockingSupport` | `LockingMixin` | FOR UPDATE, SKIP LOCKED |
+| `QualifyClauseSupport` | `DQLMixin` | QUALIFY clause |
+| `LockingSupport` | `DQLMixin` | FOR UPDATE, SKIP LOCKED (`format_for_update_clause`) |
 | `GraphSupport` | `GraphMixin` | Graph queries (MATCH) |
+| `GraphTableSupport` | `GraphTableMixin` | GRAPH_TABLE row source (SQL/PGQ) |
 | `JoinSupport` | `JoinMixin` | JOIN operations |
+| `WildcardSupport` | `DQLMixin` | `*` and `table.*` expansion |
 | `SetOperationSupport` | `SetOperationMixin` | UNION, INTERSECT, EXCEPT |
 | `ILIKESupport` | `ILIKEMixin` | Case-insensitive LIKE |
-| `TableSupport` | `TableMixin` | CREATE/DROP/ALTER TABLE |
-| `ViewSupport` | `ViewMixin` | CREATE/DROP VIEW |
+| `CollationSupport` | `CollationMixin` | COLLATE |
+| `DateTimeSupport` | `DateTimeMixin` | Date and time parts |
+| `DataTypeSupport` | `DataTypeMixin` | Type spelling (`format_data_type_*`) |
+| `PivotSupport` | `PivotMixin` | PIVOT / UNPIVOT |
+| `PartitionSupport` | `PartitionMixin` | Table partitioning |
+| `ConstraintSupport` | `ConstraintMixin` / `DDLColumnMixin` | Column and table constraints |
+| `IntrospectionSupport` | `IntrospectionMixin` | Catalog introspection queries |
+| `TransactionControlSupport` | `TransactionControlMixin` | BEGIN / COMMIT / ROLLBACK |
+| `CommentSupport` | `CommentOnMixin` | COMMENT ON |
+| `GeneratedColumnSupport` | `GeneratedColumnMixin` | Generated (computed) columns |
+| `AutoIncrementSupport` | `AutoIncrementMixin` | IDENTITY / AUTO_INCREMENT |
+| `AlterTableModifierSupport` | `SQLServerAlterColumnModifierMixin` (backend) | Backend-only ALTER TABLE options |
+| `CreateTableSupport` / `DropTableSupport` / `AlterTableSupport` | `TableMixin` | CREATE / DROP / ALTER TABLE |
+| `CreateTableAsSupport` / `CreateTableLikeSupport` / `CreateTableCloneSupport` / `CreateTableUsingTemplateSupport` | `TableMixin` | The other CREATE TABLE forms |
+| `CreateViewSupport` / `DropViewSupport` | `ViewMixin` | CREATE / DROP VIEW |
+| `MaterializedViewSupport` | `ViewMixin` | CREATE / DROP / REFRESH MATERIALIZED VIEW |
 | `TruncateSupport` | `TruncateMixin` | TRUNCATE TABLE |
-| `SchemaSupport` | `SchemaMixin` | CREATE/DROP SCHEMA |
-| `IndexSupport` | `IndexMixin` | CREATE/DROP INDEX |
-| `SequenceSupport` | `SequenceMixin` | CREATE/DROP/ALTER SEQUENCE |
-| `TriggerSupport` | `TriggerMixin` | CREATE/DROP TRIGGER (SQL:1999) |
-| `FunctionSupport` | `FunctionMixin` | CREATE/DROP FUNCTION (SQL/PSM) |
+| `CreateSchemaSupport` / `DropSchemaSupport` | `SchemaMixin` | CREATE / DROP SCHEMA |
+| `CreateIndexSupport` / `DropIndexSupport` / `FulltextIndexSupport` | `IndexMixin` | CREATE / DROP INDEX, FULLTEXT INDEX |
+| `CreateSequenceSupport` / `DropSequenceSupport` / `AlterSequenceSupport` | `SequenceMixin` | CREATE / DROP / ALTER SEQUENCE |
+| `CreateTriggerSupport` / `DropTriggerSupport` | `TriggerMixin` | CREATE / DROP TRIGGER (SQL:1999) |
+| `CreateRoutineSupport` / `DropRoutineSupport` / `SQLFunctionSupport` | `FunctionMixin` | CREATE / DROP FUNCTION and PROCEDURE (SQL/PSM) |
+| `CreateTypeSupport` / `AlterTypeSupport` / `DropTypeSupport` | `UserDefinedTypeMixin` | CREATE / ALTER / DROP TYPE |
+| `CreateDomainSupport` / `AlterDomainSupport` / `DropDomainSupport` | `DomainMixin` | CREATE / ALTER / DROP DOMAIN |
+| `CreateDatabaseSupport` / `DropDatabaseSupport` / `AlterDatabaseSupport` | `DatabaseMixin` | CREATE / DROP / ALTER DATABASE |
+| `SQLXMLSupport` and the five `SQLXML*Support` protocols | `SQLXMLMixin` and its five siblings | SQL/XML and XQuery |
+| `TableObjectSupport`, `ViewObjectSupport`, `IndexObjectSupport`, `SequenceObjectSupport`, `TypeObjectSupport`, `RoutineObjectSupport`, `TriggerObjectSupport`, `SynonymObjectSupport`, `MaterializedViewObjectSupport`, `ForeignTableObjectSupport`, `PropertyGraphObjectSupport` | `TableNameMixin`, `ViewNameMixin`, … (one per kind) | Naming a catalogue object |
+| `NamespaceSupport` | `NamespaceMixin` | Which namespace levels a name may be qualified with |
+
+The naming protocols are per object kind rather than one: each kind's
+`format_<kind>_object` lives in its own `*NameMixin`, and all of them are
+`NamespaceMixin` subclasses, which is where `validate_namespace` and
+`format_qualified_name` live. A dialect overrides the one kind it spells
+differently and inherits the rest.
 
 ##### Principles for Adding New Protocols/Mixins
 

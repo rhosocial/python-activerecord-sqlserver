@@ -11,6 +11,7 @@ formatters used by ``SQLServerCreateTriggerExpression`` /
 from typing import Any, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.expression.objects import Table, Trigger
 
 if TYPE_CHECKING:
     from ..expression.ddl.trigger import (
@@ -96,9 +97,20 @@ class SQLServerTriggerDdlMixin:
         if getattr(expr, "or_alter", False):
             parts.append("OR ALTER")
         parts.append("TRIGGER")
-        parts.append(self.format_identifier(name))  # type: ignore[attr-defined]
+        # A trigger and the table it hangs off are both schema objects; a
+        # trigger lives in the same schema as its table, so both names go
+        # through the one qualified-name entry point.
+        parts.append(
+            self.qualified_object_name_from_dotted(
+                Trigger, name, schema_name=getattr(expr, "schema", None)
+            )
+        )
         parts.append("ON")
-        parts.append(self.format_identifier(table))  # type: ignore[attr-defined]
+        parts.append(
+            self.qualified_object_name(
+                Table, table, schema_name=getattr(expr, "schema", None)
+            )
+        )
         parts.append(timing)
         parts.append(", ".join(events))
         parts.append(f"AS BEGIN {expr.body} END;")
@@ -127,7 +139,11 @@ class SQLServerTriggerDdlMixin:
         parts = ["DROP", "TRIGGER"]
         if getattr(expr, "if_exists", False) and self.version >= _SQL_SERVER_TRIGGER_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
             parts.append("IF EXISTS")
-        parts.append(self.format_identifier(name))  # type: ignore[attr-defined]
+        parts.append(
+            self.qualified_object_name_from_dotted(
+                Trigger, name, schema_name=getattr(expr, "schema", None)
+            )
+        )
         return " ".join(parts), ()
 
     # --- Additional trigger capability declarations (moved from dialect.py) ---

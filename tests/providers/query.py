@@ -243,7 +243,8 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
     def _setup_model(self, model_class: Type[ActiveRecord], scenario_name: str, table_name: str) -> Type[ActiveRecord]:
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
-        from rhosocial.activerecord.backend.expression import DropTableExpression, TableExpression
+        from rhosocial.activerecord.backend.expression import DropTableExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from providers.fixtures.query import TABLE_EXPRESSIONS
         from providers.fixtures._common import to_sqlserver_ddl_sql
 
@@ -285,7 +286,8 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
     def _reset_schema(self, backend_instance, table_name: str) -> None:
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
-        from rhosocial.activerecord.backend.expression import DropTableExpression, TableExpression
+        from rhosocial.activerecord.backend.expression import DropTableExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from providers.fixtures.query import TABLE_EXPRESSIONS
         from providers.fixtures._common import to_sqlserver_ddl_sql
 
@@ -368,7 +370,8 @@ class QuerySyncProvider(QueryProviderBase, IQuerySyncProvider, WorkerTestProtoco
     def setup_order_item_model(self, scenario_name: str) -> Type[ActiveRecord]:
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
-        from rhosocial.activerecord.backend.expression import DropTableExpression, TableExpression
+        from rhosocial.activerecord.backend.expression import DropTableExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from providers.fixtures.basic import TABLE_EXPRESSIONS as BASIC_EXPRS
         from providers.fixtures._common import to_sqlserver_ddl_sql
 
@@ -530,7 +533,8 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
         from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
-        from rhosocial.activerecord.backend.expression import DropTableExpression, TableExpression
+        from rhosocial.activerecord.backend.expression import DropTableExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from providers.fixtures.query import TABLE_EXPRESSIONS
         from providers.fixtures._common import to_sqlserver_ddl_sql
 
@@ -684,7 +688,8 @@ class QueryAsyncProvider(QueryProviderBase, IQueryAsyncProvider):
     async def setup_order_item_model(self, scenario_name: str) -> Type[AsyncActiveRecord]:
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
-        from rhosocial.activerecord.backend.expression import DropTableExpression, TableExpression
+        from rhosocial.activerecord.backend.expression import DropTableExpression
+        from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         from providers.fixtures.basic import TABLE_EXPRESSIONS as BASIC_EXPRS
         from providers.fixtures._common import to_sqlserver_ddl_sql

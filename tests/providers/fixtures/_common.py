@@ -8,8 +8,8 @@ from typing import Tuple
 from rhosocial.activerecord.backend.expression import (
     CreateTableExpression,
     DropTableExpression,
-    TableExpression,
 )
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
 
@@ -33,7 +33,7 @@ def drop_table(dialect, table_name: str) -> DropTableExpression:
     """Build a ``DROP TABLE IF EXISTS table_name`` expression."""
     return DropTableExpression(
         dialect=dialect,
-        table=TableExpression(dialect, table_name),
+        table=Table(dialect, table_name),
         if_exists=True,
     )
 
@@ -107,7 +107,7 @@ def safe_drop_table(backend, dialect, table_name: str) -> None:
     try:
         drop_expr = DropTableExpression(
             dialect=dialect,
-            table=TableExpression(dialect, table_name),
+            table=Table(dialect, table_name),
             if_exists=True,
         )
         backend.execute(*drop_expr.to_sql(), options=options)
@@ -122,7 +122,7 @@ async def safe_drop_table_async(backend, dialect, table_name: str) -> None:
     try:
         drop_expr = DropTableExpression(
             dialect=dialect,
-            table=TableExpression(dialect, table_name),
+            table=Table(dialect, table_name),
             if_exists=True,
         )
         await backend.execute(*drop_expr.to_sql(), options=options)

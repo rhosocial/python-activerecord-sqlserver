@@ -29,6 +29,7 @@ backend.connect()
 dialect = backend.dialect
 
 from rhosocial.activerecord.backend.expression import CreateTableExpression
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
@@ -41,7 +42,7 @@ ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
 create_table = CreateTableExpression(
     dialect=dialect,
-    table_name='output_users',
+    table=Table(dialect, 'output_users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -63,7 +64,6 @@ from rhosocial.activerecord.backend.expression import (
     InsertExpression,
     ValuesSource,
     ReturningClause,
-    TableExpression,
     Column,
 )
 from rhosocial.activerecord.backend.expression.core import Literal
@@ -71,7 +71,7 @@ from rhosocial.activerecord.backend.expression.core import Literal
 # SQL Server uses 'returning' attribute which dialect converts to OUTPUT clause
 insert_expr = InsertExpression(
     dialect=dialect,
-    into=TableExpression(dialect, 'output_users'),
+    into=Table(dialect, 'output_users'),
     source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
     columns=['name'],
     returning=ReturningClause(dialect, [Column(dialect, 'id')]),
@@ -94,7 +94,7 @@ if result.data:
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_expr = DropTableExpression(dialect=dialect, table_name='output_users', if_exists=True)
+drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'output_users'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

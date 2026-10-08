@@ -1,9 +1,10 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/expression/temporal.py
 """SQL Server temporal table expressions (2016+)."""
 
-from typing import Any, Optional, Tuple, TYPE_CHECKING
+from typing import Optional, Union, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.objects import Table
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
@@ -39,27 +40,49 @@ class SQLServerSystemVersioningClause(BaseExpression):
 
     Enables system-versioning on a temporal table.
 
+    The history table is one schema object, not a name plus a parallel schema
+    string: ``WITH (SYSTEM_VERSIONING = ON, HISTORY_TABLE = dbo.TestTableHistory)``
+    names a single object living in a namespace, and splitting that into two
+    constructor parameters was the same namespace-smuggling the schema-object
+    layer exists to remove.
+
     Example:
-        >>> expr = SQLServerSystemVersioningClause(dialect, "dbo.TestTableHistory")
+        >>> from rhosocial.activerecord.backend.expression.objects import Table
+        >>> clause = SQLServerSystemVersioningClause(
+        ...     dialect, Table(dialect, "TestTableHistory", schema_name="dbo")
+        ... )
     """
 
     def __init__(
         self,
         dialect: "SQLDialectBase",
-        history_table: Optional[str] = None,
-        history_schema: Optional[str] = None,
+        history_table: Optional[Union[Table, str]] = None,
     ):
+        """Record the history table this clause points at.
+
+        Args:
+            dialect: The SQL Server dialect.
+            history_table: The history table, as a
+                :class:`~rhosocial.activerecord.backend.expression.objects.Table`.
+                A bare string is accepted as shorthand for an unqualified name;
+                pass the object to place the table in a schema or catalog.
+        """
         super().__init__(dialect)
-        self.history_table = history_table
-        self.history_schema = history_schema
+        if history_table is None:
+            self.history_table: Optional[Table] = None
+        elif isinstance(history_table, str):
+            self.history_table = Table(dialect, history_table)
+        elif isinstance(history_table, Table):
+            self.history_table = history_table
+        else:
+            raise TypeError(
+                f"history_table must be a Table or a string, "
+                f"got {type(history_table).__name__}"
+            )
 
     def to_sql(self) -> SQLQueryAndParams:
         sql = "WITH (SYSTEM_VERSIONING = ON"
-        if self.history_table:
-            tbl = self.dialect.format_identifier(self.history_table)
-            if self.history_schema:
-                schema = self.dialect.format_identifier(self.history_schema)
-                tbl = f"{schema}.{tbl}"
-            sql += f", HISTORY_TABLE = {tbl}"
+        if self.history_table is not None:
+            sql += f", HISTORY_TABLE = {self.history_table.to_sql()[0]}"
         sql += ")"
         return sql, ()

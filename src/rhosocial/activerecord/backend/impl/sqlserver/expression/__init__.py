@@ -1,6 +1,7 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/expression/__init__.py
 """SQL Server-specific expression classes."""
 
+from .objects import SQLServerTable, PartitionFunction, PartitionScheme
 from .output import SQLServerOutputInsertedExpression, SQLServerOutputDeletedExpression
 from .locking import SQLServerTableHintClause, SQLServerTableHint, SQLServerReadPastHint
 from .temporal import SQLServerTemporalPeriodDefinition, SQLServerSystemVersioningClause
@@ -61,6 +62,9 @@ from .functions import (
 )
 
 __all__ = [
+    "SQLServerTable",
+    "PartitionFunction",
+    "PartitionScheme",
     "SQLServerOutputInsertedExpression",
     "SQLServerOutputDeletedExpression",
     "SQLServerTableHintClause",

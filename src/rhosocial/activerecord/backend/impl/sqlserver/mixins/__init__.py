@@ -4,6 +4,7 @@ from .concurrency import SQLServerConcurrencyMixin
 from .backend_mixin import SQLServerBackendMixin
 from .partition import SQLServerPartitionMixin
 from .sequence import SQLServerSequenceMixin
+from .identity_column import SQLServerIdentityColumnMixin
 from .pivot import SQLServerPivotMixin
 from .graph import SQLServerGraphMixin
 from .columnstore import SQLServerColumnstoreIndexMixin
@@ -35,6 +36,7 @@ from .generated_column import SQLServerGeneratedColumnMixin
 from .set_operation import SQLServerSetOperationMixin
 from .ddl_table import SQLServerTableMixin
 from .identifier import SQLServerIdentifierMixin
+from .namespace import SQLServerNamespaceMixin
 from .transaction import SQLServerTransactionMixin
 from .function import SQLServerFunctionMixin
 from .ddl_type import SQLServerTypeDDLMixin
@@ -45,6 +47,7 @@ __all__ = [
     "SQLServerBackendMixin",
     "SQLServerPartitionMixin",
     "SQLServerSequenceMixin",
+    "SQLServerIdentityColumnMixin",
     "SQLServerPivotMixin",
     "SQLServerGraphMixin",
     "SQLServerColumnstoreIndexMixin",
@@ -76,6 +79,7 @@ __all__ = [
     "SQLServerSetOperationMixin",
     "SQLServerTableMixin",
     "SQLServerIdentifierMixin",
+    "SQLServerNamespaceMixin",
     "SQLServerTransactionMixin",
     "SQLServerFunctionMixin",
     "SQLServerTypeDDLMixin",

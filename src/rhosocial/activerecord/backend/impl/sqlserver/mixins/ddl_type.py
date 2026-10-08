@@ -9,6 +9,7 @@ from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.dialect.mixins.user_defined_type import UserDefinedTypeMixin
 from rhosocial.activerecord.backend.expression.bases import ToSQLProtocol
+from rhosocial.activerecord.backend.expression.objects import Index, Type
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnConstraintType,
     ColumnDefinition,
@@ -46,9 +47,6 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         name: str
         _version: Optional[Tuple[int, int, int]]
         deployment_target: str
-
-        def format_identifier(self, identifier: str, need_quote: bool = True) -> str:
-            ...
 
         def format_column_definition(
             self,
@@ -183,35 +181,47 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
     def supports_rename_type(self) -> bool:
         return self._version_at_least(SQL_SERVER_2005)
 
-    def _format_type_name(
+    def _type_object_name(
         self,
         type_name: str,
         schema_name: Optional[str] = None,
     ) -> str:
+        """The qualified SQL name of a user-defined TYPE.
+
+        ``sp_rename`` names the type as text -- its first argument is a string
+        literal -- so this is the one place a TYPE name still arrives as a name
+        plus a separate schema. The name is built as a :class:`Type` object and
+        rendered through the shared qualified-name entry point rather than
+        joined here.
+
+        A ``.`` inside ``type_name`` is part of the identifier, not a
+        namespace separator: SQL Server allows dots in an object name as long
+        as the name is delimited, which is exactly what bracketing does.
+
+        Raises:
+            TypeError: ``schema_name`` is present and is not a string.
+            ValueError: Either part is present and empty.
+        """
         if not isinstance(type_name, str) or not type_name.strip():
             raise ValueError("type_name must be a non-empty string")
-        parts: List[str] = []
         if schema_name is not None:
             if not isinstance(schema_name, str):
                 raise TypeError("schema_name must be a string or None")
             if not schema_name.strip():
                 raise ValueError("schema_name must contain a non-empty identifier")
-            parts.append(self.format_identifier(schema_name))
-        if not type_name.strip():
-            raise ValueError("type_name must contain a non-empty identifier")
-        parts.append(self.format_identifier(type_name))
-        return ".".join(parts)
-
-    def _raw_type_name(
-        self,
-        type_name: str,
-        schema_name: Optional[str] = None,
-    ) -> str:
-        formatted = self._format_type_name(type_name, schema_name)
-        return formatted
+        return self.qualified_object_name(Type, type_name, schema_name=schema_name)
 
     @staticmethod
     def _format_nstring(value: str) -> str:
+        """*value* as a national-character SQL string literal.
+
+        ``sp_rename`` takes its arguments as literals, so its arguments are text
+        by definition rather than by caller intent.
+
+        Raises:
+            TypeError: ``value`` is not a string. Anything else would reach
+                ``str.replace`` or render as a literal of the wrong sort.
+        """
         if not isinstance(value, str):
             raise TypeError("sp_rename arguments must be strings")
         return f"N'{value.replace(chr(39), chr(39) * 2)}'"
@@ -221,6 +231,13 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         column: ColumnDefinition,
         memory_optimized: bool,
     ) -> Tuple[str, tuple]:
+        """Render one column of a table TYPE.
+
+        Raises:
+            TypeError: ``column`` is not a ColumnDefinition. The definition is
+                built from a declared list rather than named one at a time, so a
+                wrong kind here would render as a well-formed column.
+        """
         if not isinstance(column, ColumnDefinition):
             raise TypeError("table TYPE columns must be ColumnDefinition instances")
         if getattr(column, "comment", None) is not None:
@@ -289,6 +306,11 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         constraint: TableConstraint,
         memory_optimized: bool,
     ) -> Tuple[str, tuple]:
+        """Render one constraint of a table TYPE.
+
+        Raises:
+            TypeError: ``constraint`` is not a TableConstraint.
+        """
         if not isinstance(constraint, TableConstraint):
             raise TypeError("table TYPE constraints must be TableConstraint instances")
         if memory_optimized:
@@ -335,12 +357,37 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             or constraint.foreign_key_columns
         ):
             raise ValueError("CHECK constraints cannot carry key or foreign key fields")
-        for field_name in ("deferrable", "initially_deferred", "validation", "enforced"):
-            if getattr(constraint, field_name, None) is not None:
-                raise UnsupportedFeatureError(
-                    self.name,
-                    f"TYPE table constraint option {field_name}",
-                )
+        # The enforcement / deferrability options are two-spelling pairs on the
+        # node now: their defaults are ``False``, not ``None``, so an
+        # ``is not None`` test would refuse every constraint. Only an
+        # explicitly requested spelling is refused, and it is named.
+        if constraint.deferrable or constraint.not_deferrable:
+            spelling = "DEFERRABLE" if constraint.deferrable else "NOT DEFERRABLE"
+            raise UnsupportedFeatureError(
+                self.name,
+                f"TYPE table constraint option {spelling}",
+            )
+        if constraint.initially_deferred or constraint.initially_immediate:
+            spelling = (
+                "INITIALLY DEFERRED"
+                if constraint.initially_deferred
+                else "INITIALLY IMMEDIATE"
+            )
+            raise UnsupportedFeatureError(
+                self.name,
+                f"TYPE table constraint option {spelling}",
+            )
+        if constraint.enforced or constraint.not_enforced:
+            spelling = "ENFORCED" if constraint.enforced else "NOT ENFORCED"
+            raise UnsupportedFeatureError(
+                self.name,
+                f"TYPE table constraint option {spelling}",
+            )
+        if constraint.validation is not None:
+            raise UnsupportedFeatureError(
+                self.name,
+                "TYPE table constraint option validation",
+            )
         if constraint.constraint_type in {
             TableConstraintType.PRIMARY_KEY,
             TableConstraintType.UNIQUE,
@@ -362,6 +409,11 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         index: IndexDefinition,
         memory_optimized: bool,
     ) -> Tuple[str, tuple]:
+        """Render one index of a table TYPE.
+
+        Raises:
+            TypeError: ``index`` is not an IndexDefinition.
+        """
         if not isinstance(index, IndexDefinition):
             raise TypeError("table TYPE indexes must be IndexDefinition instances")
         if not isinstance(index.name, str) or not index.name.strip():
@@ -439,7 +491,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         parts: List[str] = []
         if index.unique:
             parts.append("UNIQUE")
-        parts.extend(("INDEX", self.format_identifier(index.name)))
+        parts.extend(("INDEX", self.qualified_object_name(Index, index.name)))
         if hash_index:
             parts.append("NONCLUSTERED HASH")
         elif index_type:
@@ -558,6 +610,14 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         self,
         expr: CreateTypeExpression,
     ) -> Tuple[str, tuple]:
+        """Format CREATE TYPE for SQL Server.
+
+        Raises:
+            TypeError: ``expr`` is not a CreateTypeExpression.
+            TypeError: ``expr.type`` is not a Type. A table handed here would
+                render as a well-formed ``CREATE TYPE`` over that table's name.
+            TypeError: ``expr.definition`` is not a TypeDefinition.
+        """
         if not isinstance(expr, CreateTypeExpression):
             raise TypeError("expr must be a CreateTypeExpression")
         if expr.if_not_exists and expr.or_replace:
@@ -568,6 +628,11 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             raise UnsupportedFeatureError(self.name, "CREATE TYPE IF NOT EXISTS")
         if expr.or_replace and not self.supports_create_type_or_replace():
             raise UnsupportedFeatureError(self.name, "CREATE OR REPLACE TYPE")
+        if not isinstance(expr.type, Type):
+            raise TypeError(
+                f"CreateTypeExpression.type must be a Type, "
+                f"got {type(expr.type).__name__}"
+            )
         if not isinstance(expr.definition, TypeDefinition):
             raise TypeError("definition must be a TypeDefinition instance")
         if not self.supports_type_definition(type(expr.definition)):
@@ -578,13 +643,23 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         definition_sql, definition_params = expr.definition.to_sql()
         if definition_params:
             raise ValueError("CREATE TYPE must render without bind parameters")
-        name_sql = self._format_type_name(expr.type_name, expr.schema_name)
-        return f"CREATE TYPE {name_sql} {definition_sql}", ()
+        return f"CREATE TYPE {expr.type.to_sql()[0]} {definition_sql}", ()
 
     def format_alter_type_statement(
         self,
         expr: AlterTypeExpression,
     ) -> Tuple[str, tuple]:
+        """Report that SQL Server has no ALTER TYPE.
+
+        SQL Server has no ALTER TYPE statement: a TYPE's definition is fixed at
+        creation, so the only route is to drop and recreate it. The kind check
+        runs first because the refusal is about the statement, and a statement of
+        the wrong kind should not be reported as a missing feature.
+
+        Raises:
+            TypeError: ``expr`` is not an AlterTypeExpression.
+            UnsupportedFeatureError: Always, once *expr* is the right kind.
+        """
         if not isinstance(expr, AlterTypeExpression):
             raise TypeError("expr must be an AlterTypeExpression")
         raise UnsupportedFeatureError(
@@ -597,8 +672,20 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         self,
         expr: Union[DropTypeExpression, SQLServerDropTypeExpression],
     ) -> Tuple[str, tuple]:
+        """Format DROP TYPE for SQL Server.
+
+        Raises:
+            TypeError: ``expr`` is not a DropTypeExpression.
+            TypeError: ``expr.type`` is not a Type. A table handed here would
+                render as a well-formed ``DROP TYPE`` over that table's name.
+        """
         if not isinstance(expr, DropTypeExpression):
             raise TypeError("expr must be a DropTypeExpression")
+        if not isinstance(expr.type, Type):
+            raise TypeError(
+                f"DropTypeExpression.type must be a Type, "
+                f"got {type(expr.type).__name__}"
+            )
         if not self.supports_type_objects() or not self.supports_drop_type():
             raise UnsupportedFeatureError(self.name, "DROP TYPE")
         if expr.if_exists and not self.supports_drop_type_if_exists():
@@ -618,13 +705,20 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         parts = ["DROP TYPE"]
         if expr.if_exists:
             parts.append("IF EXISTS")
-        parts.append(self._format_type_name(expr.type_name, expr.schema_name))
+        parts.append(expr.type.to_sql()[0])
         return " ".join(parts), ()
 
     def format_type_definition(
         self,
         expr: TypeDefinition,
     ) -> Tuple[str, tuple]:
+        """Render the body of a CREATE TYPE, whatever kind of definition it is.
+
+        Raises:
+            TypeError: ``expr`` is not a TypeDefinition. CREATE TYPE holds the
+                definition in its own slot rather than naming one, so a wrong kind
+                here would render as a well-formed type body.
+        """
         if not isinstance(expr, TypeDefinition):
             raise TypeError("expr must be a TypeDefinition instance")
         if not self.supports_type_definition(type(expr)):
@@ -661,6 +755,12 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         self,
         expr: TypeAlterAction,
     ) -> Tuple[str, tuple]:
+        """Report that SQL Server has no ALTER TYPE, for an action asked directly.
+
+        Raises:
+            TypeError: ``expr`` is not a TypeAlterAction.
+            UnsupportedFeatureError: Always, once *expr* is the right kind.
+        """
         if not isinstance(expr, TypeAlterAction):
             raise TypeError("expr must be a TypeAlterAction instance")
         raise UnsupportedFeatureError(
@@ -672,6 +772,20 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         self,
         expr: SQLServerRenameTypeExpression,
     ) -> Tuple[str, tuple]:
+        """Format a TYPE rename as ``sp_rename``.
+
+        ``expr.type_name`` and ``expr.schema_name`` are *not* stale attributes.
+        They were listed as such because a reader compared this formatter with
+        the ``Type`` object ``CREATE TYPE`` takes, and found no field of that
+        name. Both belong to :class:`SQLServerRenameTypeExpression`: ``sp_rename``
+        names its target as a string literal, so this statement never took the
+        object. The name is turned into a :class:`Type` and rendered through the
+        shared entry point by :meth:`_type_object_name` precisely so that the
+        literal is spelled the way every other name is.
+
+        Raises:
+            TypeError: ``expr`` is not a SQLServerRenameTypeExpression.
+        """
         if not isinstance(expr, SQLServerRenameTypeExpression):
             raise TypeError("expr must be a SQLServerRenameTypeExpression")
         if not self.supports_rename_type():
@@ -680,7 +794,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                 "RENAME TYPE",
                 "requires SQL Server 2005+.",
             )
-        old_name = self._raw_type_name(expr.type_name, expr.schema_name)
+        old_name = self._type_object_name(expr.type_name, expr.schema_name)
         return (
             f"EXECUTE sp_rename {self._format_nstring(old_name)}, "
             f"{self._format_nstring(expr.new_name)}, N'USERDATATYPE'",

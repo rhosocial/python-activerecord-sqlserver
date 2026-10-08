@@ -16,6 +16,8 @@ from typing import Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
+from ..expression.objects import PartitionFunction, PartitionScheme
+
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import PartitionClause
     from ..expression.partition import (
@@ -125,10 +127,54 @@ class SQLServerPartitionMixin:
 
         scheme = getattr(expr, "partition_scheme", None)
         if scheme:
-            return f" ON {self.format_identifier(scheme)} ({', '.join(parts)})", tuple(params)  # type: ignore[attr-defined]
+            # The scheme is a named object of its own, not part of the table's
+            # name: ``ON <scheme> (<keys>)`` names the scheme, and the table
+            # this clause hangs off is named elsewhere in CREATE TABLE.
+            return (
+                f" ON {self.qualified_object_name(PartitionScheme, scheme)}"
+                f" ({', '.join(parts)})",
+                tuple(params),
+            )
 
         keys_sql = ", ".join(parts)
         return f" ON partition_scheme_name ({keys_sql})", tuple(params)
+
+    # --- Rendering SQL Server's own named objects -----------------------
+    #
+    # Partition functions and schemes are named catalogue entries with no
+    # counterpart in the shared object tree, so the dialect supplies their two
+    # formatters. Each is the same two calls every core ``*NameMixin`` makes:
+    # refuse a namespace level this engine cannot express, then ask for the
+    # spelling. They used to open with ``self.render_namespace(...)`` and
+    # re-append the name themselves; core split that method into exactly these
+    # two halves when the join character became the dialect's ``separator``, so
+    # repeating the spelling here would have re-pinned the policy this backend
+    # exists to express.
+    #
+    # The parameter types name the two kinds rather than ``Any``, for the same
+    # reason the core mixins do: a partition scheme handed where a function
+    # belongs would otherwise render as a well-formed statement naming the
+    # wrong object.
+
+    def format_partition_function_object(self, expr: PartitionFunction) -> Tuple[str, tuple]:
+        """Render *expr* as a partition function name.
+
+        Raises:
+            UnsupportedFeatureError: *expr* carries a namespace level SQL
+                Server cannot express.
+        """
+        self.validate_namespace(expr)
+        return self.format_qualified_name(expr)
+
+    def format_partition_scheme_object(self, expr: PartitionScheme) -> Tuple[str, tuple]:
+        """Render *expr* as a partition scheme name.
+
+        Raises:
+            UnsupportedFeatureError: *expr* carries a namespace level SQL
+                Server cannot express.
+        """
+        self.validate_namespace(expr)
+        return self.format_qualified_name(expr)
 
     def format_sqlserver_partition_function(
         self, expr: "SQLServerPartitionFunctionExpression"
@@ -138,18 +184,22 @@ class SQLServerPartitionMixin:
         SQL Syntax:
             CREATE PARTITION FUNCTION function_name (data_type)
             AS RANGE [LEFT | RIGHT] FOR VALUES (v1, v2, ...)
+
+        ``expr.function_name`` is *not* a stale attribute. It was listed as one
+        because a reader compared this formatter with the ``Table``-shaped
+        members core objectified, and found no field of that name. It belongs to
+        :class:`SQLServerPartitionFunctionExpression`: a partition function is
+        handed its name as text, optionally dotted, and
+        ``qualified_object_name_from_dotted`` is what turns that into a
+        :class:`PartitionFunction` rendered the way every other kind is.
         """
         boundary_parts = []
         for value in expr.boundary_values:
             boundary_parts.append(self.inline_sql_literal(value))
 
-        func_name = expr.function_name
-        # Support schema-qualified names
-        if "." in func_name:
-            func_parts = func_name.split(".")
-            quoted = ".".join(self.format_identifier(p) for p in func_parts)  # type: ignore[attr-defined]
-        else:
-            quoted = self.format_identifier(func_name)  # type: ignore[attr-defined]
+        quoted = self.qualified_object_name_from_dotted(
+            PartitionFunction, expr.function_name
+        )
 
         data_type = expr.data_type
         direction = expr.range_direction.value
@@ -169,9 +219,15 @@ class SQLServerPartitionMixin:
             CREATE PARTITION SCHEME scheme_name
             AS PARTITION function_name
             [ALL] TO (filegroup1, filegroup2, ...)
+
+        ``expr.function_name`` is the same deliberate text field as the one in
+        :meth:`format_sqlserver_partition_function`: the partition function is
+        named by text and objectified at the rendering boundary.
         """
-        scheme_name = self.format_identifier(expr.scheme_name)  # type: ignore[attr-defined]
-        func_name = self.format_identifier(expr.function_name)  # type: ignore[attr-defined]
+        scheme_name = self.qualified_object_name(PartitionScheme, expr.scheme_name)
+        func_name = self.qualified_object_name_from_dotted(
+            PartitionFunction, expr.function_name
+        )
 
         if expr.all_filegroup:
             fg_quoted = self.format_identifier(expr.all_filegroup)  # type: ignore[attr-defined]

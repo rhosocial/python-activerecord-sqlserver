@@ -198,12 +198,30 @@ class SQLServerForPathTable(BaseExpression):
 
     Used with ``SHORTEST_PATH`` so intermediate nodes/edges can be projected by
     path aggregates.
+
+    Graph tables **do** support a namespace here. A SQL Graph node or edge
+    table is an ordinary table as far as SQL Server is concerned -- it lives in
+    a schema and is qualified like any other -- so the schema and catalog slots
+    are accepted and rendered through the shared qualified-name entry point.
+    The ``AS`` alias stays a plain identifier: it renames the row for this one
+    statement and renames nothing in the catalogue, so it is not a schema
+    object.
     """
 
-    def __init__(self, dialect: "SQLServerDialect", table: str, alias: Optional[str] = None):
+    def __init__(
+        self,
+        dialect: "SQLServerDialect",
+        table: str,
+        alias: Optional[str] = None,
+        *,
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+    ):
         super().__init__(dialect)
         self.table = table
         self.alias = alias
+        self.catalog_name = catalog_name
+        self.schema_name = schema_name
 
     @property
     def format_method(self) -> str:

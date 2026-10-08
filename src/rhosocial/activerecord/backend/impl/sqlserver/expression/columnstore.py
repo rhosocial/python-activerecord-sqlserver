@@ -11,7 +11,7 @@ SQL generation and version gating are delegated to the dialect's
 ``format_create_columnstore_index_statement`` formatter.
 """
 
-from typing import Optional, Sequence, TYPE_CHECKING
+from typing import Sequence, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
 
@@ -26,10 +26,14 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
         index_name: Name of the columnstore index.
         table_name: Table on which the index is created.
         columns: Key columns. Required for NONCLUSTERED columnstore
-            (``clustered=False``), forbidden for clustered columnstore.
-        clustered: If ``None`` the CLUSTERED/NONCLUSTERED keyword is omitted
-            (defaults to a clustered columnstore); ``True`` renders
-            CLUSTERED, ``False`` renders NONCLUSTERED.
+            (``nonclustered=True``), forbidden for clustered columnstore.
+            The bare keyword accepts a key list too; the server records that
+            form as NONCLUSTERED (measured on 2019 / 2022 / 2025), but it is
+            the *absence* of both keywords, not a third spelling.
+        clustered: ``True`` renders CLUSTERED; both parameters unset omits the
+            keyword entirely.
+        nonclustered: ``True`` renders NONCLUSTERED. Setting both raises
+            ``ValueError``.
         order_columns: Optional ORDER (...) columns for ordered clustered
             columnstore (SQL Server 2022+).
 
@@ -47,24 +51,30 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
         index_name: str,
         table_name: str,
         columns: Sequence[str] = (),
-        clustered: Optional[bool] = None,
+        clustered: bool = False,
+        nonclustered: bool = False,
         order_columns: Sequence[str] = (),
     ):
         super().__init__(dialect)
+        if clustered and nonclustered:
+            raise ValueError(
+                "clustered and nonclustered are mutually exclusive options"
+            )
         self.index_name = index_name
         self.table_name = table_name
         self.columns = list(columns)
         self.clustered = clustered
+        self.nonclustered = nonclustered
         self.order_columns = list(order_columns)
 
     def validate(self, strict: bool = True) -> None:
         if not strict:
             return
-        if self.clustered is False and not self.columns:
+        if self.nonclustered and not self.columns:
             raise ValueError("NONCLUSTERED columnstore requires key columns")
-        if self.clustered is not False and self.columns:
+        if self.clustered and self.columns:
             raise ValueError("clustered columnstore does not allow key columns")
-        if self.order_columns and self.clustered is False:
+        if self.order_columns and self.nonclustered:
             raise ValueError("ORDER (...) is only valid for clustered columnstore")
 
     def to_sql(self) -> SQLQueryAndParams:

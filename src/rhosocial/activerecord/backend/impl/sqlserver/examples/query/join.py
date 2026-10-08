@@ -34,6 +34,7 @@ from rhosocial.activerecord.backend.expression import (
     ValuesSource,
 )
 from rhosocial.activerecord.backend.expression.core import Literal
+from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
@@ -46,7 +47,7 @@ ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
 users_table = CreateTableExpression(
     dialect=dialect,
-    table_name='join_users',
+    table=Table(dialect, 'join_users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -63,7 +64,7 @@ backend.execute(sql, params, options=ddl_options)
 
 orders_table = CreateTableExpression(
     dialect=dialect,
-    table_name='join_orders',
+    table=Table(dialect, 'join_orders'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
             ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
@@ -76,7 +77,7 @@ orders_table = CreateTableExpression(
         TableConstraint(
             constraint_type=TableConstraintType.FOREIGN_KEY,
             columns=['user_id'],
-            foreign_key_table='join_users',
+            foreign_key_table=Table(dialect, 'join_users'),
             foreign_key_columns=['id'],
         ),
     ],
@@ -89,7 +90,7 @@ users = [('Alice',), ('Bob',)]
 for user in users:
     insert_expr = InsertExpression(
         dialect=dialect,
-        into='join_users',
+        into=Table(dialect, 'join_users'),
         columns=['name'],
         source=ValuesSource(dialect, [[Literal(dialect, v) for v in user]]),
     )
@@ -104,7 +105,7 @@ orders = [
 for row in orders:
     insert_expr = InsertExpression(
         dialect=dialect,
-        into='join_orders',
+        into=Table(dialect, 'join_orders'),
         columns=['user_id', 'amount'],
         source=ValuesSource(dialect, [[Literal(dialect, v) for v in row]]),
     )
@@ -116,16 +117,16 @@ for row in orders:
 # ============================================================
 from rhosocial.activerecord.backend.expression import (
     QueryExpression,
-    TableExpression,
     Column,
     JoinClause,
 )
 from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
+from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
 
 join_expr = JoinClause(
     dialect=dialect,
-    left_table=TableExpression(dialect, 'join_users', alias='u'),
-    right_table=TableExpression(dialect, 'join_orders', alias='o'),
+    left_table=NamedRelationRef(dialect, Table(dialect, 'join_users'), alias='u'),
+    right_table=NamedRelationRef(dialect, Table(dialect, 'join_orders'), alias='o'),
     join_type='LEFT JOIN',
     condition=ComparisonPredicate(
         dialect,
@@ -162,11 +163,11 @@ for row in result.data or []:
 # ============================================================
 from rhosocial.activerecord.backend.expression import DropTableExpression
 
-drop_orders = DropTableExpression(dialect=dialect, table_name='join_orders', if_exists=True)
+drop_orders = DropTableExpression(dialect=dialect, table=Table(dialect, 'join_orders'), if_exists=True)
 sql, params = drop_orders.to_sql()
 backend.execute(sql, params, options=ddl_options)
 
-drop_users = DropTableExpression(dialect=dialect, table_name='join_users', if_exists=True)
+drop_users = DropTableExpression(dialect=dialect, table=Table(dialect, 'join_users'), if_exists=True)
 sql, params = drop_users.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

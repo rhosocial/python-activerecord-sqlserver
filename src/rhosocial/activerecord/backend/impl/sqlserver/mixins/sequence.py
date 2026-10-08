@@ -1,17 +1,21 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/sequence.py
 """SQL Server SEQUENCE capability mixin.
 
-SQL Server 2012 introduced SEQUENCE objects. This mixin provides capability
-detection and the ``NEXT VALUE FOR`` expression formatter used by
+SQL Server 2012 introduced SEQUENCE objects. This mixin provides the capability
+declarations that decide which sequence DDL a given version accepts, and the
+``NEXT VALUE FOR`` expression formatter used by
 ``SQLServerNextValueForExpression``.
 """
 
-from typing import Any, Tuple
+from typing import TYPE_CHECKING, Tuple
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.expression.objects import Sequence
 
+from .version_constants import SQL_SERVER_2012, SQL_SERVER_2016
 
-_SQL_SERVER_NEXT_VALUE_FOR_VERSION = (11, 0, 0)
+if TYPE_CHECKING:  # pragma: no cover
+    from ..expression.sequence import SQLServerNextValueForExpression
 
 
 class SQLServerSequenceMixin:
@@ -21,43 +25,120 @@ class SQLServerSequenceMixin:
         """SQL Server sequences are not usable as column data types."""
         return False
 
-    def format_next_value_for(self, sequence: Any) -> Tuple[str, tuple]:
+    def format_next_value_for(
+        self, expr: "SQLServerNextValueForExpression"
+    ) -> Tuple[str, tuple]:
         """Format NEXT VALUE FOR expression (SQL Server 2012+).
 
         Args:
-            sequence: A ``SQLServerNextValueForExpression`` or a plain
-                sequence name string.
+            expr: The ``SQLServerNextValueForExpression`` to render.
 
         Returns:
             Tuple of (SQL string, params tuple) such as
             ``(NEXT VALUE FOR [my_seq], ())``.
         """
-        if self.version < _SQL_SERVER_NEXT_VALUE_FOR_VERSION:  # type: ignore[attr-defined]
+        if self.version < SQL_SERVER_2012:  # type: ignore[attr-defined]
             raise UnsupportedFeatureError(
                 self.name,  # type: ignore[attr-defined]
                 "NEXT VALUE FOR",
                 "requires SQL Server 2012+",
             )
 
-        sequence_name = getattr(sequence, "sequence_name", None)
-        if sequence_name is None:
-            sequence_name = str(sequence)
-
-        if "." in sequence_name:
-            quoted = ".".join(
-                self.format_identifier(part) for part in sequence_name.split(".")  # type: ignore[attr-defined]
-            )
-        else:
-            quoted = self.format_identifier(sequence_name)  # type: ignore[attr-defined]
+        # The expression holds one flat name string, and
+        # ``NEXT VALUE FOR dbo.my_seq`` is the documented spelling for a
+        # schema-qualified sequence. The namespace is therefore read out of the
+        # text once, into a Sequence object, and rendered from there -- the
+        # formatter itself never re-derives which part is the schema.
+        quoted = self.qualified_object_name_from_dotted(Sequence, expr.sequence_name)
 
         return f"NEXT VALUE FOR {quoted}", ()
 
-    # --- Sequence capability declarations (moved from dialect.py) ---
+    # --- Sequence capability declarations ---
+    #
+    # SQL Server 2012 introduced SEQUENCE. The master switch and every option
+    # the engine spells are version-gated on that introduction; the options it
+    # has no spelling for answer False at every version. Determined from the
+    # CREATE/ALTER/DROP SEQUENCE (Transact-SQL) reference syntax:
+    #
+    #   CREATE: START WITH, INCREMENT BY, MINVALUE, MAXVALUE, CYCLE, CACHE
+    #           -- no IF NOT EXISTS, no ORDER/NOORDER, no OWNED BY
+    #   ALTER:  RESTART WITH, INCREMENT BY, MINVALUE, MAXVALUE, CYCLE, CACHE
+    #           -- no START WITH, no ORDER/NOORDER, no OWNED BY
+    #   DROP:   IF EXISTS applies from SQL Server 2016 (13.x) onwards
+    #
+    # The CACHE minimum of 2 and the cycling-sequence cache bound are value
+    # constraints, not support questions; a probe answers whether the option
+    # exists, so they are deliberately not answered here.
+
+    def supports_sequence(self) -> bool:
+        """SQL Server 2012+ has SEQUENCE objects."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
 
     def supports_create_sequence(self) -> bool:
-        """SQL Server 2012+ supports SEQUENCE objects."""
-        return self.version >= _SQL_SERVER_NEXT_VALUE_FOR_VERSION  # type: ignore[attr-defined]
+        """SQL Server 2012+ supports CREATE SEQUENCE."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
 
     def supports_drop_sequence(self) -> bool:
         """SQL Server 2012+ supports DROP SEQUENCE."""
-        return self.version >= _SQL_SERVER_NEXT_VALUE_FOR_VERSION  # type: ignore[attr-defined]
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+
+    def supports_alter_sequence(self) -> bool:
+        """SQL Server 2012+ supports ALTER SEQUENCE."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+
+    def supports_sequence_if_not_exists(self) -> bool:
+        """SQL Server has no CREATE SEQUENCE IF NOT EXISTS."""
+        return False
+
+    def supports_sequence_if_exists(self) -> bool:
+        """DROP SEQUENCE IF EXISTS arrived in SQL Server 2016 (13.x)."""
+        return self.version >= SQL_SERVER_2016  # type: ignore[attr-defined]
+
+    def supports_sequence_start(self) -> bool:
+        """CREATE SEQUENCE accepts START WITH from SQL Server 2012."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+
+    def supports_alter_sequence_start(self) -> bool:
+        """Whether ALTER SEQUENCE accepts the START WITH option.
+
+        SQL Server does not. ALTER SEQUENCE changes the start point with
+        RESTART WITH, and the engine rejects START WITH there outright with
+        argument error 11710. The CREATE-side spelling is legal, so
+        :meth:`supports_sequence_start` answers a different question and cannot
+        stand in for this one.
+
+        Stated explicitly rather than left to the shared default, because the
+        direction of that default is what keeps the dialect honest: a probe that
+        answered ``True`` by default would let a formatter emit START WITH on
+        ALTER SEQUENCE and hand the server SQL it rejects. Answering ``False``
+        fails closed.
+        """
+        return False
+
+    def supports_sequence_increment(self) -> bool:
+        """CREATE/ALTER SEQUENCE accept INCREMENT BY from SQL Server 2012."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+
+    def supports_sequence_minvalue(self) -> bool:
+        """CREATE/ALTER SEQUENCE accept MINVALUE from SQL Server 2012."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+
+    def supports_sequence_maxvalue(self) -> bool:
+        """CREATE/ALTER SEQUENCE accept MAXVALUE from SQL Server 2012."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+
+    def supports_sequence_cycle(self) -> bool:
+        """CREATE/ALTER SEQUENCE accept CYCLE / NO CYCLE from SQL Server 2012."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+
+    def supports_sequence_cache(self) -> bool:
+        """CREATE/ALTER SEQUENCE accept CACHE from SQL Server 2012."""
+        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+
+    def supports_sequence_order(self) -> bool:
+        """SQL Server has no ORDER / NOORDER sequence option."""
+        return False
+
+    def supports_sequence_owned_by(self) -> bool:
+        """SQL Server has no OWNED BY sequence clause."""
+        return False

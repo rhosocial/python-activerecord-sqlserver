@@ -7,7 +7,8 @@ generic equivalent:
 
 * ``data_type`` — the new type for ``ALTER COLUMN col <type>``.
 * ``collate`` — the ``COLLATE <name>`` clause.
-* ``not_null`` — ``NULL`` / ``NOT NULL`` (``None`` = omit).
+* ``not_null`` / ``nullable`` — ``NOT NULL`` / ``NULL`` (one parameter per
+  spelling; neither renders nothing, both raises ``ValueError``).
 * ``sparse`` — the ``SPARSE`` storage clause.
 * ``masked_function`` / ``drop_masked`` — dynamic data masking.
 
@@ -35,8 +36,8 @@ __all__ = [
 class SQLServerAlterColumn(AlterColumn):
     """A SQL Server ``ALTER COLUMN`` action extending the generic one.
 
-    Adds the SQL Server-only ``data_type``, ``collate``, ``not_null``,
-    ``sparse``, ``masked_function`` and ``drop_masked`` fields.
+    Adds the SQL Server-only ``data_type``, ``collate``, ``not_null`` /
+    ``nullable``, ``sparse``, ``masked_function`` and ``drop_masked`` fields.
     """
 
     def __init__(
@@ -49,11 +50,14 @@ class SQLServerAlterColumn(AlterColumn):
         cascade: bool = False,
         data_type: Optional[str] = None,
         collate: Optional[str] = None,
-        not_null: Optional[bool] = None,
+        not_null: bool = False,
+        nullable: bool = False,
         sparse: bool = False,
         masked_function: Optional[str] = None,
         drop_masked: bool = False,
     ):
+        if not_null and nullable:
+            raise ValueError("not_null and nullable are mutually exclusive options")
         super().__init__(
             dialect,
             column_name,
@@ -64,6 +68,7 @@ class SQLServerAlterColumn(AlterColumn):
         self.data_type = data_type
         self.collate = collate
         self.not_null = not_null
+        self.nullable = nullable
         self.sparse = sparse
         self.masked_function = masked_function
         self.drop_masked = drop_masked

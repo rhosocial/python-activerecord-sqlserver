@@ -25,6 +25,8 @@ class SQLServerCreateTriggerExpression(BaseExpression):
     Attributes:
         name: Trigger name.
         table: Table the trigger is attached to.
+        schema: Optional schema holding the trigger. A SQL Server trigger
+            lives in the same schema as its table, so this qualifies both names.
         timing: Either ``AFTER`` or ``INSTEAD OF``.
         events: List of ``INSERT`` / ``UPDATE`` / ``DELETE``.
         body: Raw T-SQL body passed through verbatim.
@@ -48,11 +50,13 @@ class SQLServerCreateTriggerExpression(BaseExpression):
         events: Optional[List[str]] = None,
         body: str = "",
         *,
+        schema: Optional[str] = None,
         or_alter: bool = False,
     ):
         super().__init__(dialect)
         self.name = name
         self.table = table
+        self.schema = schema
         self.timing = timing
         self.events = list(events or [])
         self.body = body
@@ -81,6 +85,7 @@ class SQLServerDropTriggerExpression(BaseExpression):
 
     Attributes:
         name: Trigger name.
+        schema: Optional schema holding the trigger.
         if_exists: Render ``IF EXISTS`` (SQL Server 2016+ only).
 
     Example:
@@ -94,10 +99,12 @@ class SQLServerDropTriggerExpression(BaseExpression):
         dialect: "SQLServerDialect",
         name: str,
         *,
+        schema: Optional[str] = None,
         if_exists: bool = False,
     ):
         super().__init__(dialect)
         self.name = name
+        self.schema = schema
         self.if_exists = if_exists
 
     def validate(self, strict: bool = True) -> None:
