@@ -140,9 +140,9 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     PartitionMixin,
     ILIKEMixin,
     FunctionMixin,
-    # Column-type suggestions: the generic half, which
-    # SQLServerColumnSuggestionMixin below overrides.
-    ColumnSuggestionMixin,
+    # Column types: the generic half, which SQLServerColumnTypeMixin below
+    # overrides.
+    ColumnTypeMixin,
     # The FROM side of a named object: an alias and a temporal clause, which the
     # relation itself has no room for. The name comes from the relation.
     RelationSourceMixin,
@@ -168,7 +168,7 @@ from .mixins.returning import SQLServerReturningMixin
 from .mixins.constraint import SQLServerConstraintMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
-from .mixins.column_suggestion import SQLServerColumnSuggestionMixin
+from .mixins.column_type import SQLServerColumnTypeMixin
 from .mixins.uuid import SQLServerUUIDMixin
 from .mixins.grouping import SQLServerGroupingMixin
 from .mixins.locking import SQLServerLockingMixin
@@ -338,12 +338,12 @@ class SQLServerDialect(
     SQLServerDatabaseMixin,
     SQLServerIndexMixin,
     SQLServerGeneratedColumnMixin,
-    # Column-type suggestions. The SQL Server half first: it overrides both the
-    # eighteen-entry table and supports_column_operation, and C3 gives the
-    # earlier name priority. Nothing else in this list can answer either, so the
-    # pair may move as a unit without disturbing the order around it.
-    SQLServerColumnSuggestionMixin,
-    ColumnSuggestionMixin,
+    # Column types. The SQL Server half first: it overrides the eighteen-entry
+    # table, and C3 gives the earlier name priority. Nothing else in this list
+    # can answer it, so it may move as a unit without disturbing the order
+    # around it.
+    SQLServerColumnTypeMixin,
+    ColumnTypeMixin,
     SQLServerSetOperationMixin,
     SQLServerTableMixin,
     SQLServerTransactionMixin,
