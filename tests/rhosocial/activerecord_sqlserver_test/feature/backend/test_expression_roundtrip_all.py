@@ -102,6 +102,8 @@ from rhosocial.activerecord.backend.expression.statements.dml import (
 )
 from rhosocial.activerecord.backend.expression.statements.dql import QueryExpression
 from rhosocial.activerecord.backend.expression.types import IntegerType
+from rhosocial.activerecord.backend.expression.types.custom import CustomType
+from rhosocial.activerecord.backend.expression.uuid import UUIDConstantExpression
 from rhosocial.activerecord.testsuite.utils.expression import (
     collect_expression_classes,
     make_instance,
@@ -694,6 +696,18 @@ def register_specials():
     register_special_constructor(
         "graph.SQLServerShortestPathExpression", shortest_path
     )
+    # -- two core classes that build as soon as they get a valid argument ----
+    # Both were measured before being named here: with ``raw`` carrying a real
+    # type name CUSTOM renders it, and with ``which="nil"`` the UUID constant
+    # renders the nil literal cast to UNIQUEIDENTIFIER. Neither is a skip, and
+    # neither belongs in UNCONSTRUCTIBLE -- a constructor is the honest answer
+    # for a class that constructs fine once its own slot is filled.
+    register_special_constructor(
+        "types.custom.CustomType", lambda d: CustomType(d, "VARCHAR(10)")
+    )
+    register_special_constructor(
+        "uuid.UUIDConstantExpression", lambda d: UUIDConstantExpression(d, "nil")
+    )
 
 
 register_specials()
@@ -998,9 +1012,6 @@ LEGITIMATE_NON_RENDERS = {
         TypeError, _NO_SUCH_TYPE
     ),
     "rhosocial.activerecord.backend.expression.types.datetime_.TimeTzType": (
-        TypeError, _NO_SUCH_TYPE
-    ),
-    "rhosocial.activerecord.backend.expression.types.datetime_.TimestampTzType": (
         TypeError, _NO_SUCH_TYPE
     ),
     "rhosocial.activerecord.backend.expression.types.json_.JsonBType": (

@@ -73,6 +73,7 @@ from .protocols import (
     SQLServerIdentitySupport,
     SQLServerIndexedViewSupport,
     SQLServerUserDefinedTypeSupport,
+    SQLServerTypeSupport,
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
@@ -101,6 +102,7 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     NamespaceMixin,
     WindowFunctionMixin,
     JSONMixin,
+    UUIDMixin,
 
     ArrayMixin,
     ExplainMixin,
@@ -138,6 +140,9 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     PartitionMixin,
     ILIKEMixin,
     FunctionMixin,
+    # Column-type suggestions: the generic half, which
+    # SQLServerColumnSuggestionMixin below overrides.
+    ColumnSuggestionMixin,
     # The FROM side of a named object: an alias and a temporal clause, which the
     # relation itself has no room for. The name comes from the relation.
     RelationSourceMixin,
@@ -163,6 +168,8 @@ from .mixins.returning import SQLServerReturningMixin
 from .mixins.constraint import SQLServerConstraintMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
+from .mixins.column_suggestion import SQLServerColumnSuggestionMixin
+from .mixins.uuid import SQLServerUUIDMixin
 from .mixins.grouping import SQLServerGroupingMixin
 from .mixins.locking import SQLServerLockingMixin
 from .mixins.merge import SQLServerMergeMixin
@@ -299,6 +306,15 @@ class SQLServerDialect(
     SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
     SQLServerTypeDDLMixin,
+    # Before DDLTypeMixin: states the shape of the sqlserver_-prefixed type
+    # family. The implementations arrive as own-class attributes copied by
+    # _register_type_formatters(), so they win in the MRO regardless; what this
+    # position buys is that isinstance(dialect, SQLServerTypeSupport) is
+    # meaningful next to the mixin that carries the behaviour.
+    SQLServerTypeSupport,
+    # Before DDLColumnMixin: the backend block below comes later, so
+    # supports_fk_match answered for the core. Same value by coincidence.
+    SQLServerConstraintMixin,
     DDLColumnMixin,
     DDLTypeMixin,
     UserDefinedTypeMixin,
@@ -308,7 +324,6 @@ class SQLServerDialect(
     SQLServerWindowMixin,
     SQLServerJSONMixin,
     SQLServerReturningMixin,
-    SQLServerConstraintMixin,
     SQLServerGroupingMixin,
     SQLServerLockingMixin,
     SQLServerMergeMixin,
@@ -323,6 +338,12 @@ class SQLServerDialect(
     SQLServerDatabaseMixin,
     SQLServerIndexMixin,
     SQLServerGeneratedColumnMixin,
+    # Column-type suggestions. The SQL Server half first: it overrides both the
+    # eighteen-entry table and supports_column_operation, and C3 gives the
+    # earlier name priority. Nothing else in this list can answer either, so the
+    # pair may move as a unit without disturbing the order around it.
+    SQLServerColumnSuggestionMixin,
+    ColumnSuggestionMixin,
     SQLServerSetOperationMixin,
     SQLServerTableMixin,
     SQLServerTransactionMixin,
@@ -335,6 +356,10 @@ class SQLServerDialect(
     CTEMixin,
     WindowFunctionMixin,
     JSONMixin,
+    # SQL Server's UUID spellings (NEWID, UNIQUEIDENTIFIER) must win over the
+    # core UUIDMixin table, which has one fixed spelling per operation.
+    SQLServerUUIDMixin,
+    UUIDMixin,
 
     ArrayMixin,
     ExplainMixin,
@@ -1499,29 +1524,81 @@ class SQLServerDialect(
     # ------------------------------------------------------------------
 
     def suggested_data_types(self) -> Dict[str, type]:
-        """Types SQL Server does not natively support, with best-effort replacements.
+        """Concepts SQL Server cannot spell, and what it stores instead (D9).
 
-        Returns a mapping ``{<generic name>: DataType class}`` for every
-        core type that has **no** ``format_data_type_<name>`` on this
-        dialect.  Keys are disjoint from ``supports_data_types()``.
+        Returns a mapping ``{<generic name>: DataType class}`` for every core
+        type this dialect does **not** render.  Keys are disjoint from
+        ``supports_data_types()``, and every value is a class this dialect
+        really renders — a suggestion the backend cannot produce would trade a
+        clear "unsupported" for a worse one, one whose advice does not work.
+
+        ``binary`` / ``varbinary``
+            SQL Server's byte storage is ``VARBINARY``: ``VARBINARY(n)`` up to
+            8000 bytes, ``VARBINARY(MAX)`` up to 2 GB, and the deprecated
+            ``IMAGE``.  The framework models three byte concepts and only one of
+            them has a T-SQL word of its own, so both the fixed- and
+            variable-length concepts name the unbounded one — which is what
+            ``BlobType`` renders.  A length on such a column is a fact about the
+            column, not about a type.
+
+        ``interval``
+            SQL Server has no interval type.  What it has is ``DATEDIFF``, which
+            returns a **count of a datepart** and ``DATEADD``, which accepts one —
+            so a duration here is an integer count of a chosen unit, and the
+            unit has to be decided by the caller because the type does not
+            record it.  64 bits because ``DATEDIFF_BIG`` does.
+
+        ``array``
+            SQL Server has no array type, and the alternative it does support is
+            JSON: an element type is reached through ``OPENJSON`` rather than a
+            subscript, which is what the rest of this dialect already suggests.
+
+        ``enum``
+            SQL Server has no enum.  The value is stored as text and constrained
+            by a ``CHECK``, so the nearest type this dialect renders is a string
+            column.
+
+        ``jsonb``
+            ``jsonb`` is PostgreSQL's *binary* JSON type, and the distinction is
+            the whole point of having it.  SQL Server has no such split: a JSON
+            value is text in an ``NVARCHAR(MAX)`` column that ``OPENJSON`` parses
+            on demand, so ``jsonb`` here is exactly ``json``.
+
+        ``timetz``
+            SQL Server has no time-with-offset type — ``TIME`` carries no offset
+            at all, and ``DATETIMEOFFSET`` is a *datetime*.  The time-of-day part
+            is therefore what is stored, and an offset needs a column of its own.
+
+        ``uuid``
+            SQL Server **does** have the type, under another name:
+            ``UNIQUEIDENTIFIER``, which is this backend's own class.  It is named
+            here rather than rendered under the core ``uuid`` name because T-SQL
+            writes ``UNIQUEIDENTIFIER`` and the dispatch key has to be a word
+            this backend can produce.
+
+        Note what is *not* here: ``xml`` and ``timestamptz``.  Both are
+        rendered, because SQL Server has native types for them (``XML`` and
+        ``DATETIMEOFFSET``) — substituting text or a zoneless datetime for a
+        concept the engine implements would be the wrong answer.
         """
         from rhosocial.activerecord.backend.expression.types import (
-            UUIDType,
-            IntervalType,
-            ArrayType,
-            EnumType,
-            JsonBType,
-            TimestampTzType,
-            TimeTzType,
+            BigIntType,
+            BlobType,
+            JsonType,
+            TimeType,
+            VarCharType,
         )
+        from .expression.types import SQLServerUniqueIdentifierType
+
         return {
-            "uuid": UUIDType,
-            "interval": IntervalType,
-            "array": ArrayType,
-            "enum": EnumType,
-            "jsonb": JsonBType,
-            "timestamptz": TimestampTzType,
-            "timetz": TimeTzType,
+            "binary": BlobType,
+            "varbinary": BlobType,
+            "interval": BigIntType,
+            "array": JsonType,
+            "enum": VarCharType,
+            "jsonb": JsonType,
+            "timetz": TimeType,
+            "uuid": SQLServerUniqueIdentifierType,
         }
 
 
@@ -1533,14 +1610,43 @@ def _register_type_formatters():
     ``DDLTypeMixin.supports_data_types()`` find them.
 
     Also copies the ``_SQLSERVER_*`` regex class attributes needed by
-    ``parse_type`` at runtime.
+    ``parse_type`` at runtime, and imports this backend's own ``DataType``
+    classes so ``supports_data_types()`` can resolve the ``sqlserver_``-prefixed
+    names to a class.  That last part is load order, not bookkeeping:
+    ``_type_class_for(name)`` resolves a name by walking the live subclass tree
+    of ``DataType``, so a name whose class nothing has imported yet resolves to
+    ``None`` and drops out of the mapping silently.  Nothing noticed, because
+    every test that looked at the mapping imported a ``SQLServer*`` class in
+    its own import block first — which is exactly the load that was missing.
+
+    The private helpers — ``_refuse_unsigned_*`` and ``_check_*`` — are copied
+    for the same reason the formatters are: inside a copied formatter ``self``
+    is the *dialect*, so a helper that stayed on the mixin would be an
+    ``AttributeError`` at render time rather than a refusal.  The
+    ``_refuse_unsigned_`` prefix is the name the signedness gate has in every
+    backend's type mixin (PostgreSQL, Oracle, Snowflake, SQLite, ClickHouse),
+    and ``_check_`` is the prefix this backend's own range helpers use
+    (``_check_length``, ``_check_decimal_scale_sign``), so copying both keeps
+    this backend in step rather than inventing a second convention.
+
+    ``type_parameter_defaults`` is copied for that same reason and is named
+    outright because it is a public hook with no prefix to match: it is this
+    backend's statement of the widths T-SQL supplies for a declaration that
+    named none, and both the copied formatter and the copied parser read it off
+    ``self``.  Left on the mixin it would resolve to core's empty answer through
+    the inherited ``DataTypeMixin`` version, so the dialect would silently claim
+    this server supplies no width for anything while its own formatters said
+    otherwise — which is the defect this hook exists to remove.
     """
     from .mixins.types import SQLServerTypeSupportMixin
+    from .expression import types as _backend_data_types  # noqa: F401
 
     for member_name in dir(SQLServerTypeSupportMixin):
         if (member_name.startswith("format_data_type_")
                 or member_name.startswith("supports_data_type_")
-                or member_name == "parse_type"):
+                or member_name.startswith("_refuse_unsigned_")
+                or member_name.startswith("_check_")
+                or member_name in ("parse_type", "type_parameter_defaults")):
             member = getattr(SQLServerTypeSupportMixin, member_name, None)
             if callable(member):
                 setattr(SQLServerDialect, member_name, member)

@@ -34,6 +34,51 @@ from rhosocial.activerecord.backend.introspection.types import (
 )
 from rhosocial.activerecord.backend.expression.types._base import DataType
 
+#: ``INFORMATION_SCHEMA.COLUMNS.CHARACTER_MAXIMUM_LENGTH`` reports ``-1``
+#: for a MAX-capable column.  Only these three spell that marker as a length
+#: argument (``(MAX)``).  ``xml`` reports ``-1`` as well but takes no length
+#: argument, and the deprecated LOBs (``text``/``ntext``/``image``) report
+#: their own maximum (2^31-1 / 2^30-1 / 2^31-1) rather than ``-1``, so they
+#: keep the bare-word path.
+_MAX_LENGTH_TYPES = frozenset({"varchar", "nvarchar", "varbinary"})
+
+#: The three temporal types that take a fractional-seconds precision.  The
+#: catalog reports it in ``DATETIME_PRECISION``, and it is the *only* place the
+#: precision lives — ``NUMERIC_PRECISION`` is NULL for all three — so before it
+#: was selected every ``time(3)``/``datetime2(3)``/``datetimeoffset(3)`` column
+#: rebuilt to its bare word and re-read as the *default* precision: a phantom
+#: diff against the declaration that produced it, and a missed change between
+#: ``time(0)`` and ``time(7)``.  See the normalization note below.
+#:
+#: ``datetime`` (reports 3) and ``smalldatetime`` (reports 0) also carry a
+#: value in ``DATETIME_PRECISION``, but those two are fixed legacy aliases
+#: folded into the ``DATETIME2`` concept, so they keep the existing bare-word
+#: path and are deliberately absent here.
+_DATETIME_PRECISION_TYPES = frozenset({"time", "datetime2", "datetimeoffset"})
+
+#: The fractional-seconds precision the server reports for a *bare*
+#: ``time``/``datetime2``/``datetimeoffset`` declaration, and equally for an
+#: explicit ``(7)`` one: the server cannot tell those two declarations apart,
+#: so neither can this rebuild.  ``(n)`` is rebuilt only when ``n`` differs
+#: from this default and the bare word is rebuilt at it.
+#:
+#: Every number above was read off a live server, identically on SQL Server
+#: 2019 (15.0.4465.1), 2022 (16.0.4250.1) and 2025 (17.0.4035.5)::
+#:
+#:     CREATE TABLE t (t TIME, t0 TIME(0), t3 TIME(3), t7 TIME(7),
+#:                     d DATETIME2, d3 DATETIME2(3), o DATETIMEOFFSET(3))
+#:     -- INFORMATION_SCHEMA.COLUMNS.DATETIME_PRECISION
+#:     --   t  -> 7        t0 -> 0       t3 -> 3       t7 -> 7
+#:     --   d  -> 7        d3 -> 3       o3 -> 3
+#:
+#: The one residual this does not close: a declared explicit ``(7)`` parses to
+#: a type carrying precision 7 while the rebuilt column is bare, so those two
+#: still compare unequal.  Closing *that* is the server-defaults question (a
+#: bare word and an explicit default name one server column), which belongs
+#: with the dialect's ``type_parameter_defaults`` machinery rather than this
+#: catalog rebuild; it is recorded here rather than silently widened.
+_DATETIME_DEFAULT_PRECISION = 7
+
 
 class SQLServerIntrospectorMixin(IntrospectorMixin):
     """Shared non-I/O logic for SQL Server introspectors."""
@@ -88,6 +133,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
                 c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
                 c.COLUMN_DEFAULT, c.CHARACTER_MAXIMUM_LENGTH,
                 c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
+                c.DATETIME_PRECISION,
                 c.ORDINAL_POSITION, c.COLLATION_NAME,
                 COLUMNPROPERTY(
                     OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME),
@@ -259,8 +305,37 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             max_len = row.get("CHARACTER_MAXIMUM_LENGTH")
             precision = row.get("NUMERIC_PRECISION")
             scale = row.get("NUMERIC_SCALE")
+            dt_precision = row.get("DATETIME_PRECISION")
 
-            if max_len and max_len > 0:
+            if max_len == -1 and data_type in _MAX_LENGTH_TYPES:
+                # Rebuild the ``(MAX)`` spelling the catalog marker stands
+                # for; ``parse_type`` reads it as the documented widening
+                # (``TextType`` for the character pair,
+                # ``SQLServerVarBinaryMaxType`` for ``varbinary``).  Dropping
+                # the marker rebuilt a bare word, which re-read as the
+                # declared default width (``nvarchar`` -> 255) — a MAX
+                # column then compared equal to a 255 one, and against a
+                # declared ``NVARCHAR(MAX)`` it produced a phantom diff.
+                full_type = f"{data_type}(MAX)"
+            elif data_type in _DATETIME_PRECISION_TYPES:
+                # Rebuild the fractional-seconds precision the column was
+                # declared with, except at the server default: a bare word
+                # and ``(7)`` are the same column to the server, so the bare
+                # word is what the default rebuilds to and ``(n)`` appears
+                # only where the declaration was genuinely narrower.  Before
+                # ``DATETIME_PRECISION`` was read at all, a ``time(3)``
+                # column came back bare and re-read as the default
+                # (``TimeType(None)`` vs the declared ``TimeType(3)``), while
+                # ``time(0)`` and ``time(7)`` both folded to the same bare
+                # type and could not be told apart.  The measured rows and
+                # the explicit-``(7)`` residual are written down on
+                # ``_DATETIME_DEFAULT_PRECISION``.
+                if (dt_precision is not None
+                        and dt_precision != _DATETIME_DEFAULT_PRECISION):
+                    full_type = f"{data_type}({dt_precision})"
+                else:
+                    full_type = data_type
+            elif max_len and max_len > 0:
                 full_type = f"{data_type}({max_len})"
             elif precision is not None:
                 if scale:

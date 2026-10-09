@@ -7,6 +7,7 @@ Tests the supports_functions() method and function factories.
 
 import pytest
 
+from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.impl.sqlserver import functions
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
@@ -148,9 +149,14 @@ class TestFunctionFactories:
         assert result is not None
 
     def test_json_type(self, dialect):
-        """Test json_type factory."""
-        result = functions.json_type(dialect, "column")
-        assert result is not None
+        """json_type refuses: T-SQL has no JSON_TYPE.
+
+        It used to emit a FunctionCall named JSON_TYPE, which the server
+        rejects. The refusal names OPENJSON as the route that does work.
+        """
+        with pytest.raises(UnsupportedFeatureError) as excinfo:
+            functions.json_type(dialect, "column")
+        assert "OPENJSON" in str(excinfo.value)
 
     def test_json_valid(self, dialect):
         """Test json_valid factory."""
@@ -158,9 +164,14 @@ class TestFunctionFactories:
         assert result is not None
 
     def test_json_search(self, dialect):
-        """Test json_search factory."""
-        result = functions.json_search(dialect, "column", "search")
-        assert result is not None
+        """json_search refuses: T-SQL has no JSON_SEARCH.
+
+        It used to emit a FunctionCall named JSON_SEARCH, which the server
+        rejects. The refusal names OPENJSON with a LIKE predicate.
+        """
+        with pytest.raises(UnsupportedFeatureError) as excinfo:
+            functions.json_search(dialect, "column", "search")
+        assert "OPENJSON" in str(excinfo.value)
 
     def test_st_geom_from_text(self, dialect):
         """Test st_geom_from_text factory."""

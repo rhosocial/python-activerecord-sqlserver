@@ -19,6 +19,8 @@ from .returning import SQLServerReturningMixin
 from .constraint import SQLServerConstraintMixin
 from .window import SQLServerWindowMixin
 from .json import SQLServerJSONMixin
+from .column_suggestion import SQLServerColumnSuggestionMixin
+from .uuid import SQLServerUUIDMixin
 from .grouping import SQLServerGroupingMixin
 from .locking import SQLServerLockingMixin
 from .merge import SQLServerMergeMixin
@@ -62,6 +64,8 @@ __all__ = [
     "SQLServerConstraintMixin",
     "SQLServerWindowMixin",
     "SQLServerJSONMixin",
+    "SQLServerColumnSuggestionMixin",
+    "SQLServerUUIDMixin",
     "SQLServerGroupingMixin",
     "SQLServerLockingMixin",
     "SQLServerMergeMixin",

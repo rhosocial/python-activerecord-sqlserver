@@ -40,8 +40,13 @@ class TestSQLServerJSONSupport:
         assert op is None or op == "JSON_VALUE/JSON_QUERY"
 
     def test_supports_json_table(self, dialect):
-        """Test JSON table (OPENJSON) support."""
-        assert dialect.supports_json_table() is True
+        """JSON_TABLE is absent; the capability here is OPENJSON.
+
+        The probe used to claim 2016+ while format_json_table_expression raised
+        unconditionally, so a caller trusting it was promised a table
+        expression and got an exception at render time.
+        """
+        assert dialect.supports_json_table() is False
 
 
 class TestSQLServerJSONAdapter:
