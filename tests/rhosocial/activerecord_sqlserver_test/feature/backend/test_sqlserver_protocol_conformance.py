@@ -78,6 +78,7 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.CTESupport,
     dialect_protocols.CollationSupport,
     dialect_protocols.ColumnAttributeSupport,
+    dialect_protocols.ColumnTypeSupport,
     dialect_protocols.ConstraintSupport,
     dialect_protocols.DataTypeSupport,
     dialect_protocols.DDLTypeSupport,

@@ -15,8 +15,8 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression import (
     Column,
-    ColumnBase,
     Literal,
+    StringColumn,
     UUIDCastExpression,
     UUIDConstantExpression,
     UUIDGenerationExpression,
@@ -194,9 +194,13 @@ def test_json_table_error_points_at_openjson():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("column_class", [Column, ColumnBase])
+@pytest.mark.parametrize("column_class", [Column, StringColumn])
 def test_output_clause_recognises_both_column_kinds(column_class):
-    """A typed column must not fall through to the expressions branch."""
+    """A typed column must not fall through to the expressions branch.
+
+    `ColumnBase` used to be the second kind; it is now an ABC and cannot be
+    built, so the pair is the bare reference plus a concrete typed column.
+    """
     from rhosocial.activerecord.backend.expression.statements.dml import ReturningClause
 
     dialect = _dialect()
