@@ -158,6 +158,7 @@ from .mixins.graph import SQLServerGraphMixin
 from .mixins.columnstore import SQLServerColumnstoreIndexMixin
 from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
 from .mixins.ddl_type import SQLServerTypeDDLMixin
+from .mixins.trim import SQLServerTrimMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
@@ -349,6 +350,10 @@ class SQLServerDialect(
     SQLServerTransactionMixin,
     SQLServerFunctionMixin,
     SQLServerDateTimeMixin,
+    # TRIM is the one of the four string nodes SQL Server spells differently.
+    # It must precede any core TRIM mixin so its ``format_trim_expression``
+    # wins; see SQLServerTrimMixin for the mapping and its version limits.
+    SQLServerTrimMixin,
     # Global feature mixins (after SQL Server mixins so SQL Server methods win)
     DateTimeMixin,
     DQLMixin,
