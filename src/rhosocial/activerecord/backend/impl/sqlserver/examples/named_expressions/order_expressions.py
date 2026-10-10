@@ -20,6 +20,7 @@ named-procedure commands to execute the queries.
 # ============================================================
 from rhosocial.activerecord.backend.expression import (  # noqa: E402
     Column,
+    ComparisonPredicate,
     Literal,
     QueryExpression,
 )
@@ -32,7 +33,7 @@ def get_order(dialect, order_id: int):
         dialect,
         select=[Column(dialect, "id"), Column(dialect, "status"), Column(dialect, "user_id")],
         from_=Table(dialect, "orders"),
-        where=Column(dialect, "id") == Literal(dialect, order_id),
+        where=ComparisonPredicate(dialect, "=", Column(dialect, "id"), Literal(dialect, order_id)),
     )
 
 
@@ -42,7 +43,7 @@ def check_inventory(dialect, order_id: int):
         dialect,
         select=[Column(dialect, "available")],
         from_=Table(dialect, "inventory"),
-        where=Column(dialect, "order_id") == Literal(dialect, order_id),
+        where=ComparisonPredicate(dialect, "=", Column(dialect, "order_id"), Literal(dialect, order_id)),
     )
 
 
@@ -52,7 +53,7 @@ def reserve_inventory(dialect, order_id: int):
         dialect,
         select=[Column(dialect, "id"), Column(dialect, "available")],
         from_=Table(dialect, "inventory"),
-        where=Column(dialect, "order_id") == Literal(dialect, order_id),
+        where=ComparisonPredicate(dialect, "=", Column(dialect, "order_id"), Literal(dialect, order_id)),
     )
 
 
@@ -62,7 +63,7 @@ def send_notification(dialect, user_id: int, type: str):
         dialect,
         select=[Column(dialect, "id")],
         from_=Table(dialect, "notifications"),
-        where=Column(dialect, "user_id") == Literal(dialect, user_id),
+        where=ComparisonPredicate(dialect, "=", Column(dialect, "user_id"), Literal(dialect, user_id)),
     )
 
 
@@ -72,7 +73,7 @@ def process_payment(dialect, order_id: int, amount: float):
         dialect,
         select=[Column(dialect, "status"), Column(dialect, "transaction_id")],
         from_=Table(dialect, "payments"),
-        where=Column(dialect, "order_id") == Literal(dialect, order_id),
+        where=ComparisonPredicate(dialect, "=", Column(dialect, "order_id"), Literal(dialect, order_id)),
     )
 
 
@@ -82,7 +83,7 @@ def release_inventory(dialect, order_id: int):
         dialect,
         select=[Column(dialect, "id")],
         from_=Table(dialect, "inventory"),
-        where=Column(dialect, "order_id") == Literal(dialect, order_id),
+        where=ComparisonPredicate(dialect, "=", Column(dialect, "order_id"), Literal(dialect, order_id)),
     )
 
 
@@ -92,7 +93,7 @@ def create_order_record(dialect, order_id: int, user_id: int, amount: float):
         dialect,
         select=[Column(dialect, "id"), Column(dialect, "created_at")],
         from_=Table(dialect, "order_records"),
-        where=Column(dialect, "order_id") == Literal(dialect, order_id),
+        where=ComparisonPredicate(dialect, "=", Column(dialect, "order_id"), Literal(dialect, order_id)),
     )
 
 
@@ -102,7 +103,7 @@ def confirm_inventory(dialect, order_id: int):
         dialect,
         select=[Column(dialect, "id")],
         from_=Table(dialect, "inventory"),
-        where=Column(dialect, "order_id") == Literal(dialect, order_id),
+        where=ComparisonPredicate(dialect, "=", Column(dialect, "order_id"), Literal(dialect, order_id)),
     )
 
 
