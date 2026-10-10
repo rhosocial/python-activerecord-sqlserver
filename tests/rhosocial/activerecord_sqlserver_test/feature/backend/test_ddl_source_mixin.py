@@ -7,7 +7,7 @@ except ImportError:
 
 import pytest
 
-from rhosocial.activerecord.backend.expression import ColumnDefinition
+from rhosocial.activerecord.backend.expression import ColumnDefinition, ComparisonPredicate
 from rhosocial.activerecord.backend.expression.core import Column, Literal
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnConstraintType,
@@ -66,11 +66,11 @@ class ColumnOptionsHandler(DDLAnnotationHandler):
 
 
 def check_condition(dialect):
-    return Column(dialect, "value_col") == "active"
+    return ComparisonPredicate(dialect, "=", Column(dialect, "value_col"), Literal(dialect, "active"))
 
 
 def index_condition(dialect):
-    return Column(dialect, "value_col") == "active"
+    return ComparisonPredicate(dialect, "=", Column(dialect, "value_col"), Literal(dialect, "active"))
 
 
 PRIMARY_TYPE = SQLServerNVarCharType(length=64)
