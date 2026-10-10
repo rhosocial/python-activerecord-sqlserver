@@ -172,7 +172,7 @@ INHERITED_TABLES = ["parent_a", "parent_b"]
 TABLE_SPACE = "ts_data"
 BATCH_METHODS = (
     "columns_name",
-    "columns_type",
+    "columns_data_type",
     "columns_constraints",
     "columns_attributes",
     "columns_indexes",
@@ -306,12 +306,12 @@ def test_field_declarations_are_collected_in_declaration_order(model):
     }
     assert model.column_name("pk_field") == "id"
     assert model.column_name("value_field") == "value_col"
-    assert model.column_type("value_field") is TYPE_MARKER
-    assert model.column_type("value_field").data_types == (PRIMARY_TYPE, FALLBACK_TYPE)
-    assert model.column_type("value_field").data_types[0] is PRIMARY_TYPE
-    assert model.column_type("value_field").data_types[1] is FALLBACK_TYPE
-    assert isinstance(model.column_type("value_field").data_type, SQLServerNVarCharType)
-    assert model.column_type("value_field").data_type.length == 64
+    assert model.column_data_type("value_field") is TYPE_MARKER
+    assert model.column_data_type("value_field").data_types == (PRIMARY_TYPE, FALLBACK_TYPE)
+    assert model.column_data_type("value_field").data_types[0] is PRIMARY_TYPE
+    assert model.column_data_type("value_field").data_types[1] is FALLBACK_TYPE
+    assert isinstance(model.column_data_type("value_field").data_type, SQLServerNVarCharType)
+    assert model.column_data_type("value_field").data_type.length == 64
 
     value_constraints = model.column_constraints("value_field")
     assert value_constraints[0] is DEFAULT_CONSTRAINT.constraint
@@ -355,7 +355,7 @@ def test_field_declarations_are_collected_in_declaration_order(model):
 
 def test_collected_backend_data_type_renders_with_dialect():
     dialect = SQLServerDialect((16, 0, 0))
-    data_type = SyncModel.column_type("value_field").data_types[0]
+    data_type = SyncModel.column_data_type("value_field").data_types[0]
     assert isinstance(data_type, SQLServerNVarCharType)
     data_type.dialect = dialect
     try:
@@ -442,7 +442,7 @@ def test_default_declarations_and_batch_interfaces(model):
         ColumnConstraintType.NOT_NULL,
     ]
     assert model.column_constraints("optional") == []
-    assert model.columns_type() == {"id": None, "optional": None}
+    assert model.columns_data_type() == {"id": None, "optional": None}
     assert model.columns_constraints()["optional"] == []
     assert model.columns_attributes() == {"id": [], "optional": []}
     assert model.columns_indexes() == {"id": [], "optional": []}
@@ -467,7 +467,7 @@ def test_batch_interfaces_preserve_requested_field_order(model):
 
     fields = ["value_field", "pk_field", "optional_field"]
     names = model.columns_name(fields)
-    types = model.columns_type(fields)
+    types = model.columns_data_type(fields)
     constraints = model.columns_constraints(fields)
     attributes = model.columns_attributes(fields)
     indexes = model.columns_indexes(fields)
@@ -500,7 +500,7 @@ def test_batch_interfaces_preserve_requested_field_order(model):
 
 def test_sync_and_async_ddl_sources_collect_the_same_declarations():
     assert SyncModel.columns_name() == AsyncModel.columns_name()
-    assert SyncModel.columns_type() == AsyncModel.columns_type()
+    assert SyncModel.columns_data_type() == AsyncModel.columns_data_type()
     assert SyncModel.columns_attributes() == AsyncModel.columns_attributes()
     assert SyncModel.columns_comment() == AsyncModel.columns_comment()
     assert SyncModel.columns_generated() == AsyncModel.columns_generated()
