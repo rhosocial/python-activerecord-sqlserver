@@ -84,11 +84,11 @@ from rhosocial.activerecord.backend.expression.column_types import (
     BinaryColumn,
     BooleanColumn,
     ColumnBase,
-    DateTimeColumn,
     IntegerColumn,
     JSONColumn,
     NumericColumn,
     StringColumn,
+    TimestampColumn,
     UUIDColumn,
 )
 
@@ -145,7 +145,7 @@ SQLSERVER_COLUMN_TYPES: Dict[Any, Type[ColumnBase]] = {
     bytearray: BinaryColumn,
     # --- date / time -------------------------------------------------------
     # `DATE`, `TIME(p)`, `DATETIME2(p)` and `DATETIMEOFFSET(p)` are four
-    # real storage types and DateTimeColumn is the one class core has for
+    # real storage types and TimestampColumn is the one class core has for
     # all of them; core has no DateColumn / TimeColumn yet, so this is the
     # shared baseline rather than a claim that the four are one type.
     # Measured: comparisons, `y/m/d/h/mi/s` extraction, `DATEADD` increments
@@ -153,9 +153,9 @@ SQLSERVER_COLUMN_TYPES: Dict[Any, Type[ColumnBase]] = {
     # `DATETIME2(7)` keeps microseconds. A tz-aware `datetime` normalises
     # to the same entry and both `AT TIME ZONE 'UTC'` directions were
     # measured working, so nothing about tz is narrowed.
-    datetime.date: DateTimeColumn,
-    datetime.time: DateTimeColumn,
-    datetime.datetime: DateTimeColumn,
+    datetime.date: TimestampColumn,
+    datetime.time: TimestampColumn,
+    datetime.datetime: TimestampColumn,
     # A timedelta is a number of seconds here. SQL Server has no interval
     # *type* at all -- a span exists only as `DATEDIFF`, which is an
     # expression -- so a stored duration has to be a count, and the value
