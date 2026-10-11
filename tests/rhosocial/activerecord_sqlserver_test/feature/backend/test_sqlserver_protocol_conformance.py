@@ -148,7 +148,7 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.CreateSchemaSupport,
     dialect_protocols.DropSchemaSupport,
     dialect_protocols.AlterDatabaseSupport,
-    dialect_protocols.DateTimeSupport,
+    dialect_protocols.TimestampSupport,
     dialect_protocols.DqlOrderSupport,
     dialect_protocols.PivotSupport,
 ]
