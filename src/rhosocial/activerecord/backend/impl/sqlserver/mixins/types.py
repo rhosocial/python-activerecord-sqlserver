@@ -335,7 +335,23 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         lost by dropping the *concept* here; what would be lost is the caller's
         statement that this particular column holds no negative value, and that
         belongs in a ``CHECK`` constraint.
+
+        The shape of ``unsigned`` is checked here, at the rendering end, rather
+        than in the expression's constructor: an expression collects its
+        parameters without judging them, because only the formatter knows which
+        backend will have to honour this flag.  A non-boolean therefore arrives
+        here instead of being turned away at construction, and is named here --
+        testing its truth instead would let ``unsigned="yes"`` through the same
+        branch as ``True`` and report a refusal about a value the caller never
+        declared, while ``unsigned=0`` would slip past it and render the signed
+        column silently.
         """
+        if not isinstance(data_type.unsigned, bool):
+            raise TypeError(
+                f"unsigned must be a bool, got "
+                f"{type(data_type.unsigned).__name__}; it "
+                f"becomes a type modifier in the rendered DDL."
+            )
         if not data_type.unsigned:
             return
         raise UnsupportedFeatureError(
@@ -407,7 +423,21 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         ``UnsupportedFeatureError``, not ``ValueError``: this is a declaration
         the grammar cannot express at all rather than a wrong value, and the two
         exceptions do not share a base class.
+
+        The shape of ``unsigned`` is checked here for the reason given on
+        :meth:`_refuse_unsigned_integer`.  The attribute is read **directly**
+        rather than with ``getattr``: the expression classes are the protocol,
+        so whether ``unsigned`` exists is statically settled -- ``DecimalType``,
+        ``FloatType``, ``RealType`` and ``DoubleType`` all declare it in
+        ``PARAMETERS`` -- and a probe would turn "the caller passed the wrong
+        class" into a silent signed rendering.
         """
+        if not isinstance(data_type.unsigned, bool):
+            raise TypeError(
+                f"unsigned must be a bool, got "
+                f"{type(data_type.unsigned).__name__}; it "
+                f"becomes a type modifier in the rendered DDL."
+            )
         if not data_type.unsigned:
             return
         raise UnsupportedFeatureError(
@@ -457,7 +487,23 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         type, and the width a caller can have is whatever T-SQL offers.  A
         value that must be allowed to go negative needs ``SMALLINT``, the
         narrowest signed width T-SQL has.
+
+        The shape of ``unsigned`` is checked here too, for the reason given on
+        :meth:`_refuse_unsigned_integer`.  It is checked **here** and not on
+        :meth:`format_data_type_sqlserver_tinyint`, and that placement is what
+        keeps :class:`SQLServerTinyIntType` working: this helper is reached only
+        from the *generic* concept, whose caller may write either value,
+        whereas ``SQLServerTinyIntType`` pins ``unsigned=True`` in its own
+        ``__init__`` and must render, not be refused.  A guard that asked
+        "is this unsigned?" and then refused would turn that class's own
+        declaration into an error.
         """
+        if not isinstance(data_type.unsigned, bool):
+            raise TypeError(
+                f"unsigned must be a bool, got "
+                f"{type(data_type.unsigned).__name__}; it "
+                f"becomes a type modifier in the rendered DDL."
+            )
         if not data_type.unsigned:
             return
         raise UnsupportedFeatureError(
