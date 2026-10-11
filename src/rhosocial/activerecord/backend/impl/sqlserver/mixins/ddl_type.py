@@ -535,6 +535,10 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             )
         parts: List[str] = []
         params: List[Any] = []
+        # `constraints` and `table_constraints` are two spellings of one list;
+        # only the one the caller passed owns its attribute, so read the merged
+        # accessor rather than either slot.
+        constraint_definitions = expr.constraint_definitions
         for column in expr.columns:
             column_sql, column_params = self._format_table_type_column(
                 column,
@@ -542,7 +546,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             )
             parts.append(column_sql)
             params.extend(column_params)
-        for constraint in expr.constraints:
+        for constraint in constraint_definitions:
             constraint_sql, constraint_params = self._format_table_type_constraint(
                 constraint,
                 expr.memory_optimized,
@@ -571,7 +575,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                     TableConstraintType.PRIMARY_KEY,
                     TableConstraintType.UNIQUE,
                 }
-                for constraint in expr.constraints
+                for constraint in constraint_definitions
             )
             if len(expr.indexes) + key_constraint_count > 8:
                 raise UnsupportedFeatureError(
@@ -594,7 +598,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                     TableConstraintType.PRIMARY_KEY,
                     TableConstraintType.UNIQUE,
                 }
-                for constraint in expr.constraints
+                for constraint in constraint_definitions
             )
             if not has_key_constraint and not expr.indexes:
                 raise ValueError(

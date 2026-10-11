@@ -631,7 +631,11 @@ class TestSQLServerDialectJSON:
 
     def test_json_support_2022(self, dialect):
         assert dialect.supports_json_type() is True
-        assert dialect.supports_json_table() is True
+        # SQL Server has no JSON_TABLE; the capability is OPENJSON. The probe
+        # used to claim True on 2016+ while format_json_table_expression
+        # raised unconditionally, so a caller trusting it got an exception at
+        # render time.
+        assert dialect.supports_json_table() is False
 
     def test_json_access_operator(self, dialect):
         assert dialect.get_json_access_operator() is None

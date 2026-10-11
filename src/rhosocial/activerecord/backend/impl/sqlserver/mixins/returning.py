@@ -58,7 +58,8 @@ class SQLServerReturningMixin:
             UnsupportedFeatureError: If the clause requests an alias, a
                 wildcard, or contains a non-column expression.
         """
-        from rhosocial.activerecord.backend.expression.core import Column, WildcardExpression
+        from rhosocial.activerecord.backend.expression.column_types import ColumnBase
+        from rhosocial.activerecord.backend.expression.core import WildcardExpression
         from rhosocial.activerecord.backend.expression.operators import RawSQLExpression
 
         if clause.alias:
@@ -79,7 +80,7 @@ class SQLServerReturningMixin:
                     "SQL Server OUTPUT requires explicit column references; '*' "
                     "is not supported.",
                 )
-            if isinstance(expr, Column):
+            if isinstance(expr, ColumnBase):
                 prefix = expr.table.upper() if expr.table else default_table
                 col_sql = self.format_identifier(expr.name, expr.name_need_quote)
                 expr_parts.append(f"{prefix}.{col_sql}")

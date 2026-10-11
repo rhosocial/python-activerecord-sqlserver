@@ -143,10 +143,16 @@ class TestFunctionCapabilityMatrix:
     @pytest.mark.parametrize(
         ("version", "json_bits"),
         [
+            # supports_json_table is False on every version. SQL Server has no
+            # JSON_TABLE; the capability is OPENJSON, which
+            # SQLServerOpenJsonExpression implements. This used to claim 13.0+
+            # while format_json_table_expression raised unconditionally, and
+            # test_json_function_gates above already asserted the opposite for
+            # the same backend — the two tests contradicted each other.
             ((11, 0, 0), {"supports_json_type": False, "supports_json_table": False}),
-            ((13, 0, 0), {"supports_json_type": True, "supports_json_table": True}),
-            ((15, 0, 0), {"supports_json_type": True, "supports_json_table": True}),
-            ((16, 0, 0), {"supports_json_type": True, "supports_json_table": True}),
+            ((13, 0, 0), {"supports_json_type": True, "supports_json_table": False}),
+            ((15, 0, 0), {"supports_json_type": True, "supports_json_table": False}),
+            ((16, 0, 0), {"supports_json_type": True, "supports_json_table": False}),
         ],
     )
     def test_json_capability_bits_per_version(self, version, json_bits):

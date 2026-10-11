@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, Optional, Sequence, Union, cast
+from typing import Any, List, Optional, Sequence, Union
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.expression.objects import Type
@@ -84,7 +84,18 @@ class SQLServerAliasTypeDefinition(TypeDefinition):
 
 
 class SQLServerTableTypeDefinition(TypeDefinition):
-    """SQL Server user-defined table TYPE definition."""
+    """SQL Server user-defined table TYPE definition.
+
+    ``constraints`` and ``table_constraints`` are two spellings of the same
+    list (the latter exists to match the model-level naming) and are mutually
+    exclusive. Both spellings reach the *same* rendering state, so the generic
+    introspection-based ``get_params()`` is the whole serialization story:
+    ``__init__`` stores the merged list under the slot belonging to the
+    parameter the caller actually used and leaves the other slot ``None``, so
+    ``get_params()`` emits ``constraints=[...], table_constraints=None`` (or
+    the reverse) and the reconstruction takes the same branch. Renderers read
+    :attr:`constraint_definitions`, never one particular spelling's slot.
+    """
 
     definition_kind = "table"
 
@@ -118,16 +129,30 @@ class SQLServerTableTypeDefinition(TypeDefinition):
         if not isinstance(memory_optimized, bool):
             raise TypeError("memory_optimized must be a bool")
         self.columns = column_list
-        self.constraints = constraint_list
-        self.table_constraints = constraint_list
         self.indexes = index_list
         self.memory_optimized = memory_optimized
+        # Fold the merged list into the slot named by the parameter the caller
+        # used and leave the unused spelling at None ("not supplied"): both
+        # spellings are mutually exclusive, so this is what makes the generic
+        # get_params() round trip without an override.
+        if table_constraints is None:
+            self.constraints = constraint_list if constraints is not None else None
+            self.table_constraints = None
+        else:
+            self.constraints = None
+            self.table_constraints = constraint_list
 
-    def get_params(self) -> Dict[str, Any]:
-        params = cast(Dict[str, Any], super().get_params())
-        params.pop("table_constraints", None)
-        params["constraints"] = self.constraints
-        return params
+    @property
+    def constraint_definitions(self) -> List[TableConstraint]:
+        """The declared table constraints, whichever spelling the caller used.
+
+        ``constraints`` and ``table_constraints`` are two names for one list;
+        only the spelling that was passed owns the corresponding attribute.
+        Use this to read them back without caring which one that was.
+        """
+        if self.constraints is not None:
+            return self.constraints
+        return self.table_constraints or []
 
 
 class SQLServerClrTypeDefinition(TypeDefinition):

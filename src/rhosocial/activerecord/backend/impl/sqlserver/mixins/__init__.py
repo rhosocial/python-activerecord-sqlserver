@@ -19,6 +19,8 @@ from .returning import SQLServerReturningMixin
 from .constraint import SQLServerConstraintMixin
 from .window import SQLServerWindowMixin
 from .json import SQLServerJSONMixin
+from .column_type import SQLServerColumnTypeMixin
+from .uuid import SQLServerUUIDMixin
 from .grouping import SQLServerGroupingMixin
 from .locking import SQLServerLockingMixin
 from .merge import SQLServerMergeMixin
@@ -40,6 +42,7 @@ from .namespace import SQLServerNamespaceMixin
 from .transaction import SQLServerTransactionMixin
 from .function import SQLServerFunctionMixin
 from .ddl_type import SQLServerTypeDDLMixin
+from .trim import SQLServerTrimMixin
 
 __all__ = [
     "SQLServerTypeSupportMixin",
@@ -62,6 +65,8 @@ __all__ = [
     "SQLServerConstraintMixin",
     "SQLServerWindowMixin",
     "SQLServerJSONMixin",
+    "SQLServerColumnTypeMixin",
+    "SQLServerUUIDMixin",
     "SQLServerGroupingMixin",
     "SQLServerLockingMixin",
     "SQLServerMergeMixin",
@@ -83,4 +88,5 @@ __all__ = [
     "SQLServerTransactionMixin",
     "SQLServerFunctionMixin",
     "SQLServerTypeDDLMixin",
+    "SQLServerTrimMixin",
 ]

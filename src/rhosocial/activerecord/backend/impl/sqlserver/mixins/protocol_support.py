@@ -21,6 +21,11 @@ from rhosocial.activerecord.backend.expression.objects import Index, Table, View
 class SQLServerProtocolSupportMixin:
     """SQL Server protocol contract implementations delegating to dialect formatters."""
 
+    #: SQL Server reads ``||`` as logical OR, so ``CONCAT`` is the only
+    #: unambiguous spelling.
+    STRING_CONCATENATION = "CONCAT"
+
+
     def supports_output_clause(self) -> bool:
         """SQL Server supports the OUTPUT clause."""
         return True

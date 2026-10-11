@@ -37,14 +37,39 @@ Each outcome is now named and asserted:
   reason belonging to its own tree. Each entry pins the exception type *and* a
   message fragment, so a class that started failing for a different reason fails
   here instead of staying quietly green.
-* ``UnsupportedFeatureError`` from a class *not* named in the dict -- SQL Server
-  does not model the feature. Asserted as exactly that type, so a subclass raised
-  for an unrelated reason is still visible rather than passing.
+* ``UnsupportedFeatureError`` from a probe inside a formatter, for a class
+  *not* named in the dict -- SQL Server does not model the feature. Asserted
+  as exactly that type, so a subclass raised for an unrelated reason is still
+  visible rather than passing.
+* ``UnsupportedFeatureError`` from the dispatch, for a class not named in the
+  dict -- the dialect declares no ``format_*`` method for it at all, which is
+  a wiring fact about this backend rather than a capability answer. The
+  method the dispatch names must be a row in :data:`UNMODELLED_FORMATTERS`,
+  so the gap is a decision with a reason rather than an omission; see
+  :func:`_dispatched_formatter`.
 * **anything else** -- a failure naming the class and the exception.
 
 The dict is read before the ``UnsupportedFeatureError`` branch, because core now
 reports a *missing formatter* through that same type; see
 :func:`assert_sql_roundtrip_classified`.
+
+Why the dispatch's refusal is no longer allowed on its type alone
+=================================================================
+
+The two ``UnsupportedFeatureError`` outcomes above were one branch until core
+turned ``trim``/``lpad``/``rpad``/``repeat`` into dedicated nodes. SQL Server
+spells ``TRIM``/``LTRIM``/``RTRIM`` and has no ``LPAD``, ``RPAD`` or ``REPEAT``
+at all, so those three nodes reach a dispatch that finds no formatter -- and
+before this split, that refusal read as "SQL Server lacks the feature" and
+passed, indistinguishable from a probe declining something SQL Server
+genuinely declines. The exception itself records who is refusing: a probe
+names the feature, while the dispatch frames the formatting method it could
+not find as ``the '<method>' statement`` -- see :func:`_dispatched_formatter`.
+Only the dispatch's refusal is a wiring fact about this backend, so only it
+must be accounted for:
+:meth:`TestMatrixIntegrity.test_unmodelled_formatter_list_is_exact` pins
+:data:`UNMODELLED_FORMATTERS` in both directions, and a method nobody listed
+fails the run.
 
 And when a class cannot be constructed
 ======================================
@@ -102,6 +127,8 @@ from rhosocial.activerecord.backend.expression.statements.dml import (
 )
 from rhosocial.activerecord.backend.expression.statements.dql import QueryExpression
 from rhosocial.activerecord.backend.expression.types import IntegerType
+from rhosocial.activerecord.backend.expression.types.custom import CustomType
+from rhosocial.activerecord.backend.expression.uuid import UUIDConstantExpression
 from rhosocial.activerecord.testsuite.utils.expression import (
     collect_expression_classes,
     make_instance,
@@ -694,6 +721,18 @@ def register_specials():
     register_special_constructor(
         "graph.SQLServerShortestPathExpression", shortest_path
     )
+    # -- two core classes that build as soon as they get a valid argument ----
+    # Both were measured before being named here: with ``raw`` carrying a real
+    # type name CUSTOM renders it, and with ``which="nil"`` the UUID constant
+    # renders the nil literal cast to UNIQUEIDENTIFIER. Neither is a skip, and
+    # neither belongs in UNCONSTRUCTIBLE -- a constructor is the honest answer
+    # for a class that constructs fine once its own slot is filled.
+    register_special_constructor(
+        "types.custom.CustomType", lambda d: CustomType(d, "VARCHAR(10)")
+    )
+    register_special_constructor(
+        "uuid.UUIDConstantExpression", lambda d: UUIDConstantExpression(d, "nil")
+    )
 
 
 register_specials()
@@ -1000,9 +1039,6 @@ LEGITIMATE_NON_RENDERS = {
     "rhosocial.activerecord.backend.expression.types.datetime_.TimeTzType": (
         TypeError, _NO_SUCH_TYPE
     ),
-    "rhosocial.activerecord.backend.expression.types.datetime_.TimestampTzType": (
-        TypeError, _NO_SUCH_TYPE
-    ),
     "rhosocial.activerecord.backend.expression.types.json_.JsonBType": (
         TypeError, _NO_SUCH_TYPE
     ),
@@ -1050,6 +1086,125 @@ LEGITIMATE_NON_RENDERS = {
 
 
 # ---------------------------------------------------------------------------
+# The dispatch gap: a missing formatter is a decision, not an omission
+# ---------------------------------------------------------------------------
+#
+# ``to_sql()`` reports a dialect that names no formatter for a class through
+# the same ``UnsupportedFeatureError`` a capability probe uses, so the type
+# alone cannot say "this backend never wired the feature in". The frame the
+# dispatch puts around the method name can, and it is the only place in the
+# tree that opens it -- see :func:`_dispatched_formatter`.
+
+#: The two ends of the frame ``to_sql()`` puts around a formatting method name
+#: in the ``feature_name`` of the ``UnsupportedFeatureError`` it raises for a
+#: dialect that has no such formatter.
+_DISPATCH_FEATURE_PREFIX = "the '"
+_DISPATCH_FEATURE_SUFFIX = "' statement"
+
+
+def _dispatched_formatter(exc):
+    """The formatting method *exc* says the dialect does not have, or ``None``.
+
+    ``None`` means *exc* is not the dispatch reporting a missing formatter --
+    it is a probe inside a formatter that refused a feature, which is the
+    ``"unsupported"`` branch and needs no row anywhere.
+
+    Args:
+        exc: An :class:`UnsupportedFeatureError` raised out of ``to_sql()``.
+
+    Returns:
+        The method name out of the ``feature_name`` frame, or ``None`` when
+        *exc* came from a probe rather than from the dispatch.
+    """
+    feature = exc.feature_name
+    if not feature.startswith(_DISPATCH_FEATURE_PREFIX):
+        return None
+    if not feature.endswith(_DISPATCH_FEATURE_SUFFIX):
+        return None
+    method = feature[len(_DISPATCH_FEATURE_PREFIX) : len(feature) - len(_DISPATCH_FEATURE_SUFFIX)]
+    return method if method else None
+
+
+#: Formatters SQL Server declares no implementation of, grouped by the feature
+#: that is absent, each group naming every method the matrix's classes need.
+#:
+#: A class needing one of these fails with ``UnsupportedFeatureError`` naming
+#: the method it wanted, and :func:`assert_sql_roundtrip_classified` asserts
+#: that method is a row here. :meth:`TestMatrixIntegrity.\
+#: test_unmodelled_formatter_list_is_exact` pins the table in both directions:
+#: a formatter that starts existing moves its classes out of the table and the
+#: pin fails until the entry goes, and a class that starts needing a method
+#: outside the table fails outright instead of passing as "unsupported".
+#:
+#: These are not defects: they are features SQL Server does not have, which the
+#: shared renderer reports by naming the method it could not find. The
+#: pad/repeat group is the one that made the accounting necessary: SQL Server
+#: has no ``LPAD``/``RPAD``/``REPEAT`` functions, the nodes dispatch to
+#: formatters no base in this dialect provides, and before the table existed
+#: those refusals were allowed on their type alone.
+UNMODELLED_FORMATTERS = {
+    "SQL/XML (SQL Server's native XML/XQuery is not the SQL/XML feature set, "
+    "so the dialect declares no ``format_xml*`` method at all)": (
+        "format_xmlagg_expression",
+        "format_xmlattributes_expression",
+        "format_xmlcomment_expression",
+        "format_xmlconcat_expression",
+        "format_xmlelement_expression",
+        "format_xmlexists_expression",
+        "format_xmlforest_expression",
+        "format_xmlpi_expression",
+        "format_xmlparse_expression",
+        "format_xmlquery_expression",
+        "format_xmlroot_expression",
+        "format_xmlserialize_expression",
+        "format_xmltable_expression",
+    ),
+    "DOMAIN (SQL Server has no DOMAIN object, so no domain statement or "
+    "action renders)": (
+        "format_create_domain_statement",
+        "format_alter_domain_statement",
+        "format_drop_domain_statement",
+        "format_domain_alter_action",
+        "format_domain_check_constraint",
+        "format_domain_value_expression",
+    ),
+    "SQL/PGQ property graphs (no GRAPH_TABLE, so no graph DDL either)": (
+        "format_create_property_graph_statement",
+        "format_alter_property_graph_statement",
+        "format_drop_property_graph_statement",
+        "format_graph_table_expression",
+        "format_vertex_table",
+        "format_edge_table",
+        "format_graph_columns_clause",
+        "format_table_properties_clause",
+    ),
+    "COMMENT ON (SQL Server has no standalone COMMENT ON; extended properties "
+    "spell it, and the dialect's negative list records CommentSupport)": (
+        "format_comment_statement",
+    ),
+    "LPAD / RPAD (SQL Server has no pad functions; padding is spelled with "
+    "REPLICATE together with RIGHT / LEFT)": (
+        "format_lpad_expression",
+        "format_rpad_expression",
+    ),
+    "REPEAT (SQL Server spells it REPLICATE)": ("format_repeat_expression",),
+    "the core PIVOT / UNPIVOT expressions (SQL Server spells PIVOT its own "
+    "way, through SQLServerPivotExpression; core's generic PIVOT is not the "
+    "same statement)": (
+        "format_pivot_expression",
+        "format_unpivot_expression",
+    ),
+    "the TableSource root (every concrete row source overrides its formatter; "
+    "the root carries nothing but an alias and is never rendered)": ("format_table_source",),
+}
+
+
+def _unmodelled_methods():
+    """The flat set of formatter names in :data:`UNMODELLED_FORMATTERS`."""
+    return {method for methods in UNMODELLED_FORMATTERS.values() for method in methods}
+
+
+# ---------------------------------------------------------------------------
 # The local SQL assertion: classify the outcome instead of swallowing it
 # ---------------------------------------------------------------------------
 
@@ -1068,6 +1223,10 @@ def assert_sql_roundtrip_classified(
     * ``UnsupportedFeatureError`` from a class *not* named in the dict -- SQL
       Server does not model the feature. Asserted as exactly that type, so a
       subclass raised for an unrelated reason is still visible rather than passing.
+    * ``UnsupportedFeatureError`` naming a formatting method, for a class not
+      named in the dict -- the dispatch found nothing, which is a wiring fact
+      about this backend rather than a capability answer. The method must be
+      in :data:`UNMODELLED_FORMATTERS`; the table entry is the reason.
     * **anything else** -- a failure naming the class and the exception.
 
     The dict is consulted before the ``UnsupportedFeatureError`` branch, not
@@ -1115,6 +1274,17 @@ def assert_sql_roundtrip_classified(
             )
             return "non-render"
         if type(exc) is UnsupportedFeatureError:
+            method = _dispatched_formatter(exc)
+            if method is not None:
+                assert method in _unmodelled_methods(), (
+                    f"{fqn}: to_sql() reported that {exc.dialect_name} declares no "
+                    f"{method!r}, which is not in UNMODELLED_FORMATTERS.\n"
+                    f"  Either SQL Server now needs that formatter -- in which "
+                    f"case the class should render and this entry should go -- "
+                    f"or the feature is absent and the method belongs in that "
+                    f"table with its reason."
+                )
+                return "unmodelled"
             return "unsupported"
         raise AssertionError(
             f"{fqn}: to_sql() raised {type(exc).__name__}, which is neither a "
@@ -1246,6 +1416,61 @@ class TestMatrixIntegrity:
                 f"{exc_info.value}"
             )
 
+    def test_unmodelled_formatter_list_is_exact(self, sqlserver_dialect):
+        """Pin the unmodelled-formatter table against what the dialect lacks.
+
+        Observed rather than assumed: for each class the matrix covers, either
+        it renders or it fails, and every dispatch refusal is attributed to the
+        method it named -- including the classes pinned in
+        :data:`LEGITIMATE_NON_RENDERS`, whose dispatch failures those pins
+        record class by class. Then the table is compared with the set
+        observed, in both directions, so:
+
+        * a method in the table that SQL Server now implements fails here,
+          because its classes render and are no longer attributed to it --
+          which is the moment to delete the entry rather than leave a lie in
+          the table;
+        * a class that starts needing a method outside the table fails the
+          per-class assertion in :func:`assert_sql_roundtrip_classified`
+          instead of being absorbed into "unsupported".
+
+        This is the regression test for the pad/trim incident. Core turned
+        ``trim``/``lpad``/``rpad``/``repeat`` into dedicated nodes; SQL Server
+        renders ``trim`` and has no ``LPAD``, ``RPAD`` or ``REPEAT``, so those
+        three nodes are exactly the shape this test exists for: classes whose
+        formatter no base in this dialect provides, which before the split
+        were allowed through as "SQL Server lacks the feature" without
+        anything asking whether the feature was even claimed.
+        """
+        observed = set()
+        for fqn in sorted(REGISTERED):
+            instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect)
+            if instance is None:
+                continue
+            try:
+                instance.to_sql()
+            except UnsupportedFeatureError as exc:
+                method = _dispatched_formatter(exc)
+                if method is not None:
+                    observed.add(method)
+                continue
+            except Exception:
+                continue
+
+        declared = _unmodelled_methods()
+        assert not (observed - declared), (
+            "classes need formatters that are not in UNMODELLED_FORMATTERS: "
+            f"{sorted(observed - declared)}. Add each with the feature that is "
+            f"absent and why -- or mix the formatter in, in which case the "
+            f"classes render and the entry is not needed."
+        )
+        assert not (declared - observed), (
+            "UNMODELLED_FORMATTERS names formatters no class actually needs: "
+            f"{sorted(declared - observed)}. SQL Server may have gained one of "
+            f"these, in which case the classes needing it now render and the "
+            f"entry should go."
+        )
+
     def test_matrix_covers_both_packages(self):
         """The matrix covers every concrete class both packages define.
 
@@ -1287,7 +1512,7 @@ class TestMatrixIntegrity:
     def test_coverage_report(self, sqlserver_dialect):
         """Surface what the matrix covers, so coverage stays transparent."""
         ExpressionRegistry._auto_register_builtins()
-        branches = {"rendered": 0, "unsupported": 0, "non-render": 0}
+        branches = {"rendered": 0, "unsupported": 0, "unmodelled": 0, "non-render": 0}
         constructible = []
         for fqn in sorted(REGISTERED):
             instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect)
@@ -1304,7 +1529,11 @@ class TestMatrixIntegrity:
             f"{len(UNCONSTRUCTIBLE)} pinned-unconstructible; "
             f"rendered {branches['rendered']}, "
             f"unsupported {branches['unsupported']}, "
+            f"unmodelled {branches['unmodelled']} (pinned in "
+            f"UNMODELLED_FORMATTERS), "
             f"pinned non-render {branches['non-render']}"
         )
         for fqn in UNCONSTRUCTIBLE:
             print(f"  not constructible: {fqn}")
+        for feature, methods in sorted(UNMODELLED_FORMATTERS.items()):
+            print(f"  not modelled: {feature} ({len(methods)} formatters)")

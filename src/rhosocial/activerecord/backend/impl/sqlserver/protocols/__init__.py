@@ -17,6 +17,7 @@ from .graph import SQLServerGraphSupport
 from .merge import SQLServerMergeSupport
 from .partition import SQLServerPartitionSupport
 from .type import SQLServerUserDefinedTypeSupport
+from .data_type import SQLServerTypeSupport
 
 __all__ = [
     "SQLServerIdentitySupport",
@@ -37,4 +38,5 @@ __all__ = [
     "SQLServerMergeSupport",
     "SQLServerPartitionSupport",
     "SQLServerUserDefinedTypeSupport",
+    "SQLServerTypeSupport",
 ]
