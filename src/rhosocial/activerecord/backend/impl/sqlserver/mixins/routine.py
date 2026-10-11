@@ -127,16 +127,16 @@ class SQLServerRoutineMixin:
             raise ValueError("procedure name is required")
 
         parts = ["CREATE"]
-        if getattr(expr, "or_alter", False):
+        if expr.or_alter:
             parts.append("OR ALTER")
         parts.append("PROCEDURE")
-        parts.append(self._routine_object_name("PROCEDURE", name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name("PROCEDURE", name, expr.schema))
 
-        parameters = getattr(expr, "parameters", None) or []
+        parameters = expr.parameters or []
         if parameters:
             parts.append(self._format_params(list(parameters)))
 
-        if not getattr(expr, "body", None):
+        if not expr.body:
             raise ValueError("routine body is required")
         parts.append(f"AS BEGIN {expr.body} END;")
         return " ".join(parts), ()
@@ -162,19 +162,19 @@ class SQLServerRoutineMixin:
         name = self._get_routine_name(expr)
         if not name:
             raise ValueError("function name is required")
-        if not getattr(expr, "returns", None):
+        if not expr.returns:
             raise ValueError("RETURNS type is required for a scalar function")
 
         parts = ["CREATE"]
-        if getattr(expr, "or_alter", False):
+        if expr.or_alter:
             parts.append("OR ALTER")
         parts.append("FUNCTION")
-        parts.append(self._routine_object_name("FUNCTION", name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name("FUNCTION", name, expr.schema))
 
-        parameters = getattr(expr, "parameters", None) or []
+        parameters = expr.parameters or []
         parts.append(f"({self._format_params(list(parameters))})")
         parts.append(f"RETURNS {expr.returns}")
-        if not getattr(expr, "body", None):
+        if not expr.body:
             raise ValueError("function body is required")
         parts.append(f"AS BEGIN {expr.body} END;")
         return " ".join(parts), ()
@@ -190,7 +190,7 @@ class SQLServerRoutineMixin:
 
         ``IF EXISTS`` is rendered only on SQL Server 2016+.
         """
-        kind = getattr(expr, "kind", "PROCEDURE").upper()
+        kind = expr.kind.upper()
         if kind not in _ROUTINE_KINDS:
             raise ValueError(f"kind must be one of {_ROUTINE_KINDS}, got {kind!r}")
 
@@ -206,7 +206,7 @@ class SQLServerRoutineMixin:
             raise ValueError("routine name is required")
 
         parts = ["DROP", kind]
-        if getattr(expr, "if_exists", False) and self.version >= _SQL_SERVER_DROP_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
+        if expr.if_exists and self.version >= _SQL_SERVER_DROP_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
             parts.append("IF EXISTS")
-        parts.append(self._routine_object_name(kind, name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name(kind, name, expr.schema))
         return " ".join(parts), ()

@@ -654,19 +654,19 @@ class SQLServerDialect(
                 f"CreateTableExpression.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
-        if getattr(expr, "tablespace", None):
+        if expr.tablespace:
             raise UnsupportedFeatureError(
                 self.name,
                 "TABLESPACE",
                 "SQL Server does not support table tablespaces.",
             )
-        if getattr(expr, "inherits", None):
+        if expr.inherits:
             raise UnsupportedFeatureError(
                 self.name,
                 "table INHERITS",
                 "SQL Server does not support table inheritance.",
             )
-        if getattr(getattr(expr, "table_options", None), "comment", None):
+        if getattr(expr.table_options, "comment", None):
             # SQL Server has no inline table comment (its native
             # mechanism is sp_addextendedproperty, not implemented here); a
             # comment on the table options is never silently dropped.
@@ -742,7 +742,7 @@ class SQLServerDialect(
             all_params.extend(partition_params)
 
         from .expression.table_options import SQLServerCreateTableOptions
-        table_options = getattr(expr, "table_options", None)
+        table_options = expr.table_options
         if isinstance(table_options, SQLServerCreateTableOptions) and table_options.memory_optimized:
             durability = table_options.durability or "SCHEMA_ONLY"
             parts.append(self.format_memory_optimized_option(durability))
@@ -781,7 +781,7 @@ class SQLServerDialect(
         from rhosocial.activerecord.backend.impl.sqlserver.expression.column import (
             SQLServerColumnDefinition,
         )
-        if getattr(col_def, "comment", None):
+        if col_def.comment:
             # SQL Server has no inline column comment (its native
             # mechanism is sp_addextendedproperty, not implemented here); a
             # comment on a column definition is never silently dropped.
@@ -1038,10 +1038,10 @@ class SQLServerDialect(
         from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
         for option, value in (
-            ("if_not_exists", getattr(idx_def, "if_not_exists", False)),
-            ("tablespace", getattr(idx_def, "tablespace", None)),
-            ("include_columns", getattr(idx_def, "include_columns", None)),
-            ("partial_condition", getattr(idx_def, "partial_condition", None)),
+            ("if_not_exists", idx_def.if_not_exists),
+            ("tablespace", idx_def.tablespace),
+            ("include_columns", idx_def.include_columns),
+            ("partial_condition", idx_def.partial_condition),
         ):
             if value:
                 raise UnsupportedFeatureError(
@@ -1105,12 +1105,12 @@ class SQLServerDialect(
                 f"CreateIndexExpression.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
-        if getattr(expr, "if_not_exists", False):
+        if expr.if_not_exists:
             raise UnsupportedFeatureError(
                 self.name, "CREATE INDEX IF NOT EXISTS",
                 "SQL Server has no CREATE INDEX IF NOT EXISTS syntax.",
             )
-        if getattr(expr, "tablespace", None):
+        if expr.tablespace:
             raise UnsupportedFeatureError(
                 self.name, "index TABLESPACE",
                 "SQL Server has no index tablespace; use a filegroup instead.",

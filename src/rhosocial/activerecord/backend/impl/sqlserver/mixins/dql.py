@@ -53,7 +53,7 @@ class SQLServerDQLMixin:
 
     def format_limit_offset_clause(self, clause: "LimitOffsetClause") -> Tuple[str, tuple]:
         """Format LIMIT/OFFSET clause for SQL Server using OFFSET FETCH syntax."""
-        if getattr(clause, "with_ties", False):
+        if clause.with_ties:
             raise UnsupportedFeatureError(
                 self.name, "FETCH NEXT ... ROWS WITH TIES",
                 "SQL Server supports WITH TIES only with TOP, not OFFSET FETCH."

@@ -76,41 +76,35 @@ class SQLServerTriggerDdlMixin:
         name = self._get_trigger_name(expr)
         if not name:
             raise ValueError("trigger name is required")
-        table = getattr(expr, "table_name", None) or getattr(expr, "table", None)
+        table = getattr(expr, "table_name", None) or expr.table
         if not table:
             raise ValueError("trigger table is required")
 
-        timing = getattr(expr, "timing", "AFTER").upper()
+        timing = expr.timing.upper()
         if timing not in _TRIGGER_TIMINGS:
             raise ValueError(f"timing must be one of {_TRIGGER_TIMINGS}, got {timing!r}")
 
-        events = [event.upper() for event in (getattr(expr, "events", None) or [])]
+        events = [event.upper() for event in (expr.events or [])]
         if not events:
             raise ValueError("at least one trigger event is required")
         for event in events:
             if event not in _TRIGGER_EVENTS:
                 raise ValueError(f"event must be one of {_TRIGGER_EVENTS}, got {event!r}")
-        if not getattr(expr, "body", None):
+        if not expr.body:
             raise ValueError("trigger body is required")
 
         parts = ["CREATE"]
-        if getattr(expr, "or_alter", False):
+        if expr.or_alter:
             parts.append("OR ALTER")
         parts.append("TRIGGER")
         # A trigger and the table it hangs off are both schema objects; a
         # trigger lives in the same schema as its table, so both names go
         # through the one qualified-name entry point.
         parts.append(
-            self.qualified_object_name_from_dotted(
-                Trigger, name, schema_name=getattr(expr, "schema", None)
-            )
+            self.qualified_object_name_from_dotted(Trigger, name, schema_name=expr.schema)
         )
         parts.append("ON")
-        parts.append(
-            self.qualified_object_name(
-                Table, table, schema_name=getattr(expr, "schema", None)
-            )
-        )
+        parts.append(self.qualified_object_name(Table, table, schema_name=expr.schema))
         parts.append(timing)
         parts.append(", ".join(events))
         parts.append(f"AS BEGIN {expr.body} END;")
@@ -137,12 +131,10 @@ class SQLServerTriggerDdlMixin:
             raise ValueError("trigger name is required")
 
         parts = ["DROP", "TRIGGER"]
-        if getattr(expr, "if_exists", False) and self.version >= _SQL_SERVER_TRIGGER_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
+        if expr.if_exists and self.version >= _SQL_SERVER_TRIGGER_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
             parts.append("IF EXISTS")
         parts.append(
-            self.qualified_object_name_from_dotted(
-                Trigger, name, schema_name=getattr(expr, "schema", None)
-            )
+            self.qualified_object_name_from_dotted(Trigger, name, schema_name=expr.schema)
         )
         return " ".join(parts), ()
 

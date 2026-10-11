@@ -240,13 +240,13 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         """
         if not isinstance(column, ColumnDefinition):
             raise TypeError("table TYPE columns must be ColumnDefinition instances")
-        if getattr(column, "comment", None) is not None:
+        if column.comment is not None:
             raise UnsupportedFeatureError(
                 self.name,
                 "TYPE table column comment",
                 "SQL Server table TYPE definitions do not support inline column comments.",
             )
-        if getattr(column, "generated_expression", None) is not None:
+        if column.generated_expression is not None:
             raise UnsupportedFeatureError(
                 self.name,
                 "TYPE table computed column",
@@ -421,11 +421,11 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         if not index.columns:
             raise ValueError("table TYPE index requires at least one column")
         unsupported_values = (
-            ("partial_condition", getattr(index, "partial_condition", None)),
-            ("if_not_exists", getattr(index, "if_not_exists", None)),
-            ("tablespace", getattr(index, "tablespace", None)),
-            ("if_exists", getattr(index, "if_exists", None)),
-            ("concurrent", getattr(index, "concurrent", None)),
+            ("partial_condition", index.partial_condition),
+            ("if_not_exists", index.if_not_exists),
+            ("tablespace", index.tablespace),
+            ("if_exists", index.if_exists),
+            ("concurrent", index.concurrent),
         )
         for field_name, value in unsupported_values:
             if value:
@@ -461,7 +461,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                 )
             if bucket_count is None:
                 raise ValueError("bucket_count is required for a HASH index")
-        index_type = getattr(index, "type", None)
+        index_type = index.type
         if index_type is not None:
             if not isinstance(index_type, str):
                 raise TypeError("index type must be a string or None")
@@ -499,7 +499,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         elif memory_optimized:
             parts.append("NONCLUSTERED")
         parts.append(f"({', '.join(column_parts)})")
-        include_columns = getattr(index, "include_columns", None)
+        include_columns = index.include_columns
         if memory_optimized and include_columns and not self._version_at_least(SQL_SERVER_2019):
             raise UnsupportedFeatureError(
                 self.name,
