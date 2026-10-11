@@ -27,6 +27,11 @@ _b69f713_
 - **CI-tested server versions**: 2017, 2019, 2022, 2025
 - **Published**: PyPI `1.0.0.dev2`
 
+`pyodbc` 5.3.0 ships no cp315 wheel — the source tarball only, with no
+`Python :: 3.15` classifier declaring support — so a 3.15 leg would fail at
+install while pip compiles the driver. Adding one awaits a `pyodbc` release,
+not anything in this repository.
+
 ## Installation
 
 ```bash
