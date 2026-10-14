@@ -4,8 +4,8 @@ import pytest_asyncio
 from rhosocial.activerecord.backend.explain import SyncExplainBackendProtocol
 from rhosocial.activerecord.backend.expression import (
     QueryStatement,
+    AllColumnsWildcard,
     Column,
-    WildcardExpression,
     Literal,
     WhereClause,
 )
@@ -94,7 +94,7 @@ class TestSyncExplainBuildSQL:
         dialect = backend.dialect
         expr = QueryStatement(
             dialect,
-            select=[WildcardExpression(dialect)],
+            select=[AllColumnsWildcard(dialect)],
             from_=Table(dialect, "t")
         )
         sql, params = backend._build_explain_sql(expr)

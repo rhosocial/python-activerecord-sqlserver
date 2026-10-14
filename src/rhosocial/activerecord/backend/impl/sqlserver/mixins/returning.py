@@ -56,10 +56,14 @@ class SQLServerReturningMixin:
 
         Raises:
             UnsupportedFeatureError: If the clause requests an alias, a
-                wildcard, or contains a non-column expression.
+                wildcard (``AllColumnsWildcard``), or contains a non-column
+                expression.
         """
         from rhosocial.activerecord.backend.expression.column_types import ColumnBase
-        from rhosocial.activerecord.backend.expression.core import WildcardExpression
+        from rhosocial.activerecord.backend.expression.core import (
+            AllColumnsWildcard,
+            RowCountWildcard,
+        )
         from rhosocial.activerecord.backend.expression.operators import RawSQLExpression
 
         if clause.alias:
@@ -73,7 +77,14 @@ class SQLServerReturningMixin:
         expr_parts = []
 
         for expr in clause.expressions:
-            if isinstance(expr, WildcardExpression):
+            # The RETURNING position's wildcard is core's ``AllColumnsWildcard``
+            # (spec 4.10.1); ``RowCountWildcard`` belongs to COUNT's argument and
+            # has no business in an OUTPUT list either. ``OUTPUT inserted.*``
+            # would be this backend's own spelling, but OUTPUT takes explicit
+            # column references only, so both classes are refused by name rather
+            # than left to fall through to the generic refusal below, which would
+            # name neither.
+            if isinstance(expr, (AllColumnsWildcard, RowCountWildcard)):
                 raise UnsupportedFeatureError(
                     self.name,
                     "wildcard in OUTPUT",
