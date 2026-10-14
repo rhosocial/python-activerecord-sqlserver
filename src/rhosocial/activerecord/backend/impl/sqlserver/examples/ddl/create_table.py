@@ -33,34 +33,35 @@ from rhosocial.activerecord.backend.expression import (
     CreateTableStatement,
     ColumnDefinition,
     ColumnConstraint,
-    ColumnConstraintType,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements.ddl_table import IndexDefinition
+from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
+    ColumnUniqueConstraint,
+    IndexDefinition,
+)
 
 columns = [
     ColumnDefinition(
         name='id',
         data_type='INT',
         constraints=[
-            ColumnConstraint(
-                constraint_type=ColumnConstraintType.PRIMARY_KEY,
-                is_auto_increment=True,
-            ),
+            ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True)),
         ],
     ),
     ColumnDefinition(
         name='name',
         data_type='NVARCHAR(100)',
         constraints=[
-            ColumnConstraint(constraint_type=ColumnConstraintType.NOT_NULL),
+            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
         ],
     ),
     ColumnDefinition(
         name='email',
         data_type='NVARCHAR(200)',
         constraints=[
-            ColumnConstraint(constraint_type=ColumnConstraintType.UNIQUE),
+            ColumnConstraint(dialect, branch=ColumnUniqueConstraint(dialect)),
         ],
     ),
     ColumnDefinition(

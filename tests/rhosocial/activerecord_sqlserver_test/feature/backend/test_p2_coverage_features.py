@@ -72,8 +72,8 @@ class TestMemoryOptimizedTables:
         from rhosocial.activerecord.backend.expression import CreateTableStatement
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraint,
-            ColumnConstraintType,
             ColumnDefinition,
+            ColumnPrimaryKeyConstraint,
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
         from rhosocial.activerecord.backend.impl.sqlserver.expression import (
@@ -82,7 +82,7 @@ class TestMemoryOptimizedTables:
         )
 
         col = ColumnDefinition(d, "id", IntegerType(d))
-        col.constraints.append(ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY))
+        col.constraints.append(ColumnConstraint(d, branch=ColumnPrimaryKeyConstraint(d)))
         indexes = []
         if hash_indexes:
             for name, (columns, bucket_count) in hash_indexes.items():
@@ -201,8 +201,8 @@ class TestMemoryOptimizedTables:
         from rhosocial.activerecord.backend.expression import CreateTableStatement
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraint,
-            ColumnConstraintType,
             ColumnDefinition,
+            ColumnPrimaryKeyConstraint,
         )
         from rhosocial.activerecord.backend.expression.types import IntegerType
         from rhosocial.activerecord.backend.impl.sqlserver.expression import (
@@ -211,7 +211,7 @@ class TestMemoryOptimizedTables:
         )
 
         col = ColumnDefinition(dialect, "id", IntegerType(dialect))
-        col.constraints.append(ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY))
+        col.constraints.append(ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)))
         ct = CreateTableStatement(
             dialect,
             Table(dialect, "t"),

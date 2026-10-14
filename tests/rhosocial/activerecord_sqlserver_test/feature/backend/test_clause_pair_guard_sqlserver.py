@@ -59,13 +59,13 @@ from rhosocial.activerecord.backend.expression.statements.ddl_sequence import (
     AlterSequenceStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+    ColumnCheckConstraint,
     ColumnConstraint,
-    ColumnConstraintType,
     ColumnDefinition,
     ForeignKeyConstraint,
     IdentityClause,
+    TableCheckConstraint,
     TableConstraint,
-    TableConstraintType,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_truncate import (
     TruncateStatement,
@@ -130,13 +130,7 @@ def _fk(d, **kw):
 
 
 def _check(d, **kw):
-    return TableConstraint(
-        d,
-        TableConstraintType.CHECK,
-        name="ck",
-        check_condition=_predicate(d),
-        **kw,
-    )
+    return TableConstraint(d, branch=TableCheckConstraint(d, _predicate(d)), name="ck", **kw)
 
 
 def _column_check(d, **kw):
@@ -151,13 +145,7 @@ def _column_check(d, **kw):
         "a",
         IntegerType(d),
         constraints=[
-            ColumnConstraint(
-                d,
-                ColumnConstraintType.CHECK,
-                name="ck",
-                check_condition=_predicate(d),
-                **kw,
-            )
+            ColumnConstraint(d, branch=ColumnCheckConstraint(d, _predicate(d)), name="ck", **kw)
         ],
     )
 

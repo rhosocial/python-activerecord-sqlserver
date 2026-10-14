@@ -38,7 +38,8 @@ from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
 )
 
 ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
@@ -49,11 +50,13 @@ create_table = CreateTableStatement(
     table=Table(dialect, 'query_users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
-            ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-            ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+            ColumnConstraint(
+                dialect,
+                branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+            ),
         ]),
         ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
-            ColumnConstraint(ColumnConstraintType.NOT_NULL),
+            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
         ]),
         ColumnDefinition('age', 'INT'),
         ColumnDefinition('status', 'NVARCHAR(20)'),

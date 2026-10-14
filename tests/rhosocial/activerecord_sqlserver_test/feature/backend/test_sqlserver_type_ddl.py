@@ -21,13 +21,20 @@ from rhosocial.activerecord.backend.expression.serialization import (
 )
 from rhosocial.activerecord.backend.expression.statements import (
     AlterTypeStatement,
+    ColumnCheckConstraint,
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnDefaultConstraint,
     ColumnDefinition,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
+    ColumnUniqueConstraint,
     CreateTypeStatement,
     DropTypeStatement,
+    TableCheckConstraint,
     TableConstraint,
-    TableConstraintType,
+    TableForeignKeyConstraint,
+    TablePrimaryKeyConstraint,
+    TableUniqueConstraint,
 )
 from rhosocial.activerecord.backend.expression.objects import Table, Type
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
@@ -225,16 +232,12 @@ def test_table_type_columns_constraints_indexes_and_memory():
             dialect,
             "id",
             IntegerType(dialect),
-            constraints=[ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)],
+            constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
         ),
         ColumnDefinition(dialect, "name", VarCharType(dialect, length=100)),
     ]
     constraints = [
-        TableConstraint(
-            dialect,
-            TableConstraintType.PRIMARY_KEY,
-            columns=["id"],
-        )
+        TableConstraint(dialect, branch=TablePrimaryKeyConstraint(dialect, ["id"]))
     ]
     indexes = [SQLServerIndexDefinition(dialect, "ix_name", ["name"], type="NONCLUSTERED")]
     definition = SQLServerTableTypeDefinition(
@@ -276,16 +279,8 @@ def test_non_memory_table_type_keeps_regular_constraints():
             ColumnDefinition(dialect, "name", VarCharType(dialect, length=20)),
         ],
         constraints=[
-            TableConstraint(
-                dialect,
-                TableConstraintType.PRIMARY_KEY,
-                columns=["id"],
-            ),
-            TableConstraint(
-                dialect,
-                TableConstraintType.UNIQUE,
-                columns=["name"],
-            ),
+            TableConstraint(dialect, branch=TablePrimaryKeyConstraint(dialect, ["id"])),
+            TableConstraint(dialect, branch=TableUniqueConstraint(dialect, ["name"])),
         ],
     )
 
@@ -306,14 +301,14 @@ def test_memory_table_type_column_key_constraints_use_nonclustered():
                 "id",
                 IntegerType(dialect),
                 constraints=[
-                    ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
+                    ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)),
                 ],
             ),
             ColumnDefinition(
                 dialect,
                 "code",
                 VarCharType(dialect, length=20),
-                constraints=[ColumnConstraint(dialect, ColumnConstraintType.UNIQUE)],
+                constraints=[ColumnConstraint(dialect, branch=ColumnUniqueConstraint(dialect))],
             ),
         ],
         memory_optimized=True,
@@ -337,11 +332,7 @@ def test_memory_table_type_rejects_unsupported_constraints():
                     "id",
                     IntegerType(dialect),
                     constraints=[
-                        ColumnConstraint(
-                            dialect,
-                            ColumnConstraintType.CHECK,
-                            check_condition=check,
-                        )
+                        ColumnConstraint(dialect, branch=ColumnCheckConstraint(dialect, check))
                     ],
                 )
             ],
@@ -352,11 +343,7 @@ def test_memory_table_type_rejects_unsupported_constraints():
             dialect,
             columns=[ColumnDefinition(dialect, "id", IntegerType(dialect))],
             constraints=[
-                TableConstraint(
-                    dialect,
-                    TableConstraintType.CHECK,
-                    check_condition=check,
-                )
+                TableConstraint(dialect, branch=TableCheckConstraint(dialect, check))
             ],
             indexes=[SQLServerIndexDefinition(dialect, "ix_id", ["id"])],
             memory_optimized=True,
@@ -367,10 +354,9 @@ def test_memory_table_type_rejects_unsupported_constraints():
             constraints=[
                 TableConstraint(
                     dialect,
-                    TableConstraintType.FOREIGN_KEY,
-                    columns=["id"],
-                    foreign_key_table=Table(dialect, "other"),
-                    foreign_key_columns=["id"],
+                    branch=TableForeignKeyConstraint(
+                        dialect, ["id"], (Table(dialect, "other"), ["id"])
+                    ),
                 )
             ],
             indexes=[SQLServerIndexDefinition(dialect, "ix_id", ["id"])],
@@ -393,11 +379,7 @@ def test_memory_table_type_default_is_supported_from_2014():
                 "id",
                 IntegerType(dialect),
                 constraints=[
-                    ColumnConstraint(
-                        dialect,
-                        ColumnConstraintType.DEFAULT,
-                        default_value=0,
-                    )
+                    ColumnConstraint(dialect, branch=ColumnDefaultConstraint(dialect, 0))
                 ],
             )
         ],
@@ -420,11 +402,7 @@ def test_memory_table_type_check_and_unique_version_gates():
                 "id",
                 IntegerType(sql2014),
                 constraints=[
-                    ColumnConstraint(
-                        sql2014,
-                        ColumnConstraintType.CHECK,
-                        check_condition=RawSQLPredicate(sql2014, "1 = 1"),
-                    )
+                    ColumnConstraint(sql2014, branch=ColumnCheckConstraint(sql2014, RawSQLPredicate(sql2014, "1 = 1")))
                 ],
             )
         ],
@@ -442,7 +420,7 @@ def test_memory_table_type_check_and_unique_version_gates():
                 "code",
                 IntegerType(sql2014),
                 constraints=[
-                    ColumnConstraint(sql2014, ColumnConstraintType.UNIQUE),
+                    ColumnConstraint(sql2014, branch=ColumnUniqueConstraint(sql2014)),
                 ],
             )
         ],
@@ -461,11 +439,7 @@ def test_memory_table_type_check_and_unique_version_gates():
                 "id",
                 IntegerType(sql2016),
                 constraints=[
-                    ColumnConstraint(
-                        sql2016,
-                        ColumnConstraintType.CHECK,
-                        check_condition=RawSQLPredicate(sql2016, "1 = 1"),
-                    )
+                    ColumnConstraint(sql2016, branch=ColumnCheckConstraint(sql2016, RawSQLPredicate(sql2016, "1 = 1")))
                 ],
             ),
             ColumnDefinition(
@@ -473,7 +447,7 @@ def test_memory_table_type_check_and_unique_version_gates():
                 "code",
                 IntegerType(sql2016),
                 constraints=[
-                    ColumnConstraint(sql2016, ColumnConstraintType.UNIQUE),
+                    ColumnConstraint(sql2016, branch=ColumnUniqueConstraint(sql2016)),
                 ],
             ),
         ],
@@ -681,10 +655,9 @@ def test_table_type_rejects_foreign_key_constraint():
         constraints=[
             TableConstraint(
                 dialect,
-                TableConstraintType.FOREIGN_KEY,
-                columns=["id"],
-                foreign_key_table=Table(dialect, "other"),
-                foreign_key_columns=["id"],
+                branch=TableForeignKeyConstraint(
+                    dialect, ["id"], (Table(dialect, "other"), ["id"])
+                ),
             )
         ],
     )

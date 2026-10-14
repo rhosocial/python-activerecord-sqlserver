@@ -30,10 +30,11 @@ from rhosocial.activerecord.backend.expression.serialization import (
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnConstraint,
-    ColumnConstraintType,
     ColumnDefinition,
+    ColumnNotNullConstraint,
+    TableCheckConstraint,
     TableConstraint,
-    TableConstraintType,
+    TablePrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -59,14 +60,14 @@ def _columns(dialect):
             dialect,
             "id",
             IntegerType(dialect),
-            constraints=[ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)],
+            constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
         ),
         ColumnDefinition(dialect, "name", VarCharType(dialect, length=100)),
     ]
 
 
 def _constraints(dialect):
-    return [TableConstraint(dialect, TableConstraintType.PRIMARY_KEY, columns=["id"])]
+    return [TableConstraint(dialect, branch=TablePrimaryKeyConstraint(dialect, ["id"]))]
 
 
 def _round_trip(expr, dialect):
@@ -180,15 +181,15 @@ class TestSQLServerTableTypeDefinitionRoundTrip:
             columns=[ColumnDefinition(dialect, "id", IntegerType(dialect))],
             memory_optimized=True,
             table_constraints=[
-                TableConstraint(dialect, TableConstraintType.PRIMARY_KEY, columns=["id"])
+                TableConstraint(dialect, branch=TablePrimaryKeyConstraint(dialect, ["id"]))
             ],
         )
 
         params = _round_trip(expr, dialect)
 
         assert params["constraints"] is None
-        assert [c.constraint_type for c in params["table_constraints"]] == [
-            TableConstraintType.PRIMARY_KEY
+        assert [type(c.branch) for c in params["table_constraints"]] == [
+            TablePrimaryKeyConstraint
         ]
         assert expr.to_sql() == (
             "AS TABLE ([id] INT, PRIMARY KEY NONCLUSTERED ([id])) "
@@ -209,11 +210,7 @@ class TestSQLServerTableTypeDefinitionRoundTrip:
         condition = Literal(dialect, 1, inline_literals=True) > Literal(
             dialect, 0, inline_literals=True
         )
-        check = TableConstraint(
-            dialect,
-            TableConstraintType.CHECK,
-            check_condition=condition,
-        )
+        check = TableConstraint(dialect, branch=TableCheckConstraint(dialect, condition))
         expr = SQLServerTableTypeDefinition(
             dialect,
             columns=_columns(dialect),

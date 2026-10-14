@@ -30,7 +30,8 @@ from rhosocial.activerecord.backend.expression.functions.datetime import (
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnDefaultConstraint,
+    ColumnPrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType, TimestampType
 from rhosocial.activerecord.backend.options import ExecutionOptions
@@ -124,12 +125,13 @@ class TestSQLServerNiladicDDLContext:
             table=Table(dialect, table_name),
             columns=[
                 ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
-                    ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
-                    ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+                    ColumnConstraint(
+                        dialect,
+                        branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                    ),
                 ]),
                 ColumnDefinition(dialect, 'ts', TimestampType(dialect), constraints=[
-                    ColumnConstraint(dialect, ColumnConstraintType.DEFAULT,
-                                     default_value=current_timestamp(dialect)),
+                    ColumnConstraint(dialect, branch=ColumnDefaultConstraint(dialect, current_timestamp(dialect))),
                 ]),
             ],
             if_not_exists=True,
@@ -164,12 +166,18 @@ class TestSQLServerNiladicDDLContext:
             table=Table(dialect, table_name),
             columns=[
                 ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
-                    ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
-                    ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+                    ColumnConstraint(
+                        dialect,
+                        branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                    ),
                 ]),
                 ColumnDefinition(dialect, 'ts', TimestampType(dialect, precision=6), constraints=[
-                    ColumnConstraint(dialect, ColumnConstraintType.DEFAULT,
-                                     default_value=FunctionCall(dialect, 'SYSDATETIME')),
+                    ColumnConstraint(
+                        dialect,
+                        branch=ColumnDefaultConstraint(
+                            dialect, FunctionCall(dialect, 'SYSDATETIME')
+                        ),
+                    ),
                 ]),
             ],
             if_not_exists=True,
@@ -225,12 +233,13 @@ class TestAsyncSQLServerNiladicDDLContext:
             table=Table(dialect, table_name),
             columns=[
                 ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
-                    ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
-                    ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+                    ColumnConstraint(
+                        dialect,
+                        branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                    ),
                 ]),
                 ColumnDefinition(dialect, 'ts', TimestampType(dialect), constraints=[
-                    ColumnConstraint(dialect, ColumnConstraintType.DEFAULT,
-                                     default_value=current_timestamp(dialect)),
+                    ColumnConstraint(dialect, branch=ColumnDefaultConstraint(dialect, current_timestamp(dialect))),
                 ]),
             ],
             if_not_exists=True,

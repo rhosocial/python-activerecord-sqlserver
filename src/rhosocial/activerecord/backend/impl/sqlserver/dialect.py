@@ -774,9 +774,38 @@ class SQLServerDialect(
         Accepts both the generic ``ColumnDefinition`` and the SQL Server
         ``SQLServerColumnDefinition``; the latter's SQL Server-only attributes
         (``sparse`` / ``rowguidcol``) are rendered here.
+
+        Which kind each constraint is comes from its **branch class**, not from
+        a tag: ``ColumnConstraint`` holds the ``CONSTRAINT <name>`` prefix and
+        the trailing traits, and the branch holds what belongs to one
+        alternative.  Everything except the two kinds whose spelling the
+        memory-optimized flag changes is delegated to
+        :meth:`format_column_constraint`, which renders the prefix, dispatches
+        to the branch's own formatter, and appends the traits.
+
+        PRIMARY KEY and UNIQUE are spelled here rather than delegated because
+        ``NONCLUSTERED`` rides the *clause* and the branch formatter is
+        dispatched with a single argument (``format_constraint_branch`` reads
+        ``branch.format_method``), so there is no way to hand it the flag
+        without smuggling the flag in as dialect state.  ``IDENTITY(1,1)``
+        comes off the PRIMARY KEY branch's own ``is_auto_increment`` flag.
+
+        Because those two kinds do not reach
+        :meth:`format_column_constraint`, their traits are refused here by the
+        same helper that seam uses -- otherwise an explicitly requested
+        ``ENFORCED`` / ``DEFERRABLE`` on a PRIMARY KEY would be dropped without
+        a word.
+
+        Raises:
+            UnsupportedFeatureError: An ``ENFORCED`` / ``NOT ENFORCED`` /
+                ``DEFERRABLE`` / ``NOT DEFERRABLE`` / ``INITIALLY DEFERRED`` /
+                ``INITIALLY IMMEDIATE`` trait was requested on any constraint;
+                every one of the six spellings is Msg 102 or 156 on 2019.  Also
+                the column-comment refusal below.
         """
         from rhosocial.activerecord.backend.expression.statements import (
-            ColumnConstraintType,
+            ColumnPrimaryKeyConstraint,
+            ColumnUniqueConstraint,
         )
         from rhosocial.activerecord.backend.impl.sqlserver.expression.column import (
             SQLServerColumnDefinition,
@@ -797,94 +826,47 @@ class SQLServerDialect(
 
         constraint_parts = []
         for constraint in col_def.constraints:
-            if constraint.constraint_type == ColumnConstraintType.PRIMARY_KEY:
+            # The trait refusals run first and unconditionally, before either
+            # branch spelled below or the delegated core rendering, so no path
+            # can silently drop a clause T-SQL does not parse.  PRIMARY KEY and
+            # UNIQUE are spelled here rather than delegated, so this is the only
+            # place that sees their traits -- without the call they would be
+            # dropped without a word, which is the very failure the shared
+            # helper exists to prevent.
+            self._refuse_constraint_traits(
+                constraint,
+                deferrable=constraint.deferrable,
+                not_deferrable=constraint.not_deferrable,
+                initially_deferred=constraint.initially_deferred,
+                initially_immediate=constraint.initially_immediate,
+                enforced=constraint.enforced,
+                not_enforced=constraint.not_enforced,
+            )
+            branch = constraint.branch
+            if isinstance(branch, ColumnPrimaryKeyConstraint):
                 constraint_parts.append(
                     "PRIMARY KEY NONCLUSTERED" if memory_optimized else "PRIMARY KEY"
                 )
-            elif constraint.constraint_type == ColumnConstraintType.NOT_NULL:
-                constraint_parts.append("NOT NULL")
-            elif constraint.constraint_type == ColumnConstraintType.UNIQUE:
-                constraint_parts.append("UNIQUE NONCLUSTERED" if memory_optimized else "UNIQUE")
-            elif constraint.constraint_type == ColumnConstraintType.DEFAULT:
-                if constraint.default_value is not None:
-                    from rhosocial.activerecord.backend.expression import bases
-                    if isinstance(constraint.default_value, bases.BaseExpression):
-                        default_sql, default_params = constraint.default_value.to_sql()
-                        constraint_parts.append(f"DEFAULT {default_sql}")
-                        params.extend(default_params)
-                    elif isinstance(constraint.default_value, str):
-                        escaped = self._escape_sql_string(constraint.default_value)
-                        constraint_parts.append(f"DEFAULT '{escaped}'")
-                    else:
-                        constraint_parts.append(f"DEFAULT {constraint.default_value}")
-            elif constraint.constraint_type == ColumnConstraintType.NULL:
-                constraint_parts.append("NULL")
-            elif constraint.constraint_type == ColumnConstraintType.CHECK:
-                if constraint.check_condition is None:
-                    raise ValueError("CHECK constraint must have a check condition")
-                check_sql, check_params = constraint.check_condition.to_sql()
-                constraint_parts.append(f"CHECK ({check_sql})")
-                params.extend(check_params)
-
-            # The node's two-spelling constraint attributes are consumed here
-            # even though SQL Server cannot spell any of them: this override
-            # replaces core's column formatter, so an explicitly requested
-            # attribute is refused by name rather than silently dropped.
-            # Measured refused on 2019 / 2022 / 2025.
-            from rhosocial.activerecord.backend.dialect.mixins.ddl_table import (
-                normalize_column_constraint_type,
-            )
-
-            if constraint.enforced or constraint.not_enforced:
-                normalized = normalize_column_constraint_type(
-                    constraint.constraint_type
+                if branch.is_auto_increment:
+                    constraint_parts.append("IDENTITY(1,1)")
+            elif isinstance(branch, ColumnUniqueConstraint):
+                constraint_parts.append(
+                    "UNIQUE NONCLUSTERED" if memory_optimized else "UNIQUE"
                 )
-                if normalized not in {
-                    ColumnConstraintType.CHECK,
-                    ColumnConstraintType.FOREIGN_KEY,
-                }:
-                    raise ValueError(
-                        "ENFORCED/NOT ENFORCED is only valid for CHECK and "
-                        "FOREIGN KEY constraints"
-                    )
-                spelling = "ENFORCED" if constraint.enforced else "NOT ENFORCED"
-                if not self.supports_constraint_enforced():
-                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-                    raise UnsupportedFeatureError(
-                        self.name,
-                        f"constraint {spelling}",
-                        f"{self.name} does not support the {spelling} constraint.",
-                    )
-                constraint_parts.append(spelling)
-            if constraint.deferrable or constraint.not_deferrable:
-                spelling = (
-                    "DEFERRABLE" if constraint.deferrable else "NOT DEFERRABLE"
+            else:
+                # The rest -- NOT NULL, NULL, DEFAULT, CHECK, GENERATED, and the
+                # column-level REFERENCES that T-SQL refuses by name -- go
+                # through core's production formatter, which renders the
+                # CONSTRAINT prefix, dispatches to the branch, and appends the
+                # traits.  The trait refusals (ENFORCED / DEFERRABLE /
+                # INITIALLY, all Msg 102 or 156 on 2019) happen in
+                # ``SQLServerConstraintMixin.format_column_constraint``.
+                constraint_sql, constraint_params = self.format_column_constraint(
+                    constraint
                 )
-                if not self.supports_deferrable_constraint():
-                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-                    raise UnsupportedFeatureError(
-                        self.name,
-                        f"constraint {spelling}",
-                        f"{self.name} does not support the {spelling} constraint.",
-                    )
-                constraint_parts.append(spelling)
-            if constraint.initially_deferred or constraint.initially_immediate:
-                spelling = (
-                    "INITIALLY DEFERRED"
-                    if constraint.initially_deferred
-                    else "INITIALLY IMMEDIATE"
-                )
-                if not self.supports_deferrable_constraint():
-                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-                    raise UnsupportedFeatureError(
-                        self.name,
-                        f"constraint {spelling}",
-                        f"{self.name} does not support the {spelling} constraint.",
-                    )
-                constraint_parts.append(spelling)
-
-            if constraint.is_auto_increment:
-                constraint_parts.append("IDENTITY(1,1)")
+                if constraint_sql:
+                    constraint_parts.append(constraint_sql.strip())
+                    params.extend(constraint_params)
 
         if constraint_parts:
             parts.append(' '.join(constraint_parts))
@@ -915,123 +897,75 @@ class SQLServerDialect(
     ) -> Tuple[str, tuple]:
         """Format a table constraint for SQL Server.
 
-        The memory-optimized variants are why this overrides core's formatter at
-        all: ``PRIMARY KEY NONCLUSTERED`` and ``UNIQUE NONCLUSTERED`` are the
-        spellings a memory-optimized table needs.
+        Two reasons this overrides core's production renderer: the
+        memory-optimized spellings (``PRIMARY KEY NONCLUSTERED`` /
+        ``UNIQUE NONCLUSTERED``), and the refusal of the SQL-standard traits.
+        Everything else -- the ``CONSTRAINT <name>`` prefix, the branch bodies
+        for CHECK and FOREIGN KEY, and the ``REFERENCES`` clause with its
+        referential actions -- is core's, reached through ``super()``.
+
+        Which kind this is comes from the **branch class**.  ``EXCLUDE`` has
+        no T-SQL spelling, so it is refused by name by core's
+        ``format_table_exclude_constraint`` rather than silently dropped.
 
         Raises:
-            TypeError: ``t_const.foreign_key_table`` is not a Table. Another
-                object kind would have had its own name rendered as the
-                referenced relation, because the constraint renders that slot
-                through ``to_sql()``.
+            TypeError: The foreign-key branch's ``references`` does not pair a
+                Table with its columns.  Another object kind would have had its
+                own name rendered as the referenced relation.
+            UnsupportedFeatureError: ``ENFORCED`` / ``NOT ENFORCED`` /
+                ``DEFERRABLE`` / ``NOT DEFERRABLE`` / ``INITIALLY ...`` --
+                all Msg 102 or 156 on 2019 -- or ``CONSTRAINT <name>`` where
+                this dialect will not spell it.
         """
-        if t_const.foreign_key_table is not None and not isinstance(
-            t_const.foreign_key_table, Table
-        ):
-            raise TypeError(
-                f"TableConstraint.foreign_key_table must be a Table, "
-                f"got {type(t_const.foreign_key_table).__name__}"
-            )
         from rhosocial.activerecord.backend.expression.statements import (
-            TableConstraintType,
-            ForeignKeyConstraint,
-            ReferentialAction,
+            TableForeignKeyConstraint,
+            TablePrimaryKeyConstraint,
+            TableUniqueConstraint,
         )
 
-        parts = []
-        params: List[Any] = []
+        branch = t_const.branch
 
-        if t_const.name:
-            parts.append(f"CONSTRAINT {self.format_identifier(t_const.name)}")
-
-        if t_const.constraint_type == TableConstraintType.PRIMARY_KEY:
-            if t_const.columns:
-                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                if memory_optimized:
-                    parts.append(f"PRIMARY KEY NONCLUSTERED ({cols_str})")
-                else:
-                    parts.append(f"PRIMARY KEY ({cols_str})")
-        elif t_const.constraint_type == TableConstraintType.UNIQUE:
-            if t_const.columns:
-                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                if memory_optimized:
-                    parts.append(f"UNIQUE NONCLUSTERED ({cols_str})")
-                else:
-                    parts.append(f"UNIQUE ({cols_str})")
-        elif t_const.constraint_type == TableConstraintType.FOREIGN_KEY:
-            if t_const.columns and t_const.foreign_key_table and t_const.foreign_key_columns:
-                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                ref_cols_str = ', '.join(
-                    self.format_identifier(c) for c in t_const.foreign_key_columns
-                )
-                ref_table = t_const.foreign_key_table.to_sql()[0]
-                parts.append(
-                    f"FOREIGN KEY ({cols_str}) REFERENCES {ref_table} ({ref_cols_str})"
-                )
-                if isinstance(t_const, ForeignKeyConstraint):
-                    if t_const.on_delete != ReferentialAction.NO_ACTION:
-                        parts.append(f"ON DELETE {t_const.on_delete.value}")
-                    if t_const.on_update != ReferentialAction.NO_ACTION:
-                        parts.append(f"ON UPDATE {t_const.on_update.value}")
-        elif t_const.constraint_type == TableConstraintType.CHECK and t_const.check_condition:
-            check_sql, check_params = t_const.check_condition.to_sql()
-            parts.append(f"CHECK ({check_sql})")
-            params.extend(check_params)
-
-        # The node's two-spelling constraint attributes are consumed here even
-        # though SQL Server cannot spell any of them: this override replaces
-        # core's formatter, so an explicitly requested attribute is refused by
-        # name rather than silently dropped. Measured refused on 2019 / 2022 /
-        # 2025 (ENFORCED, NOT ENFORCED, DEFERRABLE, NOT DEFERRABLE, INITIALLY
-        # DEFERRED, INITIALLY IMMEDIATE). The probes gate the refusals, and the
-        # spelling is rendered when a probe answers True, so neither is
-        # decorative.
-        from rhosocial.activerecord.backend.dialect.mixins.ddl_table import (
-            normalize_table_constraint_type,
+        # The trait refusals run first and unconditionally, before either the
+        # memory-optimized spelling below or the delegated core rendering, so
+        # neither path can render a clause T-SQL does not parse.  The helper is
+        # the mixin's so the column seam (``format_column_constraint``) and
+        # this one cannot drift apart; core's own trait renderer would refuse
+        # the same traits too, but without naming the spelling that was asked
+        # for.
+        self._refuse_constraint_traits(
+            t_const,
+            deferrable=t_const.deferrable,
+            not_deferrable=t_const.not_deferrable,
+            initially_deferred=t_const.initially_deferred,
+            initially_immediate=t_const.initially_immediate,
+            enforced=t_const.enforced,
+            not_enforced=t_const.not_enforced,
         )
 
-        normalized_type = normalize_table_constraint_type(t_const.constraint_type)
-        if t_const.enforced or t_const.not_enforced:
-            if normalized_type not in {
-                TableConstraintType.CHECK,
-                TableConstraintType.FOREIGN_KEY,
-            }:
-                raise ValueError(
-                    "ENFORCED/NOT ENFORCED is only valid for CHECK and "
-                    "FOREIGN KEY constraints"
+        if isinstance(branch, TableForeignKeyConstraint):
+            referenced_table, _referenced_columns = branch.references
+            if referenced_table is not None and not isinstance(referenced_table, Table):
+                raise TypeError(
+                    f"TableForeignKeyConstraint.references must pair a Table "
+                    f"with its columns, got {type(referenced_table).__name__}"
                 )
-            spelling = "ENFORCED" if t_const.enforced else "NOT ENFORCED"
-            if not self.supports_constraint_enforced():
-                raise UnsupportedFeatureError(
-                    self.name,
-                    f"constraint {spelling}",
-                    f"{self.name} does not support the {spelling} constraint.",
-                )
-            parts.append(spelling)
-        if t_const.deferrable or t_const.not_deferrable:
-            spelling = "DEFERRABLE" if t_const.deferrable else "NOT DEFERRABLE"
-            if not self.supports_deferrable_constraint():
-                raise UnsupportedFeatureError(
-                    self.name,
-                    f"constraint {spelling}",
-                    f"{self.name} does not support the {spelling} constraint.",
-                )
-            parts.append(spelling)
-        if t_const.initially_deferred or t_const.initially_immediate:
-            spelling = (
-                "INITIALLY DEFERRED"
-                if t_const.initially_deferred
-                else "INITIALLY IMMEDIATE"
+
+        if memory_optimized and isinstance(
+            branch, (TablePrimaryKeyConstraint, TableUniqueConstraint)
+        ):
+            keyword = (
+                "PRIMARY KEY"
+                if isinstance(branch, TablePrimaryKeyConstraint)
+                else "UNIQUE"
             )
-            if not self.supports_deferrable_constraint():
-                raise UnsupportedFeatureError(
-                    self.name,
-                    f"constraint {spelling}",
-                    f"{self.name} does not support the {spelling} constraint.",
-                )
-            parts.append(spelling)
+            parts = []
+            if t_const.name:
+                parts.append(f"CONSTRAINT {self.format_identifier(t_const.name)}")
+            cols_str = ', '.join(self.format_identifier(c) for c in branch.columns)
+            parts.append(f"{keyword} NONCLUSTERED ({cols_str})")
+            return ' '.join(parts), ()
 
-        return ' '.join(parts), tuple(params)
+        return super().format_table_constraint(t_const)
 
     def format_inline_index(self, idx_def: "IndexDefinition") -> Tuple[str, tuple]:
         """Format an inline index definition for SQL Server."""

@@ -13,7 +13,8 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from rhosocial.activerecord.backend.expression import CreateTableStatement, ColumnDefinition
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
     CreateTableLikeStatement,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
@@ -92,7 +93,7 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         columns = [
             ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
-                ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY)
+                ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect))
             ]),
         ]
         create_expr = CreateTableStatement(
@@ -113,10 +114,10 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         columns = [
             ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
-                ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY)
+                ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect))
             ]),
             ColumnDefinition(dialect, "name", VarCharType(dialect, length=255), constraints=[
-                ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)
+                ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))
             ])
         ]
         create_expr = CreateTableStatement(

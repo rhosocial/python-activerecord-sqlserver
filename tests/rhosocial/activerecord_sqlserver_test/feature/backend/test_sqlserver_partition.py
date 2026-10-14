@@ -15,7 +15,7 @@ from rhosocial.activerecord.backend.expression.statements import (
     PartitionClause,
     PartitionStrategy,
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnPrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.expression.types import DateType, IntegerType, VarCharType
 from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
@@ -223,7 +223,7 @@ class TestSQLServerCreateTableWithPartition:
 
     def test_create_table_with_partition(self):
         d = SQLServerDialect(SQL_SERVER_2022)
-        pk = ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY)
+        pk = ColumnConstraint(d, branch=ColumnPrimaryKeyConstraint(d))
         col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
         col_def2 = ColumnDefinition(d, "name", VarCharType(d, length=100))
         col_def3 = ColumnDefinition(d, "create_date", DateType(d))
@@ -247,7 +247,7 @@ class TestSQLServerCreateTableWithPartition:
     def test_create_table_without_partition(self):
         """Unchanged behavior when no partition is specified."""
         d = SQLServerDialect(SQL_SERVER_2022)
-        pk = ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY)
+        pk = ColumnConstraint(d, branch=ColumnPrimaryKeyConstraint(d))
         col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
         stmt = CreateTableStatement(
             d, Table(d, "users"),
@@ -261,7 +261,7 @@ class TestSQLServerCreateTableWithPartition:
     def test_create_table_with_partition_on_old_version(self):
         """Should fail on SQL Server 2005 which doesn't support partitioning."""
         d = SQLServerDialect(SQL_SERVER_2005)
-        pk = ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY)
+        pk = ColumnConstraint(d, branch=ColumnPrimaryKeyConstraint(d))
         col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
         col = Column(d, "id")
         partition = SQLServerPartitionByRangeClause(d, [col], "ps_test")

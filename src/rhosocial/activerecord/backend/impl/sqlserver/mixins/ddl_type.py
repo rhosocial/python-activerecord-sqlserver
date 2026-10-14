@@ -11,11 +11,18 @@ from rhosocial.activerecord.backend.dialect.mixins.user_defined_type import User
 from rhosocial.activerecord.backend.expression.bases import ToSQLProtocol
 from rhosocial.activerecord.backend.expression.objects import Index, Type
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
-    ColumnConstraintType,
+    ColumnCheckConstraint,
+    ColumnDefaultConstraint,
+    ColumnNullableConstraint,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
+    ColumnUniqueConstraint,
     ColumnDefinition,
     IndexDefinition,
+    TableCheckConstraint,
     TableConstraint,
-    TableConstraintType,
+    TablePrimaryKeyConstraint,
+    TableUniqueConstraint,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_type import (
     AlterTypeStatement,
@@ -259,43 +266,35 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                 "SPARSE and ROWGUIDCOL are not supported in table TYPE definitions.",
             )
         allowed = {
-            ColumnConstraintType.PRIMARY_KEY,
-            ColumnConstraintType.NOT_NULL,
-            ColumnConstraintType.NULL,
-            ColumnConstraintType.DEFAULT,
+            ColumnPrimaryKeyConstraint,
+            ColumnNotNullConstraint,
+            ColumnNullableConstraint,
+            ColumnDefaultConstraint,
         }
         if not memory_optimized or self._version_at_least(SQL_SERVER_2016):
             allowed.update({
-                ColumnConstraintType.UNIQUE,
-                ColumnConstraintType.CHECK,
+                ColumnUniqueConstraint,
+                ColumnCheckConstraint,
             })
         for constraint in column.constraints:
-            if memory_optimized and constraint.constraint_type not in allowed:
-                if constraint.constraint_type in {
-                    ColumnConstraintType.UNIQUE,
-                    ColumnConstraintType.CHECK,
-                }:
+            branch = constraint.branch
+            if memory_optimized and type(branch) not in allowed:
+                if type(branch) in {ColumnUniqueConstraint, ColumnCheckConstraint}:
                     raise UnsupportedFeatureError(
                         self.name,
-                        f"memory-optimized TYPE table column constraint {constraint.constraint_type}",
+                        f"memory-optimized TYPE table column constraint {type(branch).__name__}",
                         "requires SQL Server 2016+.",
                     )
                 raise UnsupportedFeatureError(
                     self.name,
-                    f"memory-optimized TYPE table column constraint {constraint.constraint_type}",
+                    f"memory-optimized TYPE table column constraint {type(branch).__name__}",
                     "SQL Server memory-optimized table TYPEs allow only key constraints and DEFAULT.",
                 )
-            if constraint.constraint_type not in allowed:
+            if type(branch) not in allowed:
                 raise UnsupportedFeatureError(
                     self.name,
-                    f"TYPE table column constraint {constraint.constraint_type}",
+                    f"TYPE table column constraint {type(branch).__name__}",
                 )
-            if constraint.constraint_type == ColumnConstraintType.CHECK:
-                if constraint.check_condition is None:
-                    raise ValueError("CHECK constraint must have a check condition")
-            if constraint.constraint_type == ColumnConstraintType.DEFAULT:
-                if constraint.default_value is None:
-                    raise ValueError("DEFAULT constraint must have a default value")
         return self.format_column_definition(
             column,
             memory_optimized=memory_optimized,
@@ -313,50 +312,40 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         """
         if not isinstance(constraint, TableConstraint):
             raise TypeError("table TYPE constraints must be TableConstraint instances")
+        branch = constraint.branch
         if memory_optimized:
-            if constraint.constraint_type in {
-                TableConstraintType.UNIQUE,
-                TableConstraintType.CHECK,
+            if type(branch) in {
+                TableUniqueConstraint,
+                TableCheckConstraint,
             } and not self._version_at_least(SQL_SERVER_2016):
                 raise UnsupportedFeatureError(
                     self.name,
-                    f"memory-optimized TYPE table constraint {constraint.constraint_type}",
+                    f"memory-optimized TYPE table constraint {type(branch).__name__}",
                     "requires SQL Server 2016+.",
                 )
-            if constraint.constraint_type not in {
-                TableConstraintType.PRIMARY_KEY,
-                TableConstraintType.UNIQUE,
-                TableConstraintType.CHECK,
+            if type(branch) not in {
+                TablePrimaryKeyConstraint,
+                TableUniqueConstraint,
+                TableCheckConstraint,
             }:
                 raise UnsupportedFeatureError(
                     self.name,
-                    f"memory-optimized TYPE table constraint {constraint.constraint_type}",
+                    f"memory-optimized TYPE table constraint {type(branch).__name__}",
                     "SQL Server memory-optimized table TYPEs allow only key constraints and CHECK.",
                 )
-        supported_types = {
-            TableConstraintType.PRIMARY_KEY,
-            TableConstraintType.UNIQUE,
-            TableConstraintType.CHECK,
+        supported_branches = {
+            TablePrimaryKeyConstraint,
+            TableUniqueConstraint,
+            TableCheckConstraint,
         }
-        if constraint.constraint_type not in supported_types:
+        if type(branch) not in supported_branches:
             raise UnsupportedFeatureError(
                 self.name,
-                f"TYPE table constraint {constraint.constraint_type}",
+                f"TYPE table constraint {type(branch).__name__}",
             )
-        if constraint.constraint_type in {
-            TableConstraintType.PRIMARY_KEY,
-            TableConstraintType.UNIQUE,
-        }:
-            if constraint.check_condition is not None:
-                raise ValueError("key constraints cannot carry a check condition")
-            if constraint.foreign_key_table is not None or constraint.foreign_key_columns:
-                raise ValueError("key constraints cannot carry foreign key fields")
-        elif (
-            constraint.columns
-            or constraint.foreign_key_table is not None
-            or constraint.foreign_key_columns
-        ):
-            raise ValueError("CHECK constraints cannot carry key or foreign key fields")
+        if type(branch) in {TablePrimaryKeyConstraint, TableUniqueConstraint}:
+            if not branch.columns:
+                raise ValueError("table TYPE key constraint requires columns")
         # The enforcement / deferrability options are two-spelling pairs on the
         # node now: their defaults are ``False``, not ``None``, so an
         # ``is not None`` test would refuse every constraint. Only an
@@ -388,14 +377,6 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                 self.name,
                 "TYPE table constraint option validation",
             )
-        if constraint.constraint_type in {
-            TableConstraintType.PRIMARY_KEY,
-            TableConstraintType.UNIQUE,
-        } and not constraint.columns:
-            raise ValueError("table TYPE key constraint requires columns")
-        if constraint.constraint_type == TableConstraintType.CHECK:
-            if constraint.check_condition is None:
-                raise ValueError("table TYPE CHECK constraint requires a condition")
         sql, params = self.format_table_constraint(
             constraint,
             memory_optimized=memory_optimized,
@@ -562,19 +543,13 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             params.extend(index_params)
         if expr.memory_optimized and not self._version_at_least(SQL_SERVER_2017):
             key_constraint_count = sum(
-                constraint.constraint_type
-                in {
-                    ColumnConstraintType.PRIMARY_KEY,
-                    ColumnConstraintType.UNIQUE,
-                }
+                type(constraint.branch)
+                in {ColumnPrimaryKeyConstraint, ColumnUniqueConstraint}
                 for column in expr.columns
                 for constraint in column.constraints
             ) + sum(
-                constraint.constraint_type
-                in {
-                    TableConstraintType.PRIMARY_KEY,
-                    TableConstraintType.UNIQUE,
-                }
+                type(constraint.branch)
+                in {TablePrimaryKeyConstraint, TableUniqueConstraint}
                 for constraint in constraint_definitions
             )
             if len(expr.indexes) + key_constraint_count > 8:
@@ -585,19 +560,13 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                 )
         if expr.memory_optimized:
             has_key_constraint = any(
-                constraint.constraint_type
-                in {
-                    ColumnConstraintType.PRIMARY_KEY,
-                    ColumnConstraintType.UNIQUE,
-                }
+                type(constraint.branch)
+                in {ColumnPrimaryKeyConstraint, ColumnUniqueConstraint}
                 for column in expr.columns
                 for constraint in column.constraints
             ) or any(
-                constraint.constraint_type
-                in {
-                    TableConstraintType.PRIMARY_KEY,
-                    TableConstraintType.UNIQUE,
-                }
+                type(constraint.branch)
+                in {TablePrimaryKeyConstraint, TableUniqueConstraint}
                 for constraint in constraint_definitions
             )
             if not has_key_constraint and not expr.indexes:

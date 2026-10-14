@@ -116,10 +116,10 @@ from rhosocial.activerecord.backend.expression.statements import (
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnConstraint,
-    ColumnConstraintType,
     ColumnDefinition,
+    ColumnNotNullConstraint,
     TableConstraint,
-    TableConstraintType,
+    TablePrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.expression.statements.dml import (
     MergeAction,
@@ -343,7 +343,7 @@ def register_specials():
     register_special_constructor(
         "ddl_alter.AddTableConstraint",
         lambda d: ddl_alter.AddTableConstraint(
-            d, TableConstraint(d, TableConstraintType.PRIMARY_KEY, name="c", columns=["a"])
+            d, TableConstraint(d, branch=TablePrimaryKeyConstraint(d, ["a"]), name="c")
         ),
     )
     register_special_constructor(
@@ -353,11 +353,11 @@ def register_specials():
     # -- constraints that must render without bind parameters ----------------
     register_special_constructor(
         "ddl_table.ColumnConstraint",
-        lambda d: ColumnConstraint(d, ColumnConstraintType.NOT_NULL, name="c"),
+        lambda d: ColumnConstraint(d, branch=ColumnNotNullConstraint(d), name="c"),
     )
     register_special_constructor(
         "ddl_table.TableConstraint",
-        lambda d: TableConstraint(d, TableConstraintType.PRIMARY_KEY, name="c", columns=["a"]),
+        lambda d: TableConstraint(d, branch=TablePrimaryKeyConstraint(d, ["a"]), name="c"),
     )
     # REFERENCES needs at least one referenced column; the guess supplies none.
     register_special_constructor(
@@ -530,13 +530,11 @@ def register_specials():
                     d,
                     "id",
                     IntegerType(d),
-                    constraints=[ColumnConstraint(d, ColumnConstraintType.NOT_NULL)],
+                    constraints=[ColumnConstraint(d, branch=ColumnNotNullConstraint(d))],
                 )
             ],
             constraints=[
-                TableConstraint(
-                    d, TableConstraintType.PRIMARY_KEY, columns=["id"]
-                )
+                TableConstraint(d, branch=TablePrimaryKeyConstraint(d, ["id"]))
             ],
             indexes=[SQLServerIndexDefinition(d, "ix_id", ["id"])],
         )
@@ -841,7 +839,7 @@ LEGITIMATE_NON_RENDERS = {
     ),
     # Expression-category bases whose concrete members each name their own
     # formatter: an ALTER TABLE action, an INSERT row source, a transaction
-    # step, a temporal value, an introspection query.
+    # step, a temporal value, an introspection query, a DDL column clause.
     "rhosocial.activerecord.backend.expression.statements.ddl_alter.AlterTableAction": (
         NotImplementedError,
         _NO_FORMATTER,
@@ -854,7 +852,21 @@ LEGITIMATE_NON_RENDERS = {
         NotImplementedError,
         _NO_FORMATTER,
     ),
-    "rhosocial.activerecord.backend.expression.datetime._TemporalValueExpression": (
+    "rhosocial.activerecord.backend.expression.datetime._TemporalValue": (
+        NotImplementedError,
+        _NO_FORMATTER,
+    ),
+    "rhosocial.activerecord.backend.expression.statements.ddl_table.ColumnClause": (
+        NotImplementedError,
+        _NO_FORMATTER,
+    ),
+    "rhosocial.activerecord.backend.expression.statements.ddl_table."
+    "ColumnConstraintBranch": (
+        NotImplementedError,
+        _NO_FORMATTER,
+    ),
+    "rhosocial.activerecord.backend.expression.statements.ddl_table."
+    "TableConstraintBranch": (
         NotImplementedError,
         _NO_FORMATTER,
     ),
@@ -1150,7 +1162,7 @@ UNMODELLED_FORMATTERS = {
         "format_xmlcomment_expression",
         "format_xmlconcat_expression",
         "format_xmlelement_expression",
-        "format_xmlexists_expression",
+        "format_xmlexists_predicate",
         "format_xmlforest_expression",
         "format_xmlpi_expression",
         "format_xmlparse_expression",

@@ -34,7 +34,7 @@ from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnPrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
@@ -47,8 +47,10 @@ create_table = CreateTableStatement(
     table=Table(dialect, 'json_data'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
-            ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-            ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+            ColumnConstraint(
+                dialect,
+                branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+            ),
         ]),
         ColumnDefinition('data', 'NVARCHAR(MAX)'),
     ],

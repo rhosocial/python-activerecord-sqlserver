@@ -38,9 +38,10 @@ from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
     TableConstraint,
-    TableConstraintType,
+    TableForeignKeyConstraint,
 )
 
 ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
@@ -50,11 +51,13 @@ users_table = CreateTableStatement(
     table=Table(dialect, 'join_users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
-            ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-            ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+            ColumnConstraint(
+                dialect,
+                branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+            ),
         ]),
         ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
-            ColumnConstraint(ColumnConstraintType.NOT_NULL),
+            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
         ]),
     ],
     if_not_exists=True,
@@ -67,18 +70,20 @@ orders_table = CreateTableStatement(
     table=Table(dialect, 'join_orders'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
-            ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-            ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+            ColumnConstraint(
+                dialect,
+                branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+            ),
         ]),
         ColumnDefinition('user_id', 'INT'),
         ColumnDefinition('amount', 'DECIMAL(10,2)'),
     ],
     table_constraints=[
         TableConstraint(
-            constraint_type=TableConstraintType.FOREIGN_KEY,
-            columns=['user_id'],
-            foreign_key_table=Table(dialect, 'join_users'),
-            foreign_key_columns=['id'],
+            dialect,
+            branch=TableForeignKeyConstraint(
+                dialect, ['user_id'], (Table(dialect, 'join_users'), ['id'])
+            ),
         ),
     ],
     if_not_exists=True,

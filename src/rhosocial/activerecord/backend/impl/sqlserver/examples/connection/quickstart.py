@@ -26,8 +26,9 @@ from rhosocial.activerecord.backend.expression.core import Column, Literal
 from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnConstraint,
-    ColumnConstraintType,
     ColumnDefinition,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
@@ -71,14 +72,16 @@ users_table = CreateTableStatement(
             'id',
             'INT',
             constraints=[
-                ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-                ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+                ColumnConstraint(
+                    dialect,
+                    branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                ),
             ],
         ),
         ColumnDefinition(
             'name',
             'NVARCHAR(100)',
-            constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL)],
+            constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
         ),
         ColumnDefinition('status', 'NVARCHAR(20)'),
     ],
@@ -94,14 +97,16 @@ logs_table = CreateTableStatement(
             'id',
             'INT',
             constraints=[
-                ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-                ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+                ColumnConstraint(
+                    dialect,
+                    branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                ),
             ],
         ),
         ColumnDefinition(
             'message',
             'NVARCHAR(255)',
-            constraints=[ColumnConstraint(ColumnConstraintType.NOT_NULL)],
+            constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
         ),
     ],
     if_not_exists=True,

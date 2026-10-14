@@ -877,7 +877,7 @@ class TestSQLServerDialectDDL:
     def test_create_table_basic(self, dialect):
         from rhosocial.activerecord.backend.expression.statements import (
             CreateTableStatement, ColumnDefinition, ColumnConstraint,
-            ColumnConstraintType,
+            ColumnNotNullConstraint, ColumnPrimaryKeyConstraint,
         )
         from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.types import (
@@ -891,12 +891,19 @@ class TestSQLServerDialectDDL:
                 ColumnDefinition(dialect,
                     name="id",
                     data_type=IntegerType(dialect),
-                    constraints=[ColumnConstraint(dialect, constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True)],
+                    constraints=[
+                        ColumnConstraint(
+                            dialect,
+                            branch=ColumnPrimaryKeyConstraint(
+                                dialect, is_auto_increment=True
+                            ),
+                        )
+                    ],
                 ),
                 ColumnDefinition(dialect,
                     name="name",
                     data_type=VarCharType(dialect, length=255),
-                    constraints=[ColumnConstraint(dialect, constraint_type=ColumnConstraintType.NOT_NULL)],
+                    constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
                 ),
             ],
         )
