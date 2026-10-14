@@ -365,6 +365,27 @@ def register_specials():
         lambda d: ddl_table.ReferencesClause(d, Table(d, "other"), ["b"]),
     )
 
+    # -- predicates whose operand slots are value nodes ----------------------
+    # Core's wildcard-split commit calls these out: the operand slots are
+    # annotated as forward references (or ``Any``), so the generic guess fills
+    # them with plain strings and the instance cannot render. Both factories are
+    # the ones core's own dummy2 matrix registers, so the matrices agree.
+    # ``LikePredicate`` carries the operator as a parameter, so the guess's
+    # ``"x"`` would become the operator rather than the operand.
+    from rhosocial.activerecord.backend.expression.predicates import (
+        ILikePredicate,
+        LikePredicate,
+    )
+
+    register_special_constructor(
+        "predicates.LikePredicate",
+        lambda d: LikePredicate(d, "LIKE", Column(d, "a"), Literal(d, "%x%")),
+    )
+    register_special_constructor(
+        "predicates.ILikePredicate",
+        lambda d: ILikePredicate(d, Column(d, "a"), "%x%"),
+    )
+
     # -- statements holding objects the guess cannot name --------------------
     # Each of these was found by running the matrix, not by reading it: the
     # introspective guess hands the statement a bare ``"x"``, and the formatter
@@ -1156,7 +1177,8 @@ def _dispatched_formatter(exc):
 #: those refusals were allowed on their type alone.
 UNMODELLED_FORMATTERS = {
     "SQL/XML (SQL Server's native XML/XQuery is not the SQL/XML feature set, "
-    "so the dialect declares no ``format_xml*`` method at all)": (
+    "so the dialect declares no ``format_xml*`` method at all; the PASSING "
+    "clause rides that same family)": (
         "format_xmlagg_expression",
         "format_xmlattributes_expression",
         "format_xmlcomment_expression",
@@ -1170,6 +1192,7 @@ UNMODELLED_FORMATTERS = {
         "format_xmlroot_expression",
         "format_xmlserialize_expression",
         "format_xmltable_expression",
+        "format_passing_clause",
     ),
     "DOMAIN (SQL Server has no DOMAIN object, so no domain statement or "
     "action renders)": (
