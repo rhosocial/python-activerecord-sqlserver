@@ -34,7 +34,7 @@ class SQLServerSetOperationMixin:
         """Set operations support OFFSET FETCH."""
         return True
 
-    def format_set_operation_expression(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
+    def format_set_operation_statement(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
         """Format set operation for SQL Server.
 
         SQL Server supports UNION, UNION ALL, INTERSECT, EXCEPT.

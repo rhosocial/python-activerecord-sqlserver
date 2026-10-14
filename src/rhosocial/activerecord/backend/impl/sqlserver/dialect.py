@@ -207,8 +207,8 @@ from .reserved_words import SQLSERVER_RESERVED_WORDS
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
-    from rhosocial.activerecord.backend.expression.collation import CollateExpression
-    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation
+    from rhosocial.activerecord.backend.expression.collation import CollateFunction
+    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayOperation, OrderedSetAggregation
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
         LimitOffsetClause,
@@ -216,30 +216,30 @@ if TYPE_CHECKING:
         QualifyClause,
     )
     from rhosocial.activerecord.backend.expression.statements import (
-        ExplainExpression,
-        CreateViewExpression,
-        DropViewExpression,
-        CreateMaterializedViewExpression,
+        ExplainStatement,
+        CreateViewStatement,
+        DropViewStatement,
+        CreateMaterializedViewStatement,
         ReturningClause,
-        InsertExpression,
+        InsertStatement,
         ColumnDefinition,
         TableConstraint,
         IndexDefinition,
-        CreateTableExpression,
-        CreateIndexExpression,
-        DropTableExpression,
-        CreateSchemaExpression,
-        DropSchemaExpression,
-        AlterSequenceExpression,
-        MergeExpression,
-        TruncateExpression,
+        CreateTableStatement,
+        CreateIndexStatement,
+        DropTableStatement,
+        CreateSchemaStatement,
+        DropSchemaStatement,
+        AlterSequenceStatement,
+        MergeStatement,
+        TruncateStatement,
     )
     from rhosocial.activerecord.backend.expression.transaction import (
-        BeginTransactionExpression,
+        BeginTransactionStatement,
         SetTransactionExpression,
     )
     from rhosocial.activerecord.backend.expression.statements.fulltext_match import (
-        FulltextMatchExpression,
+        FulltextMatch,
     )
 
 
@@ -583,7 +583,7 @@ class SQLServerDialect(
         """Return IDENTITY(1,1) for auto-increment columns."""
         return "IDENTITY(1,1)", ()
 
-    def format_array_expression(self, _expr: "ArrayExpression") -> Tuple[str, tuple]:
+    def format_array_expression(self, _expr: "ArrayOperation") -> Tuple[str, tuple]:
         """Format array expression - not supported."""
         raise UnsupportedFeatureError(self.name, "Array operations", _SUGGESTION_ARRAY_TYPES)
 
@@ -621,7 +621,7 @@ class SQLServerDialect(
         raise UnsupportedFeatureError(self.name, f"{operation} grouping operation")
 
     def format_create_table_statement(
-        self, expr: "CreateTableExpression"
+        self, expr: "CreateTableStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE TABLE statement for SQL Server.
 
@@ -651,7 +651,7 @@ class SQLServerDialect(
 
         if not isinstance(expr.table, Table):
             raise TypeError(
-                f"CreateTableExpression.table must be a Table, "
+                f"CreateTableStatement.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
         if expr.tablespace:
@@ -1081,7 +1081,7 @@ class SQLServerDialect(
 
         return ' '.join(parts), ()
 
-    def format_create_index_statement(self, expr: "CreateIndexExpression") -> Tuple[str, tuple]:
+    def format_create_index_statement(self, expr: "CreateIndexStatement") -> Tuple[str, tuple]:
         """Format CREATE INDEX statement for SQL Server.
 
         SQL Server doesn't support IF NOT EXISTS for CREATE INDEX, and has no
@@ -1097,12 +1097,12 @@ class SQLServerDialect(
 
         if not isinstance(expr.index, Index):
             raise TypeError(
-                f"CreateIndexExpression.index must be an Index, "
+                f"CreateIndexStatement.index must be an Index, "
                 f"got {type(expr.index).__name__}"
             )
         if not isinstance(expr.table, Table):
             raise TypeError(
-                f"CreateIndexExpression.table must be a Table, "
+                f"CreateIndexStatement.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
         if expr.if_not_exists:
@@ -1160,7 +1160,7 @@ class SQLServerDialect(
     # Answering the probes in SQLServerSequenceMixin is therefore the whole
     # implementation, and one renderer serves every dialect.
 
-    def format_alter_sequence_statement(self, expr: "AlterSequenceExpression") -> Tuple[str, tuple]:
+    def format_alter_sequence_statement(self, expr: "AlterSequenceStatement") -> Tuple[str, tuple]:
         """Format ALTER SEQUENCE for SQL Server.
 
         SQL Server's ALTER SEQUENCE grammar differs from the standard form core
@@ -1194,7 +1194,7 @@ class SQLServerDialect(
         """
         if not isinstance(expr.sequence, Sequence):
             raise TypeError(
-                f"AlterSequenceExpression.sequence must be a Sequence, "
+                f"AlterSequenceStatement.sequence must be a Sequence, "
                 f"got {type(expr.sequence).__name__}"
             )
         if not self.supports_sequence():
@@ -1284,7 +1284,7 @@ class SQLServerDialect(
                 parts.append("OWNED BY NONE")
         return " ".join(parts), ()
 
-    def format_truncate_statement(self, expr: "TruncateExpression") -> Tuple[str, tuple]:
+    def format_truncate_statement(self, expr: "TruncateStatement") -> Tuple[str, tuple]:
         """Format TRUNCATE TABLE for SQL Server.
 
         SQL Server's TRUNCATE TABLE is a DDL operation (minimal logging) with
@@ -1304,7 +1304,7 @@ class SQLServerDialect(
         """
         if not isinstance(expr.table, Table):
             raise TypeError(
-                f"TruncateExpression.table must be a Table, "
+                f"TruncateStatement.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
         if not self.supports_truncate():
@@ -1335,7 +1335,7 @@ class SQLServerDialect(
             )
         return f"TRUNCATE TABLE {expr.table.to_sql()[0]}", ()
 
-    def format_merge_statement(self, expr: "MergeExpression") -> Tuple[str, tuple]:
+    def format_merge_statement(self, expr: "MergeStatement") -> Tuple[str, tuple]:
         """Format MERGE statement for SQL Server (2008+).
 
         SQL Server MERGE syntax:
@@ -1352,7 +1352,7 @@ class SQLServerDialect(
 
         if not isinstance(expr.target_table, Table):
             raise TypeError(
-                f"MergeExpression.target_table must be a Table, "
+                f"MergeStatement.target_table must be a Table, "
                 f"got {type(expr.target_table).__name__}"
             )
 
@@ -1475,7 +1475,7 @@ class SQLServerDialect(
         return str(expr), ()
 
     def format_fulltext_match(
-        self, expr: "FulltextMatchExpression"
+        self, expr: "FulltextMatch"
     ) -> Tuple[str, tuple]:
         """Format SQL Server CONTAINS full-text search.
 

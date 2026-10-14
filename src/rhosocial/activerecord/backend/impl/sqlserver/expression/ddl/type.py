@@ -15,7 +15,7 @@ from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     TableConstraint,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_type import (
-    DropTypeExpression,
+    DropTypeStatement,
     TypeDefinition,
 )
 from rhosocial.activerecord.backend.expression.types import DataType
@@ -174,7 +174,7 @@ class SQLServerClrTypeDefinition(TypeDefinition):
         self.class_name = class_name
 
 
-class SQLServerDropTypeExpression(DropTypeExpression):
+class SQLServerDropTypeExpression(DropTypeStatement):
     """SQL Server DROP TYPE expression with explicit unsupported behavior flags.
 
     ``type`` is the :class:`~rhosocial.activerecord.backend.expression.objects.Type`

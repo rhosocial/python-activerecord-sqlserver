@@ -14,10 +14,10 @@ import os
 # SECTION: Setup (necessary for execution, reference only)
 # ============================================================
 from rhosocial.activerecord.backend.expression import (
-    CreateTableExpression,
-    DropTableExpression,
-    InsertExpression,
-    QueryExpression,
+    CreateTableStatement,
+    DropTableStatement,
+    InsertStatement,
+    QueryStatement,
     ValuesSource,
     WhereClause,
 )
@@ -63,7 +63,7 @@ def execute_expression(expression, options=None):
 
 
 # Create demo tables
-users_table = CreateTableExpression(
+users_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'quickstart_users'),
     columns=[
@@ -86,7 +86,7 @@ users_table = CreateTableExpression(
 )
 execute_expression(users_table, ddl_options)
 
-logs_table = CreateTableExpression(
+logs_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'quickstart_logs'),
     columns=[
@@ -109,7 +109,7 @@ logs_table = CreateTableExpression(
 execute_expression(logs_table, ddl_options)
 
 # Seed demo data
-insert_users = InsertExpression(
+insert_users = InsertStatement(
     dialect=dialect,
     into=Table(dialect, 'quickstart_users'),
     columns=['name', 'status'],
@@ -127,7 +127,7 @@ execute_expression(insert_users)
 # SECTION: Business Logic (the pattern to learn)
 # ============================================================
 # Create a simple SELECT query with WHERE clause
-query = QueryExpression(
+query = QueryStatement(
     dialect=dialect,
     select=[
         Column(dialect, 'id'),
@@ -165,7 +165,7 @@ if result.data:
 # Use complex predicates with AND/OR
 from rhosocial.activerecord.backend.expression.predicates import LogicalPredicate
 
-filtered_query = QueryExpression(
+filtered_query = QueryStatement(
     dialect=dialect,
     select=[
         Column(dialect, 'id'),
@@ -195,7 +195,7 @@ print(f"Parameterized query result: {result.data}")
 # ============================================================
 # Use transaction context manager for automatic commit/rollback
 with backend.transaction():
-    insert_log = InsertExpression(
+    insert_log = InsertStatement(
         dialect=dialect,
         into=Table(dialect, 'quickstart_logs'),
         columns=['message'],
@@ -203,7 +203,7 @@ with backend.transaction():
     )
     execute_expression(insert_log)
 
-    logs_query = QueryExpression(
+    logs_query = QueryStatement(
         dialect=dialect,
         select=[Column(dialect, 'id'), Column(dialect, 'message')],
         from_=Table(dialect, 'quickstart_logs'),
@@ -215,7 +215,7 @@ with backend.transaction():
 # SECTION: Business Logic - Error Handling
 # ============================================================
 try:
-    invalid_query = QueryExpression(
+    invalid_query = QueryStatement(
         dialect=dialect,
         select=[Column(dialect, 'id')],
         from_=Table(dialect, 'nonexistent_table'),
@@ -227,12 +227,12 @@ except Exception as error:
 # ============================================================
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
-drop_logs = DropTableExpression(
+drop_logs = DropTableStatement(
     dialect=dialect, table=Table(dialect, 'quickstart_logs'), if_exists=True
 )
 execute_expression(drop_logs, ddl_options)
 
-drop_users = DropTableExpression(
+drop_users = DropTableStatement(
     dialect=dialect, table=Table(dialect, 'quickstart_users'), if_exists=True
 )
 execute_expression(drop_users, ddl_options)

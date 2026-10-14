@@ -3,7 +3,7 @@
 
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import SQLValueExpression
+from rhosocial.activerecord.backend.expression.bases import SQLValue
 from rhosocial.activerecord.backend.expression.mixins import (
     AliasableMixin,
     ComparisonMixin,
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
 
 
-class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_VALUE expression for extracting scalar values.
 
     Example:
@@ -40,7 +40,7 @@ class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValueEx
         return "format_json_extract"
 
 
-class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_UNQUOTE expression.
 
     Note: SQL Server's JSON_VALUE returns scalar values already unquoted,
@@ -66,7 +66,7 @@ class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValueEx
         return "format_json_unquote"
 
 
-class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_OBJECT expression (2022+).
 
     Example:
@@ -89,7 +89,7 @@ class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValueExp
         return "format_json_object"
 
 
-class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_ARRAY expression (2022+).
 
     Example:
@@ -112,7 +112,7 @@ class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValueExpr
         return "format_json_array"
 
 
-class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON containment check using OPENJSON (2016+).
 
     Example:
@@ -139,7 +139,7 @@ class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValueE
         return "format_json_contains"
 
 
-class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_MODIFY expression (single path-value pair only).
 
     Example:
@@ -168,7 +168,7 @@ class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpres
         return "format_json_set"
 
 
-class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON property removal using JSON_MODIFY (single path only).
 
     Example:
@@ -195,7 +195,7 @@ class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValueExp
         return "format_json_remove"
 
 
-class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_TYPE expression.
 
     Note: SQL Server has no JSON_TYPE; classify values via OPENJSON.
@@ -220,7 +220,7 @@ class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValueExpre
         return "format_json_type"
 
 
-class SQLServerJSONValidExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONValidExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server ISJSON function (equivalent of JSON_VALID).
 
     Example:

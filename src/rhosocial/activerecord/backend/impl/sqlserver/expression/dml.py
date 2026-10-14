@@ -4,8 +4,8 @@
 from typing import TYPE_CHECKING, List, Optional
 
 from rhosocial.activerecord.backend.expression.statements import (
-    MergeExpression,
-    QueryExpression,
+    MergeStatement,
+    QueryStatement,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -13,7 +13,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 
-class SQLServerMergeExpression(MergeExpression):
+class SQLServerMergeExpression(MergeStatement):
     """A SQL Server MERGE statement extending the generic one.
 
     SQL Server adds the ``WITH (HOLDLOCK)`` table hint and the ``OUTPUT``
@@ -50,7 +50,7 @@ class SQLServerMergeExpression(MergeExpression):
         self.holdlock = holdlock
 
 
-class SQLServerSelectIntoExpression(QueryExpression):
+class SQLServerSelectIntoExpression(QueryStatement):
     """A SQL Server ``SELECT ... INTO <table>`` query.
 
     SQL Server's ``SELECT INTO`` creates a new table from a query result. The

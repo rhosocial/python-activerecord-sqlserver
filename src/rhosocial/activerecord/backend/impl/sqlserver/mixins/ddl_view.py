@@ -9,9 +9,9 @@ _SUGGESTION_MATERIALIZED_VIEW = "SQL Server does not support materialized views.
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import (
-        CreateViewExpression,
-        DropViewExpression,
-        CreateMaterializedViewExpression,
+        CreateViewStatement,
+        DropViewStatement,
+        CreateMaterializedViewStatement,
     )
 
 
@@ -51,7 +51,7 @@ class SQLServerViewMixin:
         return True
 
     def format_create_view_statement(
-        self, expr: "CreateViewExpression"
+        self, expr: "CreateViewStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE VIEW statement for SQL Server.
 
@@ -66,7 +66,7 @@ class SQLServerViewMixin:
         """
         if not isinstance(expr.view, View):
             raise TypeError(
-                f"CreateViewExpression.view must be a View, "
+                f"CreateViewStatement.view must be a View, "
                 f"got {type(expr.view).__name__}"
             )
         parts = ["CREATE OR ALTER VIEW" if expr.replace else "CREATE VIEW"]
@@ -95,7 +95,7 @@ class SQLServerViewMixin:
         return " ".join(parts), query_params
 
     def format_drop_view_statement(
-        self, expr: "DropViewExpression"
+        self, expr: "DropViewStatement"
     ) -> Tuple[str, tuple]:
         """Format DROP VIEW statement for SQL Server.
 
@@ -115,7 +115,7 @@ class SQLServerViewMixin:
         """
         if not isinstance(expr.view, View):
             raise TypeError(
-                f"DropViewExpression.view must be a View, "
+                f"DropViewStatement.view must be a View, "
                 f"got {type(expr.view).__name__}"
             )
         if expr.cascade and not self.supports_cascade_view():
@@ -138,7 +138,7 @@ class SQLServerViewMixin:
         return " ".join(parts), ()
 
     def format_create_materialized_view_statement(
-        self, expr: "CreateMaterializedViewExpression"
+        self, expr: "CreateMaterializedViewStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE MATERIALIZED VIEW - not supported."""
         raise UnsupportedFeatureError(self.name, "CREATE MATERIALIZED VIEW", _SUGGESTION_MATERIALIZED_VIEW)

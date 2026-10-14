@@ -2,7 +2,7 @@
 from typing import Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from rhosocial.activerecord.backend.expression.statements import ExplainExpression
+    from rhosocial.activerecord.backend.expression.statements import ExplainStatement
 
 
 class SQLServerExplainMixin:
@@ -16,7 +16,7 @@ class SQLServerExplainMixin:
         """Check if specific EXPLAIN format is supported."""
         return format_type.upper() in ["XML", "TEXT"]
 
-    def format_explain_statement(self, explain_expr: "ExplainExpression") -> Tuple[str, tuple]:
+    def format_explain_statement(self, explain_expr: "ExplainStatement") -> Tuple[str, tuple]:
         """
         Format EXPLAIN for SQL Server.
 

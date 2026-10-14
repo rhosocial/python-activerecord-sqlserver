@@ -5,7 +5,7 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from ..collation import validate_sqlserver_collation_name
 
 if TYPE_CHECKING:
-    from rhosocial.activerecord.backend.expression.collation import CollateExpression
+    from rhosocial.activerecord.backend.expression.collation import CollateFunction
 
 
 class SQLServerCollationMixin:
@@ -15,7 +15,7 @@ class SQLServerCollationMixin:
         """SQL Server supports expression-level COLLATE."""
         return True
 
-    def validate_collation_name(self, expr: "CollateExpression") -> str:
+    def validate_collation_name(self, expr: "CollateFunction") -> str:
         """Validate SQL Server collation names and return their SQL representation."""
         if "schema" in expr.collation_options:
             raise UnsupportedFeatureError(self.name, "schema-qualified COLLATE")

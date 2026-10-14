@@ -29,8 +29,8 @@ backend.connect()
 dialect = backend.dialect
 
 from rhosocial.activerecord.backend.expression import (
-    CreateTableExpression,
-    InsertExpression,
+    CreateTableStatement,
+    InsertStatement,
     ValuesSource,
 )
 from rhosocial.activerecord.backend.expression.core import Literal
@@ -44,7 +44,7 @@ from rhosocial.activerecord.backend.expression.statements import (
 ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 
-create_table = CreateTableExpression(
+create_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'query_users'),
     columns=[
@@ -69,7 +69,7 @@ users = [
     ('Charlie', 35, 'inactive'),
 ]
 for row in users:
-    insert_expr = InsertExpression(
+    insert_expr = InsertStatement(
         dialect=dialect,
         into=Table(dialect, 'query_users'),
         columns=['name', 'age', 'status'],
@@ -82,7 +82,7 @@ for row in users:
 # SECTION: Business Logic (the pattern to learn)
 # ============================================================
 from rhosocial.activerecord.backend.expression import (
-    QueryExpression,
+    QueryStatement,
     Column,
     WhereClause,
     OrderByClause,
@@ -90,7 +90,7 @@ from rhosocial.activerecord.backend.expression import (
 )
 from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
 
-query = QueryExpression(
+query = QueryStatement(
     dialect=dialect,
     select=[
         Column(dialect, 'id'),
@@ -129,9 +129,9 @@ for row in result.data or []:
 # ============================================================
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
-from rhosocial.activerecord.backend.expression import DropTableExpression
+from rhosocial.activerecord.backend.expression import DropTableStatement
 
-drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'query_users'), if_exists=True)
+drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'query_users'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

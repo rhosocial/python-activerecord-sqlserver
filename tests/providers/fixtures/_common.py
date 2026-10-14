@@ -6,16 +6,16 @@ from __future__ import annotations
 from typing import Tuple
 
 from rhosocial.activerecord.backend.expression import (
-    CreateTableExpression,
-    DropTableExpression,
+    CreateTableStatement,
+    DropTableStatement,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
 
 
-def to_sqlserver_ddl_sql(expr: CreateTableExpression) -> Tuple[str, tuple]:
-    """Generate canonical SQL Server DDL for a :class:`CreateTableExpression`.
+def to_sqlserver_ddl_sql(expr: CreateTableStatement) -> Tuple[str, tuple]:
+    """Generate canonical SQL Server DDL for a :class:`CreateTableStatement`.
 
     No post-processing is required (unlike MySQL where storage option quotes
     must be stripped). This pass-through wrapper exists so the call site is
@@ -24,14 +24,14 @@ def to_sqlserver_ddl_sql(expr: CreateTableExpression) -> Tuple[str, tuple]:
     return expr.to_sql()
 
 
-def create_table_sql(expr: CreateTableExpression) -> Tuple[str, tuple]:
+def create_table_sql(expr: CreateTableStatement) -> Tuple[str, tuple]:
     """Public alias for :func:`to_sqlserver_ddl_sql`."""
     return to_sqlserver_ddl_sql(expr)
 
 
-def drop_table(dialect, table_name: str) -> DropTableExpression:
+def drop_table(dialect, table_name: str) -> DropTableStatement:
     """Build a ``DROP TABLE IF EXISTS table_name`` expression."""
-    return DropTableExpression(
+    return DropTableStatement(
         dialect=dialect,
         table=Table(dialect, table_name),
         if_exists=True,
@@ -105,7 +105,7 @@ def safe_drop_table(backend, dialect, table_name: str) -> None:
     _drop_fk_constraints_for_table(backend, table_name)
     options = ExecutionOptions(stmt_type=StatementType.DDL)
     try:
-        drop_expr = DropTableExpression(
+        drop_expr = DropTableStatement(
             dialect=dialect,
             table=Table(dialect, table_name),
             if_exists=True,
@@ -120,7 +120,7 @@ async def safe_drop_table_async(backend, dialect, table_name: str) -> None:
     await _drop_fk_constraints_for_table_async(backend, table_name)
     options = ExecutionOptions(stmt_type=StatementType.DDL)
     try:
-        drop_expr = DropTableExpression(
+        drop_expr = DropTableStatement(
             dialect=dialect,
             table=Table(dialect, table_name),
             if_exists=True,

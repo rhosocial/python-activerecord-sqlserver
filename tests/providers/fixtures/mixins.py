@@ -7,7 +7,7 @@ Reference: ``tests/rhosocial/activerecord_sqlserver_test/feature/mixins/schema/`
 from typing import Callable, Dict
 
 from rhosocial.activerecord.backend.expression import (
-    CreateTableExpression,
+    CreateTableStatement,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
@@ -27,12 +27,12 @@ from rhosocial.activerecord.backend.expression.types import (
 from . import _common
 
 
-def to_sql(expr: CreateTableExpression):
+def to_sql(expr: CreateTableStatement):
     return _common.to_sqlserver_ddl_sql(expr)
 
 
-def create_combined_articles_table(dialect, table_name: str = "combined_articles") -> CreateTableExpression:
-    return CreateTableExpression(
+def create_combined_articles_table(dialect, table_name: str = "combined_articles") -> CreateTableStatement:
+    return CreateTableStatement(
         dialect=dialect,
         table=Table(dialect, table_name),
         if_not_exists=False,
@@ -57,8 +57,8 @@ def create_combined_articles_table(dialect, table_name: str = "combined_articles
     )
 
 
-def create_tasks_table(dialect, table_name: str = "tasks") -> CreateTableExpression:
-    return CreateTableExpression(
+def create_tasks_table(dialect, table_name: str = "tasks") -> CreateTableStatement:
+    return CreateTableStatement(
         dialect=dialect,
         table=Table(dialect, table_name),
         if_not_exists=False,
@@ -76,8 +76,8 @@ def create_tasks_table(dialect, table_name: str = "tasks") -> CreateTableExpress
     )
 
 
-def create_timestamped_posts_table(dialect, table_name: str = "timestamped_posts") -> CreateTableExpression:
-    return CreateTableExpression(
+def create_timestamped_posts_table(dialect, table_name: str = "timestamped_posts") -> CreateTableStatement:
+    return CreateTableStatement(
         dialect=dialect,
         table=Table(dialect, table_name),
         if_not_exists=False,
@@ -94,8 +94,8 @@ def create_timestamped_posts_table(dialect, table_name: str = "timestamped_posts
     )
 
 
-def create_versioned_products_table(dialect, table_name: str = "versioned_products") -> CreateTableExpression:
-    return CreateTableExpression(
+def create_versioned_products_table(dialect, table_name: str = "versioned_products") -> CreateTableStatement:
+    return CreateTableStatement(
         dialect=dialect,
         table=Table(dialect, table_name),
         if_not_exists=False,

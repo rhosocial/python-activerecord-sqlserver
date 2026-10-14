@@ -129,7 +129,7 @@ class MixinsSyncProvider(MixinsProviderBase, IMixinsSyncProvider):
     def _setup_model(self, model_class: Type[ActiveRecord], scenario_name: str, table_name: str) -> Type[ActiveRecord]:
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
-        from rhosocial.activerecord.backend.expression import DropTableExpression
+        from rhosocial.activerecord.backend.expression import DropTableStatement
         from rhosocial.activerecord.backend.expression.objects import Table
         from providers.fixtures.mixins import TABLE_EXPRESSIONS
         from providers.fixtures._common import to_sqlserver_ddl_sql
@@ -187,7 +187,7 @@ class MixinsAsyncProvider(MixinsProviderBase, IMixinsAsyncProvider):
         from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
         from rhosocial.activerecord.backend.options import ExecutionOptions
         from rhosocial.activerecord.backend.schema import StatementType
-        from rhosocial.activerecord.backend.expression import DropTableExpression
+        from rhosocial.activerecord.backend.expression import DropTableStatement
         from rhosocial.activerecord.backend.expression.objects import Table
         from providers.fixtures.mixins import TABLE_EXPRESSIONS
         from providers.fixtures._common import to_sqlserver_ddl_sql

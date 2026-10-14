@@ -3,7 +3,7 @@
 
 from typing import Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import SQLValueExpression
+from rhosocial.activerecord.backend.expression.bases import SQLValue
 from rhosocial.activerecord.backend.expression.mixins import (
     AliasableMixin,
     ComparisonMixin,
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
 
 
-class SQLServerSpatialLiteralExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSpatialLiteralExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server WKT literal using geometry::STGeomFromText.
 
     Example:
@@ -38,7 +38,7 @@ class SQLServerSpatialLiteralExpression(AliasableMixin, ComparisonMixin, SQLValu
         return "format_spatial_literal"
 
 
-class SQLServerSTGeomFromTextExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSTGeomFromTextExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server geometry::STGeomFromText call.
 
     Example:
@@ -63,7 +63,7 @@ class SQLServerSTGeomFromTextExpression(AliasableMixin, ComparisonMixin, SQLValu
         return "format_st_geom_from_text"
 
 
-class SQLServerSTAsTextExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSTAsTextExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server geometry STAsText method call.
 
     Example:
@@ -86,7 +86,7 @@ class SQLServerSTAsTextExpression(AliasableMixin, ComparisonMixin, SQLValueExpre
         return "format_st_as_text"
 
 
-class SQLServerSTAsGeoJSONExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSTAsGeoJSONExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server geometry STAsGeoJSON method call.
 
     Example:
@@ -109,7 +109,7 @@ class SQLServerSTAsGeoJSONExpression(AliasableMixin, ComparisonMixin, SQLValueEx
         return "format_st_as_geojson"
 
 
-class SQLServerSTDistanceExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSTDistanceExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server geometry STDistance method call.
 
     Example:
@@ -134,7 +134,7 @@ class SQLServerSTDistanceExpression(AliasableMixin, ComparisonMixin, SQLValueExp
         return "format_st_distance"
 
 
-class SQLServerSTWithinExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSTWithinExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server geometry STWithin method call.
 
     Example:
@@ -159,7 +159,7 @@ class SQLServerSTWithinExpression(AliasableMixin, ComparisonMixin, SQLValueExpre
         return "format_st_within"
 
 
-class SQLServerSTContainsExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSTContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server geometry STContains method call.
 
     Example:
@@ -184,7 +184,7 @@ class SQLServerSTContainsExpression(AliasableMixin, ComparisonMixin, SQLValueExp
         return "format_st_contains"
 
 
-class SQLServerSTDistanceSphereExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSTDistanceSphereExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server spherical distance check.
 
     SQL Server has no ST_Distance_Sphere; STDistance is used for planar distance.
@@ -211,7 +211,7 @@ class SQLServerSTDistanceSphereExpression(AliasableMixin, ComparisonMixin, SQLVa
         return "format_st_distance_sphere"
 
 
-class SQLServerSTIntersectsExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSTIntersectsExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server geometry STIntersects method call.
 
     Example:
@@ -236,7 +236,7 @@ class SQLServerSTIntersectsExpression(AliasableMixin, ComparisonMixin, SQLValueE
         return "format_st_intersects"
 
 
-class SQLServerCreateSpatialIndexExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerCreateSpatialIndexExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server CREATE SPATIAL INDEX statement.
 
     Example:

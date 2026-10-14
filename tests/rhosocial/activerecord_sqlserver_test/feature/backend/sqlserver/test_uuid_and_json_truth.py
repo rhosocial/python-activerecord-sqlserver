@@ -17,7 +17,7 @@ from rhosocial.activerecord.backend.expression import (
     Column,
     Literal,
     StringColumn,
-    UUIDCastExpression,
+    UUIDCastFunction,
     UUIDConstantExpression,
     UUIDGenerationExpression,
 )
@@ -76,7 +76,7 @@ def test_constants_are_cast_literals(which, expected):
 
 def test_cast_uses_the_t_sql_form():
     dialect = _dialect()
-    expr = UUIDCastExpression(dialect, Literal(dialect, "not-a-uuid"))
+    expr = UUIDCastFunction(dialect, Literal(dialect, "not-a-uuid"))
     assert expr.to_sql() == ("CAST(? AS UNIQUEIDENTIFIER)", ("not-a-uuid",))
 
 

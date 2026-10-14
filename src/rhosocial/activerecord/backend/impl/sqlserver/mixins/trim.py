@@ -26,7 +26,7 @@ optional alias) is the default's.
 from typing import Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ...expression.advanced_functions import TrimExpression
+    from ...expression.advanced_functions import TrimFunction
 
 
 class SQLServerTrimMixin:
@@ -34,7 +34,7 @@ class SQLServerTrimMixin:
 
     _TRIM_FUNCTIONS = {"BOTH": "TRIM", "LEADING": "LTRIM", "TRAILING": "RTRIM"}
 
-    def format_trim_expression(self, expr: "TrimExpression") -> Tuple[str, Tuple]:
+    def format_trim_expression(self, expr: "TrimFunction") -> Tuple[str, Tuple]:
         """Format a TRIM node in SQL Server's form.
 
         Args:

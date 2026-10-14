@@ -29,7 +29,7 @@ backend = SQLServerBackend(connection_config=config)
 backend.connect()
 dialect = backend.dialect
 
-from rhosocial.activerecord.backend.expression import CreateTableExpression
+from rhosocial.activerecord.backend.expression import CreateTableStatement
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
@@ -42,7 +42,7 @@ from rhosocial.activerecord.backend.schema import StatementType
 ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 
-create_table = CreateTableExpression(
+create_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'json_data'),
     columns=[
@@ -60,14 +60,14 @@ backend.execute(sql, params, options=ddl_options)
 # ============================================================
 # SECTION: Business Logic (the pattern to learn)
 # ============================================================
-from rhosocial.activerecord.backend.expression import InsertExpression, ValuesSource
+from rhosocial.activerecord.backend.expression import InsertStatement, ValuesSource
 from rhosocial.activerecord.backend.expression.core import Literal
 
 # Insert JSON data as string literal
 # Note: SQL Server 2022+ supports JSON_OBJECT function
 json_literal = '{"name": "John", "age": 30, "hobbies": ["reading", "coding"]}'
 
-insert_expr = InsertExpression(
+insert_expr = InsertStatement(
     dialect=dialect,
     into=Table(dialect, 'json_data'),
     columns=['data'],
@@ -82,10 +82,10 @@ print("JSON data inserted")
 # ============================================================
 # For JSON queries, we use raw SQL since JSON_VALUE/JSON_QUERY
 # are SQL Server specific functions not yet available as expressions
-from rhosocial.activerecord.backend.expression import QueryExpression, Column
+from rhosocial.activerecord.backend.expression import QueryStatement, Column
 
 # Basic query to get the JSON data
-query = QueryExpression(
+query = QueryStatement(
     dialect=dialect,
     select=[Column(dialect, 'id'), Column(dialect, 'data')],
     from_=Table(dialect, 'json_data'),
@@ -99,9 +99,9 @@ for row in result.data or []:
 # ============================================================
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
-from rhosocial.activerecord.backend.expression import DropTableExpression
+from rhosocial.activerecord.backend.expression import DropTableStatement
 
-drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'json_data'), if_exists=True)
+drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'json_data'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

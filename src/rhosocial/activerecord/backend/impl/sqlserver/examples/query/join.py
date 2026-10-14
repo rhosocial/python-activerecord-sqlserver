@@ -29,8 +29,8 @@ backend.connect()
 dialect = backend.dialect
 
 from rhosocial.activerecord.backend.expression import (
-    CreateTableExpression,
-    InsertExpression,
+    CreateTableStatement,
+    InsertStatement,
     ValuesSource,
 )
 from rhosocial.activerecord.backend.expression.core import Literal
@@ -45,7 +45,7 @@ from rhosocial.activerecord.backend.expression.statements import (
 
 ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
-users_table = CreateTableExpression(
+users_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'join_users'),
     columns=[
@@ -62,7 +62,7 @@ users_table = CreateTableExpression(
 sql, params = users_table.to_sql()
 backend.execute(sql, params, options=ddl_options)
 
-orders_table = CreateTableExpression(
+orders_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'join_orders'),
     columns=[
@@ -88,7 +88,7 @@ backend.execute(sql, params, options=ddl_options)
 
 users = [('Alice',), ('Bob',)]
 for user in users:
-    insert_expr = InsertExpression(
+    insert_expr = InsertStatement(
         dialect=dialect,
         into=Table(dialect, 'join_users'),
         columns=['name'],
@@ -103,7 +103,7 @@ orders = [
     (2, 150.0),
 ]
 for row in orders:
-    insert_expr = InsertExpression(
+    insert_expr = InsertStatement(
         dialect=dialect,
         into=Table(dialect, 'join_orders'),
         columns=['user_id', 'amount'],
@@ -116,7 +116,7 @@ for row in orders:
 # SECTION: Business Logic (the pattern to learn)
 # ============================================================
 from rhosocial.activerecord.backend.expression import (
-    QueryExpression,
+    QueryStatement,
     Column,
     JoinClause,
 )
@@ -136,7 +136,7 @@ join_expr = JoinClause(
     ),
 )
 
-query = QueryExpression(
+query = QueryStatement(
     dialect=dialect,
     select=[
         Column(dialect, 'name', 'u'),
@@ -161,13 +161,13 @@ for row in result.data or []:
 # ============================================================
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
-from rhosocial.activerecord.backend.expression import DropTableExpression
+from rhosocial.activerecord.backend.expression import DropTableStatement
 
-drop_orders = DropTableExpression(dialect=dialect, table=Table(dialect, 'join_orders'), if_exists=True)
+drop_orders = DropTableStatement(dialect=dialect, table=Table(dialect, 'join_orders'), if_exists=True)
 sql, params = drop_orders.to_sql()
 backend.execute(sql, params, options=ddl_options)
 
-drop_users = DropTableExpression(dialect=dialect, table=Table(dialect, 'join_users'), if_exists=True)
+drop_users = DropTableStatement(dialect=dialect, table=Table(dialect, 'join_users'), if_exists=True)
 sql, params = drop_users.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

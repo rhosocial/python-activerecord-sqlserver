@@ -7,7 +7,7 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from rhosocial.activerecord.backend.dialect import protocols as dialect_protocols
 from rhosocial.activerecord.backend.expression import (
     Column,
-    CreateTableExpression,
+    CreateTableStatement,
     ColumnDefinition,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
@@ -234,7 +234,7 @@ class TestSQLServerCreateTableWithPartition:
             partition_scheme="ps_sales",
         )
 
-        stmt = CreateTableExpression(
+        stmt = CreateTableStatement(
             d, Table(d, "orders"),
             columns=[col_def, col_def2, col_def3],
             partition=partition,
@@ -249,7 +249,7 @@ class TestSQLServerCreateTableWithPartition:
         d = SQLServerDialect(SQL_SERVER_2022)
         pk = ColumnConstraint(d, ColumnConstraintType.PRIMARY_KEY)
         col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
-        stmt = CreateTableExpression(
+        stmt = CreateTableStatement(
             d, Table(d, "users"),
             columns=[col_def],
         )
@@ -265,7 +265,7 @@ class TestSQLServerCreateTableWithPartition:
         col_def = ColumnDefinition(d, "id", IntegerType(d), constraints=[pk])
         col = Column(d, "id")
         partition = SQLServerPartitionByRangeClause(d, [col], "ps_test")
-        stmt = CreateTableExpression(
+        stmt = CreateTableStatement(
             d, Table(d, "test"),
             columns=[col_def],
             partition=partition,

@@ -51,8 +51,8 @@ SQL_SERVER_2022 = (16, 0, 0)
 
 
 def _make_query(d, columns=("id", "name"), from_="users", where=None):
-    from rhosocial.activerecord.backend.expression import Column, QueryExpression
-    return QueryExpression(
+    from rhosocial.activerecord.backend.expression import Column, QueryStatement
+    return QueryStatement(
         dialect=d,
         select=[Column(d, col) for col in columns],
         from_=Table(d, from_),
@@ -69,7 +69,7 @@ class TestMemoryOptimizedTables:
 
     def _create_table(self, d, memory_optimized=True, durability="SCHEMA_ONLY",
                       hash_indexes=None):
-        from rhosocial.activerecord.backend.expression import CreateTableExpression
+        from rhosocial.activerecord.backend.expression import CreateTableStatement
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraint,
             ColumnConstraintType,
@@ -100,7 +100,7 @@ class TestMemoryOptimizedTables:
             table_options = SQLServerCreateTableOptions(
                 d, memory_optimized=True, durability=durability
             )
-        return CreateTableExpression(
+        return CreateTableStatement(
             d, Table(d, "t"), [col], indexes=indexes, table_options=table_options
         )
 
@@ -198,7 +198,7 @@ class TestMemoryOptimizedTables:
         assert params == ()
 
     def test_create_table_with_hash_index_missing_bucket_count(self, dialect):
-        from rhosocial.activerecord.backend.expression import CreateTableExpression
+        from rhosocial.activerecord.backend.expression import CreateTableStatement
         from rhosocial.activerecord.backend.expression.statements import (
             ColumnConstraint,
             ColumnConstraintType,
@@ -212,7 +212,7 @@ class TestMemoryOptimizedTables:
 
         col = ColumnDefinition(dialect, "id", IntegerType(dialect))
         col.constraints.append(ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY))
-        ct = CreateTableExpression(
+        ct = CreateTableStatement(
             dialect,
             Table(dialect, "t"),
             [col],
@@ -249,9 +249,9 @@ class TestIndexedView:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def _view(self, d, view_name="v", columns=("id", "name")):
-        from rhosocial.activerecord.backend.expression import CreateViewExpression
+        from rhosocial.activerecord.backend.expression import CreateViewStatement
 
-        return CreateViewExpression(d, View(d, view_name), _make_query(d, columns))
+        return CreateViewStatement(d, View(d, view_name), _make_query(d, columns))
 
     def test_supports_indexed_view(self):
         assert SQLServerDialect(SQL_SERVER_2005).supports_indexed_view() is True
@@ -276,11 +276,11 @@ class TestIndexedView:
 
     def test_create_view_with_schemabinding_option(self, dialect):
         from rhosocial.activerecord.backend.expression import (
-            CreateViewExpression,
+            CreateViewStatement,
             ViewOptions,
         )
 
-        view = CreateViewExpression(
+        view = CreateViewStatement(
             dialect,
             View(dialect, "v"),
             _make_query(dialect),

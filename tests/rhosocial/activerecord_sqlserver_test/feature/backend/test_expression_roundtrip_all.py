@@ -125,7 +125,7 @@ from rhosocial.activerecord.backend.expression.statements.dml import (
     MergeAction,
     MergeActionType,
 )
-from rhosocial.activerecord.backend.expression.statements.dql import QueryExpression
+from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.expression.types.custom import CustomType
 from rhosocial.activerecord.backend.expression.uuid import UUIDConstantExpression
@@ -247,7 +247,7 @@ def _one_column_query(dialect):
     Used by the CREATE VIEW and materialized-view registrations, where the
     guess would otherwise supply a bare string for the query slot.
     """
-    return QueryExpression(
+    return QueryStatement(
         dialect, select=[Column(dialect, "id")], from_=_table_obj(dialect)
     )
 
@@ -279,8 +279,8 @@ def register_specials():
     )
     # CREATE VIEW needs a query, and the guess supplies the string "x" for it.
     register_special_constructor(
-        "statements.ddl_view.CreateViewExpression",
-        lambda d: ddl_view.CreateViewExpression(
+        "statements.ddl_view.CreateViewStatement",
+        lambda d: ddl_view.CreateViewStatement(
             d, view=_view_obj(d), query=_one_column_query(d)
         ),
     )
@@ -293,15 +293,15 @@ def register_specials():
 
     # -- containers that must not be empty ----------------------------------
     from rhosocial.activerecord.backend.expression.advanced_functions import (
-        CaseExpression,
+        CaseFunction,
         WindowClause,
         WindowDefinition,
         WindowSpecification,
     )
 
     register_special_constructor(
-        "advanced_functions.CaseExpression",
-        lambda d: CaseExpression(
+        "advanced_functions.CaseFunction",
+        lambda d: CaseFunction(
             d, cases=[(_column_predicate(d), Literal(d, 1))], else_result=Literal(d, 0)
         ),
     )
@@ -329,11 +329,11 @@ def register_specials():
     # The guess supplies the string "x", which SQL Server's collation validator
     # rightly refuses.
     register_special_constructor(
-        "collation.CollateExpression",
+        "collation.CollateFunction",
         lambda d: __import__(
             "rhosocial.activerecord.backend.expression.collation",
-            fromlist=["CollateExpression"],
-        ).CollateExpression(d, Column(d, "a"), _sqlserver_collation(d)),
+            fromlist=["CollateFunction"],
+        ).CollateFunction(d, Column(d, "a"), _sqlserver_collation(d)),
     )
 
     # -- ALTER TABLE actions ------------------------------------------------
@@ -374,8 +374,8 @@ def register_specials():
     # overlap, because ``make_instance`` returns the **first** registry key whose
     # suffix matches -- and the testsuite populates its registry at import time,
     # so a new, shorter key is never consulted for a class an earlier, longer key
-    # already claims. Registering ``ddl_type.CreateTypeExpression`` next to the
-    # testsuite's ``statements.ddl_type.CreateTypeExpression`` would be silent
+    # already claims. Registering ``ddl_type.CreateTypeStatement`` next to the
+    # testsuite's ``statements.ddl_type.CreateTypeStatement`` would be silent
     # dead code; re-using the key replaces the entry. That is why the two TYPE
     # registrations below keep the ``statements.`` prefix.
     from rhosocial.activerecord.backend.expression.statements import (
@@ -385,45 +385,45 @@ def register_specials():
     )
 
     register_special_constructor(
-        "ddl_truncate.TruncateExpression",
-        lambda d: ddl_truncate.TruncateExpression(d, _table_obj(d)),
+        "ddl_truncate.TruncateStatement",
+        lambda d: ddl_truncate.TruncateStatement(d, _table_obj(d)),
     )
     register_special_constructor(
-        "ddl_table.CreateTableExpression",
-        lambda d: ddl_table.CreateTableExpression(d, _table_obj(d), [_integer_column(d)]),
+        "ddl_table.CreateTableStatement",
+        lambda d: ddl_table.CreateTableStatement(d, _table_obj(d), [_integer_column(d)]),
     )
     register_special_constructor(
-        "ddl_table.DropTableExpression",
-        lambda d: ddl_table.DropTableExpression(d, _table_obj(d)),
+        "ddl_table.DropTableStatement",
+        lambda d: ddl_table.DropTableStatement(d, _table_obj(d)),
     )
     register_special_constructor(
-        "ddl_view.DropViewExpression",
-        lambda d: ddl_view.DropViewExpression(d, _view_obj(d)),
+        "ddl_view.DropViewStatement",
+        lambda d: ddl_view.DropViewStatement(d, _view_obj(d)),
     )
     register_special_constructor(
-        "ddl_index.DropFulltextIndexExpression",
-        lambda d: ddl_index.DropFulltextIndexExpression(
+        "ddl_index.DropFulltextIndexStatement",
+        lambda d: ddl_index.DropFulltextIndexStatement(
             d, _index_obj(d), _table_obj(d)
         ),
     )
     register_special_constructor(
-        "ddl_index.CreateFulltextIndexExpression",
-        lambda d: ddl_index.CreateFulltextIndexExpression(
+        "ddl_index.CreateFulltextIndexStatement",
+        lambda d: ddl_index.CreateFulltextIndexStatement(
             d, index=_index_obj(d), table=_table_obj(d), columns=["a"]
         ),
     )
     # A COMMENT ON is DDL: its comment must render as a literal rather than a
     # bind parameter, so the guess's bare string is replaced by one with a name.
     register_special_constructor(
-        "ddl_comment.CommentOnExpression",
-        lambda d: ddl_comment.CommentOnExpression(d, "table", _table_obj(d), comment="c"),
+        "ddl_comment.CommentOnStatement",
+        lambda d: ddl_comment.CommentOnStatement(d, "table", _table_obj(d), comment="c"),
     )
     register_special_constructor(
-        "ddl_trigger.DropTriggerExpression",
+        "ddl_trigger.DropTriggerStatement",
         lambda d: __import__(
             "rhosocial.activerecord.backend.expression.statements.ddl_trigger",
-            fromlist=["DropTriggerExpression"],
-        ).DropTriggerExpression(d, Trigger(d, "trg")),
+            fromlist=["DropTriggerStatement"],
+        ).DropTriggerStatement(d, Trigger(d, "trg")),
     )
     # A TYPE definition must be a definition object, and the one the testsuite
     # registers is the Dummy's -- which SQL Server cannot spell, so the statement
@@ -431,8 +431,8 @@ def register_specials():
     # alias definition is used instead, so it renders and the round-trip is
     # asserted. Same key as the testsuite's, deliberately.
     register_special_constructor(
-        "statements.ddl_type.CreateTypeExpression",
-        lambda d: ddl_type.CreateTypeExpression(
+        "statements.ddl_type.CreateTypeStatement",
+        lambda d: ddl_type.CreateTypeStatement(
             d, _type_obj(d), _alias_type_definition(d)
         ),
     )
@@ -449,8 +449,8 @@ def register_specials():
         ),
     )
     register_special_constructor(
-        "dml.MergeExpression",
-        lambda d: dml.MergeExpression(
+        "dml.MergeStatement",
+        lambda d: dml.MergeStatement(
             d,
             target_table=_table_obj(d),
             source=NamedRelationRef(d, Table(d, "src")),
@@ -816,7 +816,7 @@ LEGITIMATE_NON_RENDERS = {
         NotImplementedError,
         _NO_FORMATTER,
     ),
-    "rhosocial.activerecord.backend.expression.bases.SQLValueExpression": (
+    "rhosocial.activerecord.backend.expression.bases.SQLValue": (
         NotImplementedError,
         _NO_FORMATTER,
     ),
@@ -910,7 +910,7 @@ LEGITIMATE_NON_RENDERS = {
     "rhosocial.activerecord.backend.expression.xml.XMLElementExpression": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    "rhosocial.activerecord.backend.expression.xml.XMLExistsExpression": (
+    "rhosocial.activerecord.backend.expression.xml.XMLExistsPredicate": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
     "rhosocial.activerecord.backend.expression.xml.XMLForestExpression": (
@@ -937,13 +937,13 @@ LEGITIMATE_NON_RENDERS = {
     # CREATE/ALTER/DROP DOMAIN (nine): SQL Server has no DOMAIN. The three
     # statements and their five actions plus the check constraint and the domain
     # value all name a formatter the dialect does not have.
-    "rhosocial.activerecord.backend.expression.statements.ddl_domain.CreateDomainExpression": (
+    "rhosocial.activerecord.backend.expression.statements.ddl_domain.CreateDomainStatement": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    "rhosocial.activerecord.backend.expression.statements.ddl_domain.AlterDomainExpression": (
+    "rhosocial.activerecord.backend.expression.statements.ddl_domain.AlterDomainStatement": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    "rhosocial.activerecord.backend.expression.statements.ddl_domain.DropDomainExpression": (
+    "rhosocial.activerecord.backend.expression.statements.ddl_domain.DropDomainStatement": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
     "rhosocial.activerecord.backend.expression.statements.ddl_domain.DomainCheckConstraint": (
@@ -988,13 +988,13 @@ LEGITIMATE_NON_RENDERS = {
     "rhosocial.activerecord.backend.expression.graph.TablePropertiesClause": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    "rhosocial.activerecord.backend.expression.graph.CreatePropertyGraphExpression": (
+    "rhosocial.activerecord.backend.expression.graph.CreatePropertyGraphStatement": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    "rhosocial.activerecord.backend.expression.graph.AlterPropertyGraphExpression": (
+    "rhosocial.activerecord.backend.expression.graph.AlterPropertyGraphStatement": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    "rhosocial.activerecord.backend.expression.graph.DropPropertyGraphExpression": (
+    "rhosocial.activerecord.backend.expression.graph.DropPropertyGraphStatement": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
     # PIVOT / UNPIVOT (two): SQL Server spells PIVOT its own way, through
@@ -1007,7 +1007,7 @@ LEGITIMATE_NON_RENDERS = {
     ),
     # COMMENT ON: SQL Server has no standalone COMMENT ON statement, which the
     # dialect's negative list records as CommentSupport.
-    "rhosocial.activerecord.backend.expression.statements.ddl_comment.CommentOnExpression": (
+    "rhosocial.activerecord.backend.expression.statements.ddl_comment.CommentOnStatement": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
 
@@ -1055,7 +1055,7 @@ LEGITIMATE_NON_RENDERS = {
     # ``(table, columns, key_index, catalog_name)`` where core's takes the
     # expression, and ``format_create_function_statement`` takes a
     # ``SQLServerCreateFunctionExpression`` where core's takes a
-    # ``CreateFunctionExpression``. So when the core expression dispatches --
+    # ``CreateFunctionStatement``. So when the core expression dispatches --
     # which is what ``format_method`` does -- it calls a function whose
     # signature it cannot satisfy.
     #
@@ -1066,19 +1066,19 @@ LEGITIMATE_NON_RENDERS = {
     # own expressions at the renamed methods. That is a rename across five files
     # and four protocol declarations, which is its own change with its own
     # review; it is not smuggled in here behind a comment.
-    "rhosocial.activerecord.backend.expression.statements.ddl_index.CreateFulltextIndexExpression": (
+    "rhosocial.activerecord.backend.expression.statements.ddl_index.CreateFulltextIndexStatement": (
         TypeError,
         "missing 3 required positional arguments",
     ),
-    "rhosocial.activerecord.backend.expression.statements.ddl_index.DropFulltextIndexExpression": (
+    "rhosocial.activerecord.backend.expression.statements.ddl_index.DropFulltextIndexStatement": (
         ValueError,
         "name must be a non-empty string",
     ),
-    "rhosocial.activerecord.backend.expression.statements.ddl_function.CreateFunctionExpression": (
+    "rhosocial.activerecord.backend.expression.statements.ddl_function.CreateFunctionStatement": (
         ValueError,
         "function name is required",
     ),
-    "rhosocial.activerecord.backend.expression.statements.ddl_trigger.DropTriggerExpression": (
+    "rhosocial.activerecord.backend.expression.statements.ddl_trigger.DropTriggerStatement": (
         ValueError,
         "trigger name is required",
     ),

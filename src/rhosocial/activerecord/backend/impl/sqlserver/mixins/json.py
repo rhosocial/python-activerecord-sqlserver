@@ -27,8 +27,8 @@ class SQLServerJSONMixin:
 
         Args:
             expr: The JSON path node to format -- a
-                JSONDocumentExpression for ``->``, a
-                JSONTextExpression for ``->>``.
+                JSONDocumentValue for ``->``, a
+                JSONTextValue for ``->>``.
 
         Returns:
             (SQL string, params tuple).

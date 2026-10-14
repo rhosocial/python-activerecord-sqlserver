@@ -2,9 +2,9 @@
 """SQL Server-specific DDL expression fixtures for the testsuite providers.
 
 Each module in this package exposes a ``TABLE_EXPRESSIONS`` mapping of
-table name -> factory callable ``Callable[[DialectLike, str], CreateTableExpression]``.
+table name -> factory callable ``Callable[[DialectLike, str], CreateTableStatement]``.
 
-The factory functions build :class:`CreateTableExpression` instances that emit
+The factory functions build :class:`CreateTableStatement` instances that emit
 SQL Server-compatible DDL (INT IDENTITY / NVARCHAR / DATETIME2 / TINYINT / JSON).
 The pre-existing ``.sql`` schema files under
 ``tests/rhosocial/activerecord_sqlserver_test/feature/<feature>/schema/``

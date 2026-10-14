@@ -2,7 +2,7 @@
 """Guard: the four master probes that gate clauses SQL Server cannot spell.
 
 The round gated three previously-decorative master probes behind real call
-sites in core (``format_cte_expression`` consults ``supports_materialized_cte``,
+sites in core (``format_cte_clause`` consults ``supports_materialized_cte``,
 ``format_truncate_statement`` consults ``supports_truncate``, and the new
 ``supports_with_data_clause`` decides ``WITH [NO] DATA`` on CTAS / materialized
 view create / materialized view refresh), and added ``supports_transaction_wait``
@@ -35,7 +35,7 @@ Measured answers (SQL Server 2019 / 2022 / 2025, port 11433 / 11434 / 11435,
 Scope notes:
 
 * ``supports_materialized_cte`` and ``supports_with_data_clause`` are consulted
-  by core formatters this dialect inherits (``format_cte_expression``,
+  by core formatters this dialect inherits (``format_cte_clause``,
   ``format_create_table_as_statement``), so the load-bearing walk flips them
   through a subclass and checks the core render/refuse paths.
 * Materialized view create / refresh are refused *as statements* by this
@@ -44,7 +44,7 @@ Scope notes:
   pretending a clause-level refusal exists for a statement that does not exist.
 * ``supports_truncate`` and ``supports_transaction_wait`` are consulted by this
   backend's own formatters (``format_truncate_statement``,
-  ``format_begin_transaction`` / ``format_set_transaction``), which is where the
+  ``format_begin_transaction_statement`` / ``format_set_transaction``), which is where the
   pre-fix defects lived: the probes' answers could not change the behaviour.
 
 The guard is deliberately able to fail: ``TestTheGuardCanSeeADroppingFormatter``
@@ -60,20 +60,20 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.core import Column
 from rhosocial.activerecord.backend.expression.objects import MaterializedView, Table
-from rhosocial.activerecord.backend.expression.query_sources import CTEExpression
+from rhosocial.activerecord.backend.expression.query_sources import CTEClause
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
-    CreateTableAsExpression,
+    CreateTableAsStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_truncate import (
-    TruncateExpression,
+    TruncateStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_view import (
-    CreateMaterializedViewExpression,
-    RefreshMaterializedViewExpression,
+    CreateMaterializedViewStatement,
+    RefreshMaterializedViewStatement,
 )
-from rhosocial.activerecord.backend.expression.statements.dql import QueryExpression
+from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
 from rhosocial.activerecord.backend.expression.transaction import (
-    BeginTransactionExpression,
+    BeginTransactionStatement,
     SetTransactionExpression,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -93,7 +93,7 @@ def _table(d, name="mp_guard_t"):
 
 
 def _query(d):
-    return QueryExpression(d, select=[Column(d, "a")], from_=_table(d, "s"))
+    return QueryStatement(d, select=[Column(d, "a")], from_=_table(d, "s"))
 
 
 def _declaring_class(probe_name):
@@ -133,7 +133,7 @@ MASTER_PROBE_CASES = (
         True,
         "TRUNCATE",
         r"TRUNCATE TABLE",
-        lambda d: TruncateExpression(d, _table(d)),
+        lambda d: TruncateStatement(d, _table(d)),
     ),
     MasterProbeCase(
         "materialized-cte",
@@ -141,7 +141,7 @@ MASTER_PROBE_CASES = (
         False,
         "MATERIALIZED CTE",
         r"AS MATERIALIZED",
-        lambda d: CTEExpression(d, "c", _query(d), materialized=True),
+        lambda d: CTEClause(d, "c", _query(d), materialized=True),
     ),
     MasterProbeCase(
         "not-materialized-cte",
@@ -149,7 +149,7 @@ MASTER_PROBE_CASES = (
         False,
         "NOT MATERIALIZED CTE",
         r"AS NOT MATERIALIZED",
-        lambda d: CTEExpression(d, "c", _query(d), not_materialized=True),
+        lambda d: CTEClause(d, "c", _query(d), not_materialized=True),
     ),
     MasterProbeCase(
         "ctas-with-data",
@@ -157,7 +157,7 @@ MASTER_PROBE_CASES = (
         False,
         "WITH DATA",
         r"WITH DATA",
-        lambda d: CreateTableAsExpression(d, _table(d), _query(d), with_data=True),
+        lambda d: CreateTableAsStatement(d, _table(d), _query(d), with_data=True),
     ),
     MasterProbeCase(
         "ctas-no-data",
@@ -165,7 +165,7 @@ MASTER_PROBE_CASES = (
         False,
         "WITH NO DATA",
         r"WITH NO DATA",
-        lambda d: CreateTableAsExpression(d, _table(d), _query(d), no_data=True),
+        lambda d: CreateTableAsStatement(d, _table(d), _query(d), no_data=True),
     ),
     MasterProbeCase(
         "begin-wait",
@@ -173,7 +173,7 @@ MASTER_PROBE_CASES = (
         False,
         "transaction WAIT",
         r"(?<!NO )\bWAIT\b",
-        lambda d: BeginTransactionExpression(d, wait=True),
+        lambda d: BeginTransactionStatement(d, wait=True),
     ),
     MasterProbeCase(
         "begin-no-wait",
@@ -181,7 +181,7 @@ MASTER_PROBE_CASES = (
         False,
         "transaction NO WAIT",
         r"\bNO WAIT\b",
-        lambda d: BeginTransactionExpression(d, no_wait=True),
+        lambda d: BeginTransactionStatement(d, no_wait=True),
     ),
     MasterProbeCase(
         "set-wait",
@@ -354,7 +354,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionExpression, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionExpression],
         ids=["begin", "set"],
     )
     def test_wait_is_refused_by_name(self, expression_cls):
@@ -366,7 +366,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionExpression, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionExpression],
         ids=["begin", "set"],
     )
     def test_no_wait_is_refused_by_name(self, expression_cls):
@@ -377,7 +377,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionExpression, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionExpression],
         ids=["begin", "set"],
     )
     def test_both_wait_and_no_wait_are_mutually_exclusive(self, expression_cls):
@@ -387,7 +387,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
             expression_cls(_dialect(), wait=True, no_wait=True)
 
     def test_neither_set_renders_no_clause(self):
-        sql, _params = BeginTransactionExpression(_dialect()).to_sql()
+        sql, _params = BeginTransactionStatement(_dialect()).to_sql()
         assert "WAIT" not in sql, sql
 
 
@@ -395,7 +395,7 @@ class TestTheTruncateFormatterFollowsTheProbe:
     """The SQL Server TRUNCATE override must consult ``supports_truncate()``."""
 
     def test_stock_renders_truncate_table(self):
-        sql, params = TruncateExpression(_dialect(), _table(_dialect())).to_sql()
+        sql, params = TruncateStatement(_dialect(), _table(_dialect())).to_sql()
         assert sql == "TRUNCATE TABLE [mp_guard_t]", sql
         assert params == ()
 
@@ -405,7 +405,7 @@ class TestTheTruncateFormatterFollowsTheProbe:
                 return False
 
         with pytest.raises(UnsupportedFeatureError) as excinfo:
-            TruncateExpression(NoTruncateDialect(SQL_SERVER_2022), _table(_dialect())).to_sql()
+            TruncateStatement(NoTruncateDialect(SQL_SERVER_2022), _table(_dialect())).to_sql()
         assert "TRUNCATE" in str(excinfo.value), str(excinfo.value)
 
 
@@ -413,11 +413,11 @@ class TestTheOtherThreeFormattersConsumeTheSpelling:
     """Focused checks that the request is never silently dropped."""
 
     def test_plain_cte_is_not_gated_by_the_materialized_probe(self):
-        sql, _params = CTEExpression(_dialect(), "c", _query(_dialect())).to_sql()
+        sql, _params = CTEClause(_dialect(), "c", _query(_dialect())).to_sql()
         assert "MATERIALIZED" not in sql, sql
 
     def test_ctas_without_the_clause_is_not_gated(self):
-        sql, _params = CreateTableAsExpression(
+        sql, _params = CreateTableAsStatement(
             _dialect(), _table(_dialect()), _query(_dialect())
         ).to_sql()
         assert "WITH DATA" not in sql, sql
@@ -431,13 +431,13 @@ class TestTheOtherThreeFormattersConsumeTheSpelling:
         """
         for builder, feature in (
             (
-                lambda d: CreateMaterializedViewExpression(
+                lambda d: CreateMaterializedViewStatement(
                     d, MaterializedView(d, "mv"), _query(d), with_data=True
                 ),
                 "CREATE MATERIALIZED VIEW",
             ),
             (
-                lambda d: RefreshMaterializedViewExpression(
+                lambda d: RefreshMaterializedViewStatement(
                     d, MaterializedView(d, "mv"), with_data=True
                 ),
                 "REFRESH MATERIALIZED VIEW",
@@ -509,7 +509,7 @@ class TestTheGuardCanSeeADroppingFormatter:
                 # The declaration says yes; the formatter below ignores it.
                 return True
 
-            def format_begin_transaction(self, expr):
+            def format_begin_transaction_statement(self, expr):
                 # The pre-fix shape: the wait pair was not read at all, so no
                 # spelling followed the declaration.
                 return "BEGIN TRANSACTION", ()

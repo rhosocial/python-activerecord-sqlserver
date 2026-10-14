@@ -43,9 +43,9 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.objects import Sequence
 from rhosocial.activerecord.backend.expression.statements.ddl_sequence import (
-    AlterSequenceExpression,
-    CreateSequenceExpression,
-    DropSequenceExpression,
+    AlterSequenceStatement,
+    CreateSequenceStatement,
+    DropSequenceStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
     SQL_SERVER_2022,
@@ -85,97 +85,97 @@ class _ProbeCase(NamedTuple):
 #: dialect's; all three consult this dialect's probes.
 SEQUENCE_OPTION_PROBES = [
     _ProbeCase(
-        "create-if-not-exists", "CREATE", CreateSequenceExpression,
+        "create-if-not-exists", "CREATE", CreateSequenceStatement,
         "if_not_exists", "CREATE SEQUENCE IF NOT EXISTS",
         "supports_sequence_if_not_exists", {"if_not_exists": True},
     ),
     _ProbeCase(
-        "create-start", "CREATE", CreateSequenceExpression,
+        "create-start", "CREATE", CreateSequenceStatement,
         "start", "SEQUENCE START",
         "supports_sequence_start", {"start": 1},
     ),
     _ProbeCase(
-        "create-increment", "CREATE", CreateSequenceExpression,
+        "create-increment", "CREATE", CreateSequenceStatement,
         "increment", "SEQUENCE INCREMENT",
         "supports_sequence_increment", {"increment": 1},
     ),
     _ProbeCase(
-        "create-minvalue", "CREATE", CreateSequenceExpression,
+        "create-minvalue", "CREATE", CreateSequenceStatement,
         "minvalue", "SEQUENCE MINVALUE",
         "supports_sequence_minvalue", {"minvalue": 1},
     ),
     _ProbeCase(
-        "create-maxvalue", "CREATE", CreateSequenceExpression,
+        "create-maxvalue", "CREATE", CreateSequenceStatement,
         "maxvalue", "SEQUENCE MAXVALUE",
         "supports_sequence_maxvalue", {"maxvalue": 1000},
     ),
     _ProbeCase(
-        "create-cycle", "CREATE", CreateSequenceExpression,
+        "create-cycle", "CREATE", CreateSequenceStatement,
         "cycle", "SEQUENCE CYCLE",
         "supports_sequence_cycle", {"cycle": True},
     ),
     _ProbeCase(
-        "create-cache", "CREATE", CreateSequenceExpression,
+        "create-cache", "CREATE", CreateSequenceStatement,
         "cache", "SEQUENCE CACHE",
         "supports_sequence_cache", {"cache": 10},
     ),
     _ProbeCase(
-        "create-order", "CREATE", CreateSequenceExpression,
+        "create-order", "CREATE", CreateSequenceStatement,
         "order", "SEQUENCE ORDER",
         "supports_sequence_order", {"order": True},
     ),
     _ProbeCase(
-        "create-owned-by", "CREATE", CreateSequenceExpression,
+        "create-owned-by", "CREATE", CreateSequenceStatement,
         "owned_by", "SEQUENCE OWNED BY",
         "supports_sequence_owned_by", {"owned_by": "dbo.orders.id"},
     ),
     _ProbeCase(
-        "alter-start", "ALTER", AlterSequenceExpression,
+        "alter-start", "ALTER", AlterSequenceStatement,
         "start", "ALTER SEQUENCE START",
         "supports_alter_sequence_start", {"start": 1},
     ),
     _ProbeCase(
-        "alter-increment", "ALTER", AlterSequenceExpression,
+        "alter-increment", "ALTER", AlterSequenceStatement,
         "increment", "ALTER SEQUENCE INCREMENT",
         "supports_sequence_increment", {"increment": 1},
     ),
     _ProbeCase(
-        "alter-minvalue", "ALTER", AlterSequenceExpression,
+        "alter-minvalue", "ALTER", AlterSequenceStatement,
         "minvalue", "ALTER SEQUENCE MINVALUE",
         "supports_sequence_minvalue", {"minvalue": 1},
     ),
     _ProbeCase(
-        "alter-maxvalue", "ALTER", AlterSequenceExpression,
+        "alter-maxvalue", "ALTER", AlterSequenceStatement,
         "maxvalue", "ALTER SEQUENCE MAXVALUE",
         "supports_sequence_maxvalue", {"maxvalue": 1000},
     ),
     _ProbeCase(
-        "alter-cycle", "ALTER", AlterSequenceExpression,
+        "alter-cycle", "ALTER", AlterSequenceStatement,
         "cycle", "ALTER SEQUENCE CYCLE",
         "supports_sequence_cycle", {"cycle": True},
     ),
     _ProbeCase(
-        "alter-cache", "ALTER", AlterSequenceExpression,
+        "alter-cache", "ALTER", AlterSequenceStatement,
         "cache", "ALTER SEQUENCE CACHE",
         "supports_sequence_cache", {"cache": 10},
     ),
     _ProbeCase(
-        "alter-order", "ALTER", AlterSequenceExpression,
+        "alter-order", "ALTER", AlterSequenceStatement,
         "order", "ALTER SEQUENCE ORDER",
         "supports_sequence_order", {"order": True},
     ),
     _ProbeCase(
-        "alter-no-order", "ALTER", AlterSequenceExpression,
+        "alter-no-order", "ALTER", AlterSequenceStatement,
         "NO ORDER", "ALTER SEQUENCE ORDER",
         "supports_sequence_order", {"no_order": True},
     ),
     _ProbeCase(
-        "alter-owned-by", "ALTER", AlterSequenceExpression,
+        "alter-owned-by", "ALTER", AlterSequenceStatement,
         "owned_by", "ALTER SEQUENCE OWNED BY",
         "supports_sequence_owned_by", {"owned_by": "dbo.orders.id"},
     ),
     _ProbeCase(
-        "drop-if-exists", "DROP", DropSequenceExpression,
+        "drop-if-exists", "DROP", DropSequenceStatement,
         "if_exists", "DROP SEQUENCE IF EXISTS",
         "supports_sequence_if_exists", {"if_exists": True},
     ),
@@ -355,8 +355,8 @@ class TestTheDefaultPolarityAlsoFollowsTheProbe:
     @pytest.mark.parametrize(
         "statement,expression_cls",
         [
-            ("CREATE", CreateSequenceExpression),
-            ("ALTER", AlterSequenceExpression),
+            ("CREATE", CreateSequenceStatement),
+            ("ALTER", AlterSequenceStatement),
         ],
         ids=["create", "alter"],
     )

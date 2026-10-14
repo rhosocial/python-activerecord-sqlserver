@@ -7,7 +7,7 @@ Reference: ``tests/rhosocial/activerecord_sqlserver_test/feature/events/schema/`
 from typing import Callable, Dict
 
 from rhosocial.activerecord.backend.expression import (
-    CreateTableExpression,
+    CreateTableStatement,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
@@ -25,12 +25,12 @@ from rhosocial.activerecord.backend.expression.types import (
 from . import _common
 
 
-def to_sql(expr: CreateTableExpression):
+def to_sql(expr: CreateTableStatement):
     return _common.to_sqlserver_ddl_sql(expr)
 
 
-def create_event_tests_table(dialect, table_name: str = "event_tests") -> CreateTableExpression:
-    return CreateTableExpression(
+def create_event_tests_table(dialect, table_name: str = "event_tests") -> CreateTableStatement:
+    return CreateTableStatement(
         dialect=dialect,
         table=Table(dialect, table_name),
         if_not_exists=False,
@@ -54,8 +54,8 @@ def create_event_tests_table(dialect, table_name: str = "event_tests") -> Create
 
 def create_event_tracking_models_table(
     dialect, table_name: str = "event_tracking_models"
-) -> CreateTableExpression:
-    return CreateTableExpression(
+) -> CreateTableStatement:
+    return CreateTableStatement(
         dialect=dialect,
         table=Table(dialect, table_name),
         if_not_exists=False,

@@ -3,7 +3,7 @@
 
 from typing import List, Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import SQLValueExpression
+from rhosocial.activerecord.backend.expression.bases import SQLValue
 from rhosocial.activerecord.backend.expression.mixins import (
     AliasableMixin,
     ComparisonMixin,
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
 
 
-class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server SET literal expression (comma-separated values in VARCHAR).
 
     SQL Server stores comma-separated values in VARCHAR columns.
@@ -40,7 +40,7 @@ class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValueExp
         return "format_set_literal"
 
 
-class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server FIND_IN_SET equivalent using LIKE predicate.
 
     SQL Server has no FIND_IN_SET; membership is checked with a LIKE predicate.
@@ -67,7 +67,7 @@ class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpr
         return "format_find_in_set"
 
 
-class SQLServerSetContainsExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSetContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server SET containment predicate as AND-ed membership checks.
 
     Example:

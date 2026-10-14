@@ -10,7 +10,7 @@ from typing import Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.expression.uuid import (
-        UUIDCastExpression,
+        UUIDCastFunction,
         UUIDGenerationExpression,
     )
 

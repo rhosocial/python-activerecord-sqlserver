@@ -8,9 +8,9 @@ from rhosocial.activerecord.backend.expression.objects import Database
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements.ddl_database import (
-        AlterDatabaseExpression,
-        CreateDatabaseExpression,
-        DropDatabaseExpression,
+        AlterDatabaseStatement,
+        CreateDatabaseStatement,
+        DropDatabaseStatement,
     )
 
 
@@ -46,7 +46,7 @@ class SQLServerDatabaseMixin:
         return True
 
     def format_create_database_statement(
-        self, expr: CreateDatabaseExpression
+        self, expr: CreateDatabaseStatement
     ) -> Tuple[str, tuple]:
         """Format CREATE DATABASE for SQL Server.
 
@@ -57,7 +57,7 @@ class SQLServerDatabaseMixin:
         """
         if not isinstance(expr.database, Database):
             raise TypeError(
-                f"CreateDatabaseExpression.database must be a Database, "
+                f"CreateDatabaseStatement.database must be a Database, "
                 f"got {type(expr.database).__name__}"
             )
         parts = ["CREATE DATABASE"]
@@ -69,7 +69,7 @@ class SQLServerDatabaseMixin:
         return " ".join(parts), ()
 
     def format_drop_database_statement(
-        self, expr: DropDatabaseExpression
+        self, expr: DropDatabaseStatement
     ) -> Tuple[str, tuple]:
         """Format DROP DATABASE for SQL Server.
 
@@ -80,13 +80,13 @@ class SQLServerDatabaseMixin:
         """
         if not isinstance(expr.database, Database):
             raise TypeError(
-                f"DropDatabaseExpression.database must be a Database, "
+                f"DropDatabaseStatement.database must be a Database, "
                 f"got {type(expr.database).__name__}"
             )
         return f"DROP DATABASE {expr.database.to_sql()[0]}", ()
 
     def format_alter_database_statement(
-        self, expr: AlterDatabaseExpression
+        self, expr: AlterDatabaseStatement
     ) -> Tuple[str, tuple]:
         """Format ALTER DATABASE for SQL Server.
 
@@ -99,7 +99,7 @@ class SQLServerDatabaseMixin:
 
         if not isinstance(expr.database, Database):
             raise TypeError(
-                f"AlterDatabaseExpression.database must be a Database, "
+                f"AlterDatabaseStatement.database must be a Database, "
                 f"got {type(expr.database).__name__}"
             )
         database = expr.database.to_sql()[0]

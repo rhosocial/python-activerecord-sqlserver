@@ -18,18 +18,18 @@ from rhosocial.activerecord.backend.introspection.executor import (
     AsyncIntrospectorExecutor,
 )
 from rhosocial.activerecord.backend.introspection.types import (
-    DatabaseInfo,
-    TableInfo,
+    IntrospectionDatabaseInfo,
+    IntrospectionTableInfo,
     TableType,
-    ColumnInfo,
+    IntrospectionColumnInfo,
     ColumnNullable,
     IndexInfo,
     IndexColumnInfo,
     IndexType,
-    ForeignKeyInfo,
+    IntrospectionForeignKeyInfo,
     ReferentialAction,
-    ViewInfo,
-    TriggerInfo,
+    IntrospectionViewInfo,
+    IntrospectionTriggerInfo,
     IntrospectionScope,
 )
 from rhosocial.activerecord.backend.expression.types._base import DataType
@@ -261,7 +261,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
     # Parse methods — pure Python, no I/O
     # ------------------------------------------------------------------
 
-    def _parse_database_info(self, rows: List[Dict[str, Any]]) -> DatabaseInfo:
+    def _parse_database_info(self, rows: List[Dict[str, Any]]) -> IntrospectionDatabaseInfo:
         row = rows[0] if rows else {}
         version_str = row.get("version", "Unknown")
         parts = version_str.split(".")
@@ -269,7 +269,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             version_tuple = tuple(int(p) for p in parts[:3])
         except (ValueError, IndexError):
             version_tuple = (0, 0, 0)
-        return DatabaseInfo(
+        return IntrospectionDatabaseInfo(
             name=row.get("db_name", ""),
             version=version_str,
             version_tuple=version_tuple,
@@ -280,10 +280,10 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
 
     def _parse_tables(
         self, rows: List[Dict[str, Any]], schema: Optional[str]
-    ) -> List[TableInfo]:
+    ) -> List[IntrospectionTableInfo]:
         target = schema or self._get_default_schema()
         return [
-            TableInfo(
+            IntrospectionTableInfo(
                 name=row["TABLE_NAME"],
                 schema=target,
                 table_type=(
@@ -297,9 +297,9 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
     def _parse_columns(
         self, rows: List[Dict[str, Any]], table_name: str, schema: str,
         primary_keys: Optional[List[str]] = None,
-    ) -> List[ColumnInfo]:
+    ) -> List[IntrospectionColumnInfo]:
         pk_set = set(primary_keys or [])
-        columns: List[ColumnInfo] = []
+        columns: List[IntrospectionColumnInfo] = []
         for row in rows:
             data_type = (row.get("DATA_TYPE") or "").lower()
             max_len = row.get("CHARACTER_MAXIMUM_LENGTH")
@@ -353,7 +353,7 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
             except Exception:
                 pass
 
-            columns.append(ColumnInfo(
+            columns.append(IntrospectionColumnInfo(
                 name=col_name,
                 table_name=table_name,
                 schema=schema,
@@ -408,20 +408,20 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
 
     def _parse_foreign_keys(
         self, rows: List[Dict[str, Any]], table_name: str, schema: str
-    ) -> List[ForeignKeyInfo]:
+    ) -> List[IntrospectionForeignKeyInfo]:
         action_map = {
             "NO_ACTION": ReferentialAction.NO_ACTION,
             "CASCADE": ReferentialAction.CASCADE,
             "SET_NULL": ReferentialAction.SET_NULL,
             "SET_DEFAULT": ReferentialAction.SET_DEFAULT,
         }
-        fk_map: Dict[str, ForeignKeyInfo] = {}
+        fk_map: Dict[str, IntrospectionForeignKeyInfo] = {}
         for row in rows:
             fk_name = row.get("fk_name", "")
             if fk_name not in fk_map:
                 on_del = (row.get("on_delete") or "NO_ACTION").upper()
                 on_upd = (row.get("on_update") or "NO_ACTION").upper()
-                fk_map[fk_name] = ForeignKeyInfo(
+                fk_map[fk_name] = IntrospectionForeignKeyInfo(
                     name=fk_name,
                     table_name=table_name,
                     schema=schema,
@@ -443,9 +443,9 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
 
     def _parse_views(
         self, rows: List[Dict[str, Any]], schema: str
-    ) -> List[ViewInfo]:
+    ) -> List[IntrospectionViewInfo]:
         return [
-            ViewInfo(
+            IntrospectionViewInfo(
                 name=row.get("view_name", ""),
                 schema=schema,
                 definition=None,
@@ -455,11 +455,11 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
 
     def _parse_view_info(
         self, rows: List[Dict[str, Any]], view_name: str, schema: str
-    ) -> Optional[ViewInfo]:
+    ) -> Optional[IntrospectionViewInfo]:
         if not rows:
             return None
         row = rows[0]
-        return ViewInfo(
+        return IntrospectionViewInfo(
             name=row.get("view_name", view_name),
             schema=schema,
             definition=row.get("definition"),
@@ -468,9 +468,9 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
 
     def _parse_triggers(
         self, rows: List[Dict[str, Any]], schema: str
-    ) -> List[TriggerInfo]:
+    ) -> List[IntrospectionTriggerInfo]:
         return [
-            TriggerInfo(
+            IntrospectionTriggerInfo(
                 name=row.get("trigger_name", ""),
                 table_name=row.get("table_name", ""),
                 schema=schema,
@@ -497,7 +497,7 @@ class SyncSQLServerIntrospector(
 
     def get_table_info(
         self, table_name: str, schema: Optional[str] = None
-    ) -> Optional[TableInfo]:
+    ) -> Optional[IntrospectionTableInfo]:
         key = self._make_cache_key(
             IntrospectionScope.TABLE, table_name, schema=schema
         )
@@ -521,7 +521,7 @@ class SyncSQLServerIntrospector(
 
     def list_columns(
         self, table_name: str, schema: Optional[str] = None
-    ) -> List[ColumnInfo]:
+    ) -> List[IntrospectionColumnInfo]:
         target = schema if schema is not None else self._get_default_schema()
         key = self._make_cache_key(
             IntrospectionScope.COLUMN, table_name, schema=target
@@ -555,7 +555,7 @@ class AsyncSQLServerIntrospector(
 
     async def get_table_info(
         self, table_name: str, schema: Optional[str] = None
-    ) -> Optional[TableInfo]:
+    ) -> Optional[IntrospectionTableInfo]:
         key = self._make_cache_key(
             IntrospectionScope.TABLE, table_name, schema=schema
         )
@@ -581,7 +581,7 @@ class AsyncSQLServerIntrospector(
 
     async def list_columns(
         self, table_name: str, schema: Optional[str] = None
-    ) -> List[ColumnInfo]:
+    ) -> List[IntrospectionColumnInfo]:
         target = schema if schema is not None else self._get_default_schema()
         key = self._make_cache_key(
             IntrospectionScope.COLUMN, table_name, schema=target

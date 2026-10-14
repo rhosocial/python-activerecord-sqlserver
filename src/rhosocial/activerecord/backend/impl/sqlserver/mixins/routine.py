@@ -74,7 +74,7 @@ class SQLServerRoutineMixin:
 
         Accepts either raw parameter strings (``"@x INT"``) or dictionaries
         with ``name`` / ``type`` keys (matching the core
-        ``CreateFunctionExpression`` convention).
+        ``CreateFunctionStatement`` convention).
 
         Raises:
             TypeError: A parameter is neither a string nor a dict. A parameter is

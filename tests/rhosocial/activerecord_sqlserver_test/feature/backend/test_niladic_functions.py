@@ -16,9 +16,9 @@ in both DDL DEFAULT and SELECT contexts.
 import pytest
 
 from rhosocial.activerecord.backend.expression import (
-    CreateTableExpression,
-    DropTableExpression,
-    QueryExpression,
+    CreateTableStatement,
+    DropTableStatement,
+    QueryStatement,
 )
 from rhosocial.activerecord.backend.expression.core import FunctionCall
 from rhosocial.activerecord.backend.expression.functions.datetime import (
@@ -46,7 +46,7 @@ class TestSQLServerNiladicSelectContext:
 
     def test_select_current_timestamp_niladic(self, sqlserver_backend):
         """SELECT CURRENT_TIMESTAMP (niladic) works in SQL Server."""
-        query = QueryExpression(
+        query = QueryStatement(
             dialect=sqlserver_backend.dialect,
             select=[current_timestamp(sqlserver_backend.dialect)],
         )
@@ -59,7 +59,7 @@ class TestSQLServerNiladicSelectContext:
 
     def test_select_sysdatetime(self, sqlserver_backend):
         """SELECT SYSDATETIME() (the SQL Server equivalent of NOW()) works."""
-        query = QueryExpression(
+        query = QueryStatement(
             dialect=sqlserver_backend.dialect,
             select=[FunctionCall(sqlserver_backend.dialect, 'SYSDATETIME')],
         )
@@ -71,7 +71,7 @@ class TestSQLServerNiladicSelectContext:
 
     def test_select_current_date(self, sqlserver_backend):
         """SELECT CAST(GETDATE() AS DATE) (CURRENT_DATE equivalent) works."""
-        query = QueryExpression(
+        query = QueryStatement(
             dialect=sqlserver_backend.dialect,
             select=[current_date(sqlserver_backend.dialect)],
         )
@@ -83,7 +83,7 @@ class TestSQLServerNiladicSelectContext:
 
     def test_select_current_time(self, sqlserver_backend):
         """SELECT CAST(GETDATE() AS TIME) (CURRENT_TIME equivalent) works."""
-        query = QueryExpression(
+        query = QueryStatement(
             dialect=sqlserver_backend.dialect,
             select=[current_time(sqlserver_backend.dialect)],
         )
@@ -95,7 +95,7 @@ class TestSQLServerNiladicSelectContext:
 
     def test_select_now(self, sqlserver_backend):
         """SELECT SYSDATETIME() (regular function, always with parentheses) works."""
-        query = QueryExpression(
+        query = QueryStatement(
             dialect=sqlserver_backend.dialect,
             select=[now(sqlserver_backend.dialect)],
         )
@@ -115,11 +115,11 @@ class TestSQLServerNiladicDDLContext:
         table_name = 'test_niladic_ddl_1'
 
         # Clean up
-        sqlserver_backend.execute(*DropTableExpression(
+        sqlserver_backend.execute(*DropTableStatement(
             dialect=dialect, table=Table(dialect, table_name), if_exists=True
         ).to_sql())
 
-        create = CreateTableExpression(
+        create = CreateTableStatement(
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
@@ -145,7 +145,7 @@ class TestSQLServerNiladicDDLContext:
             col_names = [c.name for c in cols]
             assert 'ts' in col_names
         finally:
-            sqlserver_backend.execute(*DropTableExpression(
+            sqlserver_backend.execute(*DropTableStatement(
                 dialect=dialect, table=Table(dialect, table_name), if_exists=True
             ).to_sql())
 
@@ -155,11 +155,11 @@ class TestSQLServerNiladicDDLContext:
         table_name = 'test_niladic_ddl_2'
 
         # Clean up
-        sqlserver_backend.execute(*DropTableExpression(
+        sqlserver_backend.execute(*DropTableStatement(
             dialect=dialect, table=Table(dialect, table_name), if_exists=True
         ).to_sql())
 
-        create = CreateTableExpression(
+        create = CreateTableStatement(
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
@@ -184,7 +184,7 @@ class TestSQLServerNiladicDDLContext:
             col_names = [c.name for c in cols]
             assert 'ts' in col_names
         finally:
-            sqlserver_backend.execute(*DropTableExpression(
+            sqlserver_backend.execute(*DropTableStatement(
                 dialect=dialect, table=Table(dialect, table_name), if_exists=True
             ).to_sql())
 
@@ -195,7 +195,7 @@ class TestAsyncSQLServerNiladicSelectContext:
     @pytest.mark.asyncio
     async def test_async_select_current_timestamp_niladic(self, async_sqlserver_backend):
         """SELECT CURRENT_TIMESTAMP (niladic) works in SQL Server (async)."""
-        query = QueryExpression(
+        query = QueryStatement(
             dialect=async_sqlserver_backend.dialect,
             select=[current_timestamp(async_sqlserver_backend.dialect)],
         )
@@ -216,11 +216,11 @@ class TestAsyncSQLServerNiladicDDLContext:
         table_name = 'test_async_niladic_ddl_1'
 
         # Clean up
-        await async_sqlserver_backend.execute(*DropTableExpression(
+        await async_sqlserver_backend.execute(*DropTableStatement(
             dialect=dialect, table=Table(dialect, table_name), if_exists=True
         ).to_sql())
 
-        create = CreateTableExpression(
+        create = CreateTableStatement(
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
@@ -243,6 +243,6 @@ class TestAsyncSQLServerNiladicDDLContext:
             col_names = [c.name for c in cols]
             assert 'ts' in col_names
         finally:
-            await async_sqlserver_backend.execute(*DropTableExpression(
+            await async_sqlserver_backend.execute(*DropTableStatement(
                 dialect=dialect, table=Table(dialect, table_name), if_exists=True
             ).to_sql())

@@ -15,7 +15,7 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from rhosocial.activerecord.backend.expression.objects import NodeTable, Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
-    CreateTableExpression,
+    CreateTableStatement,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect

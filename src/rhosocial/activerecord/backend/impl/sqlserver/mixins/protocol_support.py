@@ -152,8 +152,8 @@ class SQLServerProtocolSupportMixin:
 
     def format_contains_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a CONTAINS predicate delegating to format_fulltext_match."""
-        from rhosocial.activerecord.backend.expression.statements.fulltext_match import FulltextMatchExpression
-        expr = FulltextMatchExpression(self, [column], search_string)
+        from rhosocial.activerecord.backend.expression.statements.fulltext_match import FulltextMatch
+        expr = FulltextMatch(self, [column], search_string)
         return self.format_fulltext_match(expr)
 
     def format_freetext_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
@@ -391,7 +391,7 @@ class SQLServerProtocolSupportMixin:
             WITH SCHEMABINDING AS <query>
 
         Args:
-            expr: A ``CreateViewExpression`` whose ``query`` supplies the
+            expr: A ``CreateViewStatement`` whose ``query`` supplies the
                 select statement.
 
         Returns:
@@ -408,7 +408,7 @@ class SQLServerProtocolSupportMixin:
         )
         if not isinstance(expr.view, View):
             raise TypeError(
-                f"CreateViewExpression.view must be a View, "
+                f"CreateViewStatement.view must be a View, "
                 f"got {type(expr.view).__name__}"
             )
         parts = ["CREATE VIEW"]

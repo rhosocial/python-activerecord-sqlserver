@@ -5,9 +5,9 @@ from .version_constants import SQL_SERVER_2016
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import (
-        CreateTableExpression,
-        DropTableExpression,
-        AlterTableExpression,
+        CreateTableStatement,
+        DropTableStatement,
+        AlterTableStatement,
         ColumnDefinition,
         TableConstraint,
         IndexDefinition,

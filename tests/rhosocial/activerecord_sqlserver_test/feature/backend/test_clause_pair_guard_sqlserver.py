@@ -20,7 +20,7 @@ both parameters       ``ValueError``
 
 Two kinds of pair appear here, and both are checked the same way:
 
-* **spellable** (``AlterSequenceExpression.cycle`` and friends): the dialect
+* **spellable** (``AlterSequenceStatement.cycle`` and friends): the dialect
   has a spelling for both sides, so the render asserts the spelling.
 * **unspellable** (``IdentityClause.cycle`` and friends): the server refuses
   the spelling, so an explicitly set parameter must be refused by name --
@@ -29,7 +29,7 @@ Two kinds of pair appear here, and both are checked the same way:
 
 Which pairs the dialect consumes was read from the source, not guessed:
 ``format_alter_sequence_statement`` and ``format_identity_clause`` read the
-sequence/identity pairs; ``format_set_operation_expression`` reads ``all_``;
+sequence/identity pairs; ``format_set_operation_statement`` reads ``all_``;
 the SQL Server overrides of the core TRUNCATE / DROP VIEW / DROP SCHEMA /
 constraint / transaction formatters *replace* core's gated versions, so they
 carry the gates for the pairs those nodes grew.
@@ -51,12 +51,12 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.core import Column
 from rhosocial.activerecord.backend.expression.objects import Schema, Sequence, Table, View
-from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
+from rhosocial.activerecord.backend.expression.query_sources import SetOperationStatement
 from rhosocial.activerecord.backend.expression.statements.ddl_schema import (
-    DropSchemaExpression,
+    DropSchemaStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_sequence import (
-    AlterSequenceExpression,
+    AlterSequenceStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnConstraint,
@@ -68,14 +68,14 @@ from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     TableConstraintType,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_truncate import (
-    TruncateExpression,
+    TruncateStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_view import (
-    DropViewExpression,
+    DropViewStatement,
 )
-from rhosocial.activerecord.backend.expression.statements.dql import QueryExpression
+from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
 from rhosocial.activerecord.backend.expression.transaction import (
-    BeginTransactionExpression,
+    BeginTransactionStatement,
     SetTransactionExpression,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType
@@ -101,11 +101,11 @@ def _table(d, name="t"):
 
 
 def _query(d, table="t1"):
-    return QueryExpression(d, select=[Column(d, "a")], from_=_table(d, table))
+    return QueryStatement(d, select=[Column(d, "a")], from_=_table(d, table))
 
 
 def _union(d, **kw):
-    return SetOperationExpression(
+    return SetOperationStatement(
         d, left=_query(d, "t1"), right=_query(d, "t2"), operation="UNION", **kw
     )
 
@@ -216,16 +216,16 @@ class PairCase:
 PAIR_CASES = (
     # --- ALTER SEQUENCE: CYCLE / CACHE are spellable, ORDER is not ---
     PairCase(
-        "AlterSequenceExpression.cycle",
-        lambda d, **kw: AlterSequenceExpression(d, _seq(d), **kw),
+        "AlterSequenceStatement.cycle",
+        lambda d, **kw: AlterSequenceStatement(d, _seq(d), **kw),
         "cycle",
         "no_cycle",
         r"(?<!NO )CYCLE\b",
         r"NO CYCLE\b",
     ),
     PairCase(
-        "AlterSequenceExpression.cache",
-        lambda d, **kw: AlterSequenceExpression(d, _seq(d), **kw),
+        "AlterSequenceStatement.cache",
+        lambda d, **kw: AlterSequenceStatement(d, _seq(d), **kw),
         "cache",
         "no_cache",
         r"CACHE 10\b",
@@ -233,8 +233,8 @@ PAIR_CASES = (
         a_value=10,
     ),
     PairCase(
-        "AlterSequenceExpression.order",
-        lambda d, **kw: AlterSequenceExpression(d, _seq(d), **kw),
+        "AlterSequenceStatement.order",
+        lambda d, **kw: AlterSequenceStatement(d, _seq(d), **kw),
         "order",
         "no_order",
         r"(?<!NO )ORDER\b",
@@ -276,8 +276,8 @@ PAIR_CASES = (
     ),
     # --- TRUNCATE: the SQL Server override replaces core's gated formatter ---
     PairCase(
-        "TruncateExpression.cascade",
-        lambda d, **kw: TruncateExpression(d, _table(d), **kw),
+        "TruncateStatement.cascade",
+        lambda d, **kw: TruncateStatement(d, _table(d), **kw),
         "cascade",
         "restrict",
         r"CASCADE\b",
@@ -286,8 +286,8 @@ PAIR_CASES = (
         b_error=("TRUNCATE RESTRICT", "does not support TRUNCATE with RESTRICT"),
     ),
     PairCase(
-        "TruncateExpression.restart_identity",
-        lambda d, **kw: TruncateExpression(d, _table(d), **kw),
+        "TruncateStatement.restart_identity",
+        lambda d, **kw: TruncateStatement(d, _table(d), **kw),
         "restart_identity",
         "continue_identity",
         r"RESTART IDENTITY\b",
@@ -303,8 +303,8 @@ PAIR_CASES = (
     ),
     # --- DROP VIEW / DROP SCHEMA: same replacement argument ---
     PairCase(
-        "DropViewExpression.cascade",
-        lambda d, **kw: DropViewExpression(d, View(d, "v"), **kw),
+        "DropViewStatement.cascade",
+        lambda d, **kw: DropViewStatement(d, View(d, "v"), **kw),
         "cascade",
         "restrict",
         r"CASCADE\b",
@@ -313,8 +313,8 @@ PAIR_CASES = (
         b_error=("DROP VIEW RESTRICT", "does not support DROP VIEW RESTRICT"),
     ),
     PairCase(
-        "DropSchemaExpression.cascade",
-        lambda d, **kw: DropSchemaExpression(d, Schema(d, "s"), **kw),
+        "DropSchemaStatement.cascade",
+        lambda d, **kw: DropSchemaStatement(d, Schema(d, "s"), **kw),
         "cascade",
         "restrict",
         r"CASCADE\b",
@@ -324,7 +324,7 @@ PAIR_CASES = (
     ),
     # --- set operations: ALL is spellable, DISTINCT is not (measured) ---
     PairCase(
-        "SetOperationExpression.all_",
+        "SetOperationStatement.all_",
         _union,
         "all_",
         "distinct",
@@ -334,8 +334,8 @@ PAIR_CASES = (
     ),
     # --- transactions: [NOT] DEFERRABLE is not a T-SQL transaction mode ---
     PairCase(
-        "BeginTransactionExpression.deferrable",
-        lambda d, **kw: BeginTransactionExpression(d, **kw),
+        "BeginTransactionStatement.deferrable",
+        lambda d, **kw: BeginTransactionStatement(d, **kw),
         "deferrable",
         "not_deferrable",
         r"(?<!NOT )DEFERRABLE\b",
@@ -520,7 +520,7 @@ class TestSentinelIsGone:
 
     def test_alter_sequence_cache_zero_is_refused(self):
         with pytest.raises(ValueError, match="cache must be a positive integer"):
-            AlterSequenceExpression(_dialect(), _seq(_dialect()), cache=0)
+            AlterSequenceStatement(_dialect(), _seq(_dialect()), cache=0)
 
     def test_identity_cache_zero_is_refused(self):
         with pytest.raises(ValueError, match="cache must be a positive integer"):
@@ -557,18 +557,18 @@ class TestGuardIsNotVacuous:
     def test_every_pair_is_covered(self):
         """The pairs the dialect consumes are all in this table."""
         expected = {
-            "AlterSequenceExpression.cycle",
-            "AlterSequenceExpression.cache",
-            "AlterSequenceExpression.order",
+            "AlterSequenceStatement.cycle",
+            "AlterSequenceStatement.cache",
+            "AlterSequenceStatement.order",
             "IdentityClause.cycle",
             "IdentityClause.cache",
             "IdentityClause.order",
-            "TruncateExpression.cascade",
-            "TruncateExpression.restart_identity",
-            "DropViewExpression.cascade",
-            "DropSchemaExpression.cascade",
-            "SetOperationExpression.all_",
-            "BeginTransactionExpression.deferrable",
+            "TruncateStatement.cascade",
+            "TruncateStatement.restart_identity",
+            "DropViewStatement.cascade",
+            "DropSchemaStatement.cascade",
+            "SetOperationStatement.all_",
+            "BeginTransactionStatement.deferrable",
             "SetTransactionExpression.deferrable",
             "ForeignKeyConstraint.deferrable",
             "ForeignKeyConstraint.initially_deferred",
@@ -593,7 +593,7 @@ class TestTheGuardCanSeeADroppingFormatter:
 
     def test_alter_sequence_dropping_cycle_is_reported(self):
         case = next(
-            c for c in PAIR_CASES if c.case_id == "AlterSequenceExpression.cycle"
+            c for c in PAIR_CASES if c.case_id == "AlterSequenceStatement.cycle"
         )
 
         class DroppingCycleDialect(SQLServerDialect):
@@ -616,7 +616,7 @@ class TestTheGuardCanSeeADroppingFormatter:
 
     def test_truncate_dropping_cascade_is_reported(self):
         case = next(
-            c for c in PAIR_CASES if c.case_id == "TruncateExpression.cascade"
+            c for c in PAIR_CASES if c.case_id == "TruncateStatement.cascade"
         )
 
         class DroppingTruncateDialect(SQLServerDialect):

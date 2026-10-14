@@ -18,9 +18,9 @@ from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     TableConstraintType,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_type import (
-    AlterTypeExpression,
-    CreateTypeExpression,
-    DropTypeExpression,
+    AlterTypeStatement,
+    CreateTypeStatement,
+    DropTypeStatement,
     TypeAlterAction,
     TypeDefinition,
 )
@@ -612,18 +612,18 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
 
     def format_create_type_statement(
         self,
-        expr: CreateTypeExpression,
+        expr: CreateTypeStatement,
     ) -> Tuple[str, tuple]:
         """Format CREATE TYPE for SQL Server.
 
         Raises:
-            TypeError: ``expr`` is not a CreateTypeExpression.
+            TypeError: ``expr`` is not a CreateTypeStatement.
             TypeError: ``expr.type`` is not a Type. A table handed here would
                 render as a well-formed ``CREATE TYPE`` over that table's name.
             TypeError: ``expr.definition`` is not a TypeDefinition.
         """
-        if not isinstance(expr, CreateTypeExpression):
-            raise TypeError("expr must be a CreateTypeExpression")
+        if not isinstance(expr, CreateTypeStatement):
+            raise TypeError("expr must be a CreateTypeStatement")
         if expr.if_not_exists and expr.or_replace:
             raise ValueError("CREATE TYPE IF NOT EXISTS and OR REPLACE are mutually exclusive")
         if not self.supports_type_objects() or not self.supports_create_type():
@@ -634,7 +634,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             raise UnsupportedFeatureError(self.name, "CREATE OR REPLACE TYPE")
         if not isinstance(expr.type, Type):
             raise TypeError(
-                f"CreateTypeExpression.type must be a Type, "
+                f"CreateTypeStatement.type must be a Type, "
                 f"got {type(expr.type).__name__}"
             )
         if not isinstance(expr.definition, TypeDefinition):
@@ -651,7 +651,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
 
     def format_alter_type_statement(
         self,
-        expr: AlterTypeExpression,
+        expr: AlterTypeStatement,
     ) -> Tuple[str, tuple]:
         """Report that SQL Server has no ALTER TYPE.
 
@@ -661,11 +661,11 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         the wrong kind should not be reported as a missing feature.
 
         Raises:
-            TypeError: ``expr`` is not an AlterTypeExpression.
+            TypeError: ``expr`` is not an AlterTypeStatement.
             UnsupportedFeatureError: Always, once *expr* is the right kind.
         """
-        if not isinstance(expr, AlterTypeExpression):
-            raise TypeError("expr must be an AlterTypeExpression")
+        if not isinstance(expr, AlterTypeStatement):
+            raise TypeError("expr must be an AlterTypeStatement")
         raise UnsupportedFeatureError(
             self.name,
             "ALTER TYPE",
@@ -674,20 +674,20 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
 
     def format_drop_type_statement(
         self,
-        expr: Union[DropTypeExpression, SQLServerDropTypeExpression],
+        expr: Union[DropTypeStatement, SQLServerDropTypeExpression],
     ) -> Tuple[str, tuple]:
         """Format DROP TYPE for SQL Server.
 
         Raises:
-            TypeError: ``expr`` is not a DropTypeExpression.
+            TypeError: ``expr`` is not a DropTypeStatement.
             TypeError: ``expr.type`` is not a Type. A table handed here would
                 render as a well-formed ``DROP TYPE`` over that table's name.
         """
-        if not isinstance(expr, DropTypeExpression):
-            raise TypeError("expr must be a DropTypeExpression")
+        if not isinstance(expr, DropTypeStatement):
+            raise TypeError("expr must be a DropTypeStatement")
         if not isinstance(expr.type, Type):
             raise TypeError(
-                f"DropTypeExpression.type must be a Type, "
+                f"DropTypeStatement.type must be a Type, "
                 f"got {type(expr.type).__name__}"
             )
         if not self.supports_type_objects() or not self.supports_drop_type():
