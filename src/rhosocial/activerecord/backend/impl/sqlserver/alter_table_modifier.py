@@ -30,11 +30,33 @@ class SQLServerAlterColumnModifierMixin:
         return False
 
     def supports_drop_column_if_exists(self) -> bool:
-        """``DROP COLUMN IF EXISTS`` is supported since SQL Server 2016."""
+        """``DROP COLUMN IF EXISTS`` is supported since SQL Server 2016.
+
+        The "since 2016" floor comes from the official ``ALTER TABLE``
+        grammar page; the instance measured here is 2019 only
+        (``tests/config/sqlserver_scenarios.yaml``: ``sqlserver_2019``,
+        RTM-CU32-GDR 15.0.4465.1, Developer Edition).
+        """
         return True
 
     def supports_drop_constraint_if_exists(self) -> bool:
-        """``DROP CONSTRAINT IF EXISTS`` is supported since SQL Server 2016."""
+        """``DROP CONSTRAINT IF EXISTS`` is supported since SQL Server 2016.
+
+        Measured on 2019 (RTM-CU32-GDR, 15.0.4465.1)::
+
+            ALTER TABLE dbo.probe_t DROP CONSTRAINT IF EXISTS does_not_exist
+            -> accepted, silent no-op (no result set, no error)
+
+        so ``IF EXISTS`` is what makes dropping a constraint idempotent on
+        this backend — the plain form is *not* a no-op, it raises
+        ``'does_not_exist' is not a constraint. (3728)`` followed by
+        ``Could not drop constraint. See previous errors. (3727)``.
+        Catching that error pair instead of spelling ``IF EXISTS`` would also
+        break on MySQL, which has no ``DROP CONSTRAINT IF EXISTS`` at all.
+
+        The "since 2016" floor is from the official ``ALTER TABLE`` grammar
+        page; no pre-2019 instance was measured here.
+        """
         return True
 
     def format_add_column_action(self, action: Any) -> Tuple[str, tuple]:
