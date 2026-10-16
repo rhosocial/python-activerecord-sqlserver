@@ -8,7 +8,7 @@ except ImportError:
 import pytest
 
 from rhosocial.activerecord.backend.expression import ColumnDefinition, ComparisonPredicate
-from rhosocial.activerecord.backend.expression.core import Column, Literal
+from rhosocial.activerecord.backend.expression.core import Column, DdlLiteral, Literal
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnCheckConstraint,
     ColumnDefaultConstraint,
@@ -84,7 +84,7 @@ def index_condition(dialect):
 PRIMARY_TYPE = SQLServerNVarCharType(length=64)
 FALLBACK_TYPE = SQLServerNCharType(length=8)
 TYPE_MARKER = UseSqlType(PRIMARY_TYPE, FALLBACK_TYPE)
-DEFAULT_VALUE = Literal(None, "model-default", inline_literals=True)
+DEFAULT_VALUE = DdlLiteral(None, "model-default")
 DEFAULT_CONSTRAINT = UseConstraint(
     ColumnDefaultConstraint,
     name="df_value",

@@ -21,7 +21,7 @@ import inspect
 
 import pytest
 
-from rhosocial.activerecord.backend.expression.core import Literal
+from rhosocial.activerecord.backend.expression.core import DdlLiteral
 from rhosocial.activerecord.backend.expression.serialization import (
     deserialize,
     deserialize_json,
@@ -207,9 +207,7 @@ class TestSQLServerTableTypeDefinitionRoundTrip:
             )
 
     def test_check_constraint_condition_survives(self, dialect):
-        condition = Literal(dialect, 1, inline_literals=True) > Literal(
-            dialect, 0, inline_literals=True
-        )
+        condition = DdlLiteral(dialect, 1) > DdlLiteral(dialect, 0)
         check = TableConstraint(dialect, branch=TableCheckConstraint(dialect, condition))
         expr = SQLServerTableTypeDefinition(
             dialect,

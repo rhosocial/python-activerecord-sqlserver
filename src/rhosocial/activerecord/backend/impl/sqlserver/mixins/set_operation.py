@@ -1,14 +1,24 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/set_operation.py
-from typing import Tuple, TYPE_CHECKING
+"""SQL Server set-operation capability declarations.
 
-from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+Set-operation *formatting* is provided by the core
+``SetOperationMixin.format_set_operation``: the node now carries the operation
+as a word form (``union`` / ``union_all`` / ``intersect`` / ``except``) and
+nothing else, so the trailing ``alias`` / ``ORDER BY`` / ``OFFSET FETCH`` /
+``FOR UPDATE`` parameters the old override read are gone, and T-SQL spells all
+four operations exactly as the shared renderer writes them. The override that
+used to live here has therefore been removed along with the node fields it
+read; this file keeps the capability declarations.
+"""
 
-if TYPE_CHECKING:
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.expression import bases
 
 
 class SQLServerSetOperationMixin:
-    """SQL Server set operation capability declarations and formatting."""
+    """SQL Server set operation capability declarations."""
 
     def supports_union(self) -> bool:
         """UNION is supported."""
@@ -33,64 +43,3 @@ class SQLServerSetOperationMixin:
     def supports_set_operation_limit_offset(self) -> bool:
         """Set operations support OFFSET FETCH."""
         return True
-
-    def format_set_operation_statement(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
-        """Format set operation for SQL Server.
-
-        SQL Server supports UNION, UNION ALL, INTERSECT, EXCEPT.
-        ORDER BY and OFFSET FETCH apply to the entire set operation result.
-        """
-        left, right = expr.left, expr.right
-        operation = expr.operation
-        all_ = expr.all_
-        distinct = expr.distinct
-        alias = expr.alias
-        order_by_clause = expr.order_by_clause
-        limit_offset_clause = expr.limit_offset_clause
-        for_update_clause = expr.for_update_clause
-
-        if for_update_clause and not self.supports_set_operation_for_update():
-            raise UnsupportedFeatureError(
-                self.name,
-                "FOR UPDATE in set operations",
-                "SQL Server does not support FOR UPDATE in a set operation.",
-            )
-
-        left_sql, left_params = left.to_sql()
-        right_sql, right_params = right.to_sql()
-        if all_:
-            all_str = " ALL"
-        elif distinct:
-            # T-SQL has no DISTINCT keyword in set operations; plain UNION is
-            # already the distinct form. An explicit DISTINCT request is
-            # refused rather than dropped -- measured refused on 2019 / 2022 /
-            # 2025 (``Incorrect syntax near the keyword 'DISTINCT'``).
-            raise UnsupportedFeatureError(
-                self.name,
-                f"{operation} DISTINCT",
-                f"{self.name} has no DISTINCT keyword in set operations; "
-                f"the DISTINCT spelling is not part of T-SQL.",
-            )
-        else:
-            all_str = ""
-
-        base_sql = f"{left_sql} {operation}{all_str} {right_sql}"
-
-        all_params = list(left_params + right_params)
-
-        sql_parts = [base_sql]
-
-        if alias:
-            sql_parts.append(f"AS {self.format_identifier(alias)}")
-
-        if order_by_clause:
-            order_by_sql, order_by_params = order_by_clause.to_sql()
-            sql_parts.append(order_by_sql)
-            all_params.extend(order_by_params)
-
-        if limit_offset_clause:
-            limit_offset_sql, limit_offset_params = limit_offset_clause.to_sql()
-            sql_parts.append(limit_offset_sql)
-            all_params.extend(limit_offset_params)
-
-        return " ".join(sql_parts), tuple(all_params)

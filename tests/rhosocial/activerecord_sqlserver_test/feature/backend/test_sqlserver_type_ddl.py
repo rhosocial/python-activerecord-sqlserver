@@ -11,10 +11,10 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     DropTypeSupport,
 )
 from rhosocial.activerecord.backend.expression.serialization import (
-    ExpressionRegistry,
     deserialize,
     deserialize_json,
     deserialize_xml,
+    registered_expression_classes,
     serialize,
     serialize_json,
     serialize_xml,
@@ -636,7 +636,7 @@ def test_type_expressions_are_explicitly_registered():
     )
     for expression in expressions:
         fqn = f"{type(expression).__module__}.{type(expression).__name__}"
-        assert ExpressionRegistry.lookup(fqn) is type(expression)
+        assert registered_expression_classes().get(fqn) is type(expression)
         for encoder, decoder in (
             (serialize, deserialize),
             (serialize_json, deserialize_json),

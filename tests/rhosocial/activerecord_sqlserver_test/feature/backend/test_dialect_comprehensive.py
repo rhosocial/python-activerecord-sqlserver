@@ -401,7 +401,7 @@ class TestSQLServerDialectSetOperation:
             Column,
         )
         from rhosocial.activerecord.backend.expression.objects import Table
-        from rhosocial.activerecord.backend.expression.query_sources import SetOperationStatement
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperation
 
         left = QueryStatement(
             dialect=dialect,
@@ -414,10 +414,10 @@ class TestSQLServerDialectSetOperation:
             from_=Table(dialect, "admins"),
         )
 
-        expr = SetOperationStatement(
-            dialect, left=left, right=right, operation="UNION", all_=True
+        expr = SetOperation(
+            dialect, left=left, right=right, op="union_all"
         )
-        sql, params = dialect.format_set_operation_statement(expr)
+        sql, params = dialect.format_set_operation(expr)
         assert "UNION ALL" in sql
         assert "[users]" in sql
         assert "[admins]" in sql
@@ -428,7 +428,7 @@ class TestSQLServerDialectSetOperation:
             Column,
         )
         from rhosocial.activerecord.backend.expression.objects import Table
-        from rhosocial.activerecord.backend.expression.query_sources import SetOperationStatement
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperation
 
         left = QueryStatement(
             dialect=dialect,
@@ -441,10 +441,10 @@ class TestSQLServerDialectSetOperation:
             from_=Table(dialect, "shipments"),
         )
 
-        expr = SetOperationStatement(
-            dialect, left=left, right=right, operation="INTERSECT"
+        expr = SetOperation(
+            dialect, left=left, right=right, op="intersect"
         )
-        sql, params = dialect.format_set_operation_statement(expr)
+        sql, params = dialect.format_set_operation(expr)
         assert "INTERSECT" in sql
 
     def test_except(self, dialect):
@@ -453,7 +453,7 @@ class TestSQLServerDialectSetOperation:
             Column,
         )
         from rhosocial.activerecord.backend.expression.objects import Table
-        from rhosocial.activerecord.backend.expression.query_sources import SetOperationStatement
+        from rhosocial.activerecord.backend.expression.query_sources import SetOperation
 
         left = QueryStatement(
             dialect=dialect,
@@ -466,10 +466,10 @@ class TestSQLServerDialectSetOperation:
             from_=Table(dialect, "managers"),
         )
 
-        expr = SetOperationStatement(
-            dialect, left=left, right=right, operation="EXCEPT"
+        expr = SetOperation(
+            dialect, left=left, right=right, op="except"
         )
-        sql, params = dialect.format_set_operation_statement(expr)
+        sql, params = dialect.format_set_operation(expr)
         assert "EXCEPT" in sql
 
 

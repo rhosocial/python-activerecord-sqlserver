@@ -64,7 +64,7 @@ class SQLServerReturningMixin:
             AllColumnsWildcard,
             RowCountWildcard,
         )
-        from rhosocial.activerecord.backend.expression.operators import RawSQLExpression
+        from rhosocial.activerecord.backend.expression.operators import RawSQL
 
         if clause.alias:
             raise UnsupportedFeatureError(
@@ -95,7 +95,7 @@ class SQLServerReturningMixin:
                 prefix = expr.table.upper() if expr.table else default_table
                 col_sql = self.format_identifier(expr.name, expr.name_need_quote)
                 expr_parts.append(f"{prefix}.{col_sql}")
-            elif isinstance(expr, RawSQLExpression):
+            elif isinstance(expr, RawSQL):
                 expr_sql, expr_params = expr.to_sql()
                 expr_parts.append(f"{default_table}.{expr_sql}")
                 all_params.extend(expr_params)

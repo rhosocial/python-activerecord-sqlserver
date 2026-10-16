@@ -79,11 +79,11 @@ And when a class cannot be constructed
 tuple against what the constructor really skips. Both directions fail: a class
 that gains a constructor, and a class that starts failing to build.
 
-Discovery does not use ``ExpressionRegistry._registry``. That registry is
-process-global and grows as sibling test modules import their own backends, so
-reading it made this matrix's contents depend on which files pytest happened to
-import first. :func:`collect_expression_classes` walks a package instead, which
-is deterministic.
+Discovery does not read a process-global class index. That index grows as
+sibling test modules import their own backends, so reading it made this
+matrix's contents depend on which files pytest happened to import first.
+:func:`collect_expression_classes` walks a package instead, which is
+deterministic.
 """
 
 import inspect
@@ -105,8 +105,13 @@ from rhosocial.activerecord.backend.expression.objects import (
     View,
 )
 from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
-from rhosocial.activerecord.backend.expression.serialization import ExpressionRegistry
+from rhosocial.activerecord.backend.expression.serialization import (
+    auto_register_builtins,
+    registered_expression_classes,
+)
 from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
+from rhosocial.activerecord.backend.expression.operators import ArithmeticOperation
+from rhosocial.activerecord.backend.expression.query_sources import SetOperation
 from rhosocial.activerecord.backend.expression.statements import (
     ddl_alter,
     ddl_table,
@@ -149,7 +154,7 @@ def _collect(pkg: str) -> Dict[str, type]:
     different places, so the first name in sorted order wins and the matrix does
     not assert one class twice.
     """
-    ExpressionRegistry._auto_register_builtins()
+    auto_register_builtins()
     collected = collect_expression_classes(pkg)
     by_identity: Dict[int, str] = {}
     for fqn, cls in sorted(collected.items()):
@@ -293,15 +298,33 @@ def register_specials():
 
     # -- containers that must not be empty ----------------------------------
     from rhosocial.activerecord.backend.expression.advanced_functions import (
-        CaseFunction,
+        CaseExpression,
         WindowClause,
         WindowDefinition,
         WindowSpecification,
     )
 
+    # -- closed word sets: the guess supplies a bare string -------------------
+    # ``op`` on both nodes is validated against a closed set at construction
+    # (add/sub/mul/div/mod and union/union_all/intersect/except), so the
+    # introspective guess raises ValueError before a formatter is reached.
     register_special_constructor(
-        "advanced_functions.CaseFunction",
-        lambda d: CaseFunction(
+        "operators.ArithmeticOperation",
+        lambda d: ArithmeticOperation(d, "add", Column(d, "a"), Column(d, "b")),
+    )
+    register_special_constructor(
+        "query_sources.SetOperation",
+        lambda d: SetOperation(
+            d,
+            op="union",
+            left=QueryStatement(d, select=[Column(d, "id")]),
+            right=QueryStatement(d, select=[Column(d, "id")]),
+        ),
+    )
+
+    register_special_constructor(
+        "advanced_functions.CaseExpression",
+        lambda d: CaseExpression(
             d, cases=[(_column_predicate(d), Literal(d, 1))], else_result=Literal(d, 0)
         ),
     )
@@ -491,10 +514,10 @@ def register_specials():
     # -- SQL Server's own expressions ---------------------------------------
     def pivot(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.pivot import (
-            PivotExpression,
+            Pivot,
         )
 
-        return PivotExpression(d, aggregate_function="SUM", value_column="amount", pivot_column="q")
+        return Pivot(d, aggregate_function="SUM", value_column="amount", pivot_column="q")
 
     def columnstore(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.columnstore import (
@@ -690,13 +713,13 @@ def register_specials():
         return SQLServerShortestPathExpression(d, graph_pattern(d), 1, 3)
 
     # ``make_instance`` matches suffixes with ``str.endswith``, and core also has
-    # a ``pivot.PivotExpression``. The longer suffix keeps this registration on
+    # a ``pivot.Pivot``. The longer suffix keeps this registration on
     # the SQL Server class instead of capturing core's as well. Core's own
-    # PivotExpression is left to the guess: SQL Server's PIVOT spelling needs an
+    # Pivot is left to the guess: SQL Server's PIVOT spelling needs an
     # aggregate the guess does not supply, and it is pinned as a non-render below
     # rather than given a constructor here.
     register_special_constructor(
-        "sqlserver.expression.pivot.PivotExpression", pivot
+        "sqlserver.expression.pivot.Pivot", pivot
     )
     register_special_constructor(
         "columnstore.SQLServerColumnstoreIndexExpression", columnstore
@@ -1032,10 +1055,10 @@ LEGITIMATE_NON_RENDERS = {
     ),
     # PIVOT / UNPIVOT (two): SQL Server spells PIVOT its own way, through
     # SQLServerPivotExpression. Core's generic PIVOT is not the same statement.
-    "rhosocial.activerecord.backend.expression.pivot.PivotExpression": (
+    "rhosocial.activerecord.backend.expression.pivot.Pivot": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    "rhosocial.activerecord.backend.expression.pivot.UnpivotExpression": (
+    "rhosocial.activerecord.backend.expression.pivot.Unpivot": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
     # COMMENT ON: SQL Server has no standalone COMMENT ON statement, which the
@@ -1226,8 +1249,8 @@ UNMODELLED_FORMATTERS = {
     "the core PIVOT / UNPIVOT expressions (SQL Server spells PIVOT its own "
     "way, through SQLServerPivotExpression; core's generic PIVOT is not the "
     "same statement)": (
-        "format_pivot_expression",
-        "format_unpivot_expression",
+        "format_pivot",
+        "format_unpivot",
     ),
     "the TableSource root (every concrete row source overrides its formatter; "
     "the root carries nothing but an alias and is never rendered)": ("format_table_source",),
@@ -1395,7 +1418,7 @@ class TestMatrixIntegrity:
         a constructor and the entry is stale; a class that fails to build without
         being named would become a silent skip. Both fail here.
         """
-        ExpressionRegistry._auto_register_builtins()
+        auto_register_builtins()
         actual = tuple(
             sorted(
                 fqn
@@ -1515,7 +1538,7 @@ class TestMatrixIntegrity:
         backends other test modules happened to import -- which is exactly the
         non-determinism this matrix moved off.
         """
-        ExpressionRegistry._auto_register_builtins()
+        auto_register_builtins()
         for pkg in (CORE_EXPR_PKG, SS_EXPR_PKG):
             expected = set(_collect(pkg))
             covered = {
@@ -1538,15 +1561,15 @@ class TestMatrixIntegrity:
         but the registry cannot resolve would round-trip into the wrong thing or
         nothing at all.
         """
-        ExpressionRegistry._auto_register_builtins()
-        unresolved = sorted(set(REGISTERED) - set(ExpressionRegistry._registry))
+        auto_register_builtins()
+        unresolved = sorted(set(REGISTERED) - set(registered_expression_classes()))
         assert not unresolved, (
-            f"the matrix covers classes the registry cannot resolve: {unresolved}"
+            f"the matrix covers classes the index cannot resolve: {unresolved}"
         )
 
     def test_coverage_report(self, sqlserver_dialect):
         """Surface what the matrix covers, so coverage stays transparent."""
-        ExpressionRegistry._auto_register_builtins()
+        auto_register_builtins()
         branches = {"rendered": 0, "unsupported": 0, "unmodelled": 0, "non-render": 0}
         constructible = []
         for fqn in sorted(REGISTERED):

@@ -29,10 +29,9 @@ Two kinds of pair appear here, and both are checked the same way:
 
 Which pairs the dialect consumes was read from the source, not guessed:
 ``format_alter_sequence_statement`` and ``format_identity_clause`` read the
-sequence/identity pairs; ``format_set_operation_statement`` reads ``all_``;
-the SQL Server overrides of the core TRUNCATE / DROP VIEW / DROP SCHEMA /
-constraint / transaction formatters *replace* core's gated versions, so they
-carry the gates for the pairs those nodes grew.
+sequence/identity pairs; the SQL Server overrides of the core TRUNCATE /
+DROP VIEW / DROP SCHEMA / constraint / transaction formatters *replace* core's
+gated versions, so they carry the gates for the pairs those nodes grew.
 
 Every "unspellable" verdict is backed by a live-server measurement (SQL Server
 2019 / 2022 / 2025, ``{SQL Server}`` driver), recorded in the round's plan
@@ -51,7 +50,6 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.core import Column
 from rhosocial.activerecord.backend.expression.objects import Schema, Sequence, Table, View
-from rhosocial.activerecord.backend.expression.query_sources import SetOperationStatement
 from rhosocial.activerecord.backend.expression.statements.ddl_schema import (
     DropSchemaStatement,
 )
@@ -102,12 +100,6 @@ def _table(d, name="t"):
 
 def _query(d, table="t1"):
     return QueryStatement(d, select=[Column(d, "a")], from_=_table(d, table))
-
-
-def _union(d, **kw):
-    return SetOperationStatement(
-        d, left=_query(d, "t1"), right=_query(d, "t2"), operation="UNION", **kw
-    )
 
 
 def _predicate(d):
@@ -310,16 +302,11 @@ PAIR_CASES = (
         a_error=("DROP SCHEMA CASCADE", "does not support DROP SCHEMA CASCADE"),
         b_error=("DROP SCHEMA RESTRICT", "does not support DROP SCHEMA RESTRICT"),
     ),
-    # --- set operations: ALL is spellable, DISTINCT is not (measured) ---
-    PairCase(
-        "SetOperationStatement.all_",
-        _union,
-        "all_",
-        "distinct",
-        r"\bALL\b",
-        r"\bDISTINCT\b",
-        b_error=("UNION DISTINCT", "no DISTINCT keyword in set operations"),
-    ),
+    # --- set operations: the op is a required word, not a pair -------------
+    # The pair guard models two *mutually exclusive* spellings (``a``/``b``).
+    # A set operation has one ``op`` word (``union`` / ``union_all``), so it is
+    # not a pair and does not belong here; the word forms are exercised by the
+    # roundtrip matrix and the dialect tests instead.
     # --- transactions: [NOT] DEFERRABLE is not a T-SQL transaction mode ---
     PairCase(
         "BeginTransactionStatement.deferrable",
@@ -555,7 +542,6 @@ class TestGuardIsNotVacuous:
             "TruncateStatement.restart_identity",
             "DropViewStatement.cascade",
             "DropSchemaStatement.cascade",
-            "SetOperationStatement.all_",
             "BeginTransactionStatement.deferrable",
             "SetTransactionExpression.deferrable",
             "ForeignKeyConstraint.deferrable",
