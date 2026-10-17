@@ -8,7 +8,7 @@ from typing import Any, List, Optional, Sequence, Union
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.expression.objects import Type
-from rhosocial.activerecord.backend.expression.serialization import register_expression_class
+from rhosocial.activerecord.backend.expression.registry import default_registry
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnDefinition,
     IndexDefinition,
@@ -239,7 +239,7 @@ _SQLSERVER_TYPE_EXPRESSIONS = (
 )
 
 for _expression_class in _SQLSERVER_TYPE_EXPRESSIONS:
-    register_expression_class(_expression_class)
+    default_registry.register_node(_expression_class)
 
 
 __all__ = [

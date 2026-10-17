@@ -10,15 +10,8 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     CreateTypeSupport,
     DropTypeSupport,
 )
-from rhosocial.activerecord.backend.expression.serialization import (
-    deserialize,
-    deserialize_json,
-    deserialize_xml,
-    registered_expression_classes,
-    serialize,
-    serialize_json,
-    serialize_xml,
-)
+from rhosocial.activerecord.backend.expression.registry import default_registry
+from rhosocial.activerecord.backend.expression.serialization import serialize
 from rhosocial.activerecord.backend.expression.statements import (
     AlterTypeStatement,
     ColumnCheckConstraint,
@@ -623,6 +616,16 @@ def test_rename_type_uses_sp_rename():
 
 
 def test_type_expressions_are_explicitly_registered():
+    """The backend's type nodes assemble into the process-level kind registry.
+
+    Writing an artifact needs no registry: the node reports its own kind.
+    Reading one is a reader decision -- the framework's default whitelist
+    admits only the packages built into the core distribution (see
+    ``serialization._FRAMEWORK_PACKAGES``), so a backend distribution's
+    kinds are read through a registry the reader assembles. The round-trip
+    read leg belongs to that reader-side story, not to this default-channel
+    assertion.
+    """
     dialect = SQLServerDialect(SQL_SERVER_2022)
     expressions = (
         SQLServerAliasTypeDefinition(dialect, IntegerType(dialect)),
@@ -635,16 +638,13 @@ def test_type_expressions_are_explicitly_registered():
         SQLServerRenameTypeExpression(dialect, "old_name", "new_name"),
     )
     for expression in expressions:
-        fqn = f"{type(expression).__module__}.{type(expression).__name__}"
-        assert registered_expression_classes().get(fqn) is type(expression)
-        for encoder, decoder in (
-            (serialize, deserialize),
-            (serialize_json, deserialize_json),
-            (serialize_xml, deserialize_xml),
-        ):
-            restored = decoder(encoder(expression), dialect)
-            assert type(restored) is type(expression)
-            assert encoder(restored) == encoder(expression)
+        # The kind whitelist is keyed by the kind derived from the class
+        # name; this backend fills the process-level registry at import.
+        kind = type(expression).kind()
+        assert default_registry.resolve_node(kind) is type(expression)
+        # The write side needs no registry and always carries the kind.
+        spec = serialize(expression)
+        assert spec["kind"] == kind
 
 
 def test_table_type_rejects_foreign_key_constraint():
