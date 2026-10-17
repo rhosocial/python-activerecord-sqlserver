@@ -1130,13 +1130,18 @@ LEGITIMATE_NON_RENDERS = {
         ValueError,
         "name must be a non-empty string",
     ),
+    # The two rows below changed shape when the formatters stopped probing
+    # for ``name`` and started reading it: the probe's default (``""``) used
+    # to turn a node with no ``name`` field into "the name is missing", and
+    # the direct read says what is actually wrong -- the shadowed SQL:1999
+    # statements carry no ``name`` field at all.
     "rhosocial.activerecord.backend.expression.statements.ddl_function.CreateFunctionStatement": (
-        ValueError,
-        "function name is required",
+        AttributeError,
+        "has no attribute 'name'",
     ),
     "rhosocial.activerecord.backend.expression.statements.ddl_trigger.DropTriggerStatement": (
-        ValueError,
-        "trigger name is required",
+        AttributeError,
+        "has no attribute 'name'",
     ),
 }
 

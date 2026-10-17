@@ -17,6 +17,7 @@ from typing import Tuple, TYPE_CHECKING
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
 from ..expression.objects import PartitionFunction, PartitionScheme
+from ..expression.partition import SQLServerPartitionByRangeClause
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import PartitionClause
@@ -125,7 +126,14 @@ class SQLServerPartitionMixin:
             parts.append(key_sql)
             params.extend(key_params)
 
-        scheme = getattr(expr, "partition_scheme", None)
+        # The partition scheme is declared by the SQL Server clause node; the
+        # generic ``PartitionClause`` has no such field, so the dispatch is on
+        # the declared class and the generic clause takes the placeholder path.
+        scheme = (
+            expr.partition_scheme
+            if isinstance(expr, SQLServerPartitionByRangeClause)
+            else None
+        )
         if scheme:
             # The scheme is a named object of its own, not part of the table's
             # name: ``ON <scheme> (<keys>)`` names the scheme, and the table

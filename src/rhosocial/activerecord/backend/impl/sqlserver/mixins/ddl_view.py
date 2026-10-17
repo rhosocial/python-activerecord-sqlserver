@@ -79,11 +79,11 @@ class SQLServerViewMixin:
 
         query_sql, query_params = expr.query.to_sql()
         as_sql = f"AS {query_sql}"
-        if expr.options and getattr(expr.options, "schemabinding", False):
+        if expr.options.schemabinding:
             as_sql = f"WITH SCHEMABINDING {as_sql}"
         parts.append(as_sql)
 
-        if expr.options and hasattr(expr.options, 'check_option') and expr.options.check_option:
+        if expr.options.check_option:
             if not self.supports_view_check_option():
                 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
                 raise UnsupportedFeatureError(

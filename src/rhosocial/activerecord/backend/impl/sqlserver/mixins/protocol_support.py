@@ -270,7 +270,7 @@ class SQLServerProtocolSupportMixin:
         The INTO clause is inserted between the select list and the FROM
         clause of the fully rendered query.
         """
-        into_table = getattr(expr, "select_into_table", None)
+        into_table = expr.select_into_table
         if not into_table:
             raise ValueError(
                 "select_into_table is required for SELECT INTO"

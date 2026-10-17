@@ -45,7 +45,10 @@ class SQLServerTriggerDdlMixin:
         return self.version >= _SQL_SERVER_TRIGGER_VERSION  # type: ignore[attr-defined]
 
     def _get_trigger_name(self, expr: Any) -> str:
-        return getattr(expr, "name", None) or getattr(expr, "trigger_name", "")
+        # Every T-SQL trigger expression names itself through its declared
+        # ``name`` field; the shadowed SQL:1999 statements have no such field
+        # and fail here explicitly rather than reading as an empty name.
+        return expr.name
 
     def format_create_trigger_statement(
         self, expr: "SQLServerCreateTriggerExpression"
@@ -67,7 +70,12 @@ class SQLServerTriggerDdlMixin:
             "CREATE TRIGGER",
             "requires SQL Server 2005+.",
         )
-        if not hasattr(expr, "body"):
+        # The T-SQL form is rendered from this dialect's own trigger node; the
+        # SQL:1999 statement (no raw ``body`` -- it names a function instead)
+        # is refused by class rather than probed for the field.
+        from ..expression.ddl.trigger import SQLServerCreateTriggerExpression
+
+        if not isinstance(expr, SQLServerCreateTriggerExpression):
             raise UnsupportedFeatureError(
                 self.name,  # type: ignore[attr-defined]
                 "SQL:1999 CREATE TRIGGER",
@@ -76,7 +84,7 @@ class SQLServerTriggerDdlMixin:
         name = self._get_trigger_name(expr)
         if not name:
             raise ValueError("trigger name is required")
-        table = getattr(expr, "table_name", None) or expr.table
+        table = expr.table
         if not table:
             raise ValueError("trigger table is required")
 

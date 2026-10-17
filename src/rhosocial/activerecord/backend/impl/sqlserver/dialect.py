@@ -666,7 +666,7 @@ class SQLServerDialect(
                 "table INHERITS",
                 "SQL Server does not support table inheritance.",
             )
-        if getattr(expr.table_options, "comment", None):
+        if expr.table_options is not None and expr.table_options.comment:
             # SQL Server has no inline table comment (its native
             # mechanism is sp_addextendedproperty, not implemented here); a
             # comment on the table options is never silently dropped.
@@ -726,8 +726,14 @@ class SQLServerDialect(
             column_parts.append(idx_sql)
             all_params.extend(idx_params)
 
-        # SQL Graph edge constraints (CONNECTION) are table-level constraints.
-        edge_constraints = getattr(expr, "edge_constraints", None)
+        # SQL Graph edge constraints (CONNECTION) are table-level constraints
+        # declared by the SQL Server CREATE TABLE node; the generic statement
+        # has no such field, so the dispatch is on the declared class.
+        from .expression.create_table import SQLServerCreateTableExpression
+
+        edge_constraints = (
+            expr.edge_constraints if isinstance(expr, SQLServerCreateTableExpression) else None
+        )
         if edge_constraints:
             for edge_constraint in edge_constraints:
                 ec_sql, ec_params = edge_constraint.to_sql()
@@ -747,8 +753,11 @@ class SQLServerDialect(
             durability = table_options.durability or "SCHEMA_ONLY"
             parts.append(self.format_memory_optimized_option(durability))
 
-        # SQL Graph table kind (AS NODE / AS EDGE), if requested.
-        graph_kind = getattr(expr, "graph_table_kind", None)
+        # SQL Graph table kind (AS NODE / AS EDGE), if requested. Like the
+        # edge constraints above, the field belongs to the SQL Server node.
+        graph_kind = (
+            expr.graph_table_kind if isinstance(expr, SQLServerCreateTableExpression) else None
+        )
         if graph_kind is not None:
             from .expression.ddl.graph import (
                 SQLServerAsGraphTableExpression,
@@ -1055,7 +1064,7 @@ class SQLServerDialect(
         if expr.unique:
             parts.append("UNIQUE")
 
-        if hasattr(expr, 'index_type') and expr.index_type:
+        if expr.index_type:
             index_type = expr.index_type.upper()
             if index_type in ('CLUSTERED', 'NONCLUSTERED'):
                 parts.append(index_type)
@@ -1301,9 +1310,18 @@ class SQLServerDialect(
         on_sql, on_params = expr.on_condition.to_sql()
         all_params.extend(on_params)
 
-        output_columns = getattr(expr, "output", None)
-        output_action = getattr(expr, "output_action", False)
-        holdlock = getattr(expr, "holdlock", False)
+        # OUTPUT / HOLDLOCK are declared by the SQL Server MERGE node; the
+        # generic statement has no such fields, so the dispatch is on the
+        # declared class and the generic node renders the plain MERGE form.
+        from .expression.dml import SQLServerMergeExpression
+
+        output_columns = None
+        output_action = False
+        holdlock = False
+        if isinstance(expr, SQLServerMergeExpression):
+            output_columns = expr.output
+            output_action = expr.output_action
+            holdlock = expr.holdlock
 
         parts = [
             f"MERGE INTO {target_sql}",
@@ -1382,7 +1400,7 @@ class SQLServerDialect(
         Generic JSON operators/functions (``json_extract_text`` etc.) are
         mapped to ``JSON_VALUE`` (see ``format_json_function_expression``).
         """
-        name = getattr(expr, "func_name", None)
+        name = expr.func_name
         if name and name.upper() in self._NILADIC_FUNCTION_EQUIVALENTS:
             sql = self._NILADIC_FUNCTION_EQUIVALENTS[name.upper()]
             return self.apply_alias(sql, (), expr)

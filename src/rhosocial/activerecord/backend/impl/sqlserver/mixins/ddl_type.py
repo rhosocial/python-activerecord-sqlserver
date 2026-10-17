@@ -667,8 +667,14 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                 "DROP TYPE IF EXISTS",
                 "requires SQL Server 2016+.",
             )
-        cascade = bool(getattr(expr, "cascade", False))
-        restrict = bool(getattr(expr, "restrict", False))
+        # CASCADE / RESTRICT are declared by the SQL Server DROP TYPE node;
+        # the generic statement carries neither, so the dispatch is on the
+        # declared class and the generic node never reaches the refusals.
+        cascade = False
+        restrict = False
+        if isinstance(expr, SQLServerDropTypeExpression):
+            cascade = expr.cascade
+            restrict = expr.restrict
         if cascade and restrict:
             raise ValueError("CASCADE and RESTRICT are mutually exclusive")
         if cascade:
@@ -697,7 +703,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         if not self.supports_type_definition(type(expr)):
             raise UnsupportedFeatureError(
                 self.name,
-                f"TYPE definition {getattr(expr, 'definition_kind', type(expr).__name__)}",
+                f"TYPE definition {expr.definition_kind}",
             )
         if isinstance(expr, SQLServerAliasTypeDefinition):
             base_sql, base_params = expr.base_type.to_sql()
@@ -721,7 +727,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             return self._format_table_type_definition(expr)
         raise UnsupportedFeatureError(
             self.name,
-            f"TYPE definition {getattr(expr, 'definition_kind', type(expr).__name__)}",
+            f"TYPE definition {expr.definition_kind}",
         )
 
     def format_type_alter_action(
@@ -738,7 +744,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             raise TypeError("expr must be a TypeAlterAction instance")
         raise UnsupportedFeatureError(
             self.name,
-            f"ALTER TYPE action {getattr(expr, 'action_kind', type(expr).__name__)}",
+            f"ALTER TYPE action {expr.action_kind}",
         )
 
     def format_rename_type_statement(

@@ -101,7 +101,10 @@ class SQLServerRoutineMixin:
         return ", ".join(parts)
 
     def _get_routine_name(self, expr: Any) -> str:
-        return getattr(expr, "name", None) or getattr(expr, "function_name", "")
+        # Every routine expression names itself through its declared ``name``
+        # field; the shadowed core function statement has no such field and
+        # fails here explicitly rather than reading as an empty name.
+        return expr.name
 
     def format_create_procedure_statement(
         self, expr: "SQLServerCreateProcedureExpression"
