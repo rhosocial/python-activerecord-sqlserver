@@ -8,7 +8,7 @@ from typing import Any, List, Optional, Sequence, Union
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.expression.objects import Type
-from rhosocial.activerecord.backend.expression.registry import default_registry
+from rhosocial.activerecord.backend.expression.serialization import default_registry
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnDefinition,
     IndexDefinition,
@@ -238,8 +238,17 @@ _SQLSERVER_TYPE_EXPRESSIONS = (
     SQLServerIndexDefinition,
 )
 
+# The kind whitelist the artifact reader resolves through. Registering into
+# the framework's default registry (the same singleton deserialization
+# consults) is what keeps these backend-owned kinds readable once a process
+# imports this package; re-registering a class the framework already knows
+# is a no-op. The enum rides along: an artifact encodes an enum member
+# under its short class name, and the reader resolves that name through the
+# same registry.
+_registry = default_registry()
 for _expression_class in _SQLSERVER_TYPE_EXPRESSIONS:
-    default_registry.register_node(_expression_class)
+    _registry.register_node(_expression_class)
+_registry.register_enum(SQLServerTypeNullability)
 
 
 __all__ = [
