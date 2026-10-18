@@ -43,6 +43,7 @@ from .transaction import SQLServerTransactionMixin
 from .function import SQLServerFunctionMixin
 from .ddl_type import SQLServerTypeDDLMixin
 from .trim import SQLServerTrimMixin
+from .typed_value import SQLServerTypedValueMixin
 
 __all__ = [
     "SQLServerTypeSupportMixin",
@@ -89,4 +90,5 @@ __all__ = [
     "SQLServerFunctionMixin",
     "SQLServerTypeDDLMixin",
     "SQLServerTrimMixin",
+    "SQLServerTypedValueMixin",
 ]
