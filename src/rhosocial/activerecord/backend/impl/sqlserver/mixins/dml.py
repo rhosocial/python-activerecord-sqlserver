@@ -62,17 +62,14 @@ class SQLServerDMLMixin:
         if isinstance(expr.source, DefaultValuesSource):
             parts.append("DEFAULT VALUES")
         elif isinstance(expr.source, ValuesSource):
-            all_rows_sql = []
-            for row in expr.source.values_list:
-                row_sql = []
-                row_params = []
-                for val in row:
-                    s, p = val.to_sql()
-                    row_sql.append(s)
-                    row_params.extend(p)
-                all_rows_sql.append(f"({', '.join(row_sql)})")
-                all_params.extend(row_params)
-            parts.append("VALUES " + ", ".join(all_rows_sql))
+            # The core owns the per-cell decision an INSERT's VALUES list
+            # turns on: an expression renders through its own to_sql(), a
+            # bare host value becomes a bind parameter directly (core
+            # 8e2e4d82). Re-implementing the loop here is what used to make
+            # a bare scalar cell fail instead of bind.
+            values_sql, values_params = self.format_insert_values_source(expr.source)
+            parts.append(values_sql)
+            all_params.extend(values_params)
         elif isinstance(expr.source, SelectSource):
             s_sql, s_params = expr.source.select_query.to_sql()
             parts.append(s_sql)

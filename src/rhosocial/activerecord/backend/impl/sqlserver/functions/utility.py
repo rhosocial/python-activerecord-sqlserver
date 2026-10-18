@@ -8,6 +8,7 @@ Functions: iif, choose, try_cast, try_convert, try_parse, choose
 from typing import Union, Any, Optional, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression import bases, core
+from rhosocial.activerecord.backend.expression.functions.string import CoalesceFunction
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
@@ -104,10 +105,16 @@ def try_parse(
 def coalesce(
     dialect: "SQLServerDialect",
     *expressions: Any,
-) -> "core.FunctionCall":
-    """Creates a COALESCE function call."""
+) -> "CoalesceFunction":
+    """Creates a COALESCE node through its class.
+
+    The classed node owns the kind and dispatches to its own formatter
+    (core 9b559030). The argument conversion this factory has always
+    applied -- a bare string names a column, a number becomes a literal --
+    is unchanged; only the node the operands ride on changed.
+    """
     exprs = [_convert_to_expression(dialect, e) for e in expressions]
-    return core.FunctionCall(dialect, "COALESCE", exprs)
+    return CoalesceFunction(dialect, *exprs)
 
 
 def nullif(

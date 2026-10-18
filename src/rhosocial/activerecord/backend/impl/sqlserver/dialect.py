@@ -7,7 +7,6 @@ based on the SQL Server version provided at initialization.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
-import copy
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
@@ -493,17 +492,6 @@ class SQLServerDialect(
     """
 
     name = "SQL Server"
-
-    _NILADIC_FUNCTION_EQUIVALENTS = {
-        "NOW": "SYSDATETIME()",
-        "CURRENT_DATE": "CAST(GETDATE() AS DATE)",
-        "CURRENT_TIME": "CAST(GETDATE() AS TIME)",
-    }
-
-    _FUNCTION_NAME_EQUIVALENTS = {
-        "LENGTH": "LEN",
-        "CHAR_LENGTH": "LEN",
-    }
 
     _SQLSERVER_FUNCTION_VERSIONS = {
         "json_value": (SQL_SERVER_2016, None),
@@ -1401,38 +1389,24 @@ class SQLServerDialect(
         # T-SQL requires a MERGE statement to be terminated by a semi-colon.
         return " ".join(parts) + ";", tuple(all_params)
 
-    def format_function_call(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
-        """Format a function call, mapping MySQL/generic function names to
-        their SQL Server equivalents.
+    def format_char_length_function(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
+        """CHAR_LENGTH(operand) in T-SQL is ``LEN(operand)``.
 
-        SQL Server has no NOW(), CURRENT_DATE or CURRENT_TIME:
-        - NOW() is replaced by SYSDATETIME()
-        - CURRENT_DATE is replaced by CAST(GETDATE() AS DATE)
-        - CURRENT_TIME is replaced by CAST(GETDATE() AS TIME)
+        The unit differs with the spelling: SQL Server's ``LEN`` counts
+        UTF-16 code units, not bytes (``DATALENGTH`` is the byte count),
+        and it excludes trailing blanks -- the trailing spaces the standard
+        ``CHAR_LENGTH`` keeps counting. The core's
+        ``format_char_length_function`` docstring names SQL Server as the
+        backend whose ``LENGTH`` answers a different question, which is
+        why this override exists instead of the portable spelling.
 
-        SQL Server also has no generic ``LENGTH`` function; it uses ``LEN``.
-        Generic JSON operators/functions (``json_extract_text`` etc.) are
-        mapped to ``JSON_VALUE`` (see ``format_json_function_expression``).
+        This lives on the dialect body rather than a late mixin because
+        ``format_char_length_function`` rides into the MRO through
+        ``ExpressionMixin`` -> ``FunctionCallMixin`` at an early position
+        (right behind ``SQLDialectBase``), ahead of every SQL Server
+        mixin block; the class body is the one place guaranteed to win.
         """
-        name = expr.func_name
-        if name and name.upper() in self._NILADIC_FUNCTION_EQUIVALENTS:
-            sql = self._NILADIC_FUNCTION_EQUIVALENTS[name.upper()]
-            return self.apply_alias(sql, (), expr)
-        if name and name.upper() in self._FUNCTION_NAME_EQUIVALENTS:
-            renamed_expr = self._clone_with_func_name(expr, self._FUNCTION_NAME_EQUIVALENTS[name.upper()])
-            return super().format_function_call(renamed_expr)
-        return super().format_function_call(expr)
-
-    def _clone_with_func_name(self, expr: "bases.BaseExpression", new_name: str) -> "bases.BaseExpression":
-        """Return a shallow copy of ``expr`` with ``func_name`` replaced.
-
-        The base ``format_function_call`` renders ``expr.func_name.upper()``,
-        so remapping generic names (e.g. ``LENGTH`` -> ``LEN``) only requires
-        a shallow copy with the target name substituted.
-        """
-        clone = copy.copy(expr)
-        clone.func_name = new_name
-        return clone
+        return self._format_scalar_function("LEN", expr)
 
     def format_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format an arbitrary expression to SQL."""
