@@ -145,10 +145,6 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     # The FROM side of a named object: an alias and a temporal clause, which the
     # relation itself has no room for. The name comes from the relation.
     RelationSourceMixin,
-    # Value literals: the tier-1 rendering lives on the core mixin; the
-    # tier-2 spellings SQL Server differs on live on this backend's mixin,
-    # which the base list composes ahead of this one.
-    TypedValueMixin,
 )
 from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
@@ -162,7 +158,7 @@ from .mixins.columnstore import SQLServerColumnstoreIndexMixin
 from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
 from .mixins.ddl_type import SQLServerTypeDDLMixin
 from .mixins.trim import SQLServerTrimMixin
-from .mixins.typed_value import SQLServerTypedValueMixin
+from .mixins.literal import SQLServerLiteralValueMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
@@ -258,6 +254,14 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 
 
 class SQLServerDialect(
+    # Value literals: SQL Server's tier-2 spellings -- 1/0 for the booleans
+    # T-SQL has no keywords for, the unquoted 0x hex constant, and quoted
+    # text a UNIQUEIDENTIFIER converts -- ahead of every other base and
+    # therefore of SQLDialectBase, whose format_literal ladder they refine.
+    # A mixin placed after the class it overrides never wins, and this one
+    # overrides the base; the position is first, like the SQLite literal
+    # mixin's, so the override is visible before the list grows long.
+    SQLServerLiteralValueMixin,
     # ``SQLDialectBase`` quotes identifiers with double quotes. Python resolves
     # base classes left to right, so the bracket-quoting mixin has to precede it
     # to win. This is also why the dialect body declares no ``format_identifier``
@@ -293,15 +297,6 @@ class SQLServerDialect(
     # NamespaceMixin itself: the base every *NameMixin above falls back on,
     # and the one SQLServerNamespaceMixin refines.
     NamespaceMixin,
-    # Value literals: SQL Server's spellings (0x binary constants, quoted
-    # UUID text) and its boolean intercept -- T-SQL has no TRUE/FALSE
-    # literal keywords, so the dialect's literal construction spells 1/0 --
-    # ahead of the base class whose format_literal the intercept refines,
-    # then the core's tier-1 delegation. This order is what resolves
-    # format_binary_value, format_uuid_value and format_literal's boolean
-    # branch.
-    SQLServerTypedValueMixin,
-    TypedValueMixin,
     SQLDialectBase,
     # Core infrastructure mixins (provide base implementations
     # that the dialect overrides as needed)
