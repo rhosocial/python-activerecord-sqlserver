@@ -2,6 +2,13 @@
 import re
 from typing import Any, Dict, Optional, Set, Tuple, Type, TYPE_CHECKING
 
+from ..query_nodes import (
+    identity_columns_sql,
+    identity_current_sql,
+    server_property_value_sql,
+    session_identity_sql,
+)
+
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
 
@@ -86,19 +93,19 @@ class SQLServerBackendMixin:
         return (body[:table_end] + " " + hint + body[table_end:]).strip()
 
     def _get_identity_columns(self, table_name: str) -> Set[str]:
-        """Return the set of identity column names for a table (cached)."""
+        """Return the set of identity column names for a table (cached).
+
+        The catalogue question is built from nodes and rendered by the
+        dialect; this method only executes it.
+        """
         cache_key = table_name.lower()
         if cache_key in self._identity_columns_cache:
             return self._identity_columns_cache[cache_key]
         columns: Set[str] = set()
         try:
+            sql, params = identity_columns_sql(self.dialect, table_name)
             cursor = self._get_cursor()
-            cursor.execute(
-                "SELECT c.name FROM sys.identity_columns c "
-                "JOIN sys.tables t ON c.object_id = t.object_id "
-                f"WHERE t.name = {self.dialect.p()} AND SCHEMA_NAME(t.schema_id) = 'dbo'",
-                (table_name,),
-            )
+            cursor.execute(sql, params)
             for row in cursor.fetchall():
                 columns.add(str(row[0]).lower())
             cursor.close()
@@ -175,8 +182,9 @@ class SQLServerBackendMixin:
         cursor.close()
 
     def get_scope_identity(self) -> Optional[int]:
+        sql, params = session_identity_sql(self.dialect)
         cursor = self._get_cursor()
-        cursor.execute("SELECT @@IDENTITY")
+        cursor.execute(sql, params)
         row = cursor.fetchone()
         cursor.close()
         if row and row[0] is not None:
@@ -184,8 +192,9 @@ class SQLServerBackendMixin:
         return None
 
     def get_identity_current(self, table: str) -> Optional[int]:
+        sql, params = identity_current_sql(self.dialect, table)
         cursor = self._get_cursor()
-        cursor.execute(f"SELECT IDENT_CURRENT({self.dialect.p()})", (table,))
+        cursor.execute(sql, params)
         row = cursor.fetchone()
         cursor.close()
         if row and row[0] is not None:
@@ -264,47 +273,33 @@ class SQLServerBackendMixin:
         cursor.close()
 
     def get_product_version(self) -> str:
-        cursor = self._get_cursor()
-        cursor.execute("SELECT SERVERPROPERTY('ProductVersion')")
-        row = cursor.fetchone()
-        cursor.close()
-        return row[0] if row else ""
+        return self._server_property_value("ProductVersion")
 
     def get_product_level(self) -> str:
-        cursor = self._get_cursor()
-        cursor.execute("SELECT SERVERPROPERTY('ProductLevel')")
-        row = cursor.fetchone()
-        cursor.close()
-        return row[0] if row else ""
+        return self._server_property_value("ProductLevel")
 
     def get_edition(self) -> str:
-        cursor = self._get_cursor()
-        cursor.execute("SELECT SERVERPROPERTY('Edition')")
-        row = cursor.fetchone()
-        cursor.close()
-        return row[0] if row else ""
+        return self._server_property_value("Edition")
 
     def get_machine_name(self) -> str:
-        cursor = self._get_cursor()
-        cursor.execute("SELECT SERVERPROPERTY('MachineName')")
-        row = cursor.fetchone()
-        cursor.close()
-        return row[0] if row else ""
+        return self._server_property_value("MachineName")
 
     def get_server_name(self) -> str:
+        return self._server_property_value("ServerName")
+
+    def _server_property_value(self, name: str) -> str:
+        """Read one ``SERVERPROPERTY`` value; the name is part of the query."""
+        sql, params = server_property_value_sql(self.dialect, name)
         cursor = self._get_cursor()
-        cursor.execute("SELECT SERVERPROPERTY('ServerName')")
+        cursor.execute(sql, params)
         row = cursor.fetchone()
         cursor.close()
         return row[0] if row else ""
 
     def is_case_sensitive(self) -> bool:
-        cursor = self._get_cursor()
-        cursor.execute("SELECT SERVERPROPERTY('Collation')")
-        row = cursor.fetchone()
-        cursor.close()
-        if row and row[0]:
-            collation = str(row[0]).upper()
+        collation = self._server_property_value("Collation")
+        if collation:
+            collation = str(collation).upper()
             return "_CS" in collation or collation.endswith("_CS_AS")
         return False
 

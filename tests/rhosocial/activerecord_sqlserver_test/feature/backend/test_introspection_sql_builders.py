@@ -2,11 +2,19 @@
 """Offline tests for the introspector's pure-Python paths.
 
 Covers the SQL injection hardening changes: every ``_build_*_sql`` method
-now returns parameterized SQL (``?`` placeholders) with separate params,
-instead of string-interpolated values.  Also covers the catalog-row to
-``full_type`` rebuild in ``_parse_columns``: the ``-1`` (MAX) marker that the
-rebuild used to drop, and the ``DATETIME_PRECISION`` parameter of
+returns parameterized SQL (``?`` placeholders) with separate params, instead
+of string-interpolated values.  Also covers the catalog-row to ``full_type``
+rebuild in ``_parse_columns``: the ``-1`` (MAX) marker that the rebuild used to
+drop, and the ``DATETIME_PRECISION`` parameter of
 ``time``/``datetime2``/``datetimeoffset``, which it used to ignore.
+
+The builders now assemble a ``QueryStatement`` from expression nodes and let
+the dialect render it (org guide §16.2), so the assertions below read the
+parameterization off the *rendered* statement rather than off a text template
+this layer used to own: what has to hold is that every value the caller passed
+became a bind parameter and no value leaked into the text. The identifier
+spelling is the dialect's, so it is asserted as ``[schema].[TABLE]`` where a
+position matters and left free where it does not.
 """
 from rhosocial.activerecord.backend.expression.types import DataType, TextType
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
@@ -19,6 +27,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
 )
 from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
     SyncSQLServerIntrospector,
+    SyncSQLServerStatusIntrospector,
 )
 
 
@@ -36,18 +45,22 @@ class TestBuildTableListSql:
     def test_default_schema_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_table_list_sql(None, False)
-        assert "TABLE_SCHEMA = ?" in sql
+        assert "[TABLE_SCHEMA] = ?" in sql
         assert params == ("dbo",)
+        assert "'dbo'" not in sql
 
     def test_with_table_type_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_table_list_sql("sys", False, table_type="BASE TABLE")
-        assert "TABLE_TYPE = ?" in sql
+        assert "[TABLE_TYPE] = ?" in sql
         assert params == ("sys", "BASE TABLE")
+        assert "'BASE TABLE'" not in sql
 
     def test_without_views_no_table_type(self):
         introspector = make_introspector()
         sql, params = introspector._build_table_list_sql("dbo", False, include_views=False)
+        # The implicit "tables only" filter is part of the question, not data,
+        # so it stays an inline literal exactly as the template wrote it.
         assert "BASE TABLE" in sql
         assert params == ("dbo",)
 
@@ -56,29 +69,41 @@ class TestBuildColumnInfoSql:
     def test_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_column_info_sql("users", "dbo")
-        assert "c.TABLE_SCHEMA = ?" in sql
+        assert "[TABLE_SCHEMA] = ?" in sql
+        assert "[TABLE_NAME] = ?" in sql
         assert params == ("dbo", "users")
 
     def test_selects_datetime_precision(self):
         """The temporal parameter lives only in ``DATETIME_PRECISION``."""
         introspector = make_introspector()
         sql, _ = introspector._build_column_info_sql("users", "dbo")
-        assert "c.DATETIME_PRECISION" in sql
+        assert "DATETIME_PRECISION" in sql
+
+    def test_identity_flag_rides_the_column(self):
+        """``COLUMNPROPERTY(..., 'IsIdentity')`` keeps its alias in the node."""
+        introspector = make_introspector()
+        sql, _ = introspector._build_column_info_sql("users", "dbo")
+        assert "COLUMNPROPERTY" in sql
+        assert "IS_IDENTITY" in sql
+        assert "IsIdentity" in sql
 
 
 class TestBuildPrimaryKeySql:
     def test_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_primary_key_sql("users", "dbo")
-        assert "tc.TABLE_SCHEMA = ?" in sql
+        assert "[TABLE_SCHEMA] = ?" in sql
+        assert "[TABLE_NAME] = ?" in sql
         assert params == ("dbo", "users")
+        assert "'PRIMARY KEY'" in sql, "the constraint kind is part of the question"
 
 
 class TestBuildIndexInfoSql:
     def test_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_index_info_sql("users", "dbo")
-        assert "s.name = ?" in sql
+        assert "[s].[name] = ?" in sql
+        assert "[t].[name] = ?" in sql
         assert params == ("dbo", "users")
 
 
@@ -86,7 +111,8 @@ class TestBuildForeignKeySql:
     def test_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_foreign_key_sql("users", "dbo")
-        assert "s.name = ?" in sql
+        assert "[s].[name] = ?" in sql
+        assert "[t].[name] = ?" in sql
         assert params == ("dbo", "users")
 
 
@@ -94,7 +120,7 @@ class TestBuildViewListSql:
     def test_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_view_list_sql("dbo", False)
-        assert "TABLE_SCHEMA = ?" in sql
+        assert "[TABLE_SCHEMA] = ?" in sql
         assert params == ("dbo",)
 
 
@@ -102,7 +128,8 @@ class TestBuildViewInfoSql:
     def test_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_view_info_sql("active_users", "dbo")
-        assert "TABLE_SCHEMA = ?" in sql
+        assert "[TABLE_SCHEMA] = ?" in sql
+        assert "[TABLE_NAME] = ?" in sql
         assert params == ("dbo", "active_users")
 
 
@@ -110,13 +137,13 @@ class TestBuildTriggerListSql:
     def test_with_table_name_parameterized(self):
         introspector = make_introspector()
         sql, params = introspector._build_trigger_list_sql("orders", "dbo")
-        assert "AND t.name = ?" in sql
+        assert "[s].[name] = ? AND [t].[name] = ?" in sql
         assert params == ("dbo", "orders")
 
     def test_without_table_name(self):
         introspector = make_introspector()
         sql, params = introspector._build_trigger_list_sql(None, "dbo")
-        assert "AND t.name = ?" not in sql
+        assert "[t].[name] = ?" not in sql
         assert params == ("dbo",)
 
 
@@ -125,6 +152,88 @@ class TestBuildDatabaseInfoSql:
         introspector = make_introspector()
         sql, params = introspector._build_database_info_sql()
         assert "DB_NAME()" in sql
+        assert "SERVERPROPERTY('ProductVersion')" in sql
+        assert params == ()
+
+
+def make_status_introspector(version=(16, 0, 0)) -> SyncSQLServerStatusIntrospector:
+    config = SQLServerConnectionConfig(
+        host="localhost", port=1433, database="master", username="sa", password="",
+    )
+    backend = SQLServerBackend(connection_config=config, version=version)
+    return SyncSQLServerStatusIntrospector(backend)
+
+
+class TestStatusQueries:
+    """The status queries are nodes too, and the caps they used are version-gated.
+
+    Each row shape here is the contract the parsers above read: the aliases in
+    the projection are what ``row["counter_name"]`` and friends look up, so a
+    rename here would silently empty a status report rather than fail.
+    """
+
+    def test_version_query_asks_the_engine(self):
+        sql, params = make_status_introspector()._version_sql()
+        assert sql == "SELECT CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128))"
+        assert params == ()
+
+    def test_configuration_projection_and_aliases(self):
+        sql, params = make_status_introspector()._configuration_sql()
+        assert "[value_in_use]" in sql and "AS [value_in_use]" in sql
+        assert "FROM [sys].[configurations]" in sql
+        assert "ORDER BY [name]" in sql
+        assert params == ()
+
+    def test_performance_cap_is_pagination_not_top(self):
+        sql, _ = make_status_introspector()._performance_metrics_sql(50)
+        assert "OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY" in sql
+        assert "TOP 50" not in sql
+        assert "ORDER BY [cntr_value] DESC" in sql
+        # The cap precedes the ORDER BY it depends on, so the ordering the
+        # old TOP 50 relied on for "busiest first" is still what is asked for.
+
+    def test_performance_cap_dropped_before_2012(self):
+        """``OFFSET/FETCH`` arrived in 2012; older servers read every counter."""
+        introspector = make_status_introspector(version=(10, 0, 0))
+        assert introspector._performance_metrics_limit() is None
+        sql, _ = introspector._performance_metrics_sql(None)
+        assert "OFFSET" not in sql
+        assert "ORDER BY [cntr_value] DESC" in sql
+
+    def test_performance_cap_kept_from_2012(self):
+        assert make_status_introspector(version=(11, 0, 0))._performance_metrics_limit() == 50
+
+    def test_connection_info_halves_are_subqueries(self):
+        sql, params = make_status_introspector()._connection_info_sql()
+        assert "(SELECT COUNT(*) FROM [sys].[dm_exec_connections]) AS [active]" in sql
+        assert "AS [max_conn]" in sql
+        assert params == (), "the setting name is part of the question"
+
+    def test_storage_sums_the_page_units(self):
+        sql, params = make_status_introspector()._storage_info_sql()
+        assert sql == (
+            "SELECT SUM([size] * 8 * 1024) AS [total_bytes] "
+            "FROM [sys].[master_files] WHERE [database_id] > 0"
+        )
+        assert params == ()
+
+    def test_database_list_groups_and_orders_by_name(self):
+        sql, params = make_status_introspector()._database_list_sql()
+        assert "LEFT JOIN [sys].[master_files] AS [mf]" in sql
+        assert "GROUP BY [d].[name]" in sql
+        assert "ORDER BY [d].[name]" in sql
+        assert params == ()
+
+    def test_user_list_filters_login_types(self):
+        sql, params = make_status_introspector()._user_list_sql()
+        assert "[type] IN ('S', 'U', 'G')" in sql
+        assert params == ()
+
+    def test_session_info_keeps_the_niladic_login_name_unquoted(self):
+        """``SYSTEM_USER`` is the value function, not a column to look up."""
+        sql, params = make_status_introspector()._session_info_sql()
+        assert sql.startswith("SELECT SYSTEM_USER AS [session_user]")
+        assert "CONNECTIONPROPERTY('net_transport')" in sql
         assert params == ()
 
 

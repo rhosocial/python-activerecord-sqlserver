@@ -34,6 +34,8 @@ from rhosocial.activerecord.backend.introspection.types import (
 )
 from rhosocial.activerecord.backend.expression.types._base import DataType
 
+from ..query_nodes import SQLServerNodeBuilderMixin
+
 #: ``INFORMATION_SCHEMA.COLUMNS.CHARACTER_MAXIMUM_LENGTH`` reports ``-1``
 #: for a MAX-capable column.  Only these three spell that marker as a length
 #: argument (``(MAX)``).  ``xml`` reports ``-1`` as well but takes no length
@@ -80,7 +82,7 @@ _DATETIME_PRECISION_TYPES = frozenset({"time", "datetime2", "datetimeoffset"})
 _DATETIME_DEFAULT_PRECISION = 7
 
 
-class SQLServerIntrospectorMixin(IntrospectorMixin):
+class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     """Shared non-I/O logic for SQL Server introspectors."""
 
     def _get_default_schema(self) -> str:
@@ -91,171 +93,356 @@ class SQLServerIntrospectorMixin(IntrospectorMixin):
 
     # ------------------------------------------------------------------
     # SQL builders
+    #
+    # Every query below is a QueryStatement over catalogue relations built
+    # from expression nodes; the dialect writes the SQL. What each query
+    # *asks* is then a structure the rest of the framework can inspect,
+    # instead of text assembled one clause at a time in this layer.
+    #
+    # The parameter positions are the ones the concatenated form used: a
+    # schema or table name it bound stays bound, and a value it wrote into
+    # the statement (``'BASE TABLE'``, ``'PRIMARY KEY'``, ``'IsIdentity'``)
+    # stays an inline literal, so every caller keeps the parameter tuple it
+    # already had.
     # ------------------------------------------------------------------
 
+    def _cast_server_property(self, name: str, alias: Optional[str] = None):
+        """``CAST(SERVERPROPERTY('<name>') AS NVARCHAR(128))``, optionally aliased.
+
+        The property name is a literal of the statement, not data, so it stays
+        inline: the request carries no parameters.
+        """
+        from rhosocial.activerecord.backend.expression import FunctionCall
+        from ..expression.types import SQLServerNVarCharType
+
+        node = FunctionCall(
+            self.dialect, "SERVERPROPERTY", self._lit(name, inline=True)
+        ).cast(SQLServerNVarCharType(self.dialect, 128))
+        return node.as_(alias) if alias else node
+
     def _build_database_info_sql(self) -> Tuple[str, tuple]:
-        return ("""
-            SELECT
-                DB_NAME() AS db_name,
-                CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)) AS version,
-                CAST(SERVERPROPERTY('Collation') AS NVARCHAR(128)) AS collation,
-                CAST(SERVERPROPERTY('Edition') AS NVARCHAR(128)) AS edition
-        """, ())
+        from rhosocial.activerecord.backend.expression import FunctionCall
+
+        # No FROM: this query reads no table, it asks the engine a question.
+        return self._select(
+            [
+                FunctionCall(self.dialect, "DB_NAME", alias="db_name"),
+                self._cast_server_property("ProductVersion", "version"),
+                self._cast_server_property("Collation", "collation"),
+                self._cast_server_property("Edition", "edition"),
+            ]
+        )
 
     def _build_table_list_sql(
         self, schema: Optional[str], include_system: bool,
         include_views: bool = True, table_type: Optional[str] = None,
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        params: List[str] = [target]
-        p = self.dialect.p()
-        conditions = [f"TABLE_SCHEMA = {p}"]
+        conditions = [self._eq(self._col("TABLE_SCHEMA"), self._lit(target))]
         if table_type:
-            conditions.append(f"TABLE_TYPE = {p}")
-            params.append(table_type)
+            conditions.append(self._eq(self._col("TABLE_TYPE"), self._lit(table_type)))
         elif not include_views:
-            conditions.append("TABLE_TYPE = 'BASE TABLE'")
-        where = " AND ".join(conditions)
-        return (f"""
-            SELECT TABLE_NAME, TABLE_TYPE
-            FROM INFORMATION_SCHEMA.TABLES
-            WHERE {where}
-            ORDER BY TABLE_NAME
-        """, tuple(params))
+            conditions.append(
+                self._eq(self._col("TABLE_TYPE"), self._lit("BASE TABLE", inline=True))
+            )
+        return self._select(
+            [self._col("TABLE_NAME"), self._col("TABLE_TYPE")],
+            from_=self._relation("TABLES", "INFORMATION_SCHEMA"),
+            where=self._and(*conditions),
+            order_by=[self._col("TABLE_NAME")],
+        )
 
     def _build_column_info_sql(
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
+        from rhosocial.activerecord.backend.expression import FunctionCall
+        from rhosocial.activerecord.backend.expression.operators import (
+            ArithmeticOperation,
+            ArithmeticOperator,
+        )
+
         target = schema or self._get_default_schema()
-        p = self.dialect.p()
-        return (f"""
-            SELECT
-                c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
-                c.COLUMN_DEFAULT, c.CHARACTER_MAXIMUM_LENGTH,
-                c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
-                c.DATETIME_PRECISION,
-                c.ORDINAL_POSITION, c.COLLATION_NAME,
-                COLUMNPROPERTY(
-                    OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME),
-                    c.COLUMN_NAME, 'IsIdentity'
-                ) AS IS_IDENTITY
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            WHERE c.TABLE_SCHEMA = {p} AND c.TABLE_NAME = {p}
-            ORDER BY c.ORDINAL_POSITION
-        """, (target, table_name))
+        # OBJECT_ID takes the qualified object name as one string. SQL Server
+        # spells string concatenation with ``+`` (``||`` only from 2025), so
+        # this is the arithmetic ``add`` node, not the standard concatenation.
+        qualified_name = ArithmeticOperation(
+            self.dialect,
+            ArithmeticOperator.ADD,
+            ArithmeticOperation(
+                self.dialect,
+                ArithmeticOperator.ADD,
+                self._col("TABLE_SCHEMA", "c"),
+                self._lit(".", inline=True),
+            ),
+            self._col("TABLE_NAME", "c"),
+        )
+        is_identity = FunctionCall(
+            self.dialect,
+            "COLUMNPROPERTY",
+            FunctionCall(self.dialect, "OBJECT_ID", qualified_name),
+            self._col("COLUMN_NAME", "c"),
+            self._lit("IsIdentity", inline=True),
+            alias="IS_IDENTITY",
+        )
+        return self._select(
+            [
+                self._col("COLUMN_NAME", "c"),
+                self._col("DATA_TYPE", "c"),
+                self._col("IS_NULLABLE", "c"),
+                self._col("COLUMN_DEFAULT", "c"),
+                self._col("CHARACTER_MAXIMUM_LENGTH", "c"),
+                self._col("NUMERIC_PRECISION", "c"),
+                self._col("NUMERIC_SCALE", "c"),
+                self._col("DATETIME_PRECISION", "c"),
+                self._col("ORDINAL_POSITION", "c"),
+                self._col("COLLATION_NAME", "c"),
+                is_identity,
+            ],
+            from_=self._relation("COLUMNS", "INFORMATION_SCHEMA", alias="c"),
+            where=self._and(
+                self._eq(self._col("TABLE_SCHEMA", "c"), self._lit(target)),
+                self._eq(self._col("TABLE_NAME", "c"), self._lit(table_name)),
+            ),
+            order_by=[self._col("ORDINAL_POSITION", "c")],
+        )
 
     def _build_primary_key_sql(
         self, table_name: str, schema: str
     ) -> Tuple[str, tuple]:
-        p = self.dialect.p()
-        return (f"""
-            SELECT ccu.COLUMN_NAME
-            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-            JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu
-                ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
-                AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
-            WHERE tc.TABLE_SCHEMA = {p}
-              AND tc.TABLE_NAME = {p}
-              AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-        """, (schema, table_name))
+        from rhosocial.activerecord.backend.expression import JoinClause
+
+        # The two catalogue views are joined on the constraint name *and* the
+        # schema, so a same-named constraint in another schema cannot contribute
+        # a column to this table's key.
+        join = JoinClause(
+            self.dialect,
+            self._relation("TABLE_CONSTRAINTS", "INFORMATION_SCHEMA", alias="tc"),
+            self._relation("CONSTRAINT_COLUMN_USAGE", "INFORMATION_SCHEMA", alias="ccu"),
+            join_type="JOIN",
+            condition=self._and(
+                self._eq(
+                    self._col("CONSTRAINT_NAME", "tc"),
+                    self._col("CONSTRAINT_NAME", "ccu"),
+                ),
+                self._eq(
+                    self._col("TABLE_SCHEMA", "tc"), self._col("TABLE_SCHEMA", "ccu")
+                ),
+            ),
+        )
+        return self._select(
+            [self._col("COLUMN_NAME", "ccu")],
+            from_=join,
+            where=self._and(
+                self._eq(self._col("TABLE_SCHEMA", "tc"), self._lit(schema)),
+                self._eq(self._col("TABLE_NAME", "tc"), self._lit(table_name)),
+                self._eq(
+                    self._col("CONSTRAINT_TYPE", "tc"),
+                    self._lit("PRIMARY KEY", inline=True),
+                ),
+            ),
+        )
 
     def _build_index_info_sql(
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
+        from rhosocial.activerecord.backend.expression import IsNullPredicate, JoinClause
+
         target = schema or self._get_default_schema()
-        p = self.dialect.p()
-        return (f"""
-            SELECT
-                i.name AS index_name,
-                i.is_unique,
-                i.is_primary_key,
-                i.type_desc AS index_type,
-                c.name AS column_name,
-                ic.key_ordinal AS column_position,
-                ic.is_descending_key
-            FROM sys.indexes i
-            JOIN sys.tables t ON i.object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            JOIN sys.index_columns ic
-                ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c
-                ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE s.name = {p} AND t.name = {p}
-              AND i.name IS NOT NULL
-            ORDER BY i.name, ic.key_ordinal
-        """, (target, table_name))
+        joins = JoinClause(
+            self.dialect,
+            JoinClause(
+                self.dialect,
+                JoinClause(
+                    self.dialect,
+                    JoinClause(
+                        self.dialect,
+                        self._relation("indexes", "sys", alias="i"),
+                        self._relation("tables", "sys", alias="t"),
+                        join_type="JOIN",
+                        condition=self._eq(
+                            self._col("object_id", "i"), self._col("object_id", "t")
+                        ),
+                    ),
+                    self._relation("schemas", "sys", alias="s"),
+                    join_type="JOIN",
+                    condition=self._eq(
+                        self._col("schema_id", "t"), self._col("schema_id", "s")
+                    ),
+                ),
+                self._relation("index_columns", "sys", alias="ic"),
+                join_type="JOIN",
+                condition=self._and(
+                    self._eq(self._col("object_id", "i"), self._col("object_id", "ic")),
+                    self._eq(self._col("index_id", "i"), self._col("index_id", "ic")),
+                ),
+            ),
+            self._relation("columns", "sys", alias="c"),
+            join_type="JOIN",
+            condition=self._and(
+                self._eq(self._col("object_id", "ic"), self._col("object_id", "c")),
+                self._eq(self._col("column_id", "ic"), self._col("column_id", "c")),
+            ),
+        )
+        return self._select(
+            [
+                self._col("name", "i", alias="index_name"),
+                self._col("is_unique", "i"),
+                self._col("is_primary_key", "i"),
+                self._col("type_desc", "i", alias="index_type"),
+                self._col("name", "c", alias="column_name"),
+                self._col("key_ordinal", "ic", alias="column_position"),
+                self._col("is_descending_key", "ic"),
+            ],
+            from_=joins,
+            where=self._and(
+                self._eq(self._col("name", "s"), self._lit(target)),
+                self._eq(self._col("name", "t"), self._lit(table_name)),
+                IsNullPredicate(self.dialect, self._col("name", "i"), is_not=True),
+            ),
+            order_by=[self._col("name", "i"), self._col("key_ordinal", "ic")],
+        )
 
     def _build_foreign_key_sql(
         self, table_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
+        from rhosocial.activerecord.backend.expression import FunctionCall, JoinClause
+
         target = schema or self._get_default_schema()
-        p = self.dialect.p()
-        return (f"""
-            SELECT
-                fk.name AS fk_name,
-                COL_NAME(fc.parent_object_id, fc.parent_column_id) AS col_name,
-                OBJECT_NAME(fk.referenced_object_id) AS ref_table,
-                COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS ref_col,
-                fk.delete_referential_action_desc AS on_delete,
-                fk.update_referential_action_desc AS on_update,
-                fc.constraint_column_id AS col_position
-            FROM sys.foreign_keys fk
-            JOIN sys.foreign_key_columns fc
-                ON fk.object_id = fc.constraint_object_id
-            JOIN sys.tables t ON fk.parent_object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = {p} AND t.name = {p}
-            ORDER BY fk.name, fc.constraint_column_id
-        """, (target, table_name))
+        joins = JoinClause(
+            self.dialect,
+            JoinClause(
+                self.dialect,
+                JoinClause(
+                    self.dialect,
+                    self._relation("foreign_keys", "sys", alias="fk"),
+                    self._relation("foreign_key_columns", "sys", alias="fc"),
+                    join_type="JOIN",
+                    condition=self._eq(
+                        self._col("object_id", "fk"),
+                        self._col("constraint_object_id", "fc"),
+                    ),
+                ),
+                self._relation("tables", "sys", alias="t"),
+                join_type="JOIN",
+                condition=self._eq(
+                    self._col("parent_object_id", "fk"), self._col("object_id", "t")
+                ),
+            ),
+            self._relation("schemas", "sys", alias="s"),
+            join_type="JOIN",
+            condition=self._eq(
+                self._col("schema_id", "t"), self._col("schema_id", "s")
+            ),
+        )
+        return self._select(
+            [
+                self._col("name", "fk", alias="fk_name"),
+                FunctionCall(
+                    self.dialect,
+                    "COL_NAME",
+                    self._col("parent_object_id", "fc"),
+                    self._col("parent_column_id", "fc"),
+                    alias="col_name",
+                ),
+                FunctionCall(
+                    self.dialect,
+                    "OBJECT_NAME",
+                    self._col("referenced_object_id", "fk"),
+                    alias="ref_table",
+                ),
+                FunctionCall(
+                    self.dialect,
+                    "COL_NAME",
+                    self._col("referenced_object_id", "fc"),
+                    self._col("referenced_column_id", "fc"),
+                    alias="ref_col",
+                ),
+                self._col("delete_referential_action_desc", "fk", alias="on_delete"),
+                self._col("update_referential_action_desc", "fk", alias="on_update"),
+                self._col("constraint_column_id", "fc", alias="col_position"),
+            ],
+            from_=joins,
+            where=self._and(
+                self._eq(self._col("name", "s"), self._lit(target)),
+                self._eq(self._col("name", "t"), self._lit(table_name)),
+            ),
+            order_by=[
+                self._col("name", "fk"),
+                self._col("constraint_column_id", "fc"),
+            ],
+        )
 
     def _build_view_list_sql(
         self, schema: Optional[str], include_system: bool
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        p = self.dialect.p()
-        return (f"""
-            SELECT TABLE_NAME AS view_name
-            FROM INFORMATION_SCHEMA.VIEWS
-            WHERE TABLE_SCHEMA = {p}
-            ORDER BY TABLE_NAME
-        """, (target,))
+        return self._select(
+            [self._col("TABLE_NAME", alias="view_name")],
+            from_=self._relation("VIEWS", "INFORMATION_SCHEMA"),
+            where=self._eq(self._col("TABLE_SCHEMA"), self._lit(target)),
+            order_by=[self._col("TABLE_NAME")],
+        )
 
     def _build_view_info_sql(
         self, view_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
         target = schema or self._get_default_schema()
-        p = self.dialect.p()
-        return (f"""
-            SELECT
-                TABLE_NAME AS view_name,
-                VIEW_DEFINITION AS definition,
-                IS_UPDATABLE
-            FROM INFORMATION_SCHEMA.VIEWS
-            WHERE TABLE_SCHEMA = {p} AND TABLE_NAME = {p}
-        """, (target, view_name))
+        return self._select(
+            [
+                self._col("TABLE_NAME", alias="view_name"),
+                self._col("VIEW_DEFINITION", alias="definition"),
+                self._col("IS_UPDATABLE"),
+            ],
+            from_=self._relation("VIEWS", "INFORMATION_SCHEMA"),
+            where=self._and(
+                self._eq(self._col("TABLE_SCHEMA"), self._lit(target)),
+                self._eq(self._col("TABLE_NAME"), self._lit(view_name)),
+            ),
+        )
 
     def _build_trigger_list_sql(
         self, table_name: Optional[str], schema: Optional[str]
     ) -> Tuple[str, tuple]:
+        from rhosocial.activerecord.backend.expression import FunctionCall, JoinClause
+
         target = schema or self._get_default_schema()
-        params: List[str] = [target]
-        p = self.dialect.p()
-        table_filter = f"AND t.name = {p}" if table_name else ""
+        joins = JoinClause(
+            self.dialect,
+            JoinClause(
+                self.dialect,
+                self._relation("triggers", "sys", alias="tr"),
+                self._relation("tables", "sys", alias="t"),
+                join_type="JOIN",
+                condition=self._eq(
+                    self._col("parent_id", "tr"), self._col("object_id", "t")
+                ),
+            ),
+            self._relation("schemas", "sys", alias="s"),
+            join_type="JOIN",
+            condition=self._eq(
+                self._col("schema_id", "t"), self._col("schema_id", "s")
+            ),
+        )
+        conditions = [self._eq(self._col("name", "s"), self._lit(target))]
         if table_name:
-            params.append(table_name)
-        return (f"""
-            SELECT
-                tr.name AS trigger_name,
-                t.name AS table_name,
-                tr.is_disabled,
-                tr.is_instead_of_trigger,
-                OBJECT_DEFINITION(tr.object_id) AS definition
-            FROM sys.triggers tr
-            JOIN sys.tables t ON tr.parent_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = {p} {table_filter}
-            ORDER BY tr.name
-        """, tuple(params))
+            conditions.append(self._eq(self._col("name", "t"), self._lit(table_name)))
+        return self._select(
+            [
+                self._col("name", "tr", alias="trigger_name"),
+                self._col("name", "t", alias="table_name"),
+                self._col("is_disabled", "tr"),
+                self._col("is_instead_of_trigger", "tr"),
+                FunctionCall(
+                    self.dialect,
+                    "OBJECT_DEFINITION",
+                    self._col("object_id", "tr"),
+                    alias="definition",
+                ),
+            ],
+            from_=joins,
+            where=self._and(*conditions),
+            order_by=[self._col("name", "tr")],
+        )
 
     # ------------------------------------------------------------------
     # Parse methods — pure Python, no I/O

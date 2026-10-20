@@ -1,13 +1,20 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/show/functionality.py
 """
-SQL Server SHOW functionality implementation.
+SQL Server SHOW compatibility layer.
 
-SQL Server has no ``SHOW ...`` statements. This module provides
-SQL Server-specific equivalents by querying the system catalogs
-(``sys.tables``, ``sys.columns``, ``sys.indexes``, ``sys.triggers``,
-``sys.databases``, ``sys.configurations``, ``sys.dm_exec_sessions``) and
-parsing the results into the same typed result dataclasses used by the
-MySQL ``SHOW`` implementation, keeping the ``show()`` backend API uniform.
+SQL Server has no ``SHOW ...`` statements, so this module carries only the
+*inbound* half of the MySQL vocabulary: it parses result sets whose column
+names follow MySQL's SHOW spellings into the typed result dataclasses the
+shared ``show()`` API returns, so a caller written against MySQL's vocabulary
+can read SQL Server's catalogue.
+
+It deliberately builds no SQL. The catalogue questions live in
+``..query_nodes`` as expression nodes and are rendered by the dialect (org
+guide §16.2), because a query written here would be a second place where
+SQL Server's SQL is spelled, and a catalogue read written as text is exactly
+what this wave removes. The translation this layer does own is the row shape:
+MySQL names a result column ``Field``, SQL Server's catalogue names the same
+value ``COLUMN_NAME``, and every parser below accepts either.
 """
 
 from typing import Optional, Tuple, TYPE_CHECKING
@@ -17,10 +24,11 @@ if TYPE_CHECKING:
 
 
 class SQLServerShowFunctionality:
-    """SQL Server SHOW functionality implementation.
+    """Parses SHOW-shaped result sets into typed dataclasses.
 
-    Parses result sets from SQL Server catalog queries into typed
-    dataclasses. Supports version-aware feature detection.
+    MySQL-compatible row names and SQL Server catalogue row names are both
+    accepted, so the same parser reads either source. Supports version-aware
+    feature detection.
     """
 
     def __init__(self, backend: "SQLServerBackend", version: Optional[Tuple[int, ...]] = None):
