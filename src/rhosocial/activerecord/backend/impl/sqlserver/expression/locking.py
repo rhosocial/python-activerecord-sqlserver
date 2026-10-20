@@ -17,6 +17,8 @@ class SQLServerTableHint:
     Attributes:
         name: Hint name (e.g., 'NOLOCK', 'UPDLOCK', 'READPAST', 'HOLDLOCK')
     """
+    KIND_RESERVED = ("SQLServer",)
+
     name: str
 
     def to_sql(self) -> str:
@@ -25,6 +27,7 @@ class SQLServerTableHint:
 
 class SQLServerReadPastHint(SQLServerTableHint):
     """SQL Server READPAST hint - skip locked rows (2019+)."""
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self):
         super().__init__("READPAST")
@@ -38,6 +41,7 @@ class SQLServerTableHintClause(BaseExpression):
     Example:
         >>> hint = SQLServerTableHintClause(dialect, [SQLServerTableHint("NOLOCK")])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

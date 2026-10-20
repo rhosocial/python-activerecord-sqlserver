@@ -21,6 +21,7 @@ class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerSetLiteralExpression(dialect, ["a", "b", "c"])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -48,6 +49,7 @@ class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerFindInSetExpression(dialect, "value", "set_column")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -73,6 +75,7 @@ class SQLServerSetContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerSetContainsExpression(dialect, "col", ["a", "b"])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

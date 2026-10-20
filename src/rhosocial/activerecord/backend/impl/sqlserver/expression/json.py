@@ -19,6 +19,7 @@ class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerJSONExtractExpression(dialect, "data", "$.name")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -49,6 +50,7 @@ class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerJSONUnquoteExpression(dialect, "data")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -72,6 +74,7 @@ class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerJSONObjectExpression(dialect, [("name", "Alice"), ("age", 30)])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -95,6 +98,7 @@ class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerJSONArrayExpression(dialect, [1, "two", True])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -118,6 +122,7 @@ class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValue)
     Example:
         >>> expr = SQLServerJSONContainsExpression(dialect, "data", "value")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -145,6 +150,7 @@ class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerJSONSetExpression(dialect, "data", "$.name", "Bob")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -174,6 +180,7 @@ class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerJSONRemoveExpression(dialect, "data", "$.name")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -203,6 +210,7 @@ class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerJSONTypeExpression(dialect, "data")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -226,6 +234,7 @@ class SQLServerJSONValidExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerJSONValidExpression(dialect, "data")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

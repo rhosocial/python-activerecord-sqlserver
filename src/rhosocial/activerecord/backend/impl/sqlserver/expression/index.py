@@ -18,6 +18,7 @@ class SQLServerIndexDefinition(IndexDefinition):
     Adds the SQL Server-only ``hash_index`` / ``bucket_count`` options for
     memory-optimized (in-memory) tables.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

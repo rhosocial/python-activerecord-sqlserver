@@ -18,6 +18,7 @@ class SQLServerTemporalPeriodDefinition(BaseExpression):
     Example:
         >>> expr = SQLServerTemporalPeriodDefinition(dialect, "SysStartTime", "SysEndTime")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -52,6 +53,7 @@ class SQLServerSystemVersioningClause(BaseExpression):
         ...     dialect, Table(dialect, "TestTableHistory", schema_name="dbo")
         ... )
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

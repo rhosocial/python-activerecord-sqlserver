@@ -33,6 +33,7 @@ class SQLServerNextValueForExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "NEXT VALUE FOR [my_seq]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLServerDialect", sequence_name: str):
         super().__init__(dialect)

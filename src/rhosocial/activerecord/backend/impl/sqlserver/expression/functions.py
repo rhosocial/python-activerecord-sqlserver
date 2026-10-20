@@ -17,6 +17,7 @@ class SQLServerTryCastExpression(BaseExpression):
     Example:
         >>> expr = SQLServerTryCastExpression(dialect, "value", "INT")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -50,6 +51,7 @@ class SQLServerTryConvertExpression(BaseExpression):
     Example:
         >>> expr = SQLServerTryConvertExpression(dialect, "INT", "value", style=100)
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -87,6 +89,7 @@ class SQLServerContainsPredicate(BaseExpression):
     Example:
         >>> expr = SQLServerContainsPredicate(dialect, "title", "database")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -123,6 +126,7 @@ class SQLServerFreetextPredicate(BaseExpression):
     Example:
         >>> expr = SQLServerFreetextPredicate(dialect, "title", "database design")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

@@ -17,6 +17,7 @@ class SQLServerOutputInsertedExpression(BaseExpression):
     Example:
         >>> expr = SQLServerOutputInsertedExpression(dialect, "id")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLDialectBase", column: str):
         super().__init__(dialect)
@@ -37,6 +38,7 @@ class SQLServerOutputDeletedExpression(BaseExpression):
 
     Represents OUTPUT deleted.column for DELETE and UPDATE statements.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLDialectBase", column: str):
         super().__init__(dialect)

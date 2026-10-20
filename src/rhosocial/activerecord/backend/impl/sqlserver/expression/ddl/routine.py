@@ -40,6 +40,7 @@ class SQLServerCreateProcedureExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE PROCEDURE [dbo].[p] @x INT AS BEGIN SET NOCOUNT ON; SELECT @x + 1; END;"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -90,6 +91,7 @@ class SQLServerCreateFunctionExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE FUNCTION [dbo].[f] (@x INT) RETURNS INT AS BEGIN RETURN @x * 2; END;"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -138,6 +140,7 @@ class SQLServerDropRoutineExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "DROP PROCEDURE [p]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

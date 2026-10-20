@@ -34,6 +34,7 @@ class SQLServerCreateFullTextCatalogExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE FULLTEXT CATALOG [ftc] AS DEFAULT"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -69,6 +70,7 @@ class SQLServerDropFullTextCatalogExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "DROP FULLTEXT CATALOG [ftc]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLServerDialect", catalog_name: str):
         super().__init__(dialect)
@@ -101,6 +103,7 @@ class SQLServerCreateFullTextIndexExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE FULLTEXT INDEX ON [t] ([body]) KEY INDEX [pk] ON [ftc]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -149,6 +152,7 @@ class SQLServerDropFullTextIndexExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "DROP FULLTEXT INDEX ON [t]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLServerDialect", table: str):
         super().__init__(dialect)

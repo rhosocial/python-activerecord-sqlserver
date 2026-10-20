@@ -8,7 +8,7 @@ delegated to the SQL Server dialect's ``format_sqlserver_*`` formatters.
 """
 
 from enum import Enum
-from typing import List, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import Any, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLPredicate
 from rhosocial.activerecord.backend.expression.core import Column
@@ -17,11 +17,40 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..dialect import SQLServerDialect
 
 
-class SQLServerGraphDirection(Enum):
-    """Direction of an edge in a MATCH pattern."""
+class SQLServerGraphDirection(str, Enum):
+    """Direction of an edge in a MATCH pattern.
+
+    A member *is* the word it carries -- ``str.__str__``, not ``Enum.__str__``,
+    which would win the base order otherwise -- because the member rides inside
+    the graph nodes' params and a param that travels in an artifact must be a
+    JSON scalar. Plain ``Enum`` raises "not one of the value kinds" the moment
+    anything serialises the node, which is how the spelling was settled.
+    """
+
+    __str__ = str.__str__
 
     RIGHT = "->"  # -(edge)->
     LEFT = "<-"  # <-(edge)-
+
+
+def _as_direction(value: Any) -> SQLServerGraphDirection:
+    """Read a MATCH edge direction as the member it names.
+
+    A member and the word it carries are the same thing here -- the enum is a
+    ``str`` subclass, so a word *is* the member's value -- but only the member
+    answers ``.value``, and an artifact hands back the word. Normalising at
+    construction keeps one spelling inside the node and lets the formatter read
+    a field rather than guess what it was given.
+    """
+    if isinstance(value, SQLServerGraphDirection):
+        return value
+    if isinstance(value, str):
+        for member in SQLServerGraphDirection:
+            if member.value == value:
+                return member
+    raise ValueError(
+        f"unknown MATCH edge direction {value!r}; use '->' or '<-'"
+    )
 
 
 class SQLServerGraphPseudoColumn(Column):
@@ -29,6 +58,7 @@ class SQLServerGraphPseudoColumn(Column):
 
     Pseudo-columns must never be quoted; the name is validated at construction.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     _ALLOWED = frozenset({"$node_id", "$edge_id", "$from_id", "$to_id"})
 
@@ -49,6 +79,7 @@ class SQLServerGraphNodeRef(BaseExpression):
         alias: Optional alias used in the ASCII-art pattern.
         last_node: Render as ``LAST_NODE(<node>)``.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLServerDialect", table: str, alias: Optional[str] = None,
                  last_node: bool = False):
@@ -64,12 +95,13 @@ class SQLServerGraphNodeRef(BaseExpression):
 
 class SQLServerGraphEdgeRef(BaseExpression):
     """An edge reference inside a MATCH pattern (``-(edge)->`` / ``<-(edge)-``)."""
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLServerDialect", edge: str,
                  direction: SQLServerGraphDirection = SQLServerGraphDirection.RIGHT):
         super().__init__(dialect)
         self.edge = edge
-        self.direction = direction
+        self.direction = _as_direction(direction)
 
     @property
     def format_method(self) -> str:
@@ -82,6 +114,7 @@ class SQLServerGraphPattern(BaseExpression):
     Example:
         ``Person1-(friend)->Person2``
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -104,6 +137,7 @@ class SQLServerMatchPredicate(SQLPredicate):
     Multiple patterns are combined with ``AND`` or ``,`` (the two forms SQL
     Server accepts). ``OR`` / ``NOT`` are rejected at construction.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     _COMBINATORS = ("AND", ",")
 
@@ -132,6 +166,7 @@ class SQLServerShortestPathExpression(BaseExpression):
     SQL Server restricts the quantifier to ``+`` or ``{1,n}``; ``minimum`` must
     therefore be ``1``.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -179,6 +214,7 @@ class SQLServerGraphPathAggregate(BaseExpression):
     Example:
         ``STRING_AGG(Person2.name, '->') WITHIN GROUP (GRAPH PATH) AS Friends``
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLServerDialect", function: str, expression: BaseExpression,
                  separator: Optional[str] = None, alias: Optional[str] = None):
@@ -207,6 +243,7 @@ class SQLServerForPathTable(BaseExpression):
     statement and renames nothing in the catalogue, so it is not a schema
     object.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

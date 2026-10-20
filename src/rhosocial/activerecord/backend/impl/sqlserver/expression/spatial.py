@@ -19,6 +19,7 @@ class SQLServerSpatialLiteralExpression(AliasableMixin, ComparisonMixin, SQLValu
     Example:
         >>> expr = SQLServerSpatialLiteralExpression(dialect, "POINT (1 2)", srid=4326)
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -44,6 +45,7 @@ class SQLServerSTGeomFromTextExpression(AliasableMixin, ComparisonMixin, SQLValu
     Example:
         >>> expr = SQLServerSTGeomFromTextExpression(dialect, "POINT (1 2)", srid=0)
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -69,6 +71,7 @@ class SQLServerSTAsTextExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerSTAsTextExpression(dialect, "geom_col")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -92,6 +95,7 @@ class SQLServerSTAsGeoJSONExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerSTAsGeoJSONExpression(dialect, "geom_col")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -115,6 +119,7 @@ class SQLServerSTDistanceExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerSTDistanceExpression(dialect, "geom1", "geom2")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -140,6 +145,7 @@ class SQLServerSTWithinExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerSTWithinExpression(dialect, "geom1", "geom2")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -165,6 +171,7 @@ class SQLServerSTContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
     Example:
         >>> expr = SQLServerSTContainsExpression(dialect, "geom1", "geom2")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -192,6 +199,7 @@ class SQLServerSTDistanceSphereExpression(AliasableMixin, ComparisonMixin, SQLVa
     Example:
         >>> expr = SQLServerSTDistanceSphereExpression(dialect, "geom1", "geom2")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -217,6 +225,7 @@ class SQLServerSTIntersectsExpression(AliasableMixin, ComparisonMixin, SQLValue)
     Example:
         >>> expr = SQLServerSTIntersectsExpression(dialect, "geom1", "geom2")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -242,6 +251,7 @@ class SQLServerCreateSpatialIndexExpression(AliasableMixin, ComparisonMixin, SQL
     Example:
         >>> expr = SQLServerCreateSpatialIndexExpression(dialect, "idx", "table", "geom")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

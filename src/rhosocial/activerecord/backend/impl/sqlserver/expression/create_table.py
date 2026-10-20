@@ -36,6 +36,7 @@ class SQLServerCreateTableExpression(CreateTableStatement):
     Adds the SQL Server-only ``graph_table_kind`` / ``edge_constraints`` table
     features.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

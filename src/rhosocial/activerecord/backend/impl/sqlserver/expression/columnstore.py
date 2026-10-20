@@ -44,6 +44,7 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE CLUSTERED COLUMNSTORE INDEX [cci] ON [t] ORDER ([c1], [c2])"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

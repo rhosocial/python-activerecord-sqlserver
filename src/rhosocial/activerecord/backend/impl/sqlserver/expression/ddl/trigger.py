@@ -40,6 +40,7 @@ class SQLServerCreateTriggerExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE TRIGGER [trg] ON [t] AFTER INSERT AS BEGIN SET NOCOUNT ON; END;"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -93,6 +94,7 @@ class SQLServerDropTriggerExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "DROP TRIGGER [trg]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

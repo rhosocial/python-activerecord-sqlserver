@@ -21,6 +21,7 @@ class SQLServerMergeExpression(MergeStatement):
     typed fields and are rendered by the SQL Server ``format_merge_statement``
     override.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -57,6 +58,7 @@ class SQLServerSelectIntoExpression(QueryStatement):
     target table has no generic equivalent and lives here as a typed field; the
     SQL Server ``format_select_into_statement`` reads it.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

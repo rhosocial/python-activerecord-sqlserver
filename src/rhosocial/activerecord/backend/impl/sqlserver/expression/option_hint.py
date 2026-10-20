@@ -79,6 +79,7 @@ class SQLServerOptionHintClause(BaseExpression):
         >>> sql, params = clause.to_sql()
         >>> assert sql == "OPTION (MAXDOP 4, RECOMPILE, OPTIMIZE FOR (@p = 10))"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(self, dialect: "SQLServerDialect", hints: Sequence[str]):
         super().__init__(dialect)
