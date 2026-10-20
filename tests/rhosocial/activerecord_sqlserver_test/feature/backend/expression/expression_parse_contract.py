@@ -44,7 +44,21 @@ from typing import Any, Dict, Optional
 
 from rhosocial.activerecord.backend.expression.types import CustomType, DataType
 
-from expression_roundtrip_harness import make_instance
+# The harness is this module's sibling, and this module is itself loaded by path
+# (from ``test_sqlserver_type_protocol.py``) as well as by name (from the matrix
+# beside it) -- a by-name import would only work in the second case, so the
+# sibling is loaded by path and both callers get the same module.
+import importlib.util as _importlib_util
+from pathlib import Path as _Path
+
+_harness_path = _Path(__file__).parent / "expression_roundtrip_harness.py"
+_spec = _importlib_util.spec_from_file_location(
+    "sqlserver_roundtrip_harness", _harness_path
+)
+_harness = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_harness)
+
+make_instance = _harness.make_instance
 
 
 def parse_roundtrip_failures(

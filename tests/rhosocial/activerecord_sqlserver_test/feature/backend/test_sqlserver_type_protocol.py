@@ -1607,9 +1607,7 @@ class TestParseRoundTripSweep:
         import importlib.util
         from pathlib import Path
 
-        path = Path(__file__).with_name(
-            "expression", "test_expression_roundtrip_all.py"
-        )
+        path = Path(__file__).parent / "expression" / "test_expression_roundtrip_all.py"
         spec = importlib.util.spec_from_file_location("sqlserver_rt_registry", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -1628,8 +1626,8 @@ class TestParseRoundTripSweep:
         import importlib.util
         from pathlib import Path
 
-        contract_path = Path(__file__).with_name(
-            "expression", "expression_parse_contract.py"
+        contract_path = (
+            Path(__file__).parent / "expression" / "expression_parse_contract.py"
         )
         spec = importlib.util.spec_from_file_location(
             "sqlserver_parse_contract", contract_path

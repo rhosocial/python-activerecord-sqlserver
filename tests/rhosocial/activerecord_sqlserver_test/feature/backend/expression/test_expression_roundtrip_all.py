@@ -155,14 +155,26 @@ from rhosocial.activerecord.backend.expression.statements.dql import QueryStatem
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.expression.types.custom import CustomType
 from rhosocial.activerecord.backend.expression.uuid import UUIDConstantExpression
-from expression_roundtrip_harness import (
-    assert_params_equal,
-    collect_expression_classes,
-    make_instance,
-    register_all,
-    register_special_constructor,
-    roundtrip_expression,
+# The harness is this module's sibling, and this module is itself loaded by path
+# (from ``test_sqlserver_type_protocol.py``'s sweep) as well as by name (when
+# pytest collects it here) -- a by-name import would only work in the second
+# case, so the sibling is loaded by path and both callers get one module object.
+import importlib.util as _importlib_util
+from pathlib import Path as _Path
+
+_harness_path = _Path(__file__).parent / "expression_roundtrip_harness.py"
+_spec = _importlib_util.spec_from_file_location(
+    "sqlserver_roundtrip_harness", _harness_path
 )
+_harness = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_harness)
+
+assert_params_equal = _harness.assert_params_equal
+collect_expression_classes = _harness.collect_expression_classes
+make_instance = _harness.make_instance
+register_all = _harness.register_all
+register_special_constructor = _harness.register_special_constructor
+roundtrip_expression = _harness.roundtrip_expression
 
 SS_EXPR_PKG = "rhosocial.activerecord.backend.impl.sqlserver.expression"
 CORE_EXPR_PKG = "rhosocial.activerecord.backend.expression"
