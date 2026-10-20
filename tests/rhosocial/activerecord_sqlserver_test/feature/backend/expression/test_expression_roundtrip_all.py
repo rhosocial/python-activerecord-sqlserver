@@ -1,4 +1,4 @@
-# tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_expression_roundtrip_all.py
+# tests/rhosocial/activerecord_sqlserver_test/feature/backend/expression/test_expression_roundtrip_all.py
 """
 Serialization and SQL coverage for every expression class SQL Server renders.
 

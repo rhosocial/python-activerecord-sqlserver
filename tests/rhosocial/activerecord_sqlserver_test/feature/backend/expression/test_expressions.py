@@ -1,4 +1,4 @@
-# tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_expressions.py
+# tests/rhosocial/activerecord_sqlserver_test/feature/backend/expression/test_expressions.py
 """
 Tests for SQL Server expression formatting.
 

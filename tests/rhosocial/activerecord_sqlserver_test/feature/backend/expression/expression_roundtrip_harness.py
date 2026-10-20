@@ -1,4 +1,4 @@
-# tests/rhosocial/activerecord_sqlserver_test/feature/backend/expression_roundtrip_harness.py
+# tests/rhosocial/activerecord_sqlserver_test/feature/backend/expression/expression_roundtrip_harness.py
 """
 Expression serialization round-trip / contract test helpers (SQL Server-local copy).
 

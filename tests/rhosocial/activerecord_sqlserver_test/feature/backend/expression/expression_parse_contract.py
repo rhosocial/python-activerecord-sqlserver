@@ -1,4 +1,4 @@
-# tests/rhosocial/activerecord_sqlserver_test/feature/backend/expression_parse_contract.py
+# tests/rhosocial/activerecord_sqlserver_test/feature/backend/expression/expression_parse_contract.py
 """The parse-vs-format round-trip sweep for typed-column contracts.
 
 Vendored from the shared testsuite's ``utils/parse_contract.py`` when that

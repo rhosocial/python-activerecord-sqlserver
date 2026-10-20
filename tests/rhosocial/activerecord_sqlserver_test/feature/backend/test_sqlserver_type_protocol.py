@@ -1607,7 +1607,9 @@ class TestParseRoundTripSweep:
         import importlib.util
         from pathlib import Path
 
-        path = Path(__file__).with_name("test_expression_roundtrip_all.py")
+        path = Path(__file__).with_name(
+            "expression", "test_expression_roundtrip_all.py"
+        )
         spec = importlib.util.spec_from_file_location("sqlserver_rt_registry", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -1620,8 +1622,21 @@ class TestParseRoundTripSweep:
         # coverage moves to the owning repository") and parse_contract died
         # with it -- it imported make_instance from the deleted harness. The
         # sweep is vendored beside this repository's own harness for the same
-        # reason the matrix's is: a dead import is a dead test.
-        from expression_parse_contract import parse_roundtrip_failures
+        # reason the matrix's is: a dead import is a dead test. It lives in the
+        # expression area now, so it is loaded by path the way the registry
+        # above is.
+        import importlib.util
+        from pathlib import Path
+
+        contract_path = Path(__file__).with_name(
+            "expression", "expression_parse_contract.py"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "sqlserver_parse_contract", contract_path
+        )
+        contract = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(contract)
+        parse_roundtrip_failures = contract.parse_roundtrip_failures
 
         dialect = SQLServerDialect(SQL_SERVER_2022)
         failures = parse_roundtrip_failures(

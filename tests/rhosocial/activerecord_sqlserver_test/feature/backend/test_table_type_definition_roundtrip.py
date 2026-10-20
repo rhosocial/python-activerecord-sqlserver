@@ -48,7 +48,20 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
 from rhosocial.activerecord.backend.impl.sqlserver.expression.index import (
     SQLServerIndexDefinition,
 )
-from expression_roundtrip_harness import assert_params_equal
+# The harness now lives in the expression area; loaded by path, the way this
+# file already loads the round-trip module, because a module imported by name
+# would depend on a sys.path entry this run did not promise.
+import importlib.util as _importlib_util
+from pathlib import Path as _Path
+
+_harness_path = _Path(__file__).parent / "expression" / "expression_roundtrip_harness.py"
+_spec = _importlib_util.spec_from_file_location(
+    "sqlserver_roundtrip_harness", _harness_path
+)
+_harness = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_harness)
+
+assert_params_equal = _harness.assert_params_equal
 
 SQL_SERVER_2014 = (12, 0, 0)
 
