@@ -53,6 +53,21 @@ The dict is read before the ``UnsupportedFeatureError`` branch, because core now
 reports a *missing formatter* through that same type; see
 :func:`assert_sql_roundtrip_classified`.
 
+And when the artifact itself cannot carry a node
+================================================
+
+Rendering is one axis; the artifact is the other. A node whose parameter is a
+plain ``Enum`` or a dataclass cannot be written as plain JSON at all -- the
+serializer names the type and stops -- and a node whose parameter is an enum may
+still fail on one *channel* even though the other two carry it: the XML codec
+spells a member as ``Class.MEMBER`` and hands that word back to a constructor
+that refuses it (the enum sub-registry that used to resolve it is gone). Neither
+is a rendering answer, so neither is allowed to pass as one: every such class is
+named in :data:`ARTIFACT_GAPS`, pinned by channel and by the exact failure, and
+:meth:`TestMatrixIntegrity.test_artifact_gap_list_is_exact` pins that table in
+both directions -- a class that starts travelling fails until its row goes, and
+a class that stops travelling with no row fails the per-class assertion.
+
 Why the dispatch's refusal is no longer allowed on its type alone
 =================================================================
 
@@ -86,8 +101,11 @@ matrix's contents depend on which files pytest happened to import first.
 deterministic.
 """
 
+import datetime
 import inspect
-from typing import Dict, Tuple, Type
+import uuid as uuid_module
+from decimal import Decimal
+from typing import Any, Dict, Tuple, Type
 
 import pytest
 
@@ -104,10 +122,9 @@ from rhosocial.activerecord.backend.expression.objects import (
     Type,
     View,
 )
-from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
-from rhosocial.activerecord.backend.expression.serialization import (
-    auto_register_builtins,
-    registered_expression_classes,
+from rhosocial.activerecord.backend.expression.predicates import (
+    ComparisonOperator,
+    ComparisonPredicate,
 )
 from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
 from rhosocial.activerecord.backend.expression.operators import ArithmeticOperation
@@ -120,9 +137,13 @@ from rhosocial.activerecord.backend.expression.statements import (
     dml,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+    ColumnCheckConstraint,
     ColumnConstraint,
     ColumnDefinition,
+    ColumnGeneratedConstraint,
     ColumnNotNullConstraint,
+    ForeignKeyConstraint,
+    TableCheckConstraint,
     TableConstraint,
     TablePrimaryKeyConstraint,
 )
@@ -134,7 +155,8 @@ from rhosocial.activerecord.backend.expression.statements.dql import QueryStatem
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.expression.types.custom import CustomType
 from rhosocial.activerecord.backend.expression.uuid import UUIDConstantExpression
-from rhosocial.activerecord.testsuite.utils.expression import (
+from expression_roundtrip_harness import (
+    assert_params_equal,
     collect_expression_classes,
     make_instance,
     register_all,
@@ -154,7 +176,6 @@ def _collect(pkg: str) -> Dict[str, type]:
     different places, so the first name in sorted order wins and the matrix does
     not assert one class twice.
     """
-    auto_register_builtins()
     collected = collect_expression_classes(pkg)
     by_identity: Dict[int, str] = {}
     for fqn, cls in sorted(collected.items()):
@@ -171,6 +192,13 @@ CORE_REGISTERED = _collect(CORE_EXPR_PKG)
 SS_REGISTERED = _collect(SS_EXPR_PKG)
 REGISTERED: Dict[str, type] = {**CORE_REGISTERED, **SS_REGISTERED}
 register_all(REGISTERED)
+# Nothing else needs registering. The enum/dataclass sub-registries the old
+# matrix filled existed only because an artifact carried ``__enum__`` /
+# ``__dataclass__`` markers and had to resolve those class names on the way
+# back in; the artifact is plain JSON now, an enum rides as its value, a
+# dataclass as an object, and the kind whitelist has no name to resolve for
+# either. Registering an enum here would therefore be a call to a method the
+# core no longer ships, which is how this line got noticed.
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +303,20 @@ def _sqlserver_collation(dialect):
     return SQLServerCollation.LATIN1_GENERAL_CI_AS
 
 
+def _string_fn(dialect, class_name, *operands):
+    """One scalar string function node from ``expression.functions.string``."""
+    import rhosocial.activerecord.backend.expression.functions.string as string_module
+
+    return getattr(string_module, class_name)(dialect, *operands)
+
+
+def _datetime_fn(dialect, class_name, field, source):
+    """One EXTRACT-family node from ``expression.datetime``."""
+    import rhosocial.activerecord.backend.expression.datetime as datetime_module
+
+    return getattr(datetime_module, class_name)(dialect, field, source)
+
+
 def register_specials():
     """Replace every introspective guess that would cost a real assertion."""
     # -- the FROM side ------------------------------------------------------
@@ -361,16 +403,17 @@ def register_specials():
 
     # -- ALTER TABLE actions ------------------------------------------------
     register_special_constructor(
-        "ddl_alter.AddColumn", lambda d: ddl_alter.AddColumn(d, _integer_column(d))
+        "ddl_alter.AddColumnAction", lambda d: ddl_alter.AddColumnAction(d, _integer_column(d))
     )
     register_special_constructor(
-        "ddl_alter.AddTableConstraint",
-        lambda d: ddl_alter.AddTableConstraint(
+        "ddl_alter.AddTableConstraintAction",
+        lambda d: ddl_alter.AddTableConstraintAction(
             d, TableConstraint(d, branch=TablePrimaryKeyConstraint(d, ["a"]), name="c")
         ),
     )
     register_special_constructor(
-        "ddl_alter.AddIndex", lambda d: ddl_alter.AddIndex(d, ddl_table.IndexDefinition(d, "i", ["a"]))
+        "ddl_alter.AddIndexAction",
+        lambda d: ddl_alter.AddIndexAction(d, ddl_table.IndexDefinition(d, "i", ["a"])),
     )
 
     # -- constraints that must render without bind parameters ----------------
@@ -618,6 +661,66 @@ def register_specials():
 
         return SQLServerAlterColumn(d, "c", data_type="INT")
 
+    def comparison(d):
+        """A predicate whose operator is a member, not a word.
+
+        The operator normalises at construction, so a word is *accepted* -- but
+        the restored node is handed the artifact's word and answers with the
+        member, and a class whose own params disagree with that is exactly what
+        this matrix exists to see. Building from the member makes the two sides
+        the same object and the comparison honest; a word would hide the
+        difference instead of measuring it.
+        """
+        return ComparisonPredicate(
+            d, ComparisonOperator.EQ, Column(d, "a"), Column(d, "b")
+        )
+
+    def check_constraint(d):
+        """A CHECK whose condition compares two columns.
+
+        A DDL condition may not carry a bind parameter -- the checker says so by
+        name -- so the guess's ``Literal(d, 1)`` is refused there. Two columns
+        render with no parameters at all, which is the position this class is
+        actually used in.
+        """
+        return TableCheckConstraint(d, condition=_column_predicate(d))
+
+    def column_check_constraint(d):
+        return ColumnCheckConstraint(d, condition=_column_predicate(d))
+
+    def generated_constraint(d):
+        """A generated column whose expression inlines its literal.
+
+        Same DDL rule as the CHECK constraint, and the storage word travels as
+        the plain string it is: an enum parameter in a *core* node is the core's
+        spelling to settle, so this factory supplies the one form the artifact
+        can carry and leaves the rest to the class.
+        """
+        expression = ArithmeticOperation(
+            d, "add", Column(d, "a"), Literal(d, 1, inline=True)
+        )
+        return ColumnGeneratedConstraint(
+            d, expression=expression, storage_type="STORED"
+        )
+
+    def foreign_key(d):
+        """A foreign key whose referential actions are words, not members.
+
+        The core node stores an enum member when the caller passes nothing, and
+        a plain ``Enum`` param is the one thing a plain-JSON artifact cannot
+        carry -- the serializer names the type and stops. Passing the words keeps
+        the class on the side of the contract this matrix asserts; the default
+        path is pinned in :data:`ARTIFACT_GAPS`.
+        """
+        return ForeignKeyConstraint(
+            d,
+            columns=["a"],
+            foreign_key_table=Table(d, "parent"),
+            foreign_key_columns=["id"],
+            on_delete="NO ACTION",
+            on_update="NO ACTION",
+        )
+
     def create_table(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.create_table import (
             SQLServerCreateTableExpression,
@@ -712,12 +815,13 @@ def register_specials():
 
         return SQLServerShortestPathExpression(d, graph_pattern(d), 1, 3)
 
-    # ``make_instance`` matches suffixes with ``str.endswith``, and core also has
-    # a ``pivot.Pivot``. The longer suffix keeps this registration on
-    # the SQL Server class instead of capturing core's as well. Core's own
-    # Pivot is left to the guess: SQL Server's PIVOT spelling needs an
-    # aggregate the guess does not supply, and it is pinned as a non-render below
-    # rather than given a constructor here.
+    # Core also has a ``pivot.Pivot`` of its own, and ``make_instance`` matches
+    # suffixes with ``str.endswith``, so the longer suffix keeps this
+    # registration on the SQL Server class instead of capturing core's as well.
+    # Core's generic Pivot and Unpivot render on this dialect now -- they are
+    # rows in the rendered half of the matrix, not in LEGITIMATE_NON_RENDERS --
+    # and SQL Server's own spelling rides its own class and its own
+    # constructor.
     register_special_constructor(
         "sqlserver.expression.pivot.Pivot", pivot
     )
@@ -740,6 +844,25 @@ def register_specials():
     register_special_constructor("type.SQLServerRenameTypeExpression", rename_type)
     register_special_constructor("column.SQLServerColumnDefinition", column_definition)
     register_special_constructor("alter_column.SQLServerAlterColumn", alter_column)
+    # -- predicates and constraints that must render with no bind parameters ---
+    # The operator normalises, the CHECK condition is a DDL position, and the
+    # generated expression inlines its literal: three places the guess's bound
+    # ``Literal`` is refused by name.
+    register_special_constructor("predicates.ComparisonPredicate", comparison)
+    register_special_constructor("ddl_table.TableCheckConstraint", check_constraint)
+    register_special_constructor(
+        "ddl_table.ColumnCheckConstraint", column_check_constraint
+    )
+    register_special_constructor(
+        "ddl_table.ColumnGeneratedConstraint", generated_constraint
+    )
+    # A core node whose own default is an enum member cannot travel: the words
+    # are supplied here so the class is constructible on the side of the
+    # contract this matrix asserts, and the default path stays recorded in
+    # ARTIFACT_GAPS rather than being quietly un-testable.
+    register_special_constructor(
+        "statements.ddl_table.ForeignKeyConstraint", foreign_key
+    )
     register_special_constructor(
         "create_table.SQLServerCreateTableExpression", create_table
     )
@@ -770,10 +893,51 @@ def register_specials():
     # neither belongs in UNCONSTRUCTIBLE -- a constructor is the honest answer
     # for a class that constructs fine once its own slot is filled.
     register_special_constructor(
-        "types.custom.CustomType", lambda d: CustomType(d, "VARCHAR(10)")
+        "types.custom.CustomType", lambda d: CustomType(d, raw="VARCHAR(10)")
     )
     register_special_constructor(
         "uuid.UUIDConstantExpression", lambda d: UUIDConstantExpression(d, "nil")
+    )
+    # -- scalar string functions whose parameters are typed operands ----------
+    # The introspective guess supplies a bare string where these classes take
+    # SQLValue / BaseExpression operands, so the constructor refuses; each
+    # one renders as soon as a real operand rides in the slot.
+    register_special_constructor(
+        "functions.string.ChrFunction",
+        lambda d: _string_fn(d, "ChrFunction", Literal(d, 65)),
+    )
+    register_special_constructor(
+        "functions.string.LeftFunction",
+        lambda d: _string_fn(d, "LeftFunction", Column(d, "a"), Literal(d, 3)),
+    )
+    register_special_constructor(
+        "functions.string.RightFunction",
+        lambda d: _string_fn(d, "RightFunction", Column(d, "a"), Literal(d, 3)),
+    )
+    register_special_constructor(
+        "functions.string.SpaceFunction",
+        lambda d: _string_fn(d, "SpaceFunction", Literal(d, 3)),
+    )
+    register_special_constructor(
+        "functions.string.SubstringExpression",
+        lambda d: _string_fn(d, "SubstringExpression", Column(d, "a"), Literal(d, 1)),
+    )
+    register_special_constructor(
+        "functions.string.OverlayExpression",
+        lambda d: _string_fn(
+            d, "OverlayExpression", Column(d, "a"), Column(d, "b"), Literal(d, 1)
+        ),
+    )
+    # -- the EXTRACT family's shared base and its concrete node ---------------
+    # Both take a field plus a BaseExpression source; the guess supplies a
+    # bare string for the source and the class refuses it.
+    register_special_constructor(
+        "datetime.ExtractFieldExpression",
+        lambda d: _datetime_fn(d, "ExtractFieldExpression", "YEAR", Column(d, "ts")),
+    )
+    register_special_constructor(
+        "datetime._ExtractBase",
+        lambda d: _datetime_fn(d, "_ExtractBase", "YEAR", Column(d, "ts")),
     )
 
 
@@ -806,15 +970,13 @@ register_specials()
 #: turns out to be a genuine capability gap rather than a render, which is why all
 #: four moved to :data:`LEGITIMATE_NON_RENDERS` rather than to a render assertion.
 UNCONSTRUCTIBLE = (
-    # ALTER CONSTRAINT. `name` and `constraint_type` sit behind defaulted
-    # positionals and are keyword-only, so the introspective constructor skips
-    # them and the class refuses an incomplete action (`ValueError: constraint_name
-    # must be a non-empty string`, because the defaulted `constraint_name` stays
-    # None).
-    "rhosocial.activerecord.backend.expression.statements.ddl_alter.AlterConstraint",
-    # VALIDATE CONSTRAINT. Same shape as AlterConstraint: the required `name` is
-    # keyword-only behind a defaulted positional.
-    "rhosocial.activerecord.backend.expression.statements.ddl_alter.ValidateConstraint",
+    # ALTER CONSTRAINT (renamed AlterConstraintAction by the core's "name an
+    # action by what it is" wave). `name` and `constraint_type` sit behind
+    # defaulted positionals and are keyword-only, so the introspective
+    # constructor skips them and the class refuses an incomplete action
+    # (`ValueError: constraint_name must be a non-empty string`, because the
+    # defaulted `constraint_name` stays None).
+    "rhosocial.activerecord.backend.expression.statements.ddl_alter.AlterConstraintAction",
     # ADD DOMAIN CHECK. Widens a SQLPredicate into a DomainCheckConstraint and
     # needs one; the guess supplies a bare comparison whose literal would have
     # to render as a bind parameter, which DDL cannot carry. (It supplies a bare
@@ -823,10 +985,6 @@ UNCONSTRUCTIBLE = (
     # falls through to its name-based default and the class raises
     # `TypeError: check must be a DomainCheckConstraint instance, got str`.)
     "rhosocial.activerecord.backend.expression.statements.ddl_domain.AddDomainCheckAction",
-    # ENUM type. Its `values` list is keyword-only behind a defaulted positional,
-    # so the introspective constructor skips it and the type declares no members
-    # (`ValueError: EnumType requires values`).
-    "rhosocial.activerecord.backend.expression.types.enum_.EnumType",
 )
 
 #: Message fragments the pins below match on.
@@ -1035,9 +1193,9 @@ LEGITIMATE_NON_RENDERS = {
     "rhosocial.activerecord.backend.expression.graph.VertexTable": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    "rhosocial.activerecord.backend.expression.graph.EdgeTable": (
-        UnsupportedFeatureError, _NO_SUCH_METHOD
-    ),
+    # ``graph.EdgeTable`` used to be pinned here; the class now lives in
+    # ``objects.relation`` and renders through the same format_table_object
+    # every table uses, so the row is gone.
     "rhosocial.activerecord.backend.expression.graph.ColumnsClause": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
@@ -1053,14 +1211,6 @@ LEGITIMATE_NON_RENDERS = {
     "rhosocial.activerecord.backend.expression.graph.DropPropertyGraphStatement": (
         UnsupportedFeatureError, _NO_SUCH_METHOD
     ),
-    # PIVOT / UNPIVOT (two): SQL Server spells PIVOT its own way, through
-    # SQLServerPivotExpression. Core's generic PIVOT is not the same statement.
-    "rhosocial.activerecord.backend.expression.pivot.Pivot": (
-        UnsupportedFeatureError, _NO_SUCH_METHOD
-    ),
-    "rhosocial.activerecord.backend.expression.pivot.Unpivot": (
-        UnsupportedFeatureError, _NO_SUCH_METHOD
-    ),
     # COMMENT ON: SQL Server has no standalone COMMENT ON statement, which the
     # dialect's negative list records as CommentSupport.
     "rhosocial.activerecord.backend.expression.statements.ddl_comment.CommentOnStatement": (
@@ -1071,10 +1221,13 @@ LEGITIMATE_NON_RENDERS = {
     # Every concrete type declares its own generic `name`, which is what
     # `format_data_type` dispatches on; the root declares none, so there is
     # nothing to dispatch. TypeError, not UnsupportedFeatureError, because the
-    # class is incomplete rather than the dialect being unable.
+    # class is incomplete rather than the dialect being unable. The message
+    # names the missing concept rather than the missing declaration: a bare
+    # DataType carries no name to dispatch, so the refusal speaks of the
+    # generic type it could not resolve.
     "rhosocial.activerecord.backend.expression.types._base.DataType": (
         TypeError,
-        "does not declare a valid generic type name",
+        "does not support the generic type",
     ),
     # Core types with no SQL Server spelling (eight). SQL Server has no ARRAY,
     # no JSONB, no TIMESTAMPTZ, and spells BINARY as its own types, so these
@@ -1100,6 +1253,67 @@ LEGITIMATE_NON_RENDERS = {
     ),
     "rhosocial.activerecord.backend.expression.types.uuid_.UUIDType": (
         TypeError, _NO_SUCH_TYPE
+    ),
+    # ENUM (nine, and the ninth is this one's reason to exist): the class
+    # constructs now that its keyword-only ``values`` gets a list from the
+    # guess, and the render refuses exactly what the eight above refuse --
+    # SQL Server has no ENUM generic, and the dialect says so while
+    # suggesting the VARCHAR it actually uses.
+    "rhosocial.activerecord.backend.expression.types.enum_.EnumType": (
+        TypeError, _NO_SUCH_TYPE
+    ),
+    # The declared-result annotations: the base and every concrete member of
+    # it. Each carries only the node it annotates; the alias the core's
+    # ``format_declared_result`` reads belongs to the concrete named
+    # annotations, so the guessed instance -- a bare ``Literal`` -- has none,
+    # and the formatter fails naming it. The core formatter reading it is the
+    # moving edge of the value-literal rework (a narrowed ``Literal`` no longer
+    # carries ``alias`` at all); these rows record what the tree actually does
+    # today, one per class, because the concrete annotations are collected in
+    # their own right and an unnamed failure is a defect by this matrix's rule.
+    "rhosocial.activerecord.backend.expression.declared._Annotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.ArrayAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.BinaryAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.BooleanAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.IntegerAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.JSONAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.NumberAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.TemporalAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.TextAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.UUIDAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
+    ),
+    "rhosocial.activerecord.backend.expression.declared.XMLAnnotation": (
+        AttributeError,
+        "has no attribute 'alias'",
     ),
 
     # ---- core expressions SQL Server has no T-SQL spelling for ----
@@ -1144,6 +1358,217 @@ LEGITIMATE_NON_RENDERS = {
         "has no attribute 'name'",
     ),
 }
+
+
+# ---------------------------------------------------------------------------
+# The artifact gap: a node the plain-JSON payload cannot carry, or one channel
+# of it cannot read back
+# ---------------------------------------------------------------------------
+#
+# Rendering is this matrix's first axis; travelling is its second, and a class
+# can answer "yes" to one and "no" to the other. Two shapes, both named here
+# rather than swallowed:
+#
+# * a parameter whose type is not a JSON scalar. The serializer names the type
+#   and stops -- "is not one of the value kinds this package can write" -- and
+#   that is a decision on the *node*'s side, not this dialect's. Where the node
+#   can be built with a scalar in that slot, the matrix's constructor does so
+#   and the class asserts normally; the rows below are the ones where it cannot
+#   (``CreateViewStatement`` normalises ``options=None`` into a
+#   ``ViewOptions()`` no matter what the caller passes).
+# * one channel failing where the others succeed. The XML codec spells an enum
+#   parameter as ``Class.MEMBER``; the dict and JSON codecs spell it as the
+#   member's own value, which every one of these constructors accepts. The
+#   member spelling used to resolve through the enum sub-registry, which the
+#   plain-JSON wave deleted, so no reader turns the word back into a member
+#   and the constructor refuses it. That is a core-side gap, recorded here with
+#   the channel name so the day core spells it as the value, the row goes.
+#
+# Each entry is ``(channels, exception type, message fragment)``. ``channels``
+# is one of ``"dict"`` / ``"json"`` / ``"xml"``, a tuple of them, or ``"all"``;
+# a type of ``None`` names the other shape of gap, where the channel carries the
+# node but restores a different *spelling* of one parameter (see the two XML
+# rows). Either way the row is asserted against the tree: a class that starts
+# travelling fails until its row goes, and a class that stops travelling with no
+# row fails the per-class assertion.
+
+#: Nodes whose artifact cannot be written or read back, by channel and reason.
+ARTIFACT_GAPS = {
+    # CREATE VIEW: ``options`` is a dataclass parameter and the constructor
+    # normalises a missing one into ``ViewOptions()``, so the class cannot be
+    # built with a scalar there. SQL Server has no view options of its own --
+    # the dialect renders the statement and ignores them -- but the artifact
+    # still has to carry what the constructor stored.
+    "rhosocial.activerecord.backend.expression.statements.ddl_view."
+    "CreateViewStatement": (
+        "all",
+        TypeError,
+        "not one of the value kinds",
+    ),
+    # The EXTRACT family and the interval arithmetic: a ``DateTimeField`` /
+    # ``IntervalUnit`` parameter, which every one of these constructors accepts
+    # as its value word. The dict and JSON channels carry that word; the XML
+    # channel carries the member's name and the constructor refuses it. Only the
+    # XML channel is pinned, so the other two keep asserting the class.
+    "rhosocial.activerecord.backend.expression.datetime.ExtractExpression": (
+        "xml",
+        ValueError,
+        "unsupported datetime field",
+    ),
+    "rhosocial.activerecord.backend.expression.datetime.ExtractFieldExpression": (
+        "xml",
+        ValueError,
+        "unsupported datetime field",
+    ),
+    "rhosocial.activerecord.backend.expression.datetime._ExtractBase": (
+        "xml",
+        ValueError,
+        "unsupported datetime field",
+    ),
+    "rhosocial.activerecord.backend.expression.datetime.DatePartExpression": (
+        "xml",
+        ValueError,
+        "unsupported datetime field",
+    ),
+    "rhosocial.activerecord.backend.expression.datetime.DateTruncExpression": (
+        "xml",
+        ValueError,
+        "unsupported datetime field",
+    ),
+    "rhosocial.activerecord.backend.expression.datetime.DateTimeAddExpression": (
+        "xml",
+        ValueError,
+        "unsupported interval unit",
+    ),
+    "rhosocial.activerecord.backend.expression.datetime."
+    "DateTimeSubtractExpression": (
+        "xml",
+        ValueError,
+        "unsupported interval unit",
+    ),
+    "rhosocial.activerecord.backend.expression.datetime.DateTimeDiffExpression": (
+        "xml",
+        ValueError,
+        "unsupported interval unit",
+    ),
+    # The standalone INTERVAL value: same enum parameter, same XML spelling,
+    # and the class is pinned in the render half too -- SQL Server has no
+    # standalone INTERVAL expression, which is a separate answer from the
+    # channel's, so the two pins name different facts.
+    "rhosocial.activerecord.backend.expression.datetime.IntervalExpression": (
+        "xml",
+        ValueError,
+        "unsupported interval unit",
+    ),
+    # XMLPARSE / XMLSERIALIZE carry a ``document_type`` enum whose class keeps
+    # the word it was handed, so the XML spelling survives reconstruction as a
+    # string and the node's params come back in that spelling. The node renders
+    # identically either way -- the formatter spells the word, not the member --
+    # so the gap is in the params assertion, which is why the type is ``None``.
+    "rhosocial.activerecord.backend.expression.xml.XMLParseExpression": (
+        "xml",
+        None,
+        "XMLParseDocumentType.",
+    ),
+    "rhosocial.activerecord.backend.expression.xml.XMLSerializeExpression": (
+        "xml",
+        None,
+        "XMLSerializeDocumentType.",
+    ),
+    # SQL/PGQ property graphs: ``GraphColumn`` is a dataclass, and a dataclass
+    # parameter is the other thing a plain-JSON artifact cannot carry. No
+    # construction choice avoids it -- a COLUMNS clause is made of columns.
+    "rhosocial.activerecord.backend.expression.graph.GraphTableExpression": (
+        "all",
+        TypeError,
+        "not one of the value kinds",
+    ),
+    # CREATE TABLE ... CLONE: ``mode`` is a ``(str, Enum)`` but the constructor
+    # refuses the bare word the artifact carries ("mode must be a
+    # CreateTableCloneMode, got str") -- the dict channel keeps the Python
+    # member and round-trips, so only the two JSON-family channels are pinned.
+    "rhosocial.activerecord.backend.expression.statements.ddl_table."
+    "CreateTableCloneStatement": (
+        ("json", "xml"),
+        TypeError,
+        "must be a CreateTableCloneMode",
+    ),
+}
+
+#: The channels a row's ``channels`` field may name.
+_ARTIFACT_CHANNELS = ("dict", "json", "xml")
+
+#: The codec pair each channel runs, in one place because three call sites
+#: need the same mapping and a drift between them would let one channel be
+#: tested on a codec another channel rendered with.
+_ARTIFACT_CODECS = {}
+
+
+def _artifact_codecs():
+    """(encode, decode) per channel, imported here rather than at module level.
+
+    The serialization module is the only place these names live, and the matrix
+    imports them where it uses them -- the same discipline the rest of this file
+    follows for ``UnsupportedFeatureError``.
+    """
+    if not _ARTIFACT_CODECS:
+        from rhosocial.activerecord.backend.expression.serialization import (
+            deserialize,
+            deserialize_json,
+            deserialize_xml,
+            serialize,
+            serialize_json,
+            serialize_xml,
+        )
+
+        _ARTIFACT_CODECS.update(
+            {
+                "dict": (serialize, deserialize),
+                "json": (serialize_json, deserialize_json),
+                "xml": (serialize_xml, deserialize_xml),
+            }
+        )
+    return _ARTIFACT_CODECS
+
+
+def _channel_channels(channels):
+    """The channel names one pin row covers.
+
+    ``"all"`` covers every channel, because a node whose parameter is not a
+    JSON scalar cannot be written on any of them -- the three codecs agree
+    about what a scalar is.
+    """
+    if channels == "all":
+        return _ARTIFACT_CHANNELS
+    if isinstance(channels, str):
+        return (channels,)
+    return tuple(channels)
+
+
+def _record_channel(fqn: str, channel: str, exc: Exception) -> None:
+    """Assert *exc* on this channel is the pin :data:`ARTIFACT_GAPS` names.
+
+    Raises:
+        AssertionError: The class has no row, its row names other channels, or
+            the exception is not the row's type and fragment -- any of which
+            means the failure is new and this matrix must not absorb it.
+    """
+    row = ARTIFACT_GAPS.get(fqn)
+    assert row is not None, (
+        f"{fqn}: the {channel} channel could not carry this node "
+        f"({type(exc).__name__}: {exc}) and the class is not in ARTIFACT_GAPS."
+    )
+    pinned_channels, pinned_type, fragment = row
+    assert channel in _channel_channels(pinned_channels), (
+        f"{fqn}: the {channel} channel failed but the pin names "
+        f"{pinned_channels!r}. Either the gap moved to another channel or the "
+        "row needs its channels updated."
+    )
+    assert type(exc) is pinned_type and fragment in str(exc), (
+        f"{fqn}: ARTIFACT_GAPS pins {pinned_type.__name__} containing "
+        f"{fragment!r}, but the {channel} channel raised "
+        f"{type(exc).__name__}: {exc}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1237,7 +1662,7 @@ UNMODELLED_FORMATTERS = {
         "format_drop_property_graph_statement",
         "format_graph_table_expression",
         "format_vertex_table",
-        "format_edge_table",
+        "format_edge_table_definition",
         "format_graph_columns_clause",
         "format_table_properties_clause",
     ),
@@ -1251,12 +1676,6 @@ UNMODELLED_FORMATTERS = {
         "format_rpad_expression",
     ),
     "REPEAT (SQL Server spells it REPLICATE)": ("format_repeat_expression",),
-    "the core PIVOT / UNPIVOT expressions (SQL Server spells PIVOT its own "
-    "way, through SQLServerPivotExpression; core's generic PIVOT is not the "
-    "same statement)": (
-        "format_pivot",
-        "format_unpivot",
-    ),
     "the TableSource root (every concrete row source overrides its formatter; "
     "the root carries nothing but an alias and is never rendered)": ("format_table_source",),
 }
@@ -1292,6 +1711,11 @@ def assert_sql_roundtrip_classified(
       in :data:`UNMODELLED_FORMATTERS`; the table entry is the reason.
     * **anything else** -- a failure naming the class and the exception.
 
+    A channel that cannot carry the node is not a render answer either: it is
+    asserted against :data:`ARTIFACT_GAPS` by :func:`_record_channel`, and the
+    class is reported as ``"artifact-gap"`` rather than as ``"rendered"`` so the
+    distribution does not claim three channels where one is pinned.
+
     The dict is consulted before the ``UnsupportedFeatureError`` branch, not
     after. A missing formatter is now reported through that same type, so with the
     ``except`` clause in front a pinned dispatch-failure entry would never be
@@ -1305,22 +1729,14 @@ def assert_sql_roundtrip_classified(
         dialect: The dialect to render it against.
 
     Returns:
-        A short string naming the branch taken, so the classification
-        distribution can be reported.
+        A short string naming the branch taken -- ``"rendered"``,
+        ``"artifact-gap"``, ``"non-render"``, ``"unsupported"`` or
+        ``"unmodelled"`` -- so the classification distribution can be reported.
 
     Raises:
         AssertionError: On a round-trip mismatch, on an unexpected exception
             type, or when a class's rendering outcome changed.
     """
-    from rhosocial.activerecord.backend.expression.serialization import (
-        deserialize,
-        deserialize_json,
-        deserialize_xml,
-        serialize,
-        serialize_json,
-        serialize_xml,
-    )
-
     try:
         expected_sql, expected_params = instance.to_sql()
     except Exception as exc:
@@ -1359,22 +1775,36 @@ def assert_sql_roundtrip_classified(
             f"  Exception: {exc}"
         ) from exc
 
-    for channel, decoded in (
-        ("dict", deserialize(serialize(instance), dialect)),
-        ("json", deserialize_json(serialize_json(instance), dialect)),
-        ("xml", deserialize_xml(serialize_xml(instance), dialect)),
-    ):
-        decoded_sql, decoded_params = decoded.to_sql()
+    gapped = []
+    for channel, codec in ((name, _artifact_codecs()[name]) for name in _ARTIFACT_CHANNELS):
+        encode, decode = codec
+        try:
+            decoded = decode(encode(instance), dialect)
+            decoded_sql, decoded_params = decoded.to_sql()
+        except Exception as exc:
+            # A channel that cannot carry the node is recorded, not swallowed:
+            # _record_channel asserts the pin's type and fragment, so a new
+            # failure on a new class fails here.
+            _record_channel(fqn, channel, exc)
+            gapped.append(channel)
+            continue
         assert decoded_sql == expected_sql, (
             f"{fqn}: {channel} round-trip changed the SQL.\n"
             f"  original: {expected_sql!r}\n"
             f"  {channel}: {decoded_sql!r}"
         )
-        assert decoded_params == expected_params, (
+        # A tuple goes out as an array -- JSON draws no distinction -- and a
+        # constructor handed a list may keep it as one. The artifact promised
+        # the members, so the members are what is compared.
+        assert list(decoded_params) == list(expected_params) and len(
+            decoded_params
+        ) == len(expected_params), (
             f"{fqn}: {channel} round-trip changed the bind parameters.\n"
             f"  original: {expected_params!r}\n"
             f"  {channel}: {decoded_params!r}"
         )
+    if gapped:
+        return "artifact-gap"
     return "rendered"
 
 
@@ -1400,12 +1830,238 @@ def sqlserver_expr_case(request, sqlserver_dialect):
     return fqn, instance
 
 
+def _same_host_value(restored: Any, original: Any) -> bool:
+    """Whether a round-tripped host value still names the same value.
+
+    Two shapes are not ``==`` to themselves after a round-trip: NaN, and a
+    tuple, which the JSON-family channels hand back as a list because JSON draws
+    no distinction between the two -- while the dict channel, which never leaves
+    Python, keeps the tuple. Both spell the same sequence, and the harness's own
+    comparison allows both; this is the same tolerance asked of one value.
+    """
+    if isinstance(original, (tuple, list)):
+        return isinstance(restored, (tuple, list)) and list(original) == list(
+            restored
+        )
+    if isinstance(original, float) and original != original:
+        return restored != restored
+    return restored == original
+
+
+class TestLiteralValueKinds:
+    """Every value kind travels as a plain JSON scalar, and inlines as text.
+
+    One ``Literal`` class carries every value, so a class-level matrix has one
+    row for it -- but an artifact is keyed by *kind*, and the sixteen kinds are
+    sixteen shapes. The table below is that registration: the spelling each kind
+    packs its host value into, so a kind that started travelling as anything but
+    a scalar fails here, and so does one whose inline spelling this dialect
+    changed. NaN and +/-Infinity have kinds of their own now (``nan_value`` /
+    ``infinity_value``, carrying the words ``"nan"`` / ``"+inf"`` /
+    ``"-inf"``) rather than being finite floats a text spelling would corrupt.
+    """
+
+    #: (host value, kind, the JSON spelling the artifact carries)
+    VALUE_KINDS = (
+        (None, "null_value", None),
+        (True, "boolean_value", True),
+        (1, "integer_value", 1),
+        (2.5, "float_value", 2.5),
+        (Decimal("1.5"), "decimal_value", "1.5"),
+        (float("nan"), "nan_value", "nan"),
+        (float("inf"), "infinity_value", "+inf"),
+        (float("-inf"), "infinity_value", "-inf"),
+        ("x", "string_value", "x"),
+        (b"\x01\x02", "binary_value", "AQI="),
+        (datetime.date(2026, 1, 2), "date_value", "2026-01-02"),
+        (
+            datetime.datetime(2026, 1, 2, 3, 4, 5),
+            "timestamp_value",
+            "2026-01-02 03:04:05",
+        ),
+        (datetime.timedelta(days=1), "interval_value", "P1D"),
+        ([1, 2], "list_value", [1, 2]),
+        ((1, 2), "tuple_value", [1, 2]),
+        (
+            uuid_module.UUID("01234567-89ab-cdef-0123-456789abcdef"),
+            "uuid_value",
+            "01234567-89ab-cdef-0123-456789abcdef",
+        ),
+    )
+
+    @pytest.mark.parametrize(
+        "value,kind,spelling",
+        VALUE_KINDS,
+        ids=[kind for _value, kind, _spelling in VALUE_KINDS],
+    )
+    def test_the_artifact_carries_the_plain_spelling(
+        self, value, kind, spelling, sqlserver_dialect
+    ):
+        import json
+
+        from rhosocial.activerecord.backend.expression.serialization import (
+            serialize,
+            serialize_json,
+        )
+
+        literal = Literal(sqlserver_dialect, value)
+        artifact = serialize(literal)
+        assert artifact == {
+            "kind": kind,
+            "params": {"value": spelling, "inline": False},
+        }, f"{kind}: the artifact is not the spelling the table names"
+        assert json.loads(serialize_json(literal)) == artifact, (
+            f"{kind}: the JSON text does not decode to the same artifact"
+        )
+
+    @pytest.mark.parametrize(
+        "value,kind,spelling",
+        VALUE_KINDS,
+        ids=[kind for _value, kind, _spelling in VALUE_KINDS],
+    )
+    def test_every_kind_round_trips_through_all_three_channels(
+        self, value, kind, spelling, sqlserver_dialect
+    ):
+        from rhosocial.activerecord.backend.expression.serialization import (
+            deserialize,
+            deserialize_json,
+            deserialize_xml,
+            serialize,
+            serialize_json,
+            serialize_xml,
+        )
+
+        literal = Literal(sqlserver_dialect, value)
+        for name, encode, decode in (
+            ("dict", serialize, deserialize),
+            ("json", serialize_json, deserialize_json),
+            ("xml", serialize_xml, deserialize_xml),
+        ):
+            restored = decode(encode(literal), sqlserver_dialect)
+            # Re-encoding rather than reading the class's own kind(): one
+            # Literal class carries every value kind, so the *artifact* is what
+            # names it, and a restored node must still encode as the same kind.
+            assert serialize(restored)["kind"] == kind, (
+                f"{kind}: {name} restored another kind"
+            )
+            assert _same_host_value(restored.value, value), (
+                f"{kind}: {name} changed the host value: {restored.value!r}"
+            )
+            assert restored.inline is False, f"{kind}: {name} changed the position"
+
+    def test_an_inline_position_writes_text_not_a_parameter(self, sqlserver_dialect):
+        """The DDL position: the value reaches SQL as text and takes no bind.
+
+        Each kind's *rendered* spelling is the dialect's business and is pinned
+        in ``test_sqlserver_typed_values.py``; what this row pins is the
+        position -- ``inline=True`` must give text and no parameters for every
+        kind that has an inline form on this dialect. The ones with none are
+        refusals rather than guesses: the non-finite floats, which no SQL text
+        may carry (``nan_value`` / ``infinity_value`` exist so those payloads
+        can travel in an artifact *without* ever reaching SQL text); the
+        interval, whose absence this dialect keeps structural; and the two
+        sequence kinds, which are a host container rather than a scalar SQL
+        literal -- SQL Server spells a list as a ``VALUES`` clause or a
+        table-valued parameter, not as a literal.
+        """
+        refused = {
+            "nan_value": ValueError,
+            "infinity_value": ValueError,
+            "interval_value": TypeError,
+            "list_value": TypeError,
+            "tuple_value": TypeError,
+        }
+        for value, kind, _spelling in self.VALUE_KINDS:
+            if kind in refused:
+                with pytest.raises(refused[kind]):
+                    Literal(sqlserver_dialect, value, inline=True).to_sql()
+                continue
+            sql, params = Literal(sqlserver_dialect, value, inline=True).to_sql()
+            assert params == (), f"{kind}: an inline literal took a bind parameter"
+            assert sql, f"{kind}: an inline literal rendered nothing"
+
+    def test_the_position_travels_with_the_literal(self, sqlserver_dialect):
+        """``inline`` is part of the artifact: a position is not a class.
+
+        The class-level strategy wave moved this decision onto the instance, so
+        a DDL-position literal must come back a DDL-position literal.
+        """
+        from rhosocial.activerecord.backend.expression.serialization import (
+            deserialize,
+            deserialize_json,
+            deserialize_xml,
+            serialize,
+            serialize_json,
+            serialize_xml,
+        )
+
+        inline = Literal(sqlserver_dialect, 1, inline=True)
+        for encode, decode in (
+            (serialize_json, deserialize_json),
+            (serialize, deserialize),
+            (serialize_xml, deserialize_xml),
+        ):
+            restored = decode(encode(inline), sqlserver_dialect)
+            assert restored.inline is True
+            assert restored.to_sql() == ("1", ())
+
+
 class TestSQLServerExpressionRoundtrip:
     """All constructible expression classes round-trip through all encodings."""
 
     def test_get_params_roundtrip(self, sqlserver_expr_case, sqlserver_dialect):
         fqn, instance = sqlserver_expr_case
-        roundtrip_expression(fqn, instance, sqlserver_dialect)
+        row = ARTIFACT_GAPS.get(fqn)
+        if row is None:
+            roundtrip_expression(fqn, instance, sqlserver_dialect)
+            return
+        channels, exc_type, fragment = row
+        pinned = _channel_channels(channels)
+        codecs = _artifact_codecs()
+        # A pinned class runs its channels one at a time rather than through
+        # the three-channel helper: the pinned channel's outcome is the
+        # assertion here -- it must fail in exactly the recorded way, or the
+        # row is stale -- while the unpinned ones keep asserting normally.
+        for name in _ARTIFACT_CHANNELS:
+            encode, decode = codecs[name]
+            is_pinned = name in pinned
+            try:
+                restored = decode(encode(instance), sqlserver_dialect)
+                restored_params = restored.get_params()
+            except Exception as exc:
+                if is_pinned:
+                    _record_channel(fqn, name, exc)
+                    continue
+                raise AssertionError(
+                    f"{fqn}: the {name} channel cannot carry this node "
+                    f"({type(exc).__name__}: {exc}) and the pin names "
+                    f"{channels!r}."
+                ) from exc
+            if exc_type is not None:
+                # the row names an exception, so a channel that carries the
+                # node contradicts it
+                assert not is_pinned, (
+                    f"{fqn}: ARTIFACT_GAPS pins {exc_type.__name__} on "
+                    f"{channels!r} but the {name} channel carried the node -- "
+                    "the row is stale"
+                )
+                assert_params_equal(restored_params, instance.get_params())
+                continue
+            if is_pinned:
+                # the spelling gap: the channel carries the node and hands back
+                # the same parameter under the XML codec's member spelling. The
+                # strict comparison must refuse it -- that is the thing the row
+                # records -- and the tolerant one must accept it, which proves
+                # the difference is only the spelling and nothing else.
+                with pytest.raises(AssertionError):
+                    assert_params_equal(restored_params, instance.get_params())
+                assert_params_equal(
+                    restored_params,
+                    instance.get_params(),
+                    allow_enum_names=True,
+                )
+                continue
+            assert_params_equal(restored_params, instance.get_params())
 
     def test_to_sql_roundtrip_classified(self, sqlserver_expr_case, sqlserver_dialect):
         """A render must survive the round-trip; a non-render must be classified."""
@@ -1423,7 +2079,6 @@ class TestMatrixIntegrity:
         a constructor and the entry is stale; a class that fails to build without
         being named would become a silent skip. Both fail here.
         """
-        auto_register_builtins()
         actual = tuple(
             sorted(
                 fqn
@@ -1543,7 +2198,6 @@ class TestMatrixIntegrity:
         backends other test modules happened to import -- which is exactly the
         non-determinism this matrix moved off.
         """
-        auto_register_builtins()
         for pkg in (CORE_EXPR_PKG, SS_EXPR_PKG):
             expected = set(_collect(pkg))
             covered = {
@@ -1562,20 +2216,77 @@ class TestMatrixIntegrity:
     def test_every_covered_class_is_registered_for_deserialization(self):
         """A class in the matrix can be found again when deserializing.
 
-        Deserialization looks the class up by name, so a class the matrix renders
-        but the registry cannot resolve would round-trip into the wrong thing or
-        nothing at all.
+        Deserialization resolves a kind through the framework's default
+        registry -- the same whitelist ``register_all`` filled at import --
+        so a class the matrix renders but the registry cannot resolve would
+        round-trip into the wrong thing or nothing at all.
         """
-        auto_register_builtins()
-        unresolved = sorted(set(REGISTERED) - set(registered_expression_classes()))
-        assert not unresolved, (
-            f"the matrix covers classes the index cannot resolve: {unresolved}"
+        from rhosocial.activerecord.backend.expression.serialization import (
+            default_registry,
         )
+
+        registry = default_registry()
+        unresolved = sorted(
+            fqn
+            for fqn, cls in REGISTERED.items()
+            if registry.resolve_node(cls.kind()) is not cls
+        )
+        assert not unresolved, (
+            f"the matrix covers classes the kind whitelist cannot resolve: {unresolved}"
+        )
+
+    def test_artifact_gap_list_is_exact(self, sqlserver_dialect):
+        """Pin the artifact-gap table against what the channels really carry.
+
+        Both directions, and each row is checked against the tree right here: a
+        row naming no collected class, a channel outside the three the matrix
+        runs, or a *typed* row whose channel now carries the node is a typo that
+        would exempt nothing while reading as a decision. The ``None``-typed
+        rows are checked by the per-class test, which asserts both that the
+        strict comparison refuses the restored params and that the tolerant one
+        accepts them.
+        """
+        unknown = set(ARTIFACT_GAPS) - set(REGISTERED)
+        assert not unknown, (
+            f"ARTIFACT_GAPS names classes that were not collected: "
+            f"{sorted(unknown)}"
+        )
+        codecs = _artifact_codecs()
+        for fqn, (channels, exc_type, _fragment) in ARTIFACT_GAPS.items():
+            for name in _channel_channels(channels):
+                assert name in _ARTIFACT_CHANNELS, (
+                    f"{fqn}: ARTIFACT_GAPS names channel {name!r}; the matrix "
+                    f"runs {list(_ARTIFACT_CHANNELS)}"
+                )
+            instance, _source = make_instance(REGISTERED[fqn], sqlserver_dialect)
+            assert instance is not None, (
+                f"{fqn} is pinned as an artifact gap but cannot be built"
+            )
+            if exc_type is None:
+                continue  # the spelling rows are pinned by the per-class test
+            for name in _channel_channels(channels):
+                encode, decode = codecs[name]
+                try:
+                    decode(encode(instance), sqlserver_dialect).to_sql()
+                except Exception as exc:
+                    _record_channel(fqn, name, exc)
+                    break
+            else:
+                raise AssertionError(
+                    f"{fqn} is pinned in ARTIFACT_GAPS with "
+                    f"{exc_type.__name__} but the {channels} channel carried "
+                    "it -- remove the row"
+                )
 
     def test_coverage_report(self, sqlserver_dialect):
         """Surface what the matrix covers, so coverage stays transparent."""
-        auto_register_builtins()
-        branches = {"rendered": 0, "unsupported": 0, "unmodelled": 0, "non-render": 0}
+        branches = {
+            "rendered": 0,
+            "unsupported": 0,
+            "unmodelled": 0,
+            "non-render": 0,
+            "artifact-gap": 0,
+        }
         constructible = []
         for fqn in sorted(REGISTERED):
             instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect)
@@ -1594,9 +2305,13 @@ class TestMatrixIntegrity:
             f"unsupported {branches['unsupported']}, "
             f"unmodelled {branches['unmodelled']} (pinned in "
             f"UNMODELLED_FORMATTERS), "
-            f"pinned non-render {branches['non-render']}"
+            f"pinned non-render {branches['non-render']}, "
+            f"artifact gap {branches['artifact-gap']}"
         )
         for fqn in UNCONSTRUCTIBLE:
             print(f"  not constructible: {fqn}")
         for feature, methods in sorted(UNMODELLED_FORMATTERS.items()):
             print(f"  not modelled: {feature} ({len(methods)} formatters)")
+        for fqn in sorted(ARTIFACT_GAPS):
+            channel, _type, _fragment = ARTIFACT_GAPS[fqn]
+            print(f"  artifact gap: {fqn} ({channel} channel)")

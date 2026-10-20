@@ -1616,9 +1616,12 @@ class TestParseRoundTripSweep:
         return registry
 
     def test_every_rendered_type_parses_back_coherently(self, registry):
-        from rhosocial.activerecord.testsuite.utils.parse_contract import (
-            parse_roundtrip_failures,
-        )
+        # The testsuite dropped utils/expression in e05edb0 ("round-trip
+        # coverage moves to the owning repository") and parse_contract died
+        # with it -- it imported make_instance from the deleted harness. The
+        # sweep is vendored beside this repository's own harness for the same
+        # reason the matrix's is: a dead import is a dead test.
+        from expression_parse_contract import parse_roundtrip_failures
 
         dialect = SQLServerDialect(SQL_SERVER_2022)
         failures = parse_roundtrip_failures(
