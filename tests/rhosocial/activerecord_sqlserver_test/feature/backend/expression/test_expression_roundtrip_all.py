@@ -105,7 +105,7 @@ import datetime
 import inspect
 import uuid as uuid_module
 from decimal import Decimal
-from typing import Any, Dict, Tuple, Type
+from typing import Any, Dict
 
 import pytest
 
@@ -113,7 +113,6 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from rhosocial.activerecord.backend.expression.core import Column, Literal
 from rhosocial.activerecord.backend.expression.objects import (
     Database,
-    Function,
     Index,
     Schema,
     Sequence,
@@ -584,9 +583,6 @@ def register_specials():
     def partition_range(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
             SQLServerPartitionByRangeClause,
-            SQLServerPartitionFunctionExpression,
-            SQLServerPartitionRangeDirection,
-            SQLServerPartitionSchemeExpression,
         )
 
         return SQLServerPartitionByRangeClause(
