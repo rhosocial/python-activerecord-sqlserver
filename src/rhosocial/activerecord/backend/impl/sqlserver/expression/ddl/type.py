@@ -68,6 +68,7 @@ def _require_data_type(value: DataType, field_name: str) -> None:
 
 class SQLServerAliasTypeDefinition(TypeDefinition):
     """SQL Server alias TYPE definition."""
+    KIND_RESERVED = ("SQLServer",)
 
     definition_kind = "alias"
 
@@ -96,6 +97,7 @@ class SQLServerTableTypeDefinition(TypeDefinition):
     the reverse) and the reconstruction takes the same branch. Renderers read
     :attr:`constraint_definitions`, never one particular spelling's slot.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     definition_kind = "table"
 
@@ -157,6 +159,7 @@ class SQLServerTableTypeDefinition(TypeDefinition):
 
 class SQLServerClrTypeDefinition(TypeDefinition):
     """SQL Server CLR user-defined TYPE definition."""
+    KIND_RESERVED = ("SQLServer",)
 
     definition_kind = "clr"
 
@@ -182,6 +185,7 @@ class SQLServerDropTypeExpression(DropTypeStatement):
     ``RESTRICT`` for ``DROP TYPE``, and asking for one is an error here rather
     than a silently dropped token.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -203,6 +207,7 @@ class SQLServerDropTypeExpression(DropTypeStatement):
 
 class SQLServerRenameTypeExpression(BaseExpression):
     """SQL Server TYPE rename statement using ``sp_rename``."""
+    KIND_RESERVED = ("SQLServer",)
 
     @property
     def format_method(self) -> str:
@@ -242,13 +247,13 @@ _SQLSERVER_TYPE_EXPRESSIONS = (
 # the framework's default registry (the same singleton deserialization
 # consults) is what keeps these backend-owned kinds readable once a process
 # imports this package; re-registering a class the framework already knows
-# is a no-op. The enum rides along: an artifact encodes an enum member
-# under its short class name, and the reader resolves that name through the
-# same registry.
+# is a no-op. The nullability enum needs no registration of its own: an
+# artifact carries only JSON scalars, and this package normalises the enum
+# to a bool at construction (see _normalise_nullability), so no member ever
+# reaches the wire.
 _registry = default_registry()
 for _expression_class in _SQLSERVER_TYPE_EXPRESSIONS:
     _registry.register_node(_expression_class)
-_registry.register_enum(SQLServerTypeNullability)
 
 
 __all__ = [

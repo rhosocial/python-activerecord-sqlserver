@@ -21,7 +21,11 @@ import inspect
 
 import pytest
 
-from rhosocial.activerecord.backend.expression.core import DdlLiteral
+from rhosocial.activerecord.backend.expression.core import Literal
+from rhosocial.activerecord.backend.expression.predicates import (
+    ComparisonOperator,
+    ComparisonPredicate,
+)
 from rhosocial.activerecord.backend.expression.serialization import (
     deserialize,
     deserialize_json,
@@ -44,7 +48,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
 from rhosocial.activerecord.backend.impl.sqlserver.expression.index import (
     SQLServerIndexDefinition,
 )
-from rhosocial.activerecord.testsuite.utils.expression import assert_params_equal
+from expression_roundtrip_harness import assert_params_equal
 
 SQL_SERVER_2014 = (12, 0, 0)
 
@@ -207,7 +211,17 @@ class TestSQLServerTableTypeDefinitionRoundTrip:
             )
 
     def test_check_constraint_condition_survives(self, dialect):
-        condition = DdlLiteral(dialect, 1) > DdlLiteral(dialect, 0)
+        # A CHECK's condition is a DDL position: no bind parameters, so each
+        # value is written as text by its own Literal -- the per-position
+        # decision the class makes, not a class-wide strategy any more. The
+        # comparison is its own node, not an operator off the value: a value
+        # node carries no comparison surface.
+        condition = ComparisonPredicate(
+            dialect,
+            ComparisonOperator.GT,
+            Literal(dialect, 1, inline=True),
+            Literal(dialect, 0, inline=True),
+        )
         check = TableConstraint(dialect, branch=TableCheckConstraint(dialect, condition))
         expr = SQLServerTableTypeDefinition(
             dialect,

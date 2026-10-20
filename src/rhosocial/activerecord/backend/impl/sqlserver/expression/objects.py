@@ -28,6 +28,8 @@ partition kinds each get a small renderer on
 :class:`~...mixins.partition.SQLServerPartitionMixin`.
 """
 
+from typing import Optional
+
 from rhosocial.activerecord.backend.expression.objects import SchemaObject, Table
 
 __all__ = ["SQLServerTable", "PartitionFunction", "PartitionScheme"]
@@ -42,20 +44,50 @@ class SQLServerTable(Table):
     ``CREATE TABLE [stage]`` differ only in the object, not in how the object
     is rendered.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     __slots__ = ("temporary",)
 
-    def __init__(self, dialect, name: str, *, temporary: bool = False, **slots) -> None:
+    def __init__(
+        self,
+        dialect,
+        name: str,
+        *,
+        temporary: bool = False,
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        catalog_need_quote: bool = True,
+        schema_need_quote: bool = True,
+        name_need_quote: bool = True,
+    ) -> None:
         """Record the table's identity.
 
         Args:
             dialect: The dialect that will render this table.
             name: The table's own name, without the temporary marker.
             temporary: Whether this is a ``#``-prefixed temporary table.
-            **slots: ``catalog_name`` / ``schema_name`` and the three
-                ``*_need_quote`` flags, passed straight through.
+            catalog_name: Outermost namespace, or ``None`` when the table
+                lives in the default catalog.
+            schema_name: The schema the table lives in, or ``None``.
+            catalog_need_quote: Whether the catalog name needs brackets.
+            schema_need_quote: Whether the schema name needs brackets.
+            name_need_quote: Whether the table name needs brackets.
+
+        The identity parameters are named rather than collected into a
+        catch-all: ``get_params()`` reads every constructor parameter under
+        its own name, and an artifact cannot carry names a ``**kwargs``
+        accepted without ever declaring (the core forbids the catch-all on
+        expression classes for exactly this reason).
         """
-        super().__init__(dialect, name, **slots)
+        super().__init__(
+            dialect,
+            name,
+            catalog_name=catalog_name,
+            schema_name=schema_name,
+            catalog_need_quote=catalog_need_quote,
+            schema_need_quote=schema_need_quote,
+            name_need_quote=name_need_quote,
+        )
         self.temporary = bool(temporary)
         if self.temporary and not self.name.startswith("#"):
             self.name = f"#{self.name}"

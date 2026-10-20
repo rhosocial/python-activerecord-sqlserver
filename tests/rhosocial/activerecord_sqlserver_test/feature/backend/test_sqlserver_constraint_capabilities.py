@@ -47,10 +47,10 @@ from rhosocial.activerecord.backend.expression.core import Column
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
 from rhosocial.activerecord.backend.expression.statements.ddl_alter import (
-    AddTableConstraint,
-    AlterConstraint,
-    DropTableConstraint,
-    ValidateConstraint,
+    AddTableConstraintAction,
+    AlterConstraintAction,
+    DropTableConstraintAction,
+    ValidateConstraintAction,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnConstraint,
@@ -238,13 +238,13 @@ class TestAddAndDropConstraintRender:
 
     def test_add_table_constraint_renders(self):
         d = _dialect()
-        sql, params = AddTableConstraint(d, _check(d)).to_sql()
+        sql, params = AddTableConstraintAction(d, _check(d)).to_sql()
         assert sql == "ADD CONSTRAINT [ck] CHECK ([a] = [b])"
         assert params == ()
 
     def test_add_primary_key_renders(self):
         d = _dialect()
-        action = AddTableConstraint(
+        action = AddTableConstraintAction(
             d,
             TableConstraint(d, branch=TablePrimaryKeyConstraint(d, ["id"]), name="pk"),
         )
@@ -254,14 +254,14 @@ class TestAddAndDropConstraintRender:
 
     def test_drop_constraint_renders(self):
         d = _dialect()
-        sql, params = DropTableConstraint(d, "ck").to_sql()
+        sql, params = DropTableConstraintAction(d, "ck").to_sql()
         assert sql == "DROP CONSTRAINT [ck]"
         assert params == ()
 
     def test_drop_constraint_if_exists_renders(self):
         """``IF EXISTS`` is the idempotent path: the plain form is Msg 3728."""
         d = _dialect()
-        sql, params = DropTableConstraint(d, "ck", if_exists=True).to_sql()
+        sql, params = DropTableConstraintAction(d, "ck", if_exists=True).to_sql()
         assert sql == "DROP CONSTRAINT IF EXISTS [ck]"
         assert params == ()
 
@@ -272,11 +272,11 @@ class TestAlterSideRefusals:
     def test_validate_constraint_refused(self):
         d = _dialect()
         with pytest.raises(UnsupportedFeatureError):
-            ValidateConstraint(d, "ck").to_sql()
+            ValidateConstraintAction(d, "ck").to_sql()
 
     def test_alter_constraint_enforced_refused(self):
         d = _dialect()
-        action = AlterConstraint(
+        action = AlterConstraintAction(
             d, "ck", enforced=True, constraint_kind=TableCheckConstraint
         )
         with pytest.raises(UnsupportedFeatureError):
@@ -284,7 +284,7 @@ class TestAlterSideRefusals:
 
     def test_alter_constraint_not_enforced_refused(self):
         d = _dialect()
-        action = AlterConstraint(
+        action = AlterConstraintAction(
             d,
             "ck",
             not_enforced=True,
@@ -295,7 +295,7 @@ class TestAlterSideRefusals:
 
     def test_add_constraint_not_valid_refused_on_the_add_path(self):
         d = _dialect()
-        action = AddTableConstraint(
+        action = AddTableConstraintAction(
             d, _check(d, validation=ConstraintValidation.NOVALIDATE)
         )
         with pytest.raises(UnsupportedFeatureError):

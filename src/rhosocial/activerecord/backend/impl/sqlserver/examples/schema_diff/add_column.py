@@ -26,7 +26,7 @@ dialect = backend.dialect
 from rhosocial.activerecord.backend.expression import (
     DropTableStatement, CreateTableStatement, ColumnDefinition,
     ColumnConstraint, ColumnPrimaryKeyConstraint,
-    AlterTableStatement, AddColumn,
+    AlterTableStatement, AddColumnAction,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.types import (
@@ -66,7 +66,7 @@ snap_before = builder.build()
 alter = AlterTableStatement(
     dialect=dialect, table=users,
     actions=[
-        AddColumn(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
+        AddColumnAction(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
     ],
 )
 sql, params = alter.to_sql()
