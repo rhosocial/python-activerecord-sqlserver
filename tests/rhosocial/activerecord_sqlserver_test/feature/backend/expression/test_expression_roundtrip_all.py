@@ -122,6 +122,7 @@ from rhosocial.activerecord.backend.expression.objects import (
     View,
 )
 from rhosocial.activerecord.backend.expression.predicates import (
+    LikeOperator,
     ComparisonOperator,
     ComparisonPredicate,
 )
@@ -456,7 +457,7 @@ def register_specials():
 
     register_special_constructor(
         "predicates.LikePredicate",
-        lambda d: LikePredicate(d, "LIKE", Column(d, "a"), Literal(d, "%x%")),
+        lambda d: LikePredicate(d, LikeOperator.LIKE, Column(d, "a"), Literal(d, "%x%")),
     )
     register_special_constructor(
         "predicates.ILikePredicate",
