@@ -65,7 +65,11 @@ class TestLiteralDefaultsExecute:
             )
             assert row is not None
             assert bytes(row["b"]) == self.BINARY
-            assert row["u"] == uuid.UUID(self.UUID_TEXT)
+            # A UNIQUEIDENTIFIER comes back in the server's own canonical
+            # spelling, which is upper-case hex; the answer is parsed rather
+            # than compared as text, so the casing is not part of what is
+            # asserted and the value is what travels.
+            assert uuid.UUID(str(row["u"])) == uuid.UUID(self.UUID_TEXT)
             assert bool(row["f"]) is True
         finally:
             sqlserver_backend.execute(f"DROP TABLE IF EXISTS {table}")
