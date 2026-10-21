@@ -34,6 +34,18 @@ class SQLServerViewMixin:
         """SQL Server supports DROP VIEW IF EXISTS (2016+)."""
         return self.version >= SQL_SERVER_2016
 
+    def supports_create_table_as(self) -> bool:
+        """SQL Server has no ``CREATE TABLE ... AS`` statement.
+
+        Measured on 2019 / 2022 / 2025 (``{SQL Server}`` driver): the portable
+        spelling is a syntax error near the keyword ``SELECT`` --
+        ``CREATE TABLE t AS SELECT ...`` is rejected whole.  SQL Server's own
+        population spelling is ``SELECT ... INTO <table>``, which is a
+        different statement shape, so the portable one is refused by name
+        rather than emitted in a form the server rejects.
+        """
+        return False
+
     def supports_with_data_clause(self) -> bool:
         """SQL Server has no ``WITH [NO] DATA`` population clause.
 
