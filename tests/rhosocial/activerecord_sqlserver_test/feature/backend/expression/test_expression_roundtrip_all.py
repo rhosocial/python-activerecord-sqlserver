@@ -1385,21 +1385,23 @@ LEGITIMATE_NON_RENDERS = {
 #   and the class asserts normally; the rows below are the ones where it cannot
 #   (``CreateViewStatement`` normalises ``options=None`` into a
 #   ``ViewOptions()`` no matter what the caller passes).
-# * one channel failing where the others succeed. The XML codec spells an enum
-#   parameter as ``Class.MEMBER``; the dict and JSON codecs spell it as the
-#   member's own value, which every one of these constructors accepts. The
-#   member spelling used to resolve through the enum sub-registry, which the
-#   plain-JSON wave deleted, so no reader turns the word back into a member
-#   and the constructor refuses it. That is a core-side gap, recorded here with
-#   the channel name so the day core spells it as the value, the row goes.
+# * one channel failing where the others succeed. The XML codec used to spell
+#   an enum parameter as ``Class.MEMBER`` while the dict and JSON codecs spelled
+#   it as the member's own value, which every one of these constructors
+#   accepts; no reader turned the word back into a member, so the constructor
+#   refused it. That was a core-side gap, recorded here with the channel name
+#   so the day core spells it as the value, the row goes -- and the rows have
+#   gone: core spells the enum as its value on every channel now, so the
+#   EXTRACT family, the interval arithmetic and the XML document-type
+#   expressions all travel.
 #
 # Each entry is ``(channels, exception type, message fragment)``. ``channels``
 # is one of ``"dict"`` / ``"json"`` / ``"xml"``, a tuple of them, or ``"all"``;
 # a type of ``None`` names the other shape of gap, where the channel carries the
-# node but restores a different *spelling* of one parameter (see the two XML
-# rows). Either way the row is asserted against the tree: a class that starts
-# travelling fails until its row goes, and a class that stops travelling with no
-# row fails the per-class assertion.
+# node but restores a different *spelling* of one parameter. Either way the row
+# is asserted against the tree: a class that starts travelling fails until its
+# row goes, and a class that stops travelling with no row fails the per-class
+# assertion.
 
 #: Nodes whose artifact cannot be written or read back, by channel and reason.
 ARTIFACT_GAPS = {
@@ -1413,76 +1415,6 @@ ARTIFACT_GAPS = {
         "all",
         TypeError,
         "not one of the value kinds",
-    ),
-    # The EXTRACT family and the interval arithmetic: a ``DateTimeField`` /
-    # ``IntervalUnit`` parameter, which every one of these constructors accepts
-    # as its value word. The dict and JSON channels carry that word; the XML
-    # channel carries the member's name and the constructor refuses it. Only the
-    # XML channel is pinned, so the other two keep asserting the class.
-    "rhosocial.activerecord.backend.expression.datetime.ExtractExpression": (
-        "xml",
-        ValueError,
-        "unsupported datetime field",
-    ),
-    "rhosocial.activerecord.backend.expression.datetime.ExtractFieldExpression": (
-        "xml",
-        ValueError,
-        "unsupported datetime field",
-    ),
-    "rhosocial.activerecord.backend.expression.datetime._ExtractBase": (
-        "xml",
-        ValueError,
-        "unsupported datetime field",
-    ),
-    "rhosocial.activerecord.backend.expression.datetime.DatePartExpression": (
-        "xml",
-        ValueError,
-        "unsupported datetime field",
-    ),
-    "rhosocial.activerecord.backend.expression.datetime.DateTruncExpression": (
-        "xml",
-        ValueError,
-        "unsupported datetime field",
-    ),
-    "rhosocial.activerecord.backend.expression.datetime.DateTimeAddExpression": (
-        "xml",
-        ValueError,
-        "unsupported interval unit",
-    ),
-    "rhosocial.activerecord.backend.expression.datetime."
-    "DateTimeSubtractExpression": (
-        "xml",
-        ValueError,
-        "unsupported interval unit",
-    ),
-    "rhosocial.activerecord.backend.expression.datetime.DateTimeDiffExpression": (
-        "xml",
-        ValueError,
-        "unsupported interval unit",
-    ),
-    # The standalone INTERVAL value: same enum parameter, same XML spelling,
-    # and the class is pinned in the render half too -- SQL Server has no
-    # standalone INTERVAL expression, which is a separate answer from the
-    # channel's, so the two pins name different facts.
-    "rhosocial.activerecord.backend.expression.datetime.IntervalExpression": (
-        "xml",
-        ValueError,
-        "unsupported interval unit",
-    ),
-    # XMLPARSE / XMLSERIALIZE carry a ``document_type`` enum whose class keeps
-    # the word it was handed, so the XML spelling survives reconstruction as a
-    # string and the node's params come back in that spelling. The node renders
-    # identically either way -- the formatter spells the word, not the member --
-    # so the gap is in the params assertion, which is why the type is ``None``.
-    "rhosocial.activerecord.backend.expression.xml.XMLParseExpression": (
-        "xml",
-        None,
-        "XMLParseDocumentType.",
-    ),
-    "rhosocial.activerecord.backend.expression.xml.XMLSerializeExpression": (
-        "xml",
-        None,
-        "XMLSerializeDocumentType.",
     ),
     # SQL/PGQ property graphs: ``GraphColumn`` is a dataclass, and a dataclass
     # parameter is the other thing a plain-JSON artifact cannot carry. No
