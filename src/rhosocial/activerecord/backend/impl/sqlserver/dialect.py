@@ -236,7 +236,7 @@ if TYPE_CHECKING:
     )
     from rhosocial.activerecord.backend.expression.transaction import (
         BeginTransactionStatement,
-        SetTransactionExpression,
+        SetTransactionStatement,
     )
     from rhosocial.activerecord.backend.expression.statements.fulltext_match import (
         FulltextMatch,

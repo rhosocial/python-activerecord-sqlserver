@@ -1059,7 +1059,7 @@ LEGITIMATE_NON_RENDERS = {
         NotImplementedError,
         _NO_FORMATTER,
     ),
-    "rhosocial.activerecord.backend.expression.transaction.TransactionExpression": (
+    "rhosocial.activerecord.backend.expression.transaction.TransactionStatement": (
         NotImplementedError,
         _NO_FORMATTER,
     ),

@@ -4,7 +4,7 @@ from typing import Any, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.transaction import (
         BeginTransactionStatement,
-        SetTransactionExpression,
+        SetTransactionStatement,
     )
 
 
@@ -117,7 +117,7 @@ class SQLServerTransactionMixin:
             return f"BEGIN TRANSACTION {wait_clause}", ()
         return "BEGIN TRANSACTION", ()
 
-    def format_set_transaction(self, expr: "SetTransactionExpression") -> Tuple[str, tuple]:
+    def format_set_transaction(self, expr: "SetTransactionStatement") -> Tuple[str, tuple]:
         """Format SET TRANSACTION for SQL Server.
 
         SQL Server requires SET TRANSACTION ISOLATION LEVEL before BEGIN TRANSACTION.

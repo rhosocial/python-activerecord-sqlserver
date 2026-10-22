@@ -82,7 +82,7 @@ from rhosocial.activerecord.backend.expression.statements.ddl_view import (
 from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
 from rhosocial.activerecord.backend.expression.transaction import (
     BeginTransactionStatement,
-    SetTransactionExpression,
+    SetTransactionStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
@@ -181,7 +181,7 @@ MASTER_PROBE_CASES = (
         False,
         "transaction WAIT",
         r"(?<!NO )\bWAIT\b",
-        lambda d: SetTransactionExpression(d, wait=True),
+        lambda d: SetTransactionStatement(d, wait=True),
     ),
     MasterProbeCase(
         "set-no-wait",
@@ -189,7 +189,7 @@ MASTER_PROBE_CASES = (
         False,
         "transaction NO WAIT",
         r"\bNO WAIT\b",
-        lambda d: SetTransactionExpression(d, no_wait=True),
+        lambda d: SetTransactionStatement(d, no_wait=True),
     ),
 )
 
@@ -345,7 +345,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionStatement, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionStatement],
         ids=["begin", "set"],
     )
     def test_wait_is_refused_by_name(self, expression_cls):
@@ -357,7 +357,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionStatement, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionStatement],
         ids=["begin", "set"],
     )
     def test_no_wait_is_refused_by_name(self, expression_cls):
@@ -368,7 +368,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionStatement, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionStatement],
         ids=["begin", "set"],
     )
     def test_both_wait_and_no_wait_are_mutually_exclusive(self, expression_cls):

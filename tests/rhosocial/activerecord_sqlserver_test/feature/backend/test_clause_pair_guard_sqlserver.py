@@ -74,7 +74,7 @@ from rhosocial.activerecord.backend.expression.statements.ddl_view import (
 from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
 from rhosocial.activerecord.backend.expression.transaction import (
     BeginTransactionStatement,
-    SetTransactionExpression,
+    SetTransactionStatement,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -319,8 +319,8 @@ PAIR_CASES = (
         b_error=("DEFERRABLE transaction", "the NOT DEFERRABLE transaction mode"),
     ),
     PairCase(
-        "SetTransactionExpression.deferrable",
-        lambda d, **kw: SetTransactionExpression(d, **kw),
+        "SetTransactionStatement.deferrable",
+        lambda d, **kw: SetTransactionStatement(d, **kw),
         "deferrable",
         "not_deferrable",
         r"(?<!NOT )DEFERRABLE\b",
@@ -543,7 +543,7 @@ class TestGuardIsNotVacuous:
             "DropViewStatement.cascade",
             "DropSchemaStatement.cascade",
             "BeginTransactionStatement.deferrable",
-            "SetTransactionExpression.deferrable",
+            "SetTransactionStatement.deferrable",
             "ForeignKeyConstraint.deferrable",
             "ForeignKeyConstraint.initially_deferred",
             "TableConstraint.enforced",
