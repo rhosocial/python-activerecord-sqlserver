@@ -34,6 +34,16 @@ class SQLServerViewMixin:
         """SQL Server supports DROP VIEW IF EXISTS (2016+)."""
         return self.version >= SQL_SERVER_2016
 
+
+    def supports_create_view_bind_parameters(self) -> bool:
+        """SQL Server refuses bind parameters in a view body.
+
+        Measured on 2019 / 2022 / 2025: a view whose definition binds is
+        rejected -- the placeholder is not a T-SQL variable, so the parser
+        stops at it -- while the same view with an inlined literal is
+        accepted.
+        """
+        return False
     def supports_create_table_as(self) -> bool:
         """SQL Server has no ``CREATE TABLE ... AS`` statement.
 
@@ -90,6 +100,8 @@ class SQLServerViewMixin:
             parts.append(f"({cols})")
 
         query_sql, query_params = expr.query.to_sql()
+        if query_params and not self.supports_create_view_bind_parameters():
+            self._refuse_ddl_bind_parameters("CREATE VIEW with bound parameters")
         as_sql = f"AS {query_sql}"
         if expr.options.schemabinding:
             as_sql = f"WITH SCHEMABINDING {as_sql}"

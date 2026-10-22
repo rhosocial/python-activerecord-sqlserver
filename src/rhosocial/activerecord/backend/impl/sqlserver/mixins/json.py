@@ -35,7 +35,7 @@ class SQLServerJSONMixin:
         """
         col_sql, col_params = expr.column.to_sql()
 
-        escaped_path = self._escape_sql_string(expr.path)
+        escaped_path = self.escape_sql_string(expr.path)
         sql = f"JSON_VALUE({col_sql}, '{escaped_path}')"
         params = col_params
 

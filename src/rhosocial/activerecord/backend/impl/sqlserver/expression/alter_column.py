@@ -27,6 +27,7 @@ from rhosocial.activerecord.backend.expression.statements import (
 
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
+    from rhosocial.activerecord.backend.expression.types import DataType
 
 
 __all__ = [
@@ -50,7 +51,7 @@ class SQLServerAlterColumn(AlterColumnAction):
         *,
         new_value: Any = None,
         cascade: bool = False,
-        data_type: Optional[str] = None,
+        data_type: Optional[Union[str, "DataType"]] = None,
         collate: Optional[str] = None,
         not_null: bool = False,
         nullable: bool = False,

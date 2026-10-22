@@ -254,6 +254,14 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 
 
 class SQLServerDialect(
+    # The bases below come in bundles: a backend mixin, then the core bundle
+    # it stands in for. The backend's answer has to come first -- a mixin
+    # placed after the class it overrides never wins -- so a new mixin goes
+    # immediately before the core mixin it overrides, and the pairing is read
+    # off the list. Two positions sit outside that pairing and are called out
+    # where they occur: a mixin that overrides a method ``SQLDialectBase``
+    # defines has to precede the base, and a mixin that subclasses a core
+    # mixin has to precede it too (C3: a subclass precedes its base).
     # Value literals: SQL Server's tier-2 spellings -- 1/0 for the booleans
     # T-SQL has no keywords for, the unquoted 0x hex constant, and quoted
     # text a UNIQUEIDENTIFIER converts -- ahead of every other base and
@@ -1401,7 +1409,11 @@ class SQLServerDialect(
         (right behind ``SQLDialectBase``), ahead of every SQL Server
         mixin block; the class body is the one place guaranteed to win.
         """
-        return self._format_scalar_function("LEN", expr)
+        operand_sql, operand_params = expr.operand.to_sql()
+        sql = f"LEN({operand_sql})"
+        if expr.alias:
+            sql = f"{sql} AS {self.format_identifier(expr.alias)}"
+        return sql, tuple(operand_params)
 
     def format_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format an arbitrary expression to SQL."""

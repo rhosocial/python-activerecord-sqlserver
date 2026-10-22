@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from typing import Any, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.dialect.mixins.user_defined_type import UserDefinedTypeMixin
 from rhosocial.activerecord.backend.expression.bases import ToSQLProtocol
@@ -709,8 +708,6 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             base_sql, base_params = expr.base_type.to_sql()
             if base_params:
                 raise ValueError("TYPE base types must render without bind parameters")
-            if not SQLDialectBase._validate_data_type(base_sql):
-                raise ValueError("TYPE base types must render as a safe SQL type")
             parts = [f"FROM {base_sql}"]
             if expr.nullability is True:
                 parts.append("NOT NULL")

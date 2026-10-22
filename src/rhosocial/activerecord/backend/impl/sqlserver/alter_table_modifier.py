@@ -134,10 +134,13 @@ class SQLServerAlterColumnModifierMixin:
         if data_type is None:
             raise ValueError("data type is required for ALTER COLUMN")
 
+        from rhosocial.activerecord.backend.expression.types import DataType
+
+        type_sql, _ = DataType.as_type(self, data_type).to_sql()
         parts = [
             "ALTER COLUMN",
             self.format_identifier(action.column_name),
-            str(data_type),
+            type_sql,
         ]
 
         collate = getattr(action, "collate", None)
