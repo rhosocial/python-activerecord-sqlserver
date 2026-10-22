@@ -732,10 +732,10 @@ def register_specials():
 
     def create_table(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.create_table import (
-            SQLServerCreateTableExpression,
+            SQLServerCreateTableStatement,
         )
 
-        return SQLServerCreateTableExpression(d, _table_obj(d), [_integer_column(d)])
+        return SQLServerCreateTableStatement(d, _table_obj(d), [_integer_column(d)])
 
     def as_graph_table(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.graph import (
@@ -873,7 +873,7 @@ def register_specials():
         "statements.ddl_table.ForeignKeyConstraint", foreign_key
     )
     register_special_constructor(
-        "create_table.SQLServerCreateTableExpression", create_table
+        "create_table.SQLServerCreateTableStatement", create_table
     )
     register_special_constructor(
         "ddl.graph.SQLServerAsGraphTableExpression", as_graph_table

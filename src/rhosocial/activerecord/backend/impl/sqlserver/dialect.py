@@ -734,10 +734,10 @@ class SQLServerDialect(
         # SQL Graph edge constraints (CONNECTION) are table-level constraints
         # declared by the SQL Server CREATE TABLE node; the generic statement
         # has no such field, so the dispatch is on the declared class.
-        from .expression.create_table import SQLServerCreateTableExpression
+        from .expression.create_table import SQLServerCreateTableStatement
 
         edge_constraints = (
-            expr.edge_constraints if isinstance(expr, SQLServerCreateTableExpression) else None
+            expr.edge_constraints if isinstance(expr, SQLServerCreateTableStatement) else None
         )
         if edge_constraints:
             for edge_constraint in edge_constraints:
@@ -761,7 +761,7 @@ class SQLServerDialect(
         # SQL Graph table kind (AS NODE / AS EDGE), if requested. Like the
         # edge constraints above, the field belongs to the SQL Server node.
         graph_kind = (
-            expr.graph_table_kind if isinstance(expr, SQLServerCreateTableExpression) else None
+            expr.graph_table_kind if isinstance(expr, SQLServerCreateTableStatement) else None
         )
         if graph_kind is not None:
             from .expression.ddl.graph import (

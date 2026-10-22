@@ -44,7 +44,7 @@ from .column import SQLServerColumnDefinition, SQLServerColumnOptions
 from .alter_column import SQLServerAlterColumn
 from .table_options import SQLServerCreateTableOptions
 from .index import SQLServerIndexDefinition
-from .create_table import SQLServerCreateTableExpression
+from .create_table import SQLServerCreateTableStatement
 from .dml import SQLServerMergeExpression, SQLServerSelectIntoExpression
 from .columnstore import SQLServerColumnstoreIndexExpression
 from .fulltext import (
@@ -112,7 +112,7 @@ __all__ = [
     "SQLServerColumnOptions",
     "SQLServerAlterColumn",
     "SQLServerIndexDefinition",
-    "SQLServerCreateTableExpression",
+    "SQLServerCreateTableStatement",
     "SQLServerColumnstoreIndexExpression",
     "SQLServerCreateFullTextCatalogExpression",
     "SQLServerDropFullTextCatalogExpression",
