@@ -387,7 +387,7 @@ class SQLServerBackendMixin:
         ]
         return any(pattern in error_str for pattern in connection_error_patterns)
 
-    def _adapt_row_types(self, row_dict: Dict[str, Any], column_adapters) -> Dict[str, Any]:
+    def adapt_row_types(self, row_dict: Dict[str, Any], column_adapters) -> Dict[str, Any]:
         """Adapt row values, stripping SQL Server CHAR column padding.
 
         SQL Server pads ``CHAR``/``NCHAR`` values with trailing spaces, so a
@@ -397,7 +397,7 @@ class SQLServerBackendMixin:
         that legitimately carry trailing whitespace are not produced by the
         column adapters used here).
         """
-        processed_row = super()._adapt_row_types(row_dict, column_adapters)
+        processed_row = super().adapt_row_types(row_dict, column_adapters)
         for col_name, value in processed_row.items():
             if isinstance(value, str):
                 processed_row[col_name] = value.rstrip(" ")

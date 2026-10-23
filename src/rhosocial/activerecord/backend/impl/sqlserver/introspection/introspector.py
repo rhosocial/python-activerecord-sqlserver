@@ -685,10 +685,10 @@ class SyncSQLServerIntrospector(
     def get_table_info(
         self, table_name: str, schema: Optional[str] = None
     ) -> Optional[IntrospectionTableInfo]:
-        key = self._make_cache_key(
+        key = self.make_cache_key(
             IntrospectionScope.TABLE, table_name, schema=schema
         )
-        cached = self._get_cached(key)
+        cached = self.get_cached(key)
         if cached is not None:
             return cached
 
@@ -703,17 +703,17 @@ class SyncSQLServerIntrospector(
         table.columns = self.list_columns(table_name, schema)
         table.indexes = self.list_indexes(table_name, schema)
         table.foreign_keys = self.list_foreign_keys(table_name, schema)
-        self._set_cached(key, table)
+        self.set_cached(key, table)
         return table
 
     def list_columns(
         self, table_name: str, schema: Optional[str] = None
     ) -> List[IntrospectionColumnInfo]:
         target = schema if schema is not None else self._get_default_schema()
-        key = self._make_cache_key(
+        key = self.make_cache_key(
             IntrospectionScope.COLUMN, table_name, schema=target
         )
-        cached = self._get_cached(key)
+        cached = self.get_cached(key)
         if cached is not None:
             return cached
 
@@ -726,7 +726,7 @@ class SyncSQLServerIntrospector(
         columns = self._parse_columns(
             rows, table_name, target, primary_keys
         )
-        self._set_cached(key, columns)
+        self.set_cached(key, columns)
         return columns
 
 
@@ -743,10 +743,10 @@ class AsyncSQLServerIntrospector(
     async def get_table_info(
         self, table_name: str, schema: Optional[str] = None
     ) -> Optional[IntrospectionTableInfo]:
-        key = self._make_cache_key(
+        key = self.make_cache_key(
             IntrospectionScope.TABLE, table_name, schema=schema
         )
-        cached = self._get_cached(key)
+        cached = self.get_cached(key)
         if cached is not None:
             return cached
 
@@ -763,17 +763,17 @@ class AsyncSQLServerIntrospector(
         table.foreign_keys = await self.list_foreign_keys(
             table_name, schema
         )
-        self._set_cached(key, table)
+        self.set_cached(key, table)
         return table
 
     async def list_columns(
         self, table_name: str, schema: Optional[str] = None
     ) -> List[IntrospectionColumnInfo]:
         target = schema if schema is not None else self._get_default_schema()
-        key = self._make_cache_key(
+        key = self.make_cache_key(
             IntrospectionScope.COLUMN, table_name, schema=target
         )
-        cached = self._get_cached(key)
+        cached = self.get_cached(key)
         if cached is not None:
             return cached
 
@@ -786,5 +786,5 @@ class AsyncSQLServerIntrospector(
         columns = self._parse_columns(
             rows, table_name, target, primary_keys
         )
-        self._set_cached(key, columns)
+        self.set_cached(key, columns)
         return columns

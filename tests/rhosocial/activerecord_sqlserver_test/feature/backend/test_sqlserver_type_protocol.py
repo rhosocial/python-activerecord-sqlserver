@@ -174,7 +174,7 @@ class TestSupportsDataTypes:
     def test_backend_types_are_advertised_without_a_prior_import(self):
         """``supports_data_types()`` must not depend on load order.
 
-        ``_type_class_for(name)`` resolves a dispatch key by walking the live
+        ``type_class_for(name)`` resolves a dispatch key by walking the live
         subclass tree of ``DataType``, so a name whose class nobody imported
         resolves to ``None`` and silently drops out of the mapping.  It used to
         drop out: every test that caught this had imported a ``SQLServer*``

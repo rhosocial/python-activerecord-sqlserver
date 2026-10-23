@@ -61,7 +61,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
     A concept with several spellings (``INTEGER``/``INT``, ``DECIMAL``/
     ``NUMERIC``/``DEC``) declares them as a closed ``SPELLINGS`` list and the
     formatter states which of them this backend renders through
-    ``_check_spelling``.  T-SQL writes none of the alternatives below, so every
+    ``check_spelling``.  T-SQL writes none of the alternatives below, so every
     spelling of every concept is accepted and normalised to the T-SQL word —
     refusing one would refuse the concept's own default spelling, which is the
     spelling every plainly-constructed type carries.  The gate is still called
@@ -250,7 +250,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_refuse_unsigned_tinyint`, which is where a caller who writes
         ``TinyIntType(unsigned=True)`` is sent here by name.
         """
-        self._check_spelling(data_type, TinyIntType)
+        self.check_spelling(data_type, TinyIntType)
         return "TINYINT", ()
 
     def format_data_type_sqlserver_bit(self, data_type) -> Tuple[str, tuple]:
@@ -536,7 +536,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_refuse_unsigned_integer`, which is also where the reason for
         the refusal is written down.
         """
-        self._check_spelling(data_type, IntegerType)
+        self.check_spelling(data_type, IntegerType)
         self._refuse_unsigned_integer(data_type, "INT")
         return "INT", ()
 
@@ -546,7 +546,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
         ``unsigned`` is refused rather than ignored; see
         :meth:`_refuse_unsigned_integer`."""
-        self._check_spelling(data_type, BigIntType)
+        self.check_spelling(data_type, BigIntType)
         self._refuse_unsigned_integer(data_type, "BIGINT")
         return "BIGINT", ()
 
@@ -556,7 +556,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
         ``unsigned`` is refused rather than ignored; see
         :meth:`_refuse_unsigned_integer`."""
-        self._check_spelling(data_type, SmallIntType)
+        self.check_spelling(data_type, SmallIntType)
         self._refuse_unsigned_integer(data_type, "SMALLINT")
         return "SMALLINT", ()
 
@@ -576,7 +576,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         declares it; see :meth:`_refuse_unsigned_tinyint`, which is where that
         reasoning is written down and where the class to use instead is named.
         """
-        self._check_spelling(data_type, TinyIntType)
+        self.check_spelling(data_type, TinyIntType)
         self._refuse_unsigned_tinyint(data_type)
         return "TINYINT", ()
 
@@ -642,7 +642,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         both sides -- so there is no unsigned double-precision column on this
         server for the request to have become.
         """
-        self._check_spelling(data_type, DoubleType)
+        self.check_spelling(data_type, DoubleType)
         self._refuse_unsigned_numeric(data_type, "DOUBLE PRECISION")
         return "FLOAT(53)", ()
 
@@ -831,7 +831,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         still fires for a signed declaration.
         """
         self._refuse_unsigned_numeric(data_type, "DECIMAL")
-        self._check_spelling(data_type, DecimalType)
+        self.check_spelling(data_type, DecimalType)
         self._check_decimal_scale_sign(data_type)
         if data_type.scale is not None and data_type.precision is None:
             raise UnsupportedFeatureError(
@@ -872,7 +872,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
     def format_data_type_boolean(self, data_type: BooleanType) -> Tuple[str, tuple]:
         """``BIT`` for both spellings — T-SQL's own name for the boolean."""
-        self._check_spelling(data_type, BooleanType)
+        self.check_spelling(data_type, BooleanType)
         return "BIT", ()
 
     def format_data_type_varchar(self, data_type: VarCharType) -> Tuple[str, tuple]:
@@ -894,7 +894,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         backend checks the intersection of that page's two statements about the
         lower bound rather than picking one of them.
         """
-        self._check_spelling(data_type, VarCharType)
+        self.check_spelling(data_type, VarCharType)
         self._check_length("VARCHAR", data_type.length)
         length = data_type.length
         if length is None:
@@ -915,7 +915,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         A declared length is range-checked exactly as :meth:`format_data_type_varchar`
         range-checks a ``VARCHAR`` one; see :meth:`_check_length`.
         """
-        self._check_spelling(data_type, CharType)
+        self.check_spelling(data_type, CharType)
         self._check_length("CHAR", data_type.length)
         length = data_type.length
         if length is None:
@@ -931,7 +931,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         enums and byte strings here, and ``clob`` names the same unbounded
         concept, so it is accepted rather than refused.
         """
-        self._check_spelling(data_type, TextType)
+        self.check_spelling(data_type, TextType)
         return "NVARCHAR(MAX)", ()
 
     def format_data_type_datetime(self, data_type: DateTimeType) -> Tuple[str, tuple]:
@@ -1031,7 +1031,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         unbounded byte storage — and is what an unbounded blob is on this
         dialect.
         """
-        self._check_spelling(data_type, BlobType)
+        self.check_spelling(data_type, BlobType)
         return "VARBINARY(MAX)", ()
 
     def format_data_type_custom(self, data_type: CustomType) -> Tuple[str, tuple]:

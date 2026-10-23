@@ -1565,7 +1565,7 @@ def _register_type_formatters():
     ``parse_type`` at runtime, and imports this backend's own ``DataType``
     classes so ``supports_data_types()`` can resolve the ``sqlserver_``-prefixed
     names to a class.  That last part is load order, not bookkeeping:
-    ``_type_class_for(name)`` resolves a name by walking the live subclass tree
+    ``type_class_for(name)`` resolves a name by walking the live subclass tree
     of ``DataType``, so a name whose class nothing has imported yet resolves to
     ``None`` and drops out of the mapping silently.  Nothing noticed, because
     every test that looked at the mapping imported a ``SQLServer*`` class in

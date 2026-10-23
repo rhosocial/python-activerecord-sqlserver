@@ -101,7 +101,7 @@ class SQLServerViewMixin:
 
         query_sql, query_params = expr.query.to_sql()
         if query_params and not self.supports_create_view_bind_parameters():
-            self._refuse_ddl_bind_parameters("CREATE VIEW with bound parameters")
+            self.refuse_ddl_bind_parameters("CREATE VIEW with bound parameters")
         as_sql = f"AS {query_sql}"
         if expr.options.schemabinding:
             as_sql = f"WITH SCHEMABINDING {as_sql}"

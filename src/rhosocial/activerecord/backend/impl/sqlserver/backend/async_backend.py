@@ -416,8 +416,8 @@ class AsyncSQLServerBackend(
                     data = []
                     for row in rows:
                         row_dict = dict(zip(column_names, row))
-                        adapted_row = self._adapt_row_types(row_dict, adapters)
-                        final_row = self._remap_row_columns(adapted_row, mapping)
+                        adapted_row = self.adapt_row_types(row_dict, adapters)
+                        final_row = self.remap_row_columns(adapted_row, mapping)
                         data.append(final_row)
                 elif cursor.description:
                     # Also process result when cursor has data (e.g. OUTPUT clause)
@@ -429,8 +429,8 @@ class AsyncSQLServerBackend(
                         data = []
                         for row in rows:
                             row_dict = dict(zip(column_names, row))
-                            adapted_row = self._adapt_row_types(row_dict, adapters)
-                            final_row = self._remap_row_columns(adapted_row, mapping)
+                            adapted_row = self.adapt_row_types(row_dict, adapters)
+                            final_row = self.remap_row_columns(adapted_row, mapping)
                             data.append(final_row)
                     except Exception:
                         data = None
