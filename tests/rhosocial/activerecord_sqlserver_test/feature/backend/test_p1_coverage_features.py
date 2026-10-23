@@ -32,7 +32,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.pivot import (
     SQLServerUnpivotExpression,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.columnstore import (
-    SQLServerColumnstoreIndexExpression,
+    SQLServerColumnstoreIndexStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.mixins import (
     SQLServerPivotMixin,
@@ -241,7 +241,7 @@ class TestTablesampleAndSelectInto:
 
 
 class TestColumnstoreIndex:
-    """Tests SQLServerColumnstoreIndexExpression and version gating."""
+    """Tests SQLServerColumnstoreIndexStatement and version gating."""
 
     @pytest.fixture
     def dialect(self):
@@ -251,18 +251,18 @@ class TestColumnstoreIndex:
         assert isinstance(dialect, SQLServerColumnstoreIndexMixin)
 
     def test_clustered_columnstore(self, dialect):
-        expr = SQLServerColumnstoreIndexExpression(dialect, "cci", "t", clustered=True)
+        expr = SQLServerColumnstoreIndexStatement(dialect, "cci", "t", clustered=True)
         sql, params = expr.to_sql()
         assert sql == "CREATE CLUSTERED COLUMNSTORE INDEX [cci] ON [t]"
         assert params == ()
 
     def test_default_columnstore_omits_keyword(self, dialect):
-        expr = SQLServerColumnstoreIndexExpression(dialect, "cci", "t")
+        expr = SQLServerColumnstoreIndexStatement(dialect, "cci", "t")
         sql, _ = expr.to_sql()
         assert sql == "CREATE COLUMNSTORE INDEX [cci] ON [t]"
 
     def test_nonclustered_columnstore(self, dialect):
-        expr = SQLServerColumnstoreIndexExpression(
+        expr = SQLServerColumnstoreIndexStatement(
             dialect, "ncci", "t", columns=["c"], nonclustered=True
         )
         sql, params = expr.to_sql()
@@ -270,7 +270,7 @@ class TestColumnstoreIndex:
         assert params == ()
 
     def test_ordered_clustered_columnstore(self, dialect):
-        expr = SQLServerColumnstoreIndexExpression(
+        expr = SQLServerColumnstoreIndexStatement(
             dialect, "cci", "t", clustered=True, order_columns=["c1", "c2"]
         )
         sql, _ = expr.to_sql()
@@ -280,25 +280,25 @@ class TestColumnstoreIndex:
 
     def test_ncci_validation(self, dialect):
         with pytest.raises(ValueError):
-            SQLServerColumnstoreIndexExpression(
+            SQLServerColumnstoreIndexStatement(
                 dialect, "ncci", "t", nonclustered=True
             ).validate()
 
     def test_clustered_and_nonclustered_are_mutually_exclusive(self, dialect):
         with pytest.raises(ValueError, match="clustered and nonclustered"):
-            SQLServerColumnstoreIndexExpression(
+            SQLServerColumnstoreIndexStatement(
                 dialect, "cci", "t", clustered=True, nonclustered=True
             )
 
     def test_cci_forbids_columns(self, dialect):
         with pytest.raises(ValueError):
-            SQLServerColumnstoreIndexExpression(
+            SQLServerColumnstoreIndexStatement(
                 dialect, "cci", "t", columns=["c"], clustered=True
             ).validate()
 
     def test_ncci_gate_below_2012(self):
         d = SQLServerDialect(SQL_SERVER_2008)
-        expr = SQLServerColumnstoreIndexExpression(d, "ncci", "t", columns=["c"], nonclustered=True)
+        expr = SQLServerColumnstoreIndexStatement(d, "ncci", "t", columns=["c"], nonclustered=True)
         with pytest.raises(UnsupportedFeatureError) as exc_info:
             expr.to_sql()
         assert exc_info.value.feature_name == "NONCLUSTERED COLUMNSTORE INDEX"
@@ -306,14 +306,14 @@ class TestColumnstoreIndex:
 
     def test_ncci_supported_on_2012(self):
         d = SQLServerDialect(SQL_SERVER_2012)
-        expr = SQLServerColumnstoreIndexExpression(d, "ncci", "t", columns=["c"], nonclustered=True)
+        expr = SQLServerColumnstoreIndexStatement(d, "ncci", "t", columns=["c"], nonclustered=True)
         assert expr.to_sql()[0] == (
             "CREATE NONCLUSTERED COLUMNSTORE INDEX [ncci] ON [t] ([c])"
         )
 
     def test_cci_gate_below_2014(self):
         d = SQLServerDialect(SQL_SERVER_2012)
-        expr = SQLServerColumnstoreIndexExpression(d, "cci", "t", clustered=True)
+        expr = SQLServerColumnstoreIndexStatement(d, "cci", "t", clustered=True)
         with pytest.raises(UnsupportedFeatureError) as exc_info:
             expr.to_sql()
         assert exc_info.value.feature_name == "CLUSTERED COLUMNSTORE INDEX"
@@ -321,12 +321,12 @@ class TestColumnstoreIndex:
 
     def test_cci_supported_on_2014(self):
         d = SQLServerDialect(SQL_SERVER_2014)
-        expr = SQLServerColumnstoreIndexExpression(d, "cci", "t", clustered=True)
+        expr = SQLServerColumnstoreIndexStatement(d, "cci", "t", clustered=True)
         assert expr.to_sql()[0] == "CREATE CLUSTERED COLUMNSTORE INDEX [cci] ON [t]"
 
     def test_order_gate_below_2022(self):
         d = SQLServerDialect(SQL_SERVER_2014)
-        expr = SQLServerColumnstoreIndexExpression(
+        expr = SQLServerColumnstoreIndexStatement(
             d, "cci", "t", clustered=True, order_columns=["c1"]
         )
         with pytest.raises(UnsupportedFeatureError) as exc_info:
@@ -336,7 +336,7 @@ class TestColumnstoreIndex:
 
     def test_order_supported_on_2022(self):
         d = SQLServerDialect(SQL_SERVER_2022)
-        expr = SQLServerColumnstoreIndexExpression(
+        expr = SQLServerColumnstoreIndexStatement(
             d, "cci", "t", clustered=True, order_columns=["c1", "c2"]
         )
         assert expr.to_sql()[0] == (

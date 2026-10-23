@@ -5,8 +5,8 @@ T-SQL ``CREATE PROCEDURE`` and ``CREATE FUNCTION`` use a distinctive syntax
 (parameters with leading ``@``, ``RETURNS``, ``AS BEGIN ... END`` bodies)
 that differs from the SQL/PSM form used by other backends. This mixin
 provides the capability switches and the formatters used by the
-``SQLServerCreateProcedureExpression`` / ``SQLServerCreateFunctionExpression``
-/ ``SQLServerDropRoutineExpression`` expressions.
+``SQLServerCreateProcedureStatement`` / ``SQLServerCreateFunctionStatement``
+/ ``SQLServerDropRoutineStatement`` expressions.
 """
 
 from typing import Any, List, Optional, Tuple, TYPE_CHECKING
@@ -15,9 +15,9 @@ from rhosocial.activerecord.backend.expression.objects import Function, Procedur
 
 if TYPE_CHECKING:
     from ..expression.ddl.routine import (
-        SQLServerCreateFunctionExpression,
-        SQLServerCreateProcedureExpression,
-        SQLServerDropRoutineExpression,
+        SQLServerCreateFunctionStatement,
+        SQLServerCreateProcedureStatement,
+        SQLServerDropRoutineStatement,
     )
 
 
@@ -107,7 +107,7 @@ class SQLServerRoutineMixin:
         return expr.name
 
     def format_create_procedure_statement(
-        self, expr: "SQLServerCreateProcedureExpression"
+        self, expr: "SQLServerCreateProcedureStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE PROCEDURE for SQL Server (2005+).
 
@@ -145,7 +145,7 @@ class SQLServerRoutineMixin:
         return " ".join(parts), ()
 
     def format_create_function_statement(
-        self, expr: "SQLServerCreateFunctionExpression"
+        self, expr: "SQLServerCreateFunctionStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE FUNCTION for SQL Server (2005+).
 
@@ -183,7 +183,7 @@ class SQLServerRoutineMixin:
         return " ".join(parts), ()
 
     def format_drop_routine_statement(
-        self, expr: "SQLServerDropRoutineExpression"
+        self, expr: "SQLServerDropRoutineStatement"
     ) -> Tuple[str, tuple]:
         """Format DROP PROCEDURE / DROP FUNCTION for SQL Server (2005+).
 

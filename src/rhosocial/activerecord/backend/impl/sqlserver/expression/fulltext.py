@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
 
 
-class SQLServerCreateFullTextCatalogExpression(BaseExpression):
+class SQLServerCreateFullTextCatalogStatement(BaseExpression):
     """SQL Server CREATE FULLTEXT CATALOG statement (2005+).
 
     Attributes:
@@ -30,7 +30,7 @@ class SQLServerCreateFullTextCatalogExpression(BaseExpression):
             for the database).
 
     Example:
-        >>> expr = SQLServerCreateFullTextCatalogExpression(dialect, "ftc", is_default=True)
+        >>> expr = SQLServerCreateFullTextCatalogStatement(dialect, "ftc", is_default=True)
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE FULLTEXT CATALOG [ftc] AS DEFAULT"
     """
@@ -53,20 +53,20 @@ class SQLServerCreateFullTextCatalogExpression(BaseExpression):
             raise ValueError("catalog_name is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.format_create_fulltext_catalog_statement(
+        sql, params = self.dialect.format_create_full_text_catalog_statement(
             self.catalog_name, as_default=self.is_default
         )
         return sql, params
 
 
-class SQLServerDropFullTextCatalogExpression(BaseExpression):
+class SQLServerDropFullTextCatalogStatement(BaseExpression):
     """SQL Server DROP FULLTEXT CATALOG statement (2005+).
 
     Attributes:
         catalog_name: Name of the full-text catalog to drop.
 
     Example:
-        >>> expr = SQLServerDropFullTextCatalogExpression(dialect, "ftc")
+        >>> expr = SQLServerDropFullTextCatalogStatement(dialect, "ftc")
         >>> sql, params = expr.to_sql()
         >>> assert sql == "DROP FULLTEXT CATALOG [ftc]"
     """
@@ -83,11 +83,11 @@ class SQLServerDropFullTextCatalogExpression(BaseExpression):
             raise ValueError("catalog_name is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.format_drop_fulltext_catalog_statement(self.catalog_name)
+        sql, params = self.dialect.format_drop_full_text_catalog_statement(self.catalog_name)
         return sql, params
 
 
-class SQLServerCreateFullTextIndexExpression(BaseExpression):
+class SQLServerCreateFullTextIndexStatement(BaseExpression):
     """SQL Server CREATE FULLTEXT INDEX statement (2005+).
 
     Attributes:
@@ -97,7 +97,7 @@ class SQLServerCreateFullTextIndexExpression(BaseExpression):
         catalog_name: Catalog that owns the full-text index.
 
     Example:
-        >>> expr = SQLServerCreateFullTextIndexExpression(
+        >>> expr = SQLServerCreateFullTextIndexStatement(
         ...     dialect, "t", ["body"], key_index="pk", catalog_name="ftc"
         ... )
         >>> sql, params = expr.to_sql()
@@ -132,7 +132,7 @@ class SQLServerCreateFullTextIndexExpression(BaseExpression):
             raise ValueError("catalog_name is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.format_create_fulltext_index_statement(
+        sql, params = self.dialect.format_create_full_text_index_statement(
             self.table,
             self.columns,
             self.key_index,
@@ -141,14 +141,14 @@ class SQLServerCreateFullTextIndexExpression(BaseExpression):
         return sql, params
 
 
-class SQLServerDropFullTextIndexExpression(BaseExpression):
+class SQLServerDropFullTextIndexStatement(BaseExpression):
     """SQL Server DROP FULLTEXT INDEX statement (2005+).
 
     Attributes:
         table: Table whose full-text index should be dropped.
 
     Example:
-        >>> expr = SQLServerDropFullTextIndexExpression(dialect, "t")
+        >>> expr = SQLServerDropFullTextIndexStatement(dialect, "t")
         >>> sql, params = expr.to_sql()
         >>> assert sql == "DROP FULLTEXT INDEX ON [t]"
     """
@@ -165,5 +165,5 @@ class SQLServerDropFullTextIndexExpression(BaseExpression):
             raise ValueError("table is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.format_drop_fulltext_index_statement(self.table)
+        sql, params = self.dialect.format_drop_full_text_index_statement(self.table)
         return sql, params

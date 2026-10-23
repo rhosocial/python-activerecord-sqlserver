@@ -1,8 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/columnstore.py
 """SQL Server columnstore index mixin.
 
-Implements the ``format_create_columnstore_index_statement`` formatter used
-by ``SQLServerColumnstoreIndexExpression`` with version gating:
+Implements the ``format_columnstore_index_statement`` formatter used
+by ``SQLServerColumnstoreIndexStatement`` with version gating:
 
 - NONCLUSTERED COLUMNSTORE INDEX: SQL Server 2012+ (read-only)
 - CLUSTERED COLUMNSTORE INDEX: SQL Server 2014+ (updatable)
@@ -14,7 +14,7 @@ from typing import Tuple, TYPE_CHECKING
 from rhosocial.activerecord.backend.expression.objects import Index, Table
 
 if TYPE_CHECKING:
-    from ..expression.columnstore import SQLServerColumnstoreIndexExpression
+    from ..expression.columnstore import SQLServerColumnstoreIndexStatement
 
 
 _SQL_SERVER_NONCLUSTERED_COLUMNSTORE_VERSION = (11, 0, 0)
@@ -37,8 +37,8 @@ class SQLServerColumnstoreIndexMixin:
         """ORDER (...) requires SQL Server 2022+."""
         return self.version >= _SQL_SERVER_COLUMNSTORE_ORDER_VERSION  # type: ignore[attr-defined]
 
-    def format_create_columnstore_index_statement(
-        self, expr: "SQLServerColumnstoreIndexExpression"
+    def format_columnstore_index_statement(
+        self, expr: "SQLServerColumnstoreIndexStatement"
     ) -> Tuple[str, tuple]:
         """Format a CREATE COLUMNSTORE INDEX statement with version gating.
 
@@ -50,7 +50,7 @@ class SQLServerColumnstoreIndexMixin:
         They were listed as such because a reader compared them with the
         :class:`Index` and :class:`Table` objects ``CREATE INDEX`` takes, and
         found no field of that name. Both belong to
-        :class:`SQLServerColumnstoreIndexExpression`, which names its target as
+        :class:`SQLServerColumnstoreIndexStatement`, which names its target as
         text; each is turned into the matching object and rendered through the
         one qualified-name entry point, so the bracket-free shape below is the
         only shape the statement can produce.

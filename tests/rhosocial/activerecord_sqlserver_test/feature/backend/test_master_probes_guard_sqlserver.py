@@ -52,7 +52,7 @@ Scope notes:
   so the measurement cannot drift, but it has no consumer here.
 * ``supports_truncate`` and ``supports_transaction_wait`` are consulted by this
   backend's own formatters (``format_truncate_statement``,
-  ``format_begin_transaction_statement`` / ``format_set_transaction``), which is where the
+  ``format_begin_transaction_statement`` / ``format_set_transaction_statement``), which is where the
   pre-fix defects lived: the probes' answers could not change the behaviour.
 
 The guard is deliberately able to fail: ``TestTheGuardCanSeeADroppingFormatter``

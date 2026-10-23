@@ -116,7 +116,7 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
         self.range_direction = _as_range_direction(range_direction)
 
     def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_sqlserver_partition_function(self)
+        return self.dialect.format_partition_function_expression(self)
 
 
 class SQLServerPartitionSchemeExpression(BaseExpression):
@@ -148,4 +148,4 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         self.all_filegroup = all_filegroup
 
     def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_sqlserver_partition_scheme(self)
+        return self.dialect.format_partition_scheme_expression(self)

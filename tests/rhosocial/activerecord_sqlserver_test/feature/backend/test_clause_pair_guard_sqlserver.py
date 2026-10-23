@@ -82,7 +82,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.alter_column impor
     SQLServerAlterColumn,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.columnstore import (
-    SQLServerColumnstoreIndexExpression,
+    SQLServerColumnstoreIndexStatement,
 )
 
 
@@ -150,7 +150,7 @@ def _columnstore(d, **kw):
     """A columnstore index; NONCLUSTERED takes its key list, the rest do not."""
     if kw.get("nonclustered"):
         kw.setdefault("columns", ["c"])
-    return SQLServerColumnstoreIndexExpression(d, "ix", "t", **kw)
+    return SQLServerColumnstoreIndexStatement(d, "ix", "t", **kw)
 
 
 class PairCase:
@@ -386,7 +386,7 @@ PAIR_CASES = (
     ),
     # --- dialect-specific gap 2: CLUSTERED | NONCLUSTERED ---
     PairCase(
-        "SQLServerColumnstoreIndexExpression.clustered",
+        "SQLServerColumnstoreIndexStatement.clustered",
         _columnstore,
         "clustered",
         "nonclustered",
@@ -507,7 +507,7 @@ class TestDialectGapValueConstraints:
 
     def test_nonclustered_columnstore_requires_key_columns(self):
         with pytest.raises(ValueError, match="NONCLUSTERED columnstore requires key columns"):
-            SQLServerColumnstoreIndexExpression(
+            SQLServerColumnstoreIndexStatement(
                 _dialect(), "ix", "t", nonclustered=True
             ).validate()
 
@@ -549,7 +549,7 @@ class TestGuardIsNotVacuous:
             "TableConstraint.enforced",
             "ColumnConstraint.enforced",
             "SQLServerAlterColumn.not_null",
-            "SQLServerColumnstoreIndexExpression.clustered",
+            "SQLServerColumnstoreIndexStatement.clustered",
         }
         covered = {case.case_id for case in PAIR_CASES}
         missing = expected - covered

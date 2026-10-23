@@ -9,7 +9,7 @@ geometry type (``geometry::STGeomFromText``, ``geom.STAsText()``, ...).
 import pytest
 
 from rhosocial.activerecord.backend.impl.sqlserver.expression.spatial import (
-    SQLServerCreateSpatialIndexExpression,
+    SQLServerCreateSpatialIndexStatement,
     SQLServerSpatialLiteralExpression,
     SQLServerSTContainsExpression,
     SQLServerSTDistanceExpression,
@@ -48,7 +48,7 @@ class TestSQLServerSpatialTypeBackend:
         assert not dialect.supports_geojson()
 
     def test_format_spatial_literal_without_srid(self, sqlserver_backend):
-        """Test format_spatial_literal generates correct SQL without SRID."""
+        """Test format_spatial_literal_expression generates correct SQL without SRID."""
         sqlserver_backend.execute("""
             CREATE TABLE #test_spatial_literal (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -74,7 +74,7 @@ class TestSQLServerSpatialTypeBackend:
         sqlserver_backend.execute("DROP TABLE IF EXISTS #test_spatial_literal")
 
     def test_format_spatial_literal_with_srid(self, sqlserver_backend):
-        """Test format_spatial_literal generates correct SQL with SRID."""
+        """Test format_spatial_literal_expression generates correct SQL with SRID."""
         sqlserver_backend.execute("""
             CREATE TABLE #test_spatial_srid (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -103,7 +103,7 @@ class TestSQLServerSpatialTypeBackend:
         sqlserver_backend.execute("DROP TABLE IF EXISTS #test_spatial_srid")
 
     def test_format_st_geom_from_text_without_srid(self, sqlserver_backend):
-        """Test format_st_geom_from_text generates correct SQL without SRID."""
+        """Test format_st_geom_from_text_expression generates correct SQL without SRID."""
         dialect = sqlserver_backend.dialect
         sql, params = SQLServerSTGeomFromTextExpression(dialect, 'POINT(3 4)').to_sql()
 
@@ -116,7 +116,7 @@ class TestSQLServerSpatialTypeBackend:
         assert '3 4' in result.data[0]['wkt']
 
     def test_format_st_geom_from_text_with_srid(self, sqlserver_backend):
-        """Test format_st_geom_from_text generates correct SQL with SRID."""
+        """Test format_st_geom_from_text_expression generates correct SQL with SRID."""
         dialect = sqlserver_backend.dialect
         sql, params = SQLServerSTGeomFromTextExpression(
             dialect, 'POINT(1 1)', srid=4326
@@ -130,7 +130,7 @@ class TestSQLServerSpatialTypeBackend:
         assert result.data[0]['srid'] == 4326
 
     def test_format_st_as_text(self, sqlserver_backend):
-        """Test format_st_as_text generates correct SQL."""
+        """Test format_st_as_text_expression generates correct SQL."""
         sqlserver_backend.execute("""
             CREATE TABLE #test_astext (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -156,13 +156,13 @@ class TestSQLServerSpatialTypeBackend:
         sqlserver_backend.execute("DROP TABLE IF EXISTS #test_astext")
 
     def test_format_st_as_geojson(self, sqlserver_backend):
-        """Test format_st_as_geojson generates correct SQL."""
+        """Test format_st_as_geo_json_expression generates correct SQL."""
         dialect = sqlserver_backend.dialect
         if hasattr(dialect, 'supports_geojson') and not dialect.supports_geojson():
             pytest.skip("GeoJSON not supported by the SQL Server types assembly")
 
     def test_format_st_distance(self, sqlserver_backend):
-        """Test format_st_distance generates correct SQL."""
+        """Test format_st_distance_expression generates correct SQL."""
         dialect = sqlserver_backend.dialect
 
         point1_sql, point1_params = SQLServerSTGeomFromTextExpression(
@@ -184,7 +184,7 @@ class TestSQLServerSpatialTypeBackend:
         assert abs(result.data[0]['distance'] - 5.0) < 0.001
 
     def test_format_st_within(self, sqlserver_backend):
-        """Test format_st_within generates correct SQL."""
+        """Test format_st_within_expression generates correct SQL."""
         dialect = sqlserver_backend.dialect
 
         point_sql, point_params = SQLServerSTGeomFromTextExpression(
@@ -206,7 +206,7 @@ class TestSQLServerSpatialTypeBackend:
         assert result.data[0]['is_within'] == 1
 
     def test_format_st_contains(self, sqlserver_backend):
-        """Test format_st_contains generates correct SQL."""
+        """Test format_st_contains_expression generates correct SQL."""
         dialect = sqlserver_backend.dialect
 
         polygon_sql, polygon_params = SQLServerSTGeomFromTextExpression(
@@ -228,7 +228,7 @@ class TestSQLServerSpatialTypeBackend:
         assert result.data[0]['contains_point'] == 1
 
     def test_format_create_spatial_index(self, sqlserver_backend):
-        """Test format_create_spatial_index generates valid SQL."""
+        """Test format_create_spatial_index_statement generates valid SQL."""
         dialect = sqlserver_backend.dialect
         if hasattr(dialect, 'supports_spatial_index') and not dialect.supports_spatial_index():
             pytest.skip("SPATIAL index not supported in this SQLServer version")
@@ -242,7 +242,7 @@ class TestSQLServerSpatialTypeBackend:
         """)
 
         dialect = sqlserver_backend.dialect
-        index_sql, params = SQLServerCreateSpatialIndexExpression(
+        index_sql, params = SQLServerCreateSpatialIndexStatement(
             dialect, 'idx_location', '#test_spatial_idx', 'location'
         ).to_sql()
 
@@ -281,7 +281,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_spatial_literal(self, async_sqlserver_backend):
-        """Test format_spatial_literal generates correct SQL (async)."""
+        """Test format_spatial_literal_expression generates correct SQL (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TABLE #test_async_spatial (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -308,7 +308,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_st_geom_from_text(self, async_sqlserver_backend):
-        """Test format_st_geom_from_text generates correct SQL (async)."""
+        """Test format_st_geom_from_text_expression generates correct SQL (async)."""
         dialect = async_sqlserver_backend.dialect
         sql, params = SQLServerSTGeomFromTextExpression(
             dialect, 'POINT(10 20)', srid=4326
@@ -323,7 +323,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_st_distance(self, async_sqlserver_backend):
-        """Test format_st_distance generates correct SQL (async)."""
+        """Test format_st_distance_expression generates correct SQL (async)."""
         dialect = async_sqlserver_backend.dialect
 
         point1_sql, point1_params = SQLServerSTGeomFromTextExpression(
@@ -346,7 +346,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_st_within(self, async_sqlserver_backend):
-        """Test format_st_within generates correct SQL (async)."""
+        """Test format_st_within_expression generates correct SQL (async)."""
         dialect = async_sqlserver_backend.dialect
 
         point_sql, point_params = SQLServerSTGeomFromTextExpression(
@@ -369,14 +369,14 @@ class TestAsyncSQLServerSpatialTypeBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_st_as_geojson(self, async_sqlserver_backend):
-        """Test format_st_as_geojson generates correct SQL (async)."""
+        """Test format_st_as_geo_json_expression generates correct SQL (async)."""
         dialect = async_sqlserver_backend.dialect
         if hasattr(dialect, 'supports_geojson') and not dialect.supports_geojson():
             pytest.skip("GeoJSON not supported by the SQL Server types assembly")
 
     @pytest.mark.asyncio
     async def test_async_format_create_spatial_index(self, async_sqlserver_backend):
-        """Test format_create_spatial_index generates valid SQL (async)."""
+        """Test format_create_spatial_index_statement generates valid SQL (async)."""
         dialect = async_sqlserver_backend.dialect
         if hasattr(dialect, 'supports_spatial_index') and not dialect.supports_spatial_index():
             pytest.skip("SPATIAL index not supported in this SQLServer version")
@@ -389,7 +389,7 @@ class TestAsyncSQLServerSpatialTypeBackend:
         """)
 
         dialect = async_sqlserver_backend.dialect
-        index_sql, _ = SQLServerCreateSpatialIndexExpression(
+        index_sql, _ = SQLServerCreateSpatialIndexStatement(
             dialect, 'idx_loc', '#test_async_idx', 'location'
         ).to_sql()
 

@@ -57,10 +57,10 @@ class SQLServerPartitionSupport(PartitionSupport, Protocol):
         """Whether ALTER PARTITION FUNCTION ... MERGE RANGE is supported."""
         ...
 
-    def format_sqlserver_partition_function(self, expr: "SQLServerPartitionFunctionExpression") -> Tuple[str, tuple]:
+    def format_partition_function_expression(self, expr: "SQLServerPartitionFunctionExpression") -> Tuple[str, tuple]:
         """Format CREATE PARTITION FUNCTION statement."""
         ...
 
-    def format_sqlserver_partition_scheme(self, expr: "SQLServerPartitionSchemeExpression") -> Tuple[str, tuple]:
+    def format_partition_scheme_expression(self, expr: "SQLServerPartitionSchemeExpression") -> Tuple[str, tuple]:
         """Format CREATE PARTITION SCHEME statement."""
         ...

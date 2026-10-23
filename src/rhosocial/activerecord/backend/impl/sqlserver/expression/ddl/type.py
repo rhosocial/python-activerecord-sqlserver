@@ -205,7 +205,7 @@ class SQLServerDropTypeExpression(DropTypeStatement):
         self.restrict = restrict
 
 
-class SQLServerRenameTypeExpression(BaseExpression):
+class SQLServerRenameTypeStatement(BaseExpression):
     """SQL Server TYPE rename statement using ``sp_rename``."""
     KIND_RESERVED = ("SQLServer",)
 
@@ -238,7 +238,7 @@ _SQLSERVER_TYPE_EXPRESSIONS = (
     SQLServerTableTypeDefinition,
     SQLServerClrTypeDefinition,
     SQLServerDropTypeExpression,
-    SQLServerRenameTypeExpression,
+    SQLServerRenameTypeStatement,
     SQLServerColumnDefinition,
     SQLServerIndexDefinition,
 )
@@ -262,5 +262,5 @@ __all__ = [
     "SQLServerTableTypeDefinition",
     "SQLServerClrTypeDefinition",
     "SQLServerDropTypeExpression",
-    "SQLServerRenameTypeExpression",
+    "SQLServerRenameTypeStatement",
 ]

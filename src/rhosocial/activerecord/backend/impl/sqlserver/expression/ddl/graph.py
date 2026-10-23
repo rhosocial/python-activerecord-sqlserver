@@ -9,7 +9,7 @@ Graph tables are ordinary tables annotated with ``AS NODE`` / ``AS EDGE``
     ALTER TABLE dbo.friend ADD CONSTRAINT ec_friend CONNECTION (Person TO Person);
 
 SQL generation is delegated to the dialect's
-``format_sqlserver_graph_table_kind`` / ``format_sqlserver_edge_constraint``
+``format_as_graph_table_expression`` / ``format_sqlserver_edge_constraint``
 formatters.
 """
 
@@ -68,7 +68,7 @@ class SQLServerAsGraphTableExpression(BaseExpression):
 
     @property
     def format_method(self) -> str:
-        return "format_sqlserver_graph_table_kind"
+        return "format_as_graph_table_expression"
 
 
 class SQLServerEdgeConstraint(BaseExpression):

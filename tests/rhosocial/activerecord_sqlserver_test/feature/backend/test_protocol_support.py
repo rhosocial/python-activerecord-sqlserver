@@ -19,7 +19,7 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.fulltext import (
-    SQLServerCreateFullTextCatalogExpression,
+    SQLServerCreateFullTextCatalogStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.functions import (
     SQLServerContainsPredicate,
@@ -369,7 +369,7 @@ class TestDelegatedFormatters:
         assert dialect.supports_fulltext_catalog() is True
 
     def test_format_create_fulltext_catalog_statement(self, dialect):
-        sql, params = SQLServerCreateFullTextCatalogExpression(dialect, "ftc").to_sql()
+        sql, params = SQLServerCreateFullTextCatalogStatement(dialect, "ftc").to_sql()
         assert sql == "CREATE FULLTEXT CATALOG [ftc]"
         assert params == ()
 

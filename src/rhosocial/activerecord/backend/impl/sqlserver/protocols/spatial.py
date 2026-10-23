@@ -26,42 +26,42 @@ class SQLServerSpatialSupport(Protocol):
         """Whether STAsGeoJSON is available in the installed types assembly."""
         ...
 
-    def format_spatial_literal(self, expr) -> Tuple[str, tuple]:
+    def format_spatial_literal_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSpatialLiteralExpression` node."""
         ...
 
-    def format_st_geom_from_text(self, expr) -> Tuple[str, tuple]:
+    def format_st_geom_from_text_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSTGeomFromTextExpression` node."""
         ...
 
-    def format_st_as_text(self, expr) -> Tuple[str, tuple]:
+    def format_st_as_text_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSTAsTextExpression` node."""
         ...
 
-    def format_st_as_geojson(self, expr) -> Tuple[str, tuple]:
+    def format_st_as_geo_json_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSTAsGeoJSONExpression` node."""
         ...
 
-    def format_st_distance(self, expr) -> Tuple[str, tuple]:
+    def format_st_distance_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSTDistanceExpression` node."""
         ...
 
-    def format_st_within(self, expr) -> Tuple[str, tuple]:
+    def format_st_within_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSTWithinExpression` node."""
         ...
 
-    def format_st_contains(self, expr) -> Tuple[str, tuple]:
+    def format_st_contains_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSTContainsExpression` node."""
         ...
 
-    def format_st_distance_sphere(self, expr) -> Tuple[str, tuple]:
+    def format_st_distance_sphere_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSTDistanceSphereExpression` node."""
         ...
 
-    def format_st_intersects(self, expr) -> Tuple[str, tuple]:
+    def format_st_intersects_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSTIntersectsExpression` node."""
         ...
 
-    def format_create_spatial_index(self, expr) -> Tuple[str, tuple]:
-        """Format a :class:`SQLServerCreateSpatialIndexExpression` node."""
+    def format_create_spatial_index_statement(self, expr) -> Tuple[str, tuple]:
+        """Format a :class:`SQLServerCreateSpatialIndexStatement` node."""
         ...

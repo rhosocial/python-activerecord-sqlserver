@@ -46,7 +46,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
     SQLServerAliasTypeDefinition,
     SQLServerClrTypeDefinition,
     SQLServerDropTypeExpression,
-    SQLServerRenameTypeExpression,
+    SQLServerRenameTypeStatement,
     SQLServerTableTypeDefinition,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.index import (
@@ -608,7 +608,7 @@ def test_alter_type_is_explicitly_unsupported():
 
 def test_rename_type_uses_sp_rename():
     dialect = SQLServerDialect(SQL_SERVER_2022)
-    expression = SQLServerRenameTypeExpression(
+    expression = SQLServerRenameTypeStatement(
         dialect,
         "old]name",
         "new]name",
@@ -640,7 +640,7 @@ def test_type_expressions_are_explicitly_registered():
             columns=[ColumnDefinition(dialect, "id", IntegerType(dialect))],
         ),
         SQLServerDropTypeExpression(dialect, Type(dialect, "type_name")),
-        SQLServerRenameTypeExpression(dialect, "old_name", "new_name"),
+        SQLServerRenameTypeStatement(dialect, "old_name", "new_name"),
     )
     for expression in expressions:
         # The kind whitelist is keyed by the kind derived from the class

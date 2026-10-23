@@ -9,7 +9,7 @@ Values are obtained with the ``NEXT VALUE FOR`` expression (SQL Server 2012+):
 
 This module defines the expression used to request the next value from a
 sequence. SQL generation is delegated to the dialect's
-``format_next_value_for`` formatter.
+``format_next_value_for_expression`` formatter.
 """
 
 from typing import TYPE_CHECKING
@@ -46,4 +46,4 @@ class SQLServerNextValueForExpression(BaseExpression):
             raise TypeError(f"sequence_name must be str, got {type(self.sequence_name)}")
 
     def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_next_value_for(self)
+        return self.dialect.format_next_value_for_expression(self)

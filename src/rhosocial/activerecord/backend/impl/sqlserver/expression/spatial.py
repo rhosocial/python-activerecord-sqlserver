@@ -36,7 +36,7 @@ class SQLServerSpatialLiteralExpression(AliasableMixin, ComparisonMixin, SQLValu
 
     @property
     def format_method(self) -> str:
-        return "format_spatial_literal"
+        return "format_spatial_literal_expression"
 
 
 class SQLServerSTGeomFromTextExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -62,7 +62,7 @@ class SQLServerSTGeomFromTextExpression(AliasableMixin, ComparisonMixin, SQLValu
 
     @property
     def format_method(self) -> str:
-        return "format_st_geom_from_text"
+        return "format_st_geom_from_text_expression"
 
 
 class SQLServerSTAsTextExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -86,7 +86,7 @@ class SQLServerSTAsTextExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_st_as_text"
+        return "format_st_as_text_expression"
 
 
 class SQLServerSTAsGeoJSONExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -110,7 +110,7 @@ class SQLServerSTAsGeoJSONExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_st_as_geojson"
+        return "format_st_as_geo_json_expression"
 
 
 class SQLServerSTDistanceExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -136,7 +136,7 @@ class SQLServerSTDistanceExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_st_distance"
+        return "format_st_distance_expression"
 
 
 class SQLServerSTWithinExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -162,7 +162,7 @@ class SQLServerSTWithinExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_st_within"
+        return "format_st_within_expression"
 
 
 class SQLServerSTContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -188,7 +188,7 @@ class SQLServerSTContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_st_contains"
+        return "format_st_contains_expression"
 
 
 class SQLServerSTDistanceSphereExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -216,7 +216,7 @@ class SQLServerSTDistanceSphereExpression(AliasableMixin, ComparisonMixin, SQLVa
 
     @property
     def format_method(self) -> str:
-        return "format_st_distance_sphere"
+        return "format_st_distance_sphere_expression"
 
 
 class SQLServerSTIntersectsExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -242,14 +242,14 @@ class SQLServerSTIntersectsExpression(AliasableMixin, ComparisonMixin, SQLValue)
 
     @property
     def format_method(self) -> str:
-        return "format_st_intersects"
+        return "format_st_intersects_expression"
 
 
-class SQLServerCreateSpatialIndexExpression(AliasableMixin, ComparisonMixin, SQLValue):
+class SQLServerCreateSpatialIndexStatement(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server CREATE SPATIAL INDEX statement.
 
     Example:
-        >>> expr = SQLServerCreateSpatialIndexExpression(dialect, "idx", "table", "geom")
+        >>> expr = SQLServerCreateSpatialIndexStatement(dialect, "idx", "table", "geom")
     """
     KIND_RESERVED = ("SQLServer",)
 
@@ -270,4 +270,4 @@ class SQLServerCreateSpatialIndexExpression(AliasableMixin, ComparisonMixin, SQL
 
     @property
     def format_method(self) -> str:
-        return "format_create_spatial_index"
+        return "format_create_spatial_index_statement"

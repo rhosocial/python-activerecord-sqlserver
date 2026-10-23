@@ -117,7 +117,7 @@ class SQLServerTransactionMixin:
             return f"BEGIN TRANSACTION {wait_clause}", ()
         return "BEGIN TRANSACTION", ()
 
-    def format_set_transaction(self, expr: "SetTransactionStatement") -> Tuple[str, tuple]:
+    def format_set_transaction_statement(self, expr: "SetTransactionStatement") -> Tuple[str, tuple]:
         """Format SET TRANSACTION for SQL Server.
 
         SQL Server requires SET TRANSACTION ISOLATION LEVEL before BEGIN TRANSACTION.

@@ -65,7 +65,7 @@ class SQLServerGraphMixin:
 
     # region DDL formatting
 
-    def format_sqlserver_graph_table_kind(
+    def format_as_graph_table_expression(
         self, expr: "SQLServerAsGraphTableExpression"
     ) -> Tuple[str, tuple]:
         """Format the ``AS NODE`` / ``AS EDGE`` table-kind fragment."""
@@ -176,7 +176,7 @@ class SQLServerGraphMixin:
             params.extend(pattern_params)
         return f"MATCH({separator.join(parts)})", tuple(params)
 
-    def format_sqlserver_shortest_path(
+    def format_shortest_path_expression(
         self, expr: "SQLServerShortestPathExpression"
     ) -> Tuple[str, tuple]:
         """Format ``SHORTEST_PATH(<start>(<edge/node segments>)<quantifier>)``."""

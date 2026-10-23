@@ -4,8 +4,8 @@
 T-SQL triggers use a syntax distinct from the SQL:1999 form rendered by the
 core ``TriggerMixin``: the body is an ``AS BEGIN ... END`` batch rather than
 ``EXECUTE FUNCTION``. This mixin provides the capability switches and the
-formatters used by ``SQLServerCreateTriggerExpression`` /
-``SQLServerDropTriggerExpression``.
+formatters used by ``SQLServerCreateTriggerStatement`` /
+``SQLServerDropTriggerStatement``.
 """
 
 from typing import Any, Tuple, TYPE_CHECKING
@@ -15,8 +15,8 @@ from rhosocial.activerecord.backend.expression.objects import Table, Trigger
 
 if TYPE_CHECKING:
     from ..expression.ddl.trigger import (
-        SQLServerCreateTriggerExpression,
-        SQLServerDropTriggerExpression,
+        SQLServerCreateTriggerStatement,
+        SQLServerDropTriggerStatement,
     )
 
 
@@ -51,7 +51,7 @@ class SQLServerTriggerDdlMixin:
         return expr.name
 
     def format_create_trigger_statement(
-        self, expr: "SQLServerCreateTriggerExpression"
+        self, expr: "SQLServerCreateTriggerStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE TRIGGER for SQL Server (2005+).
 
@@ -73,13 +73,13 @@ class SQLServerTriggerDdlMixin:
         # The T-SQL form is rendered from this dialect's own trigger node; the
         # SQL:1999 statement (no raw ``body`` -- it names a function instead)
         # is refused by class rather than probed for the field.
-        from ..expression.ddl.trigger import SQLServerCreateTriggerExpression
+        from ..expression.ddl.trigger import SQLServerCreateTriggerStatement
 
-        if not isinstance(expr, SQLServerCreateTriggerExpression):
+        if not isinstance(expr, SQLServerCreateTriggerStatement):
             raise UnsupportedFeatureError(
                 self.name,  # type: ignore[attr-defined]
                 "SQL:1999 CREATE TRIGGER",
-                "Use SQLServerCreateTriggerExpression for T-SQL trigger DDL.",
+                "Use SQLServerCreateTriggerStatement for T-SQL trigger DDL.",
             )
         name = self._get_trigger_name(expr)
         if not name:
@@ -119,7 +119,7 @@ class SQLServerTriggerDdlMixin:
         return " ".join(parts), ()
 
     def format_drop_trigger_statement(
-        self, expr: "SQLServerDropTriggerExpression"
+        self, expr: "SQLServerDropTriggerStatement"
     ) -> Tuple[str, tuple]:
         """Format DROP TRIGGER for SQL Server (2005+).
 

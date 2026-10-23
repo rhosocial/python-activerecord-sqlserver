@@ -18,19 +18,19 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from rhosocial.activerecord.backend.expression.objects import Table, View
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.fulltext import (
-    SQLServerCreateFullTextCatalogExpression,
-    SQLServerDropFullTextCatalogExpression,
-    SQLServerCreateFullTextIndexExpression,
-    SQLServerDropFullTextIndexExpression,
+    SQLServerCreateFullTextCatalogStatement,
+    SQLServerDropFullTextCatalogStatement,
+    SQLServerCreateFullTextIndexStatement,
+    SQLServerDropFullTextIndexStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.routine import (
-    SQLServerCreateProcedureExpression,
-    SQLServerCreateFunctionExpression,
-    SQLServerDropRoutineExpression,
+    SQLServerCreateProcedureStatement,
+    SQLServerCreateFunctionStatement,
+    SQLServerDropRoutineStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.trigger import (
-    SQLServerCreateTriggerExpression,
-    SQLServerDropTriggerExpression,
+    SQLServerCreateTriggerStatement,
+    SQLServerDropTriggerStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.mixins import (
     SQLServerMemoryOptimizedMixin,
@@ -308,22 +308,22 @@ class TestFullTextCatalogAndIndex:
         assert isinstance(dialect, SQLServerFullTextSearchSupport)
 
     def test_create_fulltext_catalog(self, dialect):
-        sql, params = SQLServerCreateFullTextCatalogExpression(dialect, "ftc").to_sql()
+        sql, params = SQLServerCreateFullTextCatalogStatement(dialect, "ftc").to_sql()
         assert sql == "CREATE FULLTEXT CATALOG [ftc]"
         assert params == ()
 
     def test_create_fulltext_catalog_as_default(self, dialect):
-        expr = SQLServerCreateFullTextCatalogExpression(dialect, "ftc", is_default=True)
+        expr = SQLServerCreateFullTextCatalogStatement(dialect, "ftc", is_default=True)
         sql, _ = expr.to_sql()
         assert sql == "CREATE FULLTEXT CATALOG [ftc] AS DEFAULT"
 
     def test_drop_fulltext_catalog(self, dialect):
-        sql, params = SQLServerDropFullTextCatalogExpression(dialect, "ftc").to_sql()
+        sql, params = SQLServerDropFullTextCatalogStatement(dialect, "ftc").to_sql()
         assert sql == "DROP FULLTEXT CATALOG [ftc]"
         assert params == ()
 
     def test_create_fulltext_index(self, dialect):
-        expr = SQLServerCreateFullTextIndexExpression(
+        expr = SQLServerCreateFullTextIndexStatement(
             dialect, "t", ["body"], key_index="pk", catalog_name="ftc"
         )
         sql, params = expr.to_sql()
@@ -333,7 +333,7 @@ class TestFullTextCatalogAndIndex:
         assert params == ()
 
     def test_create_fulltext_index_multiple_columns(self, dialect):
-        expr = SQLServerCreateFullTextIndexExpression(
+        expr = SQLServerCreateFullTextIndexStatement(
             dialect, "t", ["body", "title"], key_index="pk", catalog_name="ftc"
         )
         sql, _ = expr.to_sql()
@@ -342,19 +342,19 @@ class TestFullTextCatalogAndIndex:
         )
 
     def test_drop_fulltext_index(self, dialect):
-        sql, params = SQLServerDropFullTextIndexExpression(dialect, "t").to_sql()
+        sql, params = SQLServerDropFullTextIndexStatement(dialect, "t").to_sql()
         assert sql == "DROP FULLTEXT INDEX ON [t]"
         assert params == ()
 
     def test_fulltext_catalog_gate_below_2005(self):
         d = SQLServerDialect(SQL_SERVER_2005)
         assert d.supports_fulltext_catalog() is True
-        sql, params = SQLServerCreateFullTextCatalogExpression(d, "ftc").to_sql()
+        sql, params = SQLServerCreateFullTextCatalogStatement(d, "ftc").to_sql()
         assert sql == "CREATE FULLTEXT CATALOG [ftc]"
         assert params == ()
 
     def test_direct_formatter_default_suffix(self, dialect):
-        sql, params = SQLServerCreateFullTextCatalogExpression(
+        sql, params = SQLServerCreateFullTextCatalogStatement(
             dialect, "ftc", is_default=True
         ).to_sql()
         assert sql == "CREATE FULLTEXT CATALOG [ftc] AS DEFAULT"
@@ -362,15 +362,15 @@ class TestFullTextCatalogAndIndex:
 
     def test_validation_requires_fields(self, dialect):
         with pytest.raises(ValueError):
-            SQLServerCreateFullTextIndexExpression(
+            SQLServerCreateFullTextIndexStatement(
                 dialect, "", [], key_index="pk", catalog_name="ftc"
             ).validate()
         with pytest.raises(ValueError):
-            SQLServerCreateFullTextIndexExpression(
+            SQLServerCreateFullTextIndexStatement(
                 dialect, "t", [], key_index="pk", catalog_name="ftc"
             ).validate()
         with pytest.raises(ValueError):
-            SQLServerDropFullTextIndexExpression(dialect, "").validate()
+            SQLServerDropFullTextIndexStatement(dialect, "").validate()
 
 
 class TestProcedureFunctionDdl:
@@ -391,7 +391,7 @@ class TestProcedureFunctionDdl:
         assert d.supports_drop_function() is True
 
     def test_create_procedure(self, dialect):
-        expr = SQLServerCreateProcedureExpression(
+        expr = SQLServerCreateProcedureStatement(
             dialect,
             "p",
             ["@x INT"],
@@ -406,7 +406,7 @@ class TestProcedureFunctionDdl:
         assert params == ()
 
     def test_create_procedure_multiple_params(self, dialect):
-        expr = SQLServerCreateProcedureExpression(
+        expr = SQLServerCreateProcedureStatement(
             dialect, "p", ["@a INT", "@b VARCHAR(50)"], body="SELECT @a;"
         )
         sql, _ = expr.to_sql()
@@ -415,19 +415,19 @@ class TestProcedureFunctionDdl:
         )
 
     def test_create_procedure_or_alter(self, dialect):
-        expr = SQLServerCreateProcedureExpression(
+        expr = SQLServerCreateProcedureStatement(
             dialect, "p", ["@x INT"], body="SELECT @x;", or_alter=True
         )
         sql, _ = expr.to_sql()
         assert sql == "CREATE OR ALTER PROCEDURE [p] @x INT AS BEGIN SELECT @x; END;"
 
     def test_create_procedure_no_params(self, dialect):
-        expr = SQLServerCreateProcedureExpression(dialect, "p", body="SELECT 1;")
+        expr = SQLServerCreateProcedureStatement(dialect, "p", body="SELECT 1;")
         sql, _ = expr.to_sql()
         assert sql == "CREATE PROCEDURE [p] AS BEGIN SELECT 1; END;"
 
     def test_create_function(self, dialect):
-        expr = SQLServerCreateFunctionExpression(
+        expr = SQLServerCreateFunctionStatement(
             dialect,
             "f",
             ["@x INT"],
@@ -442,14 +442,14 @@ class TestProcedureFunctionDdl:
         assert params == ()
 
     def test_create_function_no_params(self, dialect):
-        expr = SQLServerCreateFunctionExpression(
+        expr = SQLServerCreateFunctionStatement(
             dialect, "f", returns="INT", body="RETURN 42;"
         )
         sql, _ = expr.to_sql()
         assert sql == "CREATE FUNCTION [f] () RETURNS INT AS BEGIN RETURN 42; END;"
 
     def test_create_function_dict_params(self, dialect):
-        expr = SQLServerCreateFunctionExpression(
+        expr = SQLServerCreateFunctionStatement(
             dialect,
             "f",
             [{"name": "@x", "type": "INT"}],
@@ -460,45 +460,45 @@ class TestProcedureFunctionDdl:
         assert sql == "CREATE FUNCTION [f] (@x INT) RETURNS INT AS BEGIN RETURN @x; END;"
 
     def test_drop_procedure(self, dialect):
-        sql, params = SQLServerDropRoutineExpression(dialect, "p", "PROCEDURE").to_sql()
+        sql, params = SQLServerDropRoutineStatement(dialect, "p", "PROCEDURE").to_sql()
         assert sql == "DROP PROCEDURE [p]"
         assert params == ()
 
     def test_drop_function(self, dialect):
-        sql, _ = SQLServerDropRoutineExpression(dialect, "f", "FUNCTION").to_sql()
+        sql, _ = SQLServerDropRoutineStatement(dialect, "f", "FUNCTION").to_sql()
         assert sql == "DROP FUNCTION [f]"
 
     def test_drop_procedure_schema_qualified(self, dialect):
-        expr = SQLServerDropRoutineExpression(dialect, "p", "PROCEDURE", schema="dbo")
+        expr = SQLServerDropRoutineStatement(dialect, "p", "PROCEDURE", schema="dbo")
         sql, _ = expr.to_sql()
         assert sql == "DROP PROCEDURE [dbo].[p]"
 
     def test_drop_routine_if_exists_supported_on_2016(self):
         d = SQLServerDialect(SQL_SERVER_2016)
-        expr = SQLServerDropRoutineExpression(d, "p", "PROCEDURE", if_exists=True)
+        expr = SQLServerDropRoutineStatement(d, "p", "PROCEDURE", if_exists=True)
         sql, _ = expr.to_sql()
         assert sql == "DROP PROCEDURE IF EXISTS [p]"
 
     def test_drop_routine_if_exists_omitted_below_2016(self):
         d = SQLServerDialect(SQL_SERVER_2012)
-        expr = SQLServerDropRoutineExpression(d, "p", "PROCEDURE", if_exists=True)
+        expr = SQLServerDropRoutineStatement(d, "p", "PROCEDURE", if_exists=True)
         sql, _ = expr.to_sql()
         assert sql == "DROP PROCEDURE [p]"
 
     def test_validation(self, dialect):
         with pytest.raises(ValueError):
-            SQLServerCreateProcedureExpression(dialect, "p", body="").validate()
+            SQLServerCreateProcedureStatement(dialect, "p", body="").validate()
         with pytest.raises(ValueError):
-            SQLServerCreateFunctionExpression(dialect, "f", returns="INT", body="").validate()
+            SQLServerCreateFunctionStatement(dialect, "f", returns="INT", body="").validate()
         with pytest.raises(ValueError):
-            SQLServerCreateFunctionExpression(dialect, "f", body="RETURN 1;").validate()
+            SQLServerCreateFunctionStatement(dialect, "f", body="RETURN 1;").validate()
         with pytest.raises(ValueError):
-            SQLServerDropRoutineExpression(dialect, "p", "VIEW").validate()
+            SQLServerDropRoutineStatement(dialect, "p", "VIEW").validate()
 
     def test_version_boundary_all_supported_at_2005(self):
         d = SQLServerDialect(SQL_SERVER_2005)
-        proc = SQLServerCreateProcedureExpression(d, "p", ["@x INT"], body="SELECT @x;")
-        func = SQLServerCreateFunctionExpression(
+        proc = SQLServerCreateProcedureStatement(d, "p", ["@x INT"], body="SELECT @x;")
+        func = SQLServerCreateFunctionStatement(
             d, "f", ["@x INT"], returns="INT", body="RETURN @x;"
         )
         assert proc.to_sql()[0] == "CREATE PROCEDURE [p] @x INT AS BEGIN SELECT @x; END;"
@@ -522,7 +522,7 @@ class TestTriggerDdl:
         assert d.supports_drop_trigger() is True
 
     def test_create_trigger_after_insert(self, dialect):
-        expr = SQLServerCreateTriggerExpression(
+        expr = SQLServerCreateTriggerStatement(
             dialect, "trg", "t", timing="AFTER", events=["INSERT"], body="SELECT 1;"
         )
         sql, params = expr.to_sql()
@@ -532,7 +532,7 @@ class TestTriggerDdl:
         assert params == ()
 
     def test_create_trigger_instead_of(self, dialect):
-        expr = SQLServerCreateTriggerExpression(
+        expr = SQLServerCreateTriggerStatement(
             dialect,
             "trg",
             "t",
@@ -547,7 +547,7 @@ class TestTriggerDdl:
         )
 
     def test_create_trigger_multiple_events(self, dialect):
-        expr = SQLServerCreateTriggerExpression(
+        expr = SQLServerCreateTriggerStatement(
             dialect,
             "trg",
             "t",
@@ -561,7 +561,7 @@ class TestTriggerDdl:
         )
 
     def test_create_trigger_or_alter(self, dialect):
-        expr = SQLServerCreateTriggerExpression(
+        expr = SQLServerCreateTriggerStatement(
             dialect, "trg", "t", events=["INSERT"], body="SELECT 1;", or_alter=True
         )
         sql, _ = expr.to_sql()
@@ -570,37 +570,37 @@ class TestTriggerDdl:
         )
 
     def test_drop_trigger(self, dialect):
-        sql, params = SQLServerDropTriggerExpression(dialect, "trg").to_sql()
+        sql, params = SQLServerDropTriggerStatement(dialect, "trg").to_sql()
         assert sql == "DROP TRIGGER [trg]"
         assert params == ()
 
     def test_drop_trigger_if_exists_supported_on_2016(self):
         d = SQLServerDialect(SQL_SERVER_2016)
-        expr = SQLServerDropTriggerExpression(d, "trg", if_exists=True)
+        expr = SQLServerDropTriggerStatement(d, "trg", if_exists=True)
         sql, _ = expr.to_sql()
         assert sql == "DROP TRIGGER IF EXISTS [trg]"
 
     def test_drop_trigger_if_exists_omitted_below_2016(self):
         d = SQLServerDialect(SQL_SERVER_2012)
-        expr = SQLServerDropTriggerExpression(d, "trg", if_exists=True)
+        expr = SQLServerDropTriggerStatement(d, "trg", if_exists=True)
         sql, _ = expr.to_sql()
         assert sql == "DROP TRIGGER [trg]"
 
     def test_validation(self, dialect):
         with pytest.raises(ValueError):
-            SQLServerCreateTriggerExpression(dialect, "trg", "t", events=[], body="SELECT 1;").validate()
+            SQLServerCreateTriggerStatement(dialect, "trg", "t", events=[], body="SELECT 1;").validate()
         with pytest.raises(ValueError):
-            SQLServerCreateTriggerExpression(dialect, "trg", "t", events=["INSERT"], body="").validate()
+            SQLServerCreateTriggerStatement(dialect, "trg", "t", events=["INSERT"], body="").validate()
         with pytest.raises(ValueError):
-            SQLServerCreateTriggerExpression(
+            SQLServerCreateTriggerStatement(
                 dialect, "trg", "t", timing="BEFORE", events=["INSERT"], body="SELECT 1;"
             ).validate()
         with pytest.raises(ValueError):
-            SQLServerDropTriggerExpression(dialect, "").validate()
+            SQLServerDropTriggerStatement(dialect, "").validate()
 
     def test_version_boundary_supported_at_2005(self):
         d = SQLServerDialect(SQL_SERVER_2005)
-        expr = SQLServerCreateTriggerExpression(
+        expr = SQLServerCreateTriggerStatement(
             d, "trg", "t", events=["INSERT"], body="SELECT 1;"
         )
         assert expr.to_sql()[0] == (

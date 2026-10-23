@@ -62,7 +62,7 @@ class SQLServerProtocolSupportMixin:
         """FULLTEXT catalogs require SQL Server 2005+."""
         return self.version >= (9, 0, 0)
 
-    def format_create_fulltext_catalog_statement(
+    def format_create_full_text_catalog_statement(
         self, catalog_name: str, as_default: bool = False
     ) -> Tuple[str, tuple]:
         """Format CREATE FULLTEXT CATALOG statement (2005+).
@@ -88,7 +88,7 @@ class SQLServerProtocolSupportMixin:
             sql += " AS DEFAULT"
         return sql, ()
 
-    def format_drop_fulltext_catalog_statement(self, catalog_name: str) -> Tuple[str, tuple]:
+    def format_drop_full_text_catalog_statement(self, catalog_name: str) -> Tuple[str, tuple]:
         """Format DROP FULLTEXT CATALOG statement (2005+).
 
         SQL Syntax:
@@ -101,7 +101,7 @@ class SQLServerProtocolSupportMixin:
         )
         return f"DROP FULLTEXT CATALOG {self.format_identifier(catalog_name)}", ()
 
-    def format_create_fulltext_index_statement(
+    def format_create_full_text_index_statement(
         self,
         table: str,
         columns: List[str],
@@ -134,7 +134,7 @@ class SQLServerProtocolSupportMixin:
         )
         return sql, ()
 
-    def format_drop_fulltext_index_statement(self, table: str) -> Tuple[str, tuple]:
+    def format_drop_full_text_index_statement(self, table: str) -> Tuple[str, tuple]:
         """Format DROP FULLTEXT INDEX statement (2005+).
 
         SQL Syntax:
@@ -451,7 +451,7 @@ class SQLServerProtocolSupportMixin:
             return self.version >= (16, 0, 0)
         return self.version >= self._JSON_FUNCTION_MIN_VERSION
 
-    def format_json_extract(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_extract_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON extraction as JSON_VALUE (single path only).
 
         SQL Server's JSON_VALUE returns the scalar value at the path, already
@@ -467,7 +467,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_VALUE({expr.json_doc}, {placeholder})"
         return self._with_alias(sql, expr.alias), (expr.path,)
 
-    def format_json_unquote(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_unquote_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format JSON_UNQUOTE - not needed in SQL Server.
 
         JSON_VALUE already returns scalar values without surrounding quotes,
@@ -479,7 +479,7 @@ class SQLServerProtocolSupportMixin:
             "SQL Server's JSON_VALUE returns scalar values already unquoted.",
         )
 
-    def format_json_object(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_object_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON_OBJECT function (SQL Server 2022+).
 
         SQL Syntax:
@@ -500,7 +500,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_OBJECT({', '.join(parts)})"
         return self._with_alias(sql, expr.alias), tuple(params)
 
-    def format_json_array(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_array_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON_ARRAY function (SQL Server 2022+)."""
         values = expr.values
         if not values:
@@ -509,7 +509,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_ARRAY({', '.join([placeholder] * len(values))})"
         return self._with_alias(sql, expr.alias), tuple(values)
 
-    def format_json_contains(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_contains_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON containment check using OPENJSON (2016+).
 
         SQL Server has no JSON_CONTAINS; membership of ``candidate`` in the
@@ -523,7 +523,7 @@ class SQLServerProtocolSupportMixin:
         )
         return self._with_alias(sql, expr.alias), (json_path, expr.candidate)
 
-    def format_json_set(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_set_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON_MODIFY function (single path-value pair only).
 
         SQL Server's JSON_MODIFY accepts exactly one path-value pair.
@@ -538,7 +538,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_MODIFY({expr.json_doc}, {placeholder}, {placeholder})"
         return self._with_alias(sql, expr.alias), (expr.path, expr.value)
 
-    def format_json_remove(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_remove_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON property removal using JSON_MODIFY (single path only).
 
         SQL Server removes a property by setting it to NULL with JSON_MODIFY.
@@ -553,7 +553,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"JSON_MODIFY({expr.json_doc}, {placeholder}, NULL)"
         return self._with_alias(sql, expr.alias), (expr.path,)
 
-    def format_json_type(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_type_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format JSON_TYPE - not supported by SQL Server."""
         raise UnsupportedFeatureError(
             self.name,
@@ -561,7 +561,7 @@ class SQLServerProtocolSupportMixin:
             "SQL Server has no JSON_TYPE; classify values via OPENJSON.",
         )
 
-    def format_json_valid(self, expr: Any) -> Tuple[str, tuple]:
+    def format_json_valid_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format an ISJSON function (SQL Server equivalent of JSON_VALID)."""
         sql = f"ISJSON({expr.json_val})"
         return self._with_alias(sql, expr.alias), ()
@@ -582,7 +582,7 @@ class SQLServerProtocolSupportMixin:
         """SQL Server has no MySQL-style SET column type."""
         return False
 
-    def format_set_literal(self, expr: Any) -> Tuple[str, tuple]:
+    def format_set_literal_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a comma-separated value as a bind parameter.
 
         SQL Server stores comma-separated values in VARCHAR columns; the
@@ -613,7 +613,7 @@ class SQLServerProtocolSupportMixin:
         col_sql = self.format_identifier(set_column)
         return f"(',' + {col_sql} + ',' LIKE '%,' + {placeholder} + ',%')", (value,)
 
-    def format_find_in_set(self, expr: Any) -> Tuple[str, tuple]:
+    def format_find_in_set_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a comma-separated membership check.
 
         SQL Server has no FIND_IN_SET; membership is checked with a LIKE
@@ -622,7 +622,7 @@ class SQLServerProtocolSupportMixin:
         sql, params = self._format_find_in_set_parts(expr.value, expr.set_column)
         return self._with_alias(sql, expr.alias), params
 
-    def format_set_contains(self, expr: Any) -> Tuple[str, tuple]:
+    def format_set_contains_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a set-containment predicate as AND-ed membership checks."""
         conditions = []
         params: List[str] = []
@@ -659,11 +659,11 @@ class SQLServerProtocolSupportMixin:
         """STAsGeoJSON is not available in the installed SQL Server types assembly."""
         return False
 
-    def format_spatial_literal(self, expr: Any) -> Tuple[str, tuple]:
+    def format_spatial_literal_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a WKT literal using geometry::STGeomFromText."""
-        return self.format_st_geom_from_text(expr)
+        return self.format_st_geom_from_text_expression(expr)
 
-    def format_st_geom_from_text(self, expr: Any) -> Tuple[str, tuple]:
+    def format_st_geom_from_text_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry::STGeomFromText call.
 
         SQL Server requires the SRID argument; it defaults to 0.
@@ -676,32 +676,32 @@ class SQLServerProtocolSupportMixin:
         sql = f"geometry::STGeomFromText({placeholder}, {placeholder})"
         return self._with_alias(sql, expr.alias), (expr.wkt, srid)
 
-    def format_st_as_text(self, expr: Any) -> Tuple[str, tuple]:
+    def format_st_as_text_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STAsText method call: ``geom.STAsText()``."""
         sql = f"{expr.geom}.STAsText()"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_as_geojson(self, expr: Any) -> Tuple[str, tuple]:
+    def format_st_as_geo_json_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STAsGeoJSON method call: ``geom.STAsGeoJSON()``."""
         sql = f"{expr.geom}.STAsGeoJSON()"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_distance(self, expr: Any) -> Tuple[str, tuple]:
+    def format_st_distance_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STDistance method call: ``g1.STDistance(g2)``."""
         sql = f"{expr.geom1}.STDistance({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_within(self, expr: Any) -> Tuple[str, tuple]:
+    def format_st_within_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STWithin method call: ``g1.STWithin(g2)``."""
         sql = f"{expr.geom1}.STWithin({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_contains(self, expr: Any) -> Tuple[str, tuple]:
+    def format_st_contains_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STContains method call: ``g1.STContains(g2)``."""
         sql = f"{expr.geom1}.STContains({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_distance_sphere(self, expr: Any) -> Tuple[str, tuple]:
+    def format_st_distance_sphere_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a spherical distance check.
 
         SQL Server has no ST_Distance_Sphere; STDistance is used for the
@@ -710,12 +710,12 @@ class SQLServerProtocolSupportMixin:
         sql = f"{expr.geom1}.STDistance({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_st_intersects(self, expr: Any) -> Tuple[str, tuple]:
+    def format_st_intersects_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a geometry STIntersects method call: ``g1.STIntersects(g2)``."""
         sql = f"{expr.geom1}.STIntersects({expr.geom2})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_create_spatial_index(self, expr: Any) -> Tuple[str, tuple]:
+    def format_create_spatial_index_statement(self, expr: Any) -> Tuple[str, tuple]:
         """Format a CREATE SPATIAL INDEX statement.
 
         SQL Syntax:

@@ -25,7 +25,7 @@ class SQLServerSequenceMixin:
         """SQL Server sequences are not usable as column data types."""
         return False
 
-    def format_next_value_for(
+    def format_next_value_for_expression(
         self, expr: "SQLServerNextValueForExpression"
     ) -> Tuple[str, tuple]:
         """Format NEXT VALUE FOR expression (SQL Server 2012+).

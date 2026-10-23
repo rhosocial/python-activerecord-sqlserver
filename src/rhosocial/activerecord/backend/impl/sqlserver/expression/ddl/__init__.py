@@ -2,13 +2,13 @@
 """SQL Server-specific DDL expression classes."""
 
 from .routine import (
-    SQLServerCreateProcedureExpression,
-    SQLServerCreateFunctionExpression,
-    SQLServerDropRoutineExpression,
+    SQLServerCreateProcedureStatement,
+    SQLServerCreateFunctionStatement,
+    SQLServerDropRoutineStatement,
 )
 from .trigger import (
-    SQLServerCreateTriggerExpression,
-    SQLServerDropTriggerExpression,
+    SQLServerCreateTriggerStatement,
+    SQLServerDropTriggerStatement,
 )
 from .graph import (
     SQLServerGraphTableKind,
@@ -21,15 +21,15 @@ from .type import (
     SQLServerTableTypeDefinition,
     SQLServerClrTypeDefinition,
     SQLServerDropTypeExpression,
-    SQLServerRenameTypeExpression,
+    SQLServerRenameTypeStatement,
 )
 
 __all__ = [
-    "SQLServerCreateProcedureExpression",
-    "SQLServerCreateFunctionExpression",
-    "SQLServerDropRoutineExpression",
-    "SQLServerCreateTriggerExpression",
-    "SQLServerDropTriggerExpression",
+    "SQLServerCreateProcedureStatement",
+    "SQLServerCreateFunctionStatement",
+    "SQLServerDropRoutineStatement",
+    "SQLServerCreateTriggerStatement",
+    "SQLServerDropTriggerStatement",
     "SQLServerGraphTableKind",
     "SQLServerAsGraphTableExpression",
     "SQLServerEdgeConstraint",
@@ -38,5 +38,5 @@ __all__ = [
     "SQLServerTableTypeDefinition",
     "SQLServerClrTypeDefinition",
     "SQLServerDropTypeExpression",
-    "SQLServerRenameTypeExpression",
+    "SQLServerRenameTypeStatement",
 ]

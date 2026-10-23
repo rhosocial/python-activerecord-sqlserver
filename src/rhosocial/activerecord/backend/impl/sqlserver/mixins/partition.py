@@ -184,7 +184,7 @@ class SQLServerPartitionMixin:
         self.validate_namespace(expr)
         return self.format_qualified_name(expr)
 
-    def format_sqlserver_partition_function(
+    def format_partition_function_expression(
         self, expr: "SQLServerPartitionFunctionExpression"
     ) -> Tuple[str, tuple]:
         """Format CREATE PARTITION FUNCTION statement.
@@ -218,7 +218,7 @@ class SQLServerPartitionMixin:
         )
         return sql, ()
 
-    def format_sqlserver_partition_scheme(
+    def format_partition_scheme_expression(
         self, expr: "SQLServerPartitionSchemeExpression"
     ) -> Tuple[str, tuple]:
         """Format CREATE PARTITION SCHEME statement.
@@ -229,7 +229,7 @@ class SQLServerPartitionMixin:
             [ALL] TO (filegroup1, filegroup2, ...)
 
         ``expr.function_name`` is the same deliberate text field as the one in
-        :meth:`format_sqlserver_partition_function`: the partition function is
+        :meth:`format_partition_function_expression`: the partition function is
         named by text and objectified at the rendering boundary.
         """
         scheme_name = self.qualified_object_name(PartitionScheme, expr.scheme_name)

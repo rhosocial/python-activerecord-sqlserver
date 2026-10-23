@@ -38,7 +38,7 @@ class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_json_extract"
+        return "format_json_extract_expression"
 
 
 class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -65,7 +65,7 @@ class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_json_unquote"
+        return "format_json_unquote_expression"
 
 
 class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -89,7 +89,7 @@ class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_json_object"
+        return "format_json_object_expression"
 
 
 class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -113,7 +113,7 @@ class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_json_array"
+        return "format_json_array_expression"
 
 
 class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -141,7 +141,7 @@ class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValue)
 
     @property
     def format_method(self) -> str:
-        return "format_json_contains"
+        return "format_json_contains_expression"
 
 
 class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -171,7 +171,7 @@ class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_json_set"
+        return "format_json_set_expression"
 
 
 class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -199,7 +199,7 @@ class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_json_remove"
+        return "format_json_remove_expression"
 
 
 class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -225,7 +225,7 @@ class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_json_type"
+        return "format_json_type_expression"
 
 
 class SQLServerJSONValidExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -249,4 +249,4 @@ class SQLServerJSONValidExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_json_valid"
+        return "format_json_valid_expression"

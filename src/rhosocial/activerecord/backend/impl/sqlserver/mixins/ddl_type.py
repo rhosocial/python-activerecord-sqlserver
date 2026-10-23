@@ -41,7 +41,7 @@ from ..expression.ddl.type import (
     SQLServerAliasTypeDefinition,
     SQLServerClrTypeDefinition,
     SQLServerDropTypeExpression,
-    SQLServerRenameTypeExpression,
+    SQLServerRenameTypeStatement,
     SQLServerTableTypeDefinition,
 )
 
@@ -746,24 +746,24 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
 
     def format_rename_type_statement(
         self,
-        expr: SQLServerRenameTypeExpression,
+        expr: SQLServerRenameTypeStatement,
     ) -> Tuple[str, tuple]:
         """Format a TYPE rename as ``sp_rename``.
 
         ``expr.type_name`` and ``expr.schema_name`` are *not* stale attributes.
         They were listed as such because a reader compared this formatter with
         the ``Type`` object ``CREATE TYPE`` takes, and found no field of that
-        name. Both belong to :class:`SQLServerRenameTypeExpression`: ``sp_rename``
+        name. Both belong to :class:`SQLServerRenameTypeStatement`: ``sp_rename``
         names its target as a string literal, so this statement never took the
         object. The name is turned into a :class:`Type` and rendered through the
         shared entry point by :meth:`_type_object_name` precisely so that the
         literal is spelled the way every other name is.
 
         Raises:
-            TypeError: ``expr`` is not a SQLServerRenameTypeExpression.
+            TypeError: ``expr`` is not a SQLServerRenameTypeStatement.
         """
-        if not isinstance(expr, SQLServerRenameTypeExpression):
-            raise TypeError("expr must be a SQLServerRenameTypeExpression")
+        if not isinstance(expr, SQLServerRenameTypeStatement):
+            raise TypeError("expr must be a SQLServerRenameTypeStatement")
         if not self.supports_rename_type():
             raise UnsupportedFeatureError(
                 self.name,

@@ -576,10 +576,10 @@ def register_specials():
 
     def columnstore(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.columnstore import (
-            SQLServerColumnstoreIndexExpression,
+            SQLServerColumnstoreIndexStatement,
         )
 
-        return SQLServerColumnstoreIndexExpression(d, "cci", "t", columns=["a"])
+        return SQLServerColumnstoreIndexStatement(d, "cci", "t", columns=["a"])
 
     def partition_range(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
@@ -651,10 +651,10 @@ def register_specials():
 
     def rename_type(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
-            SQLServerRenameTypeExpression,
+            SQLServerRenameTypeStatement,
         )
 
-        return SQLServerRenameTypeExpression(d, "old_name", "new_name")
+        return SQLServerRenameTypeStatement(d, "old_name", "new_name")
 
     def column_definition(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.column import (
@@ -747,26 +747,26 @@ def register_specials():
 
     def create_function(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.routine import (
-            SQLServerCreateFunctionExpression,
+            SQLServerCreateFunctionStatement,
         )
 
-        return SQLServerCreateFunctionExpression(
+        return SQLServerCreateFunctionStatement(
             d, "fn", returns="INT", body="SELECT 1"
         )
 
     def create_procedure(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.routine import (
-            SQLServerCreateProcedureExpression,
+            SQLServerCreateProcedureStatement,
         )
 
-        return SQLServerCreateProcedureExpression(d, "p", body="SELECT 1")
+        return SQLServerCreateProcedureStatement(d, "p", body="SELECT 1")
 
     def create_trigger(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.trigger import (
-            SQLServerCreateTriggerExpression,
+            SQLServerCreateTriggerStatement,
         )
 
-        return SQLServerCreateTriggerExpression(
+        return SQLServerCreateTriggerStatement(
             d, "trg", "t", timing="AFTER", events=["INSERT"], body="SELECT 1",
         )
 
@@ -835,7 +835,7 @@ def register_specials():
         "sqlserver.expression.pivot.Pivot", pivot
     )
     register_special_constructor(
-        "columnstore.SQLServerColumnstoreIndexExpression", columnstore
+        "columnstore.SQLServerColumnstoreIndexStatement", columnstore
     )
     register_special_constructor(
         "partition.SQLServerPartitionByRangeClause", partition_range
@@ -850,7 +850,7 @@ def register_specials():
     register_special_constructor("type.SQLServerTableTypeDefinition", table_type)
     register_special_constructor("type.SQLServerClrTypeDefinition", clr_type)
     register_special_constructor("type.SQLServerDropTypeExpression", drop_type)
-    register_special_constructor("type.SQLServerRenameTypeExpression", rename_type)
+    register_special_constructor("type.SQLServerRenameTypeStatement", rename_type)
     register_special_constructor("column.SQLServerColumnDefinition", column_definition)
     register_special_constructor("alter_column.SQLServerAlterColumn", alter_column)
     # -- predicates and constraints that must render with no bind parameters ---
@@ -879,13 +879,13 @@ def register_specials():
         "ddl.graph.SQLServerAsGraphTableExpression", as_graph_table
     )
     register_special_constructor(
-        "ddl.routine.SQLServerCreateFunctionExpression", create_function
+        "ddl.routine.SQLServerCreateFunctionStatement", create_function
     )
     register_special_constructor(
-        "ddl.routine.SQLServerCreateProcedureExpression", create_procedure
+        "ddl.routine.SQLServerCreateProcedureStatement", create_procedure
     )
     register_special_constructor(
-        "ddl.trigger.SQLServerCreateTriggerExpression", create_trigger
+        "ddl.trigger.SQLServerCreateTriggerStatement", create_trigger
     )
     register_special_constructor("dml.SQLServerMergeExpression", sqlserver_merge)
     register_special_constructor("option_hint.SQLServerOptionHintClause", option_hint)
@@ -1327,32 +1327,16 @@ LEGITIMATE_NON_RENDERS = {
 
     # ---- core expressions SQL Server has no T-SQL spelling for ----
     #
-    # These four are the shadowing problem, and they are the reason this matrix
-    # exists in this form. SQL Server's own T-SQL DDL for full-text indexes,
-    # functions and triggers is spelled by formatters that took over the *core
-    # formatter names*: ``format_create_fulltext_index_statement`` here takes
-    # ``(table, columns, key_index, catalog_name)`` where core's takes the
-    # expression, and ``format_create_function_statement`` takes a
-    # ``SQLServerCreateFunctionExpression`` where core's takes a
-    # ``CreateFunctionStatement``. So when the core expression dispatches --
-    # which is what ``format_method`` does -- it calls a function whose
-    # signature it cannot satisfy.
+    # The full-text and routine rows below are gone: SQL Server's own T-SQL DDL
+    # used to take over the *core formatter names* --
+    # ``format_create_fulltext_index_statement`` took ``(table, columns,
+    # key_index, catalog_name)`` where core's takes the expression, so the core
+    # expression dispatched into a signature it could not satisfy. The
+    # statement/name unification renamed the backend's formatters to their own
+    # spelling (``format_create_full_text_index_statement`` and friends),
+    # which freed the core names: the core expressions now reach core's generic
+    # formatters and render, so there is nothing left to pin here.
     #
-    # This is a recorded gap, not an oversight, and each entry pins the exact
-    # failure so the shape of it cannot change unnoticed. The fix is to rename
-    # the backend's formatters (``format_sqlserver_create_fulltext_index_statement``
-    # and friends) so the core names are free again, and to point the backend's
-    # own expressions at the renamed methods. That is a rename across five files
-    # and four protocol declarations, which is its own change with its own
-    # review; it is not smuggled in here behind a comment.
-    "rhosocial.activerecord.backend.expression.statements.ddl_index.CreateFulltextIndexStatement": (
-        TypeError,
-        "missing 3 required positional arguments",
-    ),
-    "rhosocial.activerecord.backend.expression.statements.ddl_index.DropFulltextIndexStatement": (
-        ValueError,
-        "name must be a non-empty string",
-    ),
     # The two rows below changed shape when the formatters stopped probing
     # for ``name`` and started reading it: the probe's default (``""``) used
     # to turn a node with no ``name`` field into "the name is missing", and
@@ -1573,19 +1557,19 @@ UNMODELLED_FORMATTERS = {
     "SQL/XML (SQL Server's native XML/XQuery is not the SQL/XML feature set, "
     "so the dialect declares no ``format_xml*`` method at all; the PASSING "
     "clause rides that same family)": (
-        "format_xmlagg_expression",
-        "format_xmlattributes_expression",
-        "format_xmlcomment_expression",
-        "format_xmlconcat_expression",
-        "format_xmlelement_expression",
+        "format_xml_agg_expression",
+        "format_xml_attributes_expression",
+        "format_xml_comment_expression",
+        "format_xml_concat_expression",
+        "format_xml_element_expression",
         "format_xmlexists_predicate",
-        "format_xmlforest_expression",
+        "format_xml_forest_expression",
         "format_xmlpi_expression",
-        "format_xmlparse_expression",
-        "format_xmlquery_expression",
-        "format_xmlroot_expression",
-        "format_xmlserialize_expression",
-        "format_xmltable_expression",
+        "format_xml_parse_expression",
+        "format_xml_query_expression",
+        "format_xml_root_expression",
+        "format_xml_serialize_expression",
+        "format_xml_table_expression",
         "format_passing_clause",
     ),
     "DOMAIN (SQL Server has no DOMAIN object, so no domain statement or "
@@ -1609,7 +1593,7 @@ UNMODELLED_FORMATTERS = {
     ),
     "COMMENT ON (SQL Server has no standalone COMMENT ON; extended properties "
     "spell it, and the dialect's negative list records CommentSupport)": (
-        "format_comment_statement",
+        "format_comment_on_statement",
     ),
     "LPAD / RPAD (SQL Server has no pad functions; padding is spelled with "
     "REPLICATE together with RIGHT / LEFT)": (

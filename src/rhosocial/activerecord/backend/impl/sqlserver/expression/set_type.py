@@ -38,7 +38,7 @@ class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_set_literal"
+        return "format_set_literal_expression"
 
 
 class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -66,7 +66,7 @@ class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_find_in_set"
+        return "format_find_in_set_expression"
 
 
 class SQLServerSetContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
@@ -92,4 +92,4 @@ class SQLServerSetContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
 
     @property
     def format_method(self) -> str:
-        return "format_set_contains"
+        return "format_set_contains_expression"

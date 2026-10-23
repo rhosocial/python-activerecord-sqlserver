@@ -8,6 +8,6 @@ if TYPE_CHECKING:  # pragma: no cover
 @runtime_checkable
 class SQLServerSequenceSupport(Protocol):
     def supports_sequence_as_data_type(self) -> bool: ...
-    def format_next_value_for(
+    def format_next_value_for_expression(
         self, expr: "SQLServerNextValueForExpression"
     ) -> Tuple[str, tuple]: ...

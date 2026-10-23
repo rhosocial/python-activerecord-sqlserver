@@ -10,7 +10,7 @@ This module tests SQL Server-specific spatial data type functionality including:
 """
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.spatial import (
-    SQLServerCreateSpatialIndexExpression,
+    SQLServerCreateSpatialIndexStatement,
     SQLServerSpatialLiteralExpression,
     SQLServerSTAsGeoJSONExpression,
     SQLServerSTAsTextExpression,
@@ -158,7 +158,7 @@ class TestSpatialIndexFormatting:
     def test_format_create_spatial_index(self):
         """Test CREATE SPATIAL INDEX formatting."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        expr = SQLServerCreateSpatialIndexExpression(
+        expr = SQLServerCreateSpatialIndexStatement(
             dialect, "idx_spatial", "test_table", "geom_col"
         )
         sql, params = expr.to_sql()
@@ -171,7 +171,7 @@ class TestSpatialIndexFormatting:
         """Test CREATE SPATIAL INDEX does not raise for supported versions."""
         # SQL Server supports spatial indexes since 2008, so this should not raise
         dialect = SQLServerDialect(version=(10, 3, 0))
-        expr = SQLServerCreateSpatialIndexExpression(
+        expr = SQLServerCreateSpatialIndexStatement(
             dialect, "idx_spatial", "test_table", "geom_col"
         )
         sql, params = expr.to_sql()

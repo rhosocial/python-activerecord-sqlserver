@@ -963,7 +963,7 @@ class TestSQLServerDialectTransaction:
         from rhosocial.activerecord.backend.transaction import IsolationLevel
 
         expr = SetTransactionStatement(dialect).with_isolation_level(IsolationLevel.READ_COMMITTED)
-        sql, params = dialect.format_set_transaction(expr)
+        sql, params = dialect.format_set_transaction_statement(expr)
         assert "SET TRANSACTION ISOLATION LEVEL" in sql
         assert "READ COMMITTED" in sql
 

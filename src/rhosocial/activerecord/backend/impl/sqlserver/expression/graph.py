@@ -205,7 +205,7 @@ class SQLServerShortestPathExpression(BaseExpression):
 
     @property
     def format_method(self) -> str:
-        return "format_sqlserver_shortest_path"
+        return "format_shortest_path_expression"
 
 
 class SQLServerGraphPathAggregate(BaseExpression):
