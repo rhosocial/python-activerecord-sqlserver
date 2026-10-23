@@ -13,6 +13,7 @@ from rhosocial.activerecord.backend.introspection.base import (
     SyncAbstractIntrospector,
     AsyncAbstractIntrospector,
 )
+from rhosocial.activerecord.backend.introspection.cache import IntrospectionCache
 from rhosocial.activerecord.backend.introspection.executor import (
     SyncIntrospectorExecutor,
     AsyncIntrospectorExecutor,
@@ -678,17 +679,20 @@ class SyncSQLServerIntrospector(
     """Synchronous introspector for SQL Server backends."""
 
     def __init__(
-        self, backend: Any, executor: SyncIntrospectorExecutor
+        self,
+        backend: Any,
+        executor: SyncIntrospectorExecutor,
+        cache: Optional[IntrospectionCache] = None,
     ) -> None:
-        super().__init__(backend, executor)
+        super().__init__(backend, executor, cache)
 
     def get_table_info(
         self, table_name: str, schema: Optional[str] = None
     ) -> Optional[IntrospectionTableInfo]:
-        key = self.make_cache_key(
+        key = self._cache.key(
             IntrospectionScope.TABLE, table_name, schema=schema
         )
-        cached = self.get_cached(key)
+        cached = self._cache.get(key)
         if cached is not None:
             return cached
 
@@ -703,17 +707,17 @@ class SyncSQLServerIntrospector(
         table.columns = self.list_columns(table_name, schema)
         table.indexes = self.list_indexes(table_name, schema)
         table.foreign_keys = self.list_foreign_keys(table_name, schema)
-        self.set_cached(key, table)
+        self._cache.set(key, table)
         return table
 
     def list_columns(
         self, table_name: str, schema: Optional[str] = None
     ) -> List[IntrospectionColumnInfo]:
         target = schema if schema is not None else self._get_default_schema()
-        key = self.make_cache_key(
+        key = self._cache.key(
             IntrospectionScope.COLUMN, table_name, schema=target
         )
-        cached = self.get_cached(key)
+        cached = self._cache.get(key)
         if cached is not None:
             return cached
 
@@ -726,7 +730,7 @@ class SyncSQLServerIntrospector(
         columns = self._parse_columns(
             rows, table_name, target, primary_keys
         )
-        self.set_cached(key, columns)
+        self._cache.set(key, columns)
         return columns
 
 
@@ -736,17 +740,20 @@ class AsyncSQLServerIntrospector(
     """Asynchronous introspector for SQL Server backends."""
 
     def __init__(
-        self, backend: Any, executor: AsyncIntrospectorExecutor
+        self,
+        backend: Any,
+        executor: AsyncIntrospectorExecutor,
+        cache: Optional[IntrospectionCache] = None,
     ) -> None:
-        super().__init__(backend, executor)
+        super().__init__(backend, executor, cache)
 
     async def get_table_info(
         self, table_name: str, schema: Optional[str] = None
     ) -> Optional[IntrospectionTableInfo]:
-        key = self.make_cache_key(
+        key = self._cache.key(
             IntrospectionScope.TABLE, table_name, schema=schema
         )
-        cached = self.get_cached(key)
+        cached = self._cache.get(key)
         if cached is not None:
             return cached
 
@@ -763,17 +770,17 @@ class AsyncSQLServerIntrospector(
         table.foreign_keys = await self.list_foreign_keys(
             table_name, schema
         )
-        self.set_cached(key, table)
+        self._cache.set(key, table)
         return table
 
     async def list_columns(
         self, table_name: str, schema: Optional[str] = None
     ) -> List[IntrospectionColumnInfo]:
         target = schema if schema is not None else self._get_default_schema()
-        key = self.make_cache_key(
+        key = self._cache.key(
             IntrospectionScope.COLUMN, table_name, schema=target
         )
-        cached = self.get_cached(key)
+        cached = self._cache.get(key)
         if cached is not None:
             return cached
 
@@ -786,5 +793,5 @@ class AsyncSQLServerIntrospector(
         columns = self._parse_columns(
             rows, table_name, target, primary_keys
         )
-        self.set_cached(key, columns)
+        self._cache.set(key, columns)
         return columns
