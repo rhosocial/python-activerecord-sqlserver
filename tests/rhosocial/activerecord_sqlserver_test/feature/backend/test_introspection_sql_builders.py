@@ -16,6 +16,11 @@ became a bind parameter and no value leaked into the text. The identifier
 spelling is the dialect's, so it is asserted as ``[schema].[TABLE]`` where a
 position matters and left free where it does not.
 """
+
+from decimal import Decimal
+
+import pytest
+
 from rhosocial.activerecord.backend.expression.types import DataType, TextType
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
@@ -33,7 +38,11 @@ from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
 
 def make_introspector() -> SyncSQLServerIntrospector:
     config = SQLServerConnectionConfig(
-        host="localhost", port=1433, database="master", username="sa", password="",
+        host="localhost",
+        port=1433,
+        database="master",
+        username="sa",
+        password="",
     )
     backend = SQLServerBackend(connection_config=config)
     backend._version = (16, 0, 0)
@@ -156,9 +165,208 @@ class TestBuildDatabaseInfoSql:
         assert params == ()
 
 
+class TestBuildSchemaListSql:
+    def test_owner_resolved_by_principal_id_not_name(self):
+        introspector = make_introspector()
+        sql, params = introspector._build_schema_list_sql()
+        assert sql == (
+            "SELECT [s].[schema_id], [s].[name] AS [schema_name], "
+            "[p].[name] AS [owner] FROM [sys].[schemas] AS [s] "
+            "LEFT JOIN [sys].[database_principals] AS [p] "
+            "ON [s].[principal_id] = [p].[principal_id] ORDER BY [s].[name]"
+        )
+        # The keep of a schema whose principal was dropped is why the join to
+        # the principal is a LEFT JOIN rather than an inner one.
+        assert "LEFT JOIN" in sql
+        assert params == ()
+
+    def test_dangling_principal_row_still_a_schema(self):
+        """A NULL owner parses to None, the row survives (mirrors the join)."""
+        introspector = make_introspector()
+        schemas = introspector._parse_schemas(
+            [{"schema_id": 5, "schema_name": "orphan", "owner": None}]
+        )
+        assert schemas[0].owner is None
+        assert schemas[0].schema_id == 5
+
+
+class TestBuildExtendedPropertyListSql:
+    def test_every_filter_is_a_bind_parameter(self):
+        introspector = make_introspector()
+        sql, params = introspector._build_extended_property_list_sql(
+            123, 1, "OBJECT_OR_COLUMN", "dbo"
+        )
+        assert params == (123, "OBJECT_OR_COLUMN", 1, "dbo")
+        assert "'dbo'" not in sql and "'OBJECT_OR_COLUMN'" not in sql
+        assert "[ep].[major_id] = ?" in sql
+        assert "[ep].[class_desc] = ?" in sql
+        assert "[ep].[minor_id] = ?" in sql
+        assert "[s].[name] = ?" in sql
+
+    def test_value_cast_off_the_sql_variant(self):
+        """``value`` is sql_variant, which the driver cannot fetch (HY106)."""
+        introspector = make_introspector()
+        sql, params = introspector._build_extended_property_list_sql(
+            123, None, "OBJECT_OR_COLUMN", None
+        )
+        assert "CAST([ep].[value] AS NVARCHAR(4000)) AS [property_value]" in sql
+        # No minor_id, no schema: two predicates only.
+        assert params == (123, "OBJECT_OR_COLUMN")
+
+    def test_unknown_class_refused_before_the_query(self):
+        introspector = make_introspector()
+        for bad in ("", "MS_Description", "object_or_column"):
+            with pytest.raises(ValueError):
+                introspector._build_extended_property_list_sql(123, None, bad, None)
+
+    def test_schema_only_narrows_object_scoped_classes(self):
+        introspector = make_introspector()
+        # INDEX is object-scoped (a major_id in sys.objects space)...
+        introspector._build_extended_property_list_sql(1, None, "INDEX", "dbo")
+        # ...but DATABASE/SCHEMA properties have no object to narrow by.
+        with pytest.raises(ValueError):
+            introspector._build_extended_property_list_sql(1, None, "DATABASE", "dbo")
+        with pytest.raises(ValueError):
+            introspector._build_extended_property_list_sql(1, None, "SCHEMA", "dbo")
+
+
+class TestBuildRoutineListSql:
+    def test_procedures_ask_for_p_and_pc(self):
+        introspector = make_introspector()
+        sql, params = introspector._build_procedure_list_sql(None)
+        assert "[o].[type] IN ('P', 'PC')" in sql
+        assert params == ("dbo",)
+
+    def test_functions_ask_for_the_five_codes(self):
+        introspector = make_introspector()
+        sql, params = introspector._build_function_list_sql(None)
+        assert "[o].[type] IN ('FN', 'IF', 'TF', 'FS', 'FT')" in sql
+        assert params == ("dbo",)
+
+    def test_explicit_schema_is_a_parameter(self):
+        introspector = make_introspector()
+        sql, params = introspector._build_procedure_list_sql("sales")
+        assert "[s].[name] = ?" in sql
+        assert "'sales'" not in sql
+        assert params == ("sales",)
+
+    def test_procedures_and_functions_differ_only_in_codes(self):
+        introspector = make_introspector()
+        procs, _ = introspector._build_procedure_list_sql("dbo")
+        fns, _ = introspector._build_function_list_sql("dbo")
+        assert procs.replace("IN ('P', 'PC')", "") == fns.replace(
+            "IN ('FN', 'IF', 'TF', 'FS', 'FT')", ""
+        )
+
+
+class TestBuildSequenceListSql:
+    def test_sql_variant_columns_are_cast_to_text(self):
+        introspector = make_introspector()
+        sql, params = introspector._build_sequence_list_sql(None)
+        for column in (
+            "start_value",
+            "increment",
+            "minimum_value",
+            "maximum_value",
+            "current_value",
+        ):
+            assert f"CAST([q].[{column}] AS NVARCHAR(64)) AS [{column}]" in sql
+        assert "CAST([q].[cache_size] AS BIGINT) AS [cache_size]" in sql
+        assert "TYPE_NAME([q].[user_type_id]) AS [data_type]" in sql
+        assert params == ("dbo",)
+
+    def test_explicit_schema_is_a_parameter(self):
+        introspector = make_introspector()
+        sql, params = introspector._build_sequence_list_sql("sales")
+        assert "[s].[name] = ?" in sql
+        assert "'sales'" not in sql
+        assert params == ("sales",)
+
+
+class TestParseBackendSpecificTypes:
+    """The parsers read the aliases the builders above project."""
+
+    @staticmethod
+    def _routine(**overrides):
+        row = {
+            "routine_name": "usp_x",
+            "schema_name": "dbo",
+            "type_code": " P ",
+            "type_desc": "SQL_STORED_PROCEDURE",
+            "created_at": None,
+            "modified_at": None,
+            "is_ms_shipped": 0,
+            **overrides,
+        }
+        return make_introspector()._parse_routines([row])[0]
+
+    def test_routine_type_code_stripped_and_flagged(self):
+        routine = self._routine()
+        assert routine.type_code == "P"
+        assert routine.name == "usp_x"
+        assert routine.schema == "dbo"
+        # ``is_ms_shipped`` arrives as the driver's int.
+        assert routine.is_ms_shipped is False
+        assert self._routine(is_ms_shipped=1).is_ms_shipped is True
+
+    def test_sequence_values_read_back_as_exact_numbers(self):
+        introspector = make_introspector()
+        row = {
+            "sequence_name": "seq",
+            "schema_name": "dbo",
+            "data_type": "bigint",
+            "start_value": "5",
+            "increment": "2",
+            "minimum_value": "1",
+            "maximum_value": "9223372036854775807",
+            "current_value": None,
+            "is_cycling": 0,
+            "is_cached": 1,
+            "cache_size": 50,
+        }
+        seq = introspector._parse_sequences([row])[0]
+        assert seq.start_value == Decimal("5")
+        assert seq.increment == Decimal("2")
+        assert seq.maximum_value == Decimal("9223372036854775807")
+        # An unstarted sequence has no current_value, and it stays None.
+        assert seq.current_value is None
+        assert seq.is_cached is True and seq.is_cycling is False
+        assert seq.cache_size == 50
+
+    def test_unparseable_sequence_value_degrades_to_none(self):
+        introspector = make_introspector()
+        rows = [
+            {"sequence_name": "seq", "start_value": "not-a-number"},
+            {"sequence_name": "seq", "cache_size": None},
+        ]
+        parsed = introspector._parse_sequences(rows)
+        assert parsed[0].start_value is None
+        assert parsed[0].cache_size is None
+
+    def test_null_extended_property_value_stays_none(self):
+        introspector = make_introspector()
+        row = {
+            "class_id": 1,
+            "class_name": "OBJECT_OR_COLUMN",
+            "major_id": 77,
+            "minor_id": 0,
+            "property_name": "MS_Description",
+            "property_value": None,
+        }
+        prop = introspector._parse_extended_properties([row])[0]
+        # A property set to NULL is a value, not a missing row.
+        assert prop.value is None
+        assert prop.name == "MS_Description"
+        assert (prop.class_id, prop.major_id, prop.minor_id) == (1, 77, 0)
+
+
 def make_status_introspector(version=(16, 0, 0)) -> SyncSQLServerStatusIntrospector:
     config = SQLServerConnectionConfig(
-        host="localhost", port=1433, database="master", username="sa", password="",
+        host="localhost",
+        port=1433,
+        database="master",
+        username="sa",
+        password="",
     )
     backend = SQLServerBackend(connection_config=config, version=version)
     return SyncSQLServerStatusIntrospector(backend)
@@ -357,24 +565,21 @@ class TestParseColumnsDatetimePrecision:
         for word in self.PRECISIONED:
             col = self._parse_one(word, 3)
             assert col.data_type_full == f"{word}(3)"
-            assert col.parsed_data_type == DataType.parse_data_type_str(
-                dialect, f"{word}(3)")
+            assert col.parsed_data_type == DataType.parse_data_type_str(dialect, f"{word}(3)")
 
     def test_zero_precision_is_rebuilt(self):
         dialect = make_introspector()._backend.dialect
         for word in self.PRECISIONED:
             col = self._parse_one(word, 0)
             assert col.data_type_full == f"{word}(0)"
-            assert col.parsed_data_type == DataType.parse_data_type_str(
-                dialect, f"{word}(0)")
+            assert col.parsed_data_type == DataType.parse_data_type_str(dialect, f"{word}(0)")
 
     def test_server_default_precision_stays_bare(self):
         dialect = make_introspector()._backend.dialect
         for word in self.PRECISIONED:
             col = self._parse_one(word, 7)
             assert col.data_type_full == word
-            assert col.parsed_data_type == DataType.parse_data_type_str(
-                dialect, word)
+            assert col.parsed_data_type == DataType.parse_data_type_str(dialect, word)
 
     def test_missing_catalog_precision_stays_bare(self):
         # Defensive: a row without the field rebuilds exactly as before.
@@ -400,5 +605,4 @@ class TestParseColumnsDatetimePrecision:
         assert dt.parsed_data_type == DataType.parse_data_type_str(dialect, "datetime")
         sdt = self._parse_one("smalldatetime", 0)
         assert sdt.data_type_full == "smalldatetime"
-        assert sdt.parsed_data_type == DataType.parse_data_type_str(
-            dialect, "smalldatetime")
+        assert sdt.parsed_data_type == DataType.parse_data_type_str(dialect, "smalldatetime")

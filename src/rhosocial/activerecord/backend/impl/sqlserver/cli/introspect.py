@@ -1,8 +1,17 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/cli/introspect.py
 """introspect subcommand - Database introspection.
 
-SQL Server introspect includes the 'procedures' and 'functions' types
-in addition to the standard types.
+Every type this command offers is answered by ``backend.introspector``. The
+introspector speaks the core API -- ``list_tables``/``list_views``/
+``list_columns``/... -- plus this backend's own ``list_schemas``,
+``list_procedures``, ``list_functions`` and ``list_sequences``; there are no
+``get_tables``/``get_views``/``get_columns`` methods anywhere, and asking for
+them was why this command used to fail for every type.
+
+The mapping from a type name to an introspector method lives in ``_steps``
+and nowhere else, so a new type is one entry there plus one title. The sync
+and async paths differ in exactly one keyword: whether the method is
+awaited.
 """
 
 import argparse
@@ -10,10 +19,10 @@ import asyncio
 import sys
 from dataclasses import asdict, is_dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
+from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from .connection import add_connection_args, resolve_connection_config_from_args
 from .output import create_provider
 
@@ -31,7 +40,21 @@ INTROSPECT_TYPES = [
     "procedures",
     "functions",
     "sequences",
+    "schemas",
 ]
+
+#: Titles for the one-result types. The table-scoped types build their title
+#: from the table name instead (see ``_title_for``).
+_RESULT_TITLES = {
+    "list_tables": "Tables",
+    "list_views": "Views",
+    "list_triggers": "Triggers",
+    "list_procedures": "Stored Procedures",
+    "list_functions": "User-Defined Functions",
+    "list_sequences": "Sequences",
+    "list_schemas": "Schemas",
+    "get_database_info": "Database Info",
+}
 
 
 def create_parser(subparsers):
@@ -40,6 +63,9 @@ def create_parser(subparsers):
         'introspect',
         help='Database introspection',
         epilog="""Examples:
+  # List all schemas and their owners
+  %(prog)s schemas --database mydb
+
   # List all tables in database
   %(prog)s tables --database mydb
 
@@ -58,8 +84,9 @@ def create_parser(subparsers):
   # Get foreign key relationships
   %(prog)s foreign-keys users --database mydb
 
-  # List triggers
+  # List triggers (all of them, or one table's)
   %(prog)s triggers --database mydb
+  %(prog)s triggers users --database mydb
 
   # Get database information
   %(prog)s database --database mydb
@@ -147,6 +174,118 @@ def handle(args):
 
 
 # ---------------------------------------------------------------------------
+# Introspection plan
+# ---------------------------------------------------------------------------
+
+
+def _require_name(args, kind: str) -> str:
+    """Return the object name a table-scoped type needs, or exit."""
+    if not args.name:
+        print(
+            f"Error: Table name is required for '{kind}' introspection",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return args.name
+
+
+def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
+    """Map the requested type to ``(introspector method, kwargs)`` calls.
+
+    This is the single place that decides which introspector method answers
+    which type. ``table`` and ``database <name>`` share ``get_table_info``:
+    the detailed table view and the per-table database view are the same
+    question, and it is answered by the method that fills columns, indexes
+    and foreign keys in one object.
+    """
+    kind = args.type
+
+    if kind == "table" or (kind == "database" and args.name):
+        return [(
+            "get_table_info",
+            {"table_name": _require_name(args, kind), "schema": args.schema},
+        )]
+    if kind == "database":
+        return [("get_database_info", {})]
+    if kind == "tables":
+        return [(
+            "list_tables",
+            {"schema": args.schema, "include_system": args.include_system},
+        )]
+    if kind == "views":
+        return [(
+            "list_views",
+            {"schema": args.schema, "include_system": args.include_system},
+        )]
+    if kind == "triggers":
+        # ``list_triggers`` already takes an optional table; iterating tables
+        # here was never needed, and it swallowed each table's error.
+        return [(
+            "list_triggers",
+            {"table_name": args.name, "schema": args.schema},
+        )]
+    if kind == "procedures":
+        return [("list_procedures", {"schema": args.schema})]
+    if kind == "functions":
+        return [("list_functions", {"schema": args.schema})]
+    if kind == "sequences":
+        return [("list_sequences", {"schema": args.schema})]
+    if kind == "schemas":
+        return [("list_schemas", {})]
+
+    # columns / indexes / foreign-keys
+    method = f"list_{kind.replace('-', '_')}"
+    return [(
+        method,
+        {"table_name": _require_name(args, kind), "schema": args.schema},
+    )]
+
+
+def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
+    """The heading for one section of output."""
+    if method in _RESULT_TITLES:
+        return _RESULT_TITLES[method]
+    name = kwargs.get("table_name", "")
+    if method == "list_columns":
+        return f"Columns of {name}"
+    if method == "list_indexes":
+        return f"Indexes of {name}"
+    if method == "list_foreign_keys":
+        return f"Foreign Keys of {name}"
+    return method
+
+
+def _value_sections(
+    method: str, kwargs: Dict[str, Any], value: Any
+) -> List[Tuple[str, Any]]:
+    """Turn one introspector result into the sections to render.
+
+    A table detail expands into its columns and, when present, its indexes
+    and foreign keys -- the three lists are what ``get_table_info`` already
+    filled, so rendering them costs no further query.
+    """
+    if method == "get_table_info":
+        name = kwargs["table_name"]
+        if value is None:
+            print(
+                f"Error: table '{kwargs.get('schema')}.{name}' not found",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        sections: List[Tuple[str, Any]] = [(f"Columns of {name}", value.columns)]
+        if value.indexes:
+            sections.append((f"Indexes of {name}", value.indexes))
+        if value.foreign_keys:
+            sections.append((f"Foreign Keys of {name}", value.foreign_keys))
+        return sections
+
+    if method == "get_database_info":
+        return [(_title_for(method, kwargs), [value])]
+
+    return [(_title_for(method, kwargs), value)]
+
+
+# ---------------------------------------------------------------------------
 # Internal helper functions
 # ---------------------------------------------------------------------------
 
@@ -175,107 +314,25 @@ def _serialize_for_output(obj: Any) -> Any:
     return str(obj)
 
 
+def _render(provider, sections: List[Tuple[str, Any]]) -> None:
+    """Render each section through the configured output provider."""
+    for title, value in sections:
+        data = _serialize_for_output(value)
+        if not isinstance(data, list):
+            data = [data]
+        provider.display_results(data, title=title)
+
+
 def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
     """Handle introspect subcommand synchronously."""
     try:
         backend.connect()
         introspector = backend.introspector
-
-        if args.type == "tables":
-            tables = introspector.get_tables(
-                schema=args.schema,
-            )
-            data = _serialize_for_output(tables)
-            provider.display_results(data, title="Tables")
-
-        elif args.type == "views":
-            views = introspector.get_views(schema=args.schema)
-            data = _serialize_for_output(views)
-            provider.display_results(data, title="Views")
-
-        elif args.type == "table":
-            if not args.name:
-                print("Error: Table name is required for 'table' introspection", file=sys.stderr)
-                sys.exit(1)
-            columns = introspector.get_columns(args.name, schema=args.schema)
-            data = _serialize_for_output(columns)
-            provider.display_results(data, title=f"Columns of {args.name}")
-            indexes = introspector.get_indexes(args.name, schema=args.schema)
-            if indexes:
-                provider.display_results(_serialize_for_output(indexes), title=f"Indexes of {args.name}")
-            fks = introspector.get_foreign_keys(args.name, schema=args.schema)
-            if fks:
-                provider.display_results(_serialize_for_output(fks), title=f"Foreign Keys of {args.name}")
-
-        elif args.type == "columns":
-            if not args.name:
-                print("Error: Table name is required for 'columns' introspection", file=sys.stderr)
-                sys.exit(1)
-            columns = introspector.get_columns(args.name, schema=args.schema)
-            data = _serialize_for_output(columns)
-            provider.display_results(data, title=f"Columns of {args.name}")
-
-        elif args.type == "indexes":
-            if not args.name:
-                print("Error: Table name is required for 'indexes' introspection", file=sys.stderr)
-                sys.exit(1)
-            indexes = introspector.get_indexes(args.name, schema=args.schema)
-            data = _serialize_for_output(indexes)
-            provider.display_results(data, title=f"Indexes of {args.name}")
-
-        elif args.type == "foreign-keys":
-            if not args.name:
-                print("Error: Table name is required for 'foreign-keys' introspection", file=sys.stderr)
-                sys.exit(1)
-            fks = introspector.get_foreign_keys(args.name, schema=args.schema)
-            data = _serialize_for_output(fks)
-            provider.display_results(data, title=f"Foreign Keys of {args.name}")
-
-        elif args.type == "triggers":
-            if args.name:
-                triggers = introspector.get_triggers(table=args.name, schema=args.schema)
-            else:
-                tables = introspector.get_tables(schema=args.schema)
-                all_triggers = []
-                for t in tables:
-                    tname = t.name if hasattr(t, 'name') else t.get('TABLE_NAME', t.get('name', ''))
-                    if tname:
-                        try:
-                            t_triggers = introspector.get_triggers(table=tname, schema=args.schema)
-                            all_triggers.extend(t_triggers)
-                        except Exception:
-                            pass
-                triggers = all_triggers
-            data = _serialize_for_output(triggers)
-            provider.display_results(data, title="Triggers")
-
-        elif args.type == "database":
-            if args.name:
-                constraints = introspector.get_constraints(table=args.name, schema=args.schema)
-                data = _serialize_for_output(constraints)
-                provider.display_results([data] if isinstance(data, dict) else data, title=f"Constraints of {args.name}")
-            else:
-                tables = introspector.get_tables(schema=args.schema)
-                db_info = {
-                    "tables": _serialize_for_output(tables),
-                    "schema": args.schema,
-                }
-                provider.display_results([db_info], title="Database Info")
-
-        elif args.type == "procedures":
-            procedures = introspector.get_procedures(schema=args.schema)
-            data = _serialize_for_output(procedures)
-            provider.display_results(data, title="Stored Procedures")
-
-        elif args.type == "functions":
-            functions = introspector.get_functions(schema=args.schema)
-            data = _serialize_for_output(functions)
-            provider.display_results(data, title="User-Defined Functions")
-
-        elif args.type == "sequences":
-            sequences = introspector.get_sequences(schema=args.schema)
-            data = _serialize_for_output(sequences)
-            provider.display_results(data, title="Sequences")
+        sections: List[Tuple[str, Any]] = []
+        for method, kwargs in _steps(args):
+            value = getattr(introspector, method)(**kwargs)
+            sections.extend(_value_sections(method, kwargs, value))
+        _render(provider, sections)
 
     except ConnectionError as e:
         provider.display_connection_error(e)
@@ -287,7 +344,7 @@ def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
         print(f"Error during introspection: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
-        if backend._connection: # type: ignore
+        if backend._connection:  # type: ignore
             backend.disconnect()
 
 
@@ -296,100 +353,11 @@ async def _handle_introspect_async(args, backend, provider):
     try:
         await backend.connect()
         introspector = backend.introspector
-
-        if args.type == "tables":
-            tables = introspector.get_tables(schema=args.schema)
-            data = _serialize_for_output(tables)
-            provider.display_results(data, title="Tables")
-
-        elif args.type == "views":
-            views = introspector.get_views(schema=args.schema)
-            data = _serialize_for_output(views)
-            provider.display_results(data, title="Views")
-
-        elif args.type == "table":
-            if not args.name:
-                print("Error: Table name is required for 'table' introspection", file=sys.stderr)
-                sys.exit(1)
-            columns = introspector.get_columns(args.name, schema=args.schema)
-            data = _serialize_for_output(columns)
-            provider.display_results(data, title=f"Columns of {args.name}")
-            indexes = introspector.get_indexes(args.name, schema=args.schema)
-            if indexes:
-                provider.display_results(_serialize_for_output(indexes), title=f"Indexes of {args.name}")
-            fks = introspector.get_foreign_keys(args.name, schema=args.schema)
-            if fks:
-                provider.display_results(_serialize_for_output(fks), title=f"Foreign Keys of {args.name}")
-
-        elif args.type == "columns":
-            if not args.name:
-                print("Error: Table name is required for 'columns' introspection", file=sys.stderr)
-                sys.exit(1)
-            columns = introspector.get_columns(args.name, schema=args.schema)
-            data = _serialize_for_output(columns)
-            provider.display_results(data, title=f"Columns of {args.name}")
-
-        elif args.type == "indexes":
-            if not args.name:
-                print("Error: Table name is required for 'indexes' introspection", file=sys.stderr)
-                sys.exit(1)
-            indexes = introspector.get_indexes(args.name, schema=args.schema)
-            data = _serialize_for_output(indexes)
-            provider.display_results(data, title=f"Indexes of {args.name}")
-
-        elif args.type == "foreign-keys":
-            if not args.name:
-                print("Error: Table name is required for 'foreign-keys' introspection", file=sys.stderr)
-                sys.exit(1)
-            fks = introspector.get_foreign_keys(args.name, schema=args.schema)
-            data = _serialize_for_output(fks)
-            provider.display_results(data, title=f"Foreign Keys of {args.name}")
-
-        elif args.type == "triggers":
-            if args.name:
-                triggers = introspector.get_triggers(table=args.name, schema=args.schema)
-            else:
-                tables = introspector.get_tables(schema=args.schema)
-                all_triggers = []
-                for t in tables:
-                    tname = t.name if hasattr(t, 'name') else t.get('TABLE_NAME', t.get('name', ''))
-                    if tname:
-                        try:
-                            t_triggers = introspector.get_triggers(table=tname, schema=args.schema)
-                            all_triggers.extend(t_triggers)
-                        except Exception:
-                            pass
-                triggers = all_triggers
-            data = _serialize_for_output(triggers)
-            provider.display_results(data, title="Triggers")
-
-        elif args.type == "database":
-            if args.name:
-                constraints = introspector.get_constraints(table=args.name, schema=args.schema)
-                data = _serialize_for_output(constraints)
-                provider.display_results([data] if isinstance(data, dict) else data, title=f"Constraints of {args.name}")
-            else:
-                tables = introspector.get_tables(schema=args.schema)
-                db_info = {
-                    "tables": _serialize_for_output(tables),
-                    "schema": args.schema,
-                }
-                provider.display_results([db_info], title="Database Info")
-
-        elif args.type == "procedures":
-            procedures = introspector.get_procedures(schema=args.schema)
-            data = _serialize_for_output(procedures)
-            provider.display_results(data, title="Stored Procedures")
-
-        elif args.type == "functions":
-            functions = introspector.get_functions(schema=args.schema)
-            data = _serialize_for_output(functions)
-            provider.display_results(data, title="User-Defined Functions")
-
-        elif args.type == "sequences":
-            sequences = introspector.get_sequences(schema=args.schema)
-            data = _serialize_for_output(sequences)
-            provider.display_results(data, title="Sequences")
+        sections: List[Tuple[str, Any]] = []
+        for method, kwargs in _steps(args):
+            value = await getattr(introspector, method)(**kwargs)
+            sections.extend(_value_sections(method, kwargs, value))
+        _render(provider, sections)
 
     except ConnectionError as e:
         provider.display_connection_error(e)
@@ -401,5 +369,5 @@ async def _handle_introspect_async(args, backend, provider):
         print(f"Error during introspection: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
-        if backend._connection: # type: ignore
+        if backend._connection:  # type: ignore
             await backend.disconnect()

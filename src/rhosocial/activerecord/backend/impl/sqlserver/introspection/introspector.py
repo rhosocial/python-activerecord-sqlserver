@@ -6,6 +6,7 @@ using INFORMATION_SCHEMA and sys.* catalog views.
 """
 
 import copy
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Tuple
 
 from rhosocial.activerecord.backend.introspection.base import (
@@ -36,6 +37,12 @@ from rhosocial.activerecord.backend.introspection.types import (
 from rhosocial.activerecord.backend.expression.types._base import DataType
 
 from ..query_nodes import SQLServerNodeBuilderMixin
+from .types import (
+    SQLServerExtendedPropertyInfo,
+    SQLServerRoutineInfo,
+    SQLServerSchemaInfo,
+    SQLServerSequenceInfo,
+)
 
 #: ``INFORMATION_SCHEMA.COLUMNS.CHARACTER_MAXIMUM_LENGTH`` reports ``-1``
 #: for a MAX-capable column.  Only these three spell that marker as a length
@@ -81,6 +88,46 @@ _DATETIME_PRECISION_TYPES = frozenset({"time", "datetime2", "datetimeoffset"})
 #: with the dialect's ``type_parameter_defaults`` machinery rather than this
 #: catalog rebuild; it is recorded here rather than silently widened.
 _DATETIME_DEFAULT_PRECISION = 7
+
+#: The ``sys.extended_properties.class_desc`` values SQL Server documents.
+#: The property table is shared by objects, columns, schemas, indexes,
+#: parameters and so on, and ``major_id``/``minor_id`` mean something
+#: different for each; accepting a name outside this set would silently
+#: return nothing instead of saying the family is unknown.
+_EXTENDED_PROPERTY_CLASSES = frozenset({
+    "DATABASE",
+    "OBJECT_OR_COLUMN",
+    "PARAMETER",
+    "SCHEMA",
+    "DATABASE_PRINCIPAL",
+    "ASSEMBLY",
+    "TYPE",
+    "INDEX",
+    "XML_SCHEMA_COLLECTION",
+    "XML_SCHEMA_NAMESPACE",
+    "TYPE_SCHEMA",
+    "XML_INDEX",
+    "PLAN_GUIDE",
+})
+
+#: ``sys.objects.type`` codes for user-defined functions: scalar (``FN``),
+#: inline table-valued (``IF``), multi-statement table-valued (``TF``),
+#: CLR scalar (``FS``) and CLR table-valued (``FT``). ``sys.procedures``
+#: covers the procedure half.
+_FUNCTION_TYPE_CODES = ("FN", "IF", "TF", "FS", "FT")
+
+#: ``sys.sequences`` stores these as ``sql_variant``. The ODBC driver refuses
+#: to fetch that type (``HY106``), so every one of them is cast to text in the
+#: statement and parsed back here. Keeping the list in one place is what stops
+#: a later column from being added to the projection without its cast.
+_SEQUENCE_NUMERIC_COLUMNS = (
+    "start_value",
+    "increment",
+    "minimum_value",
+    "maximum_value",
+    "current_value",
+)
+
 
 
 class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
@@ -446,6 +493,218 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         )
 
     # ------------------------------------------------------------------
+    # Backend-specific questions
+    #
+    # Core models what every backend has; these are the catalogue families
+    # SQL Server has and core has no scope for. Each is built from the same
+    # expression nodes as the shared ones, and each carries the family name
+    # into its cache key (see the managers below) so two families never
+    # answer each other's question.
+    # ------------------------------------------------------------------
+
+    def _build_schema_list_sql(self) -> Tuple[str, tuple]:
+        """``sys.schemas`` with the owning principal's name.
+
+        ``sys.schemas`` is joined to ``sys.database_principals`` on
+        ``principal_id`` -- not on ``name`` -- because a schema and its owner
+        need not share a name. The join is a ``LEFT JOIN``: the catalogue
+        keeps a schema after its owning principal is dropped, leaving
+        ``principal_id`` dangling, and that row is still a schema.
+        """
+        joined = self._join(
+            self._relation("schemas", "sys", alias="s"),
+            self._relation("database_principals", "sys", alias="p"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("principal_id", "s"), self._col("principal_id", "p")
+            ),
+        )
+        return self._select(
+            [
+                self._col("schema_id", "s"),
+                self._col("name", "s", alias="schema_name"),
+                self._col("name", "p", alias="owner"),
+            ],
+            from_=joined,
+            order_by=[self._col("name", "s")],
+        )
+
+    def _build_extended_property_list_sql(
+        self,
+        major_id: int,
+        minor_id: Optional[int],
+        class_name: str,
+        schema: Optional[str],
+    ) -> Tuple[str, tuple]:
+        """``sys.extended_properties`` for one object, optionally one column.
+
+        ``value`` is ``sql_variant`` and the driver cannot fetch it, so it is
+        cast to ``NVARCHAR(4000)`` in the statement: the property text is
+        what a caller wants, and truncation beyond 4000 characters is
+        impossible to avoid without a second round trip.
+
+        The schema filter is the one part that is not a column of
+        ``sys.extended_properties``: it resolves ``major_id`` through
+        ``sys.objects`` and ``sys.schemas``. That join only means something
+        for the object-scoped classes (``OBJECT_OR_COLUMN`` above all), so
+        asking for a schema while listing, say, ``DATABASE`` properties is a
+        contradiction rather than an empty answer -- refused before the
+        query is built.
+        """
+        if class_name not in _EXTENDED_PROPERTY_CLASSES:
+            raise ValueError(
+                f"unknown extended-property class {class_name!r}; "
+                f"expected one of {sorted(_EXTENDED_PROPERTY_CLASSES)}"
+            )
+        if schema is not None and class_name not in ("OBJECT_OR_COLUMN", "INDEX"):
+            raise ValueError(
+                f"a schema can only narrow object-scoped extended properties; "
+                f"{class_name!r} has no schema"
+            )
+
+        joined = self._join(
+            self._relation("extended_properties", "sys", alias="ep"),
+            self._relation("objects", "sys", alias="o"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("major_id", "ep"), self._col("object_id", "o")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("schemas", "sys", alias="s"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("schema_id", "o"), self._col("schema_id", "s")
+            ),
+        )
+
+        conditions = [
+            self._eq(self._col("major_id", "ep"), self._lit(major_id)),
+            self._eq(self._col("class_desc", "ep"), self._lit(class_name)),
+        ]
+        if minor_id is not None:
+            conditions.append(
+                self._eq(self._col("minor_id", "ep"), self._lit(minor_id))
+            )
+        if schema is not None:
+            conditions.append(self._eq(self._col("name", "s"), self._lit(schema)))
+
+        return self._select(
+            [
+                self._col("class", "ep", alias="class_id"),
+                self._col("class_desc", "ep", alias="class_name"),
+                self._col("major_id", "ep", alias="major_id"),
+                self._col("minor_id", "ep", alias="minor_id"),
+                self._col("name", "ep", alias="property_name"),
+                self._cast(
+                    self._col("value", "ep"), "NVARCHAR(4000)"
+                ).as_("property_value"),
+            ],
+            from_=joined,
+            where=self._and(*conditions),
+            order_by=[self._col("minor_id", "ep"), self._col("name", "ep")],
+        )
+
+    def _build_routine_list_sql(
+        self, type_codes: Tuple[str, ...], schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        """Schema-scoped routines of the given ``sys.objects.type`` codes.
+
+        One builder for both families: a procedure is a routine whose
+        ``sys.objects.type`` is ``P``/``PC`` and a function is one of the
+        ``FN``/``IF``/``TF``/``FS``/``FT`` codes. What differs is the code
+        set, and that is the argument.
+        """
+        target = schema or self._get_default_schema()
+        joined = self._join(
+            self._relation("objects", "sys", alias="o"),
+            self._relation("schemas", "sys", alias="s"),
+            join_type="JOIN",
+            condition=self._eq(
+                self._col("schema_id", "o"), self._col("schema_id", "s")
+            ),
+        )
+        return self._select(
+            [
+                self._col("name", "o", alias="routine_name"),
+                self._col("name", "s", alias="schema_name"),
+                self._col("type", "o", alias="type_code"),
+                self._col("type_desc", "o"),
+                self._col("create_date", "o", alias="created_at"),
+                self._col("modify_date", "o", alias="modified_at"),
+                self._col("is_ms_shipped", "o"),
+            ],
+            from_=joined,
+            where=self._and(
+                self._in(self._col("type", "o"), type_codes),
+                self._eq(self._col("name", "s"), self._lit(target)),
+            ),
+            order_by=[self._col("name", "o")],
+        )
+
+    def _build_procedure_list_sql(
+        self, schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        """Stored procedures: ``sys.objects`` types ``P`` and ``PC``."""
+        return self._build_routine_list_sql(("P", "PC"), schema)
+
+    def _build_function_list_sql(
+        self, schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        """User-defined functions: the five ``sys.objects`` function codes."""
+        return self._build_routine_list_sql(_FUNCTION_TYPE_CODES, schema)
+
+    def _build_sequence_list_sql(
+        self, schema: Optional[str]
+    ) -> Tuple[str, tuple]:
+        """``sys.sequences`` with every ``sql_variant`` value cast to text.
+
+        ``start_value``/``increment``/``minimum_value``/``maximum_value``/
+        ``current_value`` are ``sql_variant``. pyodbc raises
+        ``ODBC SQL type -25 is not yet supported`` on the very first of them,
+        so a projection that selected them raw could not be fetched at all --
+        which is why the cast is in the statement rather than the parser.
+        """
+        target = schema or self._get_default_schema()
+        joined = self._join(
+            self._relation("sequences", "sys", alias="q"),
+            self._relation("schemas", "sys", alias="s"),
+            join_type="JOIN",
+            condition=self._eq(
+                self._col("schema_id", "q"), self._col("schema_id", "s")
+            ),
+        )
+        projection = [
+            self._col("name", "q", alias="sequence_name"),
+            self._col("name", "s", alias="schema_name"),
+            self._fn(
+                "TYPE_NAME", self._col("user_type_id", "q"), alias="data_type"
+            ),
+        ]
+        for column in _SEQUENCE_NUMERIC_COLUMNS:
+            projection.append(
+                self._cast(
+                    self._col(column, "q"), "NVARCHAR(64)"
+                ).as_(column)
+            )
+        projection.extend(
+            [
+                self._col("is_cycling", "q"),
+                self._col("is_cached", "q"),
+                self._cast(self._col("cache_size", "q"), "BIGINT").as_(
+                    "cache_size"
+                ),
+            ]
+        )
+        return self._select(
+            projection,
+            from_=joined,
+            where=self._eq(self._col("name", "s"), self._lit(target)),
+            order_by=[self._col("name", "q")],
+        )
+
+    # ------------------------------------------------------------------
     # Parse methods — pure Python, no I/O
     # ------------------------------------------------------------------
 
@@ -672,6 +931,98 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             for row in rows
         ]
 
+    # ------------------------------------------------------------------
+    # Backend-specific parsers
+    # ------------------------------------------------------------------
+
+    def _parse_schemas(
+        self, rows: List[Dict[str, Any]]
+    ) -> List[SQLServerSchemaInfo]:
+        return [
+            SQLServerSchemaInfo(
+                name=row.get("schema_name", ""),
+                schema_id=int(row.get("schema_id") or 0),
+                owner=row.get("owner"),
+            )
+            for row in rows
+        ]
+
+    def _parse_extended_properties(
+        self, rows: List[Dict[str, Any]]
+    ) -> List[SQLServerExtendedPropertyInfo]:
+        properties: List[SQLServerExtendedPropertyInfo] = []
+        for row in rows:
+            value = row.get("property_value")
+            properties.append(
+                SQLServerExtendedPropertyInfo(
+                    name=row.get("property_name", ""),
+                    # The cast widened a sql_variant to text; a NULL value is
+                    # a property that was set to NULL, not a missing property,
+                    # so it stays None rather than becoming "".
+                    value=None if value is None else str(value),
+                    class_id=int(row.get("class_id") or 0),
+                    class_name=row.get("class_name") or "",
+                    major_id=int(row.get("major_id") or 0),
+                    minor_id=int(row.get("minor_id") or 0),
+                )
+            )
+        return properties
+
+    def _parse_routines(
+        self, rows: List[Dict[str, Any]]
+    ) -> List[SQLServerRoutineInfo]:
+        return [
+            SQLServerRoutineInfo(
+                name=row.get("routine_name", ""),
+                schema=row.get("schema_name"),
+                type_code=(row.get("type_code") or "").strip(),
+                type_desc=row.get("type_desc") or "",
+                created_at=row.get("created_at"),
+                modified_at=row.get("modified_at"),
+                is_ms_shipped=bool(row.get("is_ms_shipped")),
+            )
+            for row in rows
+        ]
+
+    def _parse_sequences(
+        self, rows: List[Dict[str, Any]]
+    ) -> List[SQLServerSequenceInfo]:
+        sequences: List[SQLServerSequenceInfo] = []
+        for row in rows:
+            cache_size = row.get("cache_size")
+            sequences.append(
+                SQLServerSequenceInfo(
+                    name=row.get("sequence_name", ""),
+                    schema=row.get("schema_name"),
+                    data_type=row.get("data_type"),
+                    start_value=self._as_decimal(row.get("start_value")),
+                    increment=self._as_decimal(row.get("increment")),
+                    minimum_value=self._as_decimal(row.get("minimum_value")),
+                    maximum_value=self._as_decimal(row.get("maximum_value")),
+                    current_value=self._as_decimal(row.get("current_value")),
+                    is_cycling=bool(row.get("is_cycling")),
+                    is_cached=bool(row.get("is_cached")),
+                    cache_size=int(cache_size) if cache_size is not None else None,
+                )
+            )
+        return sequences
+
+    @staticmethod
+    def _as_decimal(value: Any) -> Optional[Decimal]:
+        """Read a cast-to-text sequence value back as an exact number.
+
+        ``None`` means the server reported NULL (an unstarted sequence has no
+        ``current_value``); unparseable text also degrades to ``None`` rather
+        than aborting the whole listing, matching the contract
+        ``parsed_data_type`` follows for columns.
+        """
+        if value is None:
+            return None
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return None
+
 
 class SyncSQLServerIntrospector(
     SQLServerIntrospectorMixin, SyncAbstractIntrospector
@@ -732,6 +1083,121 @@ class SyncSQLServerIntrospector(
         )
         self._cache.set(key, columns)
         return columns
+
+    # ------------------------------------------------------------------
+    # Backend-specific questions (sync)
+    #
+    # The cache keys follow the same discipline as core's shared methods:
+    # the scope comes from IntrospectionScope, the schema rides the
+    # dedicated argument, and a family that shares a scope with another
+    # family names itself in ``extra``. Comparison is by scope value and
+    # schema, so ``list_procedures(schema="dbo")`` and
+    # ``list_functions(schema="dbo")`` never answer each other.
+    # ------------------------------------------------------------------
+
+    def list_schemas(self) -> List[SQLServerSchemaInfo]:
+        """List the database's schemas with their owning principal."""
+        key = self._cache.key(IntrospectionScope.SCHEMA)
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_schema_list_sql()
+        schemas = self._parse_schemas(self._executor.execute(sql, params))
+        self._cache.set(key, schemas)
+        return schemas
+
+    def list_extended_properties(
+        self,
+        major_id: int,
+        minor_id: Optional[int] = None,
+        class_name: str = "OBJECT_OR_COLUMN",
+        schema: Optional[str] = None,
+    ) -> List[SQLServerExtendedPropertyInfo]:
+        """List ``sys.extended_properties`` rows for one catalogue object.
+
+        Args:
+            major_id: The object id for ``OBJECT_OR_COLUMN`` (class 1), or the
+                id in the family's own space for other classes.
+            minor_id: ``None`` for every row of the object (the object's own
+                properties plus its columns'), or the exact ``minor_id`` --
+                ``0`` for an object-level property, a ``column_id`` for a
+                column-level one.
+            class_name: The ``class_desc`` family, ``OBJECT_OR_COLUMN`` by
+                default -- the family ``MS_Description`` normally lives in.
+            schema: Restrict to objects in this schema. Only meaningful for
+                the object-scoped classes; asking for a schema on a family
+                that has none raises ``ValueError`` instead of returning
+                nothing.
+
+        The cache entry is keyed on the object id rather than a table name,
+        so ``invalidate_cache(TABLE, "<table>")`` does not drop it; clear the
+        scope or pass the object id instead.
+        """
+        key = self._cache.key(
+            IntrospectionScope.TABLE,
+            str(major_id),
+            schema=schema,
+            extra=f"extended_properties:{class_name}:{minor_id}",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_extended_property_list_sql(
+            major_id, minor_id, class_name, schema
+        )
+        properties = self._parse_extended_properties(
+            self._executor.execute(sql, params)
+        )
+        self._cache.set(key, properties)
+        return properties
+
+    def list_procedures(
+        self, schema: Optional[str] = None
+    ) -> List[SQLServerRoutineInfo]:
+        """List stored procedures in *schema* (``sys.objects`` types P/PC)."""
+        key = self._cache.key(
+            IntrospectionScope.TABLE, schema=schema, extra="procedures"
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_procedure_list_sql(schema)
+        procedures = self._parse_routines(self._executor.execute(sql, params))
+        self._cache.set(key, procedures)
+        return procedures
+
+    def list_functions(
+        self, schema: Optional[str] = None
+    ) -> List[SQLServerRoutineInfo]:
+        """List user-defined functions in *schema*."""
+        key = self._cache.key(
+            IntrospectionScope.TABLE, schema=schema, extra="functions"
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_function_list_sql(schema)
+        functions = self._parse_routines(self._executor.execute(sql, params))
+        self._cache.set(key, functions)
+        return functions
+
+    def list_sequences(
+        self, schema: Optional[str] = None
+    ) -> List[SQLServerSequenceInfo]:
+        """List sequences in *schema* (``sys.sequences``)."""
+        key = self._cache.key(IntrospectionScope.SEQUENCE, schema=schema)
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_sequence_list_sql(schema)
+        sequences = self._parse_sequences(self._executor.execute(sql, params))
+        self._cache.set(key, sequences)
+        return sequences
 
 
 class AsyncSQLServerIntrospector(
@@ -795,3 +1261,102 @@ class AsyncSQLServerIntrospector(
         )
         self._cache.set(key, columns)
         return columns
+
+    # ------------------------------------------------------------------
+    # Backend-specific questions (async)
+    #
+    # Same signatures as the sync manager, same cache keys, same parsers;
+    # only the executor is awaited.
+    # ------------------------------------------------------------------
+
+    async def list_schemas(self) -> List[SQLServerSchemaInfo]:
+        """List the database's schemas with their owning principal."""
+        key = self._cache.key(IntrospectionScope.SCHEMA)
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_schema_list_sql()
+        schemas = self._parse_schemas(await self._executor.execute(sql, params))
+        self._cache.set(key, schemas)
+        return schemas
+
+    async def list_extended_properties(
+        self,
+        major_id: int,
+        minor_id: Optional[int] = None,
+        class_name: str = "OBJECT_OR_COLUMN",
+        schema: Optional[str] = None,
+    ) -> List[SQLServerExtendedPropertyInfo]:
+        """List ``sys.extended_properties`` rows for one catalogue object."""
+        key = self._cache.key(
+            IntrospectionScope.TABLE,
+            str(major_id),
+            schema=schema,
+            extra=f"extended_properties:{class_name}:{minor_id}",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_extended_property_list_sql(
+            major_id, minor_id, class_name, schema
+        )
+        properties = self._parse_extended_properties(
+            await self._executor.execute(sql, params)
+        )
+        self._cache.set(key, properties)
+        return properties
+
+    async def list_procedures(
+        self, schema: Optional[str] = None
+    ) -> List[SQLServerRoutineInfo]:
+        """List stored procedures in *schema* (``sys.objects`` types P/PC)."""
+        key = self._cache.key(
+            IntrospectionScope.TABLE, schema=schema, extra="procedures"
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_procedure_list_sql(schema)
+        procedures = self._parse_routines(
+            await self._executor.execute(sql, params)
+        )
+        self._cache.set(key, procedures)
+        return procedures
+
+    async def list_functions(
+        self, schema: Optional[str] = None
+    ) -> List[SQLServerRoutineInfo]:
+        """List user-defined functions in *schema*."""
+        key = self._cache.key(
+            IntrospectionScope.TABLE, schema=schema, extra="functions"
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_function_list_sql(schema)
+        functions = self._parse_routines(
+            await self._executor.execute(sql, params)
+        )
+        self._cache.set(key, functions)
+        return functions
+
+    async def list_sequences(
+        self, schema: Optional[str] = None
+    ) -> List[SQLServerSequenceInfo]:
+        """List sequences in *schema* (``sys.sequences``)."""
+        key = self._cache.key(IntrospectionScope.SEQUENCE, schema=schema)
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self._build_sequence_list_sql(schema)
+        sequences = self._parse_sequences(
+            await self._executor.execute(sql, params)
+        )
+        self._cache.set(key, sequences)
+        return sequences
+

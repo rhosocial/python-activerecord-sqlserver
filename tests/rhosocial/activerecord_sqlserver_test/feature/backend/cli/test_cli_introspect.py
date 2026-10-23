@@ -1,9 +1,14 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/cli/test_cli_introspect.py
 """Offline black-box tests for the ``introspect`` subcommand.
 
-All ``cli/introspect.py`` dispatch branches run against a fake backend whose
-``introspector`` returns fixed data, so every type (including the SQL Server
-specific ``procedures``/``functions``) is covered without a live server.
+The fakes below implement the *real* introspector API -- ``list_tables``,
+``list_views``, ``list_columns``, ... plus this backend's ``list_schemas``/
+``list_procedures``/``list_functions``/``list_sequences``. That matters: the
+command used to call ``get_tables``/``get_views``/``get_columns``, which exist
+nowhere in the backend, so every type failed against a real backend while the
+old fakes happily answered methods of those names. ``test_dispatch_contract``
+closes that gap by checking every type against the real introspector classes,
+with no fake in the way.
 """
 import argparse
 import json
@@ -11,17 +16,28 @@ import json
 import pytest
 
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
-from rhosocial.activerecord.backend.impl.sqlserver import backend as backend_pkg
 from rhosocial.activerecord.backend.impl.sqlserver.backend import async_backend as async_backend_mod
 from rhosocial.activerecord.backend.impl.sqlserver.cli import introspect as introspect_mod
+from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
+    AsyncSQLServerIntrospector,
+    SyncSQLServerIntrospector,
+)
+
+
+class FakeTable:
+    """The shape ``get_table_info`` returns, as far as the CLI reads it."""
+
+    def __init__(self, name):
+        self.name = name
+        self.columns = [{"method": "columns"}]
+        self.indexes = [{"method": "indexes"}]
+        self.foreign_keys = [{"method": "foreign_keys"}]
 
 
 class FakeIntrospector:
     """Fixed-data stand-in recording calls with their kwargs."""
 
     instances = []
-    # When set, ``get_tables`` returns this instead of the default payload.
-    tables_override = None
 
     def __init__(self):
         self.calls = []
@@ -31,51 +47,80 @@ class FakeIntrospector:
         self.calls.append((method, kwargs))
         return [{"method": method, **kwargs}]
 
-    def get_tables(self, schema=None):
-        if self.tables_override is not None:
-            return self.tables_override
-        return self._record("get_tables", schema=schema)
+    def list_tables(self, schema=None, include_system=False):
+        return self._record("list_tables", schema=schema, include_system=include_system)
 
-    def get_views(self, schema=None):
-        return self._record("get_views", schema=schema)
+    def list_views(self, schema=None, include_system=False):
+        return self._record("list_views", schema=schema, include_system=include_system)
 
-    def get_columns(self, table, schema=None):
-        return self._record("get_columns", table=table, schema=schema)
+    def list_columns(self, table_name, schema=None):
+        return self._record("list_columns", table_name=table_name, schema=schema)
 
-    def get_indexes(self, table, schema=None):
-        return self._record("get_indexes", table=table, schema=schema)
+    def list_indexes(self, table_name, schema=None):
+        return self._record("list_indexes", table_name=table_name, schema=schema)
 
-    def get_foreign_keys(self, table, schema=None):
-        return self._record("get_foreign_keys", table=table, schema=schema)
+    def list_foreign_keys(self, table_name, schema=None):
+        return self._record("list_foreign_keys", table_name=table_name, schema=schema)
 
-    def get_triggers(self, table=None, schema=None):
-        if table == "explode":
-            raise RuntimeError("trigger probe failed")
-        return self._record("get_triggers", table=table, schema=schema)
+    def list_triggers(self, table_name=None, schema=None):
+        return self._record("list_triggers", table_name=table_name, schema=schema)
 
-    def get_constraints(self, table=None, schema=None):
-        return self._record("get_constraints", table=table, schema=schema)
+    def list_procedures(self, schema=None):
+        return self._record("list_procedures", schema=schema)
 
-    def get_procedures(self, schema=None):
-        return self._record("get_procedures", schema=schema)
+    def list_functions(self, schema=None):
+        return self._record("list_functions", schema=schema)
 
-    def get_functions(self, schema=None):
-        return self._record("get_functions", schema=schema)
+    def list_sequences(self, schema=None):
+        return self._record("list_sequences", schema=schema)
 
-    def get_sequences(self, schema=None):
-        return self._record("get_sequences", schema=schema)
+    def list_schemas(self):
+        return self._record("list_schemas")
+
+    def get_database_info(self):
+        return {"db_name": "db", "version": "16.0.4250.1"}
+
+    def get_table_info(self, table_name, schema=None):
+        self.calls.append(("get_table_info", {"table_name": table_name, "schema": schema}))
+        return FakeTable(table_name)
+
+
+class FakeMissingTableIntrospector(FakeIntrospector):
+    def get_table_info(self, table_name, schema=None):
+        self.calls.append(("get_table_info", {"table_name": table_name, "schema": schema}))
+        return None
+
+
+class FakeAsyncIntrospector(FakeIntrospector):
+    """The same records, awaited."""
+
+    async def list_tables(self, schema=None, include_system=False):
+        return FakeIntrospector.list_tables(self, schema, include_system)
+
+    async def list_schemas(self):
+        return FakeIntrospector.list_schemas(self)
+
+    async def list_triggers(self, table_name=None, schema=None):
+        return FakeIntrospector.list_triggers(self, table_name, schema)
+
+    async def get_database_info(self):
+        return FakeIntrospector.get_database_info(self)
+
+    async def get_table_info(self, table_name, schema=None):
+        return FakeIntrospector.get_table_info(self, table_name, schema)
 
 
 class FakeBackendBase:
     created = []
     instances = []
     connect_error = None
+    introspector_class = FakeIntrospector
 
     def __init__(self, connection_config=None):
         self.connection_config = connection_config
         self._connection = object()
         self.disconnects = 0
-        self.introspector = FakeIntrospector()
+        self.introspector = self.introspector_class()
         type(self).created.append(connection_config)
         type(self).instances.append(self)
 
@@ -86,23 +131,40 @@ class FakeBackendBase:
     def disconnect(self):
         self.disconnects += 1
 
-    def introspect_and_adapt(self):
-        pass
-
 
 class FakeAsyncBackendBase(FakeBackendBase):
+    introspector_class = FakeAsyncIntrospector
+
     async def connect(self):
         FakeBackendBase.connect(self)
 
     async def disconnect(self):
         self.disconnects += 1
 
-    async def introspect_and_adapt(self):
-        pass
+
+def _tracking_class(base, name, introspector_class=None):
+    attrs = {"created": [], "instances": []}
+    if introspector_class is not None:
+        attrs["introspector_class"] = introspector_class
+    return type(name, (base,), attrs)
 
 
-def _tracking_class(base, name):
-    return type(name, (base,), {"created": [], "instances": []})
+def _json_documents(text):
+    """Every standalone JSON document in *text*, in order.
+
+    A table detail is rendered as three sections, each its own document, so
+    the output is not one JSON array.
+    """
+    decoder = json.JSONDecoder()
+    index, documents = 0, []
+    while index < len(text):
+        while index < len(text) and text[index].isspace():
+            index += 1
+        if index >= len(text):
+            break
+        document, index = decoder.raw_decode(text, index)
+        documents.append(document)
+    return documents
 
 
 @pytest.fixture(autouse=True)
@@ -118,10 +180,11 @@ def _clean_env(monkeypatch):
 def _patched(monkeypatch):
     """Patch sync backend construction and reset per-test recording state."""
     monkeypatch.setattr(
-        introspect_mod, "SQLServerBackend", _tracking_class(FakeBackendBase, "FakeIntrospectBackend")
+        introspect_mod,
+        "SQLServerBackend",
+        _tracking_class(FakeBackendBase, "FakeIntrospectBackend"),
     )
     FakeIntrospector.instances = []
-    FakeIntrospector.tables_override = None
 
 
 def make_args(argv):
@@ -135,6 +198,9 @@ class TestParserContract:
     def test_sqlserver_specific_types_accepted(self):
         assert make_args(["introspect", "procedures"]).type == "procedures"
         assert make_args(["introspect", "functions"]).type == "functions"
+
+    def test_schemas_type_accepted(self):
+        assert make_args(["introspect", "schemas"]).type == "schemas"
 
     def test_schema_defaults_to_dbo(self):
         args = make_args(["introspect", "tables"])
@@ -158,39 +224,112 @@ class TestParserContract:
         assert introspect_mod.SQLServerBackend.created == []
 
 
+class TestDispatchContract:
+    """Every advertised type resolves to a method the real backend has.
+
+    No fake and no server: this is the regression guard for the command
+    calling methods (``get_tables`` and friends) that never existed.
+    """
+
+    @pytest.mark.parametrize("kind", introspect_mod.INTROSPECT_TYPES)
+    def test_type_maps_to_a_real_method_on_both_managers(self, kind):
+        argv = ["introspect", kind]
+        if kind in ("table", "columns", "indexes", "foreign-keys"):
+            argv.append("users")
+        for method, _kwargs in introspect_mod._steps(make_args(argv)):
+            assert hasattr(SyncSQLServerIntrospector, method), method
+            assert hasattr(AsyncSQLServerIntrospector, method), method
+
+    def test_database_with_a_name_also_maps_to_a_real_method(self):
+        methods = [
+            method
+            for method, _ in introspect_mod._steps(
+                make_args(["introspect", "database", "users"])
+            )
+        ]
+        assert methods == ["get_table_info"]
+
+
 class TestHandleDispatch:
     @pytest.mark.parametrize(
-        "argv",
+        ("argv", "method"),
         [
-            ["tables"],
-            ["views"],
-            ["columns", "users"],
-            ["indexes", "users"],
-            ["foreign-keys", "users"],
-            ["procedures"],
-            ["functions"],
-            ["sequences"],
+            (["tables"], "list_tables"),
+            (["views"], "list_views"),
+            (["columns", "users"], "list_columns"),
+            (["indexes", "users"], "list_indexes"),
+            (["foreign-keys", "users"], "list_foreign_keys"),
+            (["triggers"], "list_triggers"),
+            (["procedures"], "list_procedures"),
+            (["functions"], "list_functions"),
+            (["sequences"], "list_sequences"),
+            (["schemas"], "list_schemas"),
         ],
     )
-    def test_types_dispatch_and_render_json(self, argv, capsys):
+    def test_types_dispatch_and_render_json(self, argv, method, capsys):
         introspect_mod.handle(make_args(["introspect"] + argv + ["--database", "db"]))
         payload = json.loads(capsys.readouterr().out)
-        assert isinstance(payload, list) and payload[0]["method"]
+        assert isinstance(payload, list)
+        assert payload[0]["method"] == method
 
-    def test_tables_receives_schema(self, capsys):
+    def test_tables_receives_schema_and_include_system(self, capsys):
         introspect_mod.handle(
-            make_args(["introspect", "tables", "--database", "db", "--schema", "sales"])
+            make_args(
+                ["introspect", "tables", "--database", "db", "--schema", "sales", "--include-system"]
+            )
         )
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
-        assert method == "get_tables"
-        assert kwargs["schema"] == "sales"
+        assert method == "list_tables"
+        assert kwargs == {"schema": "sales", "include_system": True}
 
-    def test_table_detail_shows_columns_indexes_fks(self, capsys):
+    def test_schemas_ignore_the_schema_flag(self):
+        introspect_mod.handle(make_args(["introspect", "schemas", "--database", "db"]))
+        method, kwargs = FakeIntrospector.instances[-1].calls[-1]
+        assert (method, kwargs) == ("list_schemas", {})
+
+    def test_table_detail_renders_columns_indexes_fks(self, capsys):
         introspect_mod.handle(make_args(["introspect", "table", "users", "--database", "db"]))
         inst = FakeIntrospector.instances[-1]
-        methods = [m for m, _ in inst.calls]
-        assert methods == ["get_columns", "get_indexes", "get_foreign_keys"]
-        assert all(kwargs["table"] == "users" for _, kwargs in inst.calls)
+        assert [m for m, _ in inst.calls] == ["get_table_info"]
+        documents = _json_documents(capsys.readouterr().out)
+        assert [doc[0]["method"] for doc in documents] == [
+            "columns",
+            "indexes",
+            "foreign_keys",
+        ]
+
+    def test_table_detail_without_secondary_lists_renders_columns_only(self, monkeypatch, capsys):
+        class ColumnsOnly(FakeIntrospector):
+            def get_table_info(self, table_name, schema=None):
+                table = FakeTable(table_name)
+                table.indexes = []
+                table.foreign_keys = []
+                self.calls.append(("get_table_info", {"table_name": table_name}))
+                return table
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(FakeBackendBase, "ColumnsOnlyBackend", ColumnsOnly),
+        )
+        introspect_mod.handle(make_args(["introspect", "table", "users", "--database", "db"]))
+        documents = _json_documents(capsys.readouterr().out)
+        assert [doc[0]["method"] for doc in documents] == ["columns"]
+
+    def test_missing_table_exits_nonzero(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(
+                FakeBackendBase, "MissingBackend", FakeMissingTableIntrospector
+            ),
+        )
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(["introspect", "table", "ghost", "--database", "db"])
+            )
+        assert exc.value.code == 1
+        assert "not found" in capsys.readouterr().err
 
     @pytest.mark.parametrize("kind", ["table", "columns", "indexes", "foreign-keys"])
     def test_missing_name_exits_for_table_scoped_types(self, kind, capsys):
@@ -204,44 +343,28 @@ class TestHandleDispatch:
             make_args(["introspect", "triggers", "users", "--database", "db"])
         )
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
-        assert method == "get_triggers"
-        assert kwargs["table"] == "users"
+        assert method == "list_triggers"
+        assert kwargs["table_name"] == "users"
 
-    def test_triggers_without_name_iterates_all_tables(self):
-        FakeIntrospector.tables_override = [
-            type("T", (), {"name": "users"}),
-            type("T", (), {"name": "orders"}),
-        ]
+    def test_triggers_without_name_asks_once_for_all(self):
         introspect_mod.handle(make_args(["introspect", "triggers", "--database", "db"]))
-        trigger_calls = [
-            k["table"] for m, k in FakeIntrospector.instances[-1].calls if m == "get_triggers"
+        calls = FakeIntrospector.instances[-1].calls
+        assert calls == [
+            ("list_triggers", {"table_name": None, "schema": "dbo"}),
         ]
-        assert trigger_calls == ["users", "orders"]
 
-    def test_triggers_iteration_swallows_per_table_errors(self):
-        FakeIntrospector.tables_override = [
-            type("T", (), {"name": "explode"}),
-            type("T", (), {"name": "safe"}),
-        ]
-        introspect_mod.handle(make_args(["introspect", "triggers", "--database", "db"]))
-        trigger_calls = [
-            k["table"] for m, k in FakeIntrospector.instances[-1].calls if m == "get_triggers"
-        ]
-        assert trigger_calls == ["safe"]  # failure probing 'explode' is not fatal
-
-    def test_database_without_name_lists_tables_and_schema(self, capsys):
+    def test_database_without_name_reports_database_info(self, capsys):
         introspect_mod.handle(make_args(["introspect", "database", "--database", "db"]))
         payload = json.loads(capsys.readouterr().out)
-        assert payload[0]["schema"] == "dbo"
-        assert payload[0]["tables"][0]["method"] == "get_tables"
+        assert payload == [{"db_name": "db", "version": "16.0.4250.1"}]
 
-    def test_database_with_name_shows_constraints(self, capsys):
+    def test_database_with_name_shows_table_detail(self, capsys):
         introspect_mod.handle(
             make_args(["introspect", "database", "users", "--database", "db"])
         )
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
-        assert method == "get_constraints"
-        assert kwargs["table"] == "users"
+        assert method == "get_table_info"
+        assert kwargs["table_name"] == "users"
 
 
 class TestHandleLifecycleAndConfig:
@@ -264,23 +387,21 @@ class TestHandleLifecycleAndConfig:
 class TestHandleErrors:
     @pytest.mark.parametrize(
         ("backend_error", "introspector_exc"),
-        [(ConnectionError("refused"), None), (None, QueryError("syntax")), (None, RuntimeError("boom"))],
+        [
+            (ConnectionError("refused"), None),
+            (None, QueryError("syntax")),
+            (None, RuntimeError("boom")),
+        ],
     )
     def test_error_paths_exit_nonzero(self, monkeypatch, backend_error, introspector_exc):
         cls = _tracking_class(FakeBackendBase, "ErrBackend")
         if introspector_exc is not None:
 
             class Exploding(FakeIntrospector):
-                def get_tables(self, schema=None):
+                def list_tables(self, schema=None, include_system=False):
                     raise introspector_exc
 
-            orig_init = cls.__init__
-
-            def init_with_exploding(self, connection_config=None):
-                orig_init(self, connection_config=connection_config)
-                self.introspector = Exploding()
-
-            cls.__init__ = init_with_exploding
+            cls.introspector_class = Exploding
         else:
             cls.connect_error = backend_error
         monkeypatch.setattr(introspect_mod, "SQLServerBackend", cls)
@@ -301,7 +422,20 @@ class TestHandleAsync:
             make_args(["introspect", "tables", "--database", "db", "-o", "json", "--async"])
         )
         payload = json.loads(capsys.readouterr().out)
-        assert payload[0]["method"] == "get_tables"
+        assert payload[0]["method"] == "list_tables"
+
+    def test_async_schemas_dispatch(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            async_backend_mod,
+            "AsyncSQLServerBackend",
+            _tracking_class(FakeAsyncBackendBase, "AsyncSchemasFake"),
+            raising=False,
+        )
+        introspect_mod.handle(
+            make_args(["introspect", "schemas", "--database", "db", "-o", "json", "--async"])
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[0]["method"] == "list_schemas"
 
     def test_async_connection_error_exits_nonzero(self, monkeypatch):
         cls = _tracking_class(FakeAsyncBackendBase, "AsyncErr")
