@@ -151,6 +151,7 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
+from .mixins.introspection import SQLServerIntrospectionMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
 from .mixins.graph import SQLServerGraphMixin
@@ -279,6 +280,13 @@ class SQLServerDialect(
     # one. The per-kind rendering lives in the core *NameMixin classes listed
     # below, which is where every object kind is spelled.
     SQLServerNamespaceMixin,
+    # Which catalogue questions SQL Server can answer. These override core's
+    # conservative default of ``False`` -- a default that is right for a
+    # backend which cannot introspect, and wrong for one which can, because a
+    # caller gating on the switch would conclude the capability is absent.
+    # Placed with the other backend answers, before the core bundle each
+    # replaces.
+    SQLServerIntrospectionMixin,
     # A JOIN side is a row source, not an object: it carries the alias the
     # object has no room for, and renders the relation's name through that
     # relation's own format_<kind>_object.
