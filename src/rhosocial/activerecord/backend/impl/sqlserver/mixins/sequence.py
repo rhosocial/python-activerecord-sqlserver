@@ -23,6 +23,7 @@ class SQLServerSequenceMixin:
 
     def supports_sequence_as_data_type(self) -> bool:
         """SQL Server sequences are not usable as column data types."""
+        return False
 
     def supports_sequence_introspection(self) -> bool:
         """SQL Server answers for its sequences from ``sys.sequences``.
@@ -31,7 +32,6 @@ class SQLServerSequenceMixin:
         the shared name so the family is answerable the same way
         everywhere it exists."""
         return True
-        return False
 
     def format_next_value_for_expression(
         self, expr: "SQLServerNextValueForExpression"
