@@ -30,6 +30,13 @@ class SQLServerIntrospectionMixin:
 
     def supports_introspection(self) -> bool:
         """SQL Server introspects through its catalog views."""
+
+    def supports_procedure_introspection(self) -> bool:
+        """SQL Server answers for its stored procedures from ``sys.procedures``.
+
+        The capability for the ``introspect procedures`` family, with
+        bodies from ``OBJECT_DEFINITION``."""
+        return True
         return True
 
     def supports_database_info(self) -> bool:
