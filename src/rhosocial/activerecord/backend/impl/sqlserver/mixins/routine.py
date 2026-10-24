@@ -31,6 +31,26 @@ _ROUTINE_KINDS = ("PROCEDURE", "FUNCTION")
 class SQLServerRoutineMixin:
     """SQL Server stored procedure / function capability and formatting."""
 
+    def supports_procedure_introspection(self) -> bool:
+        """SQL Server answers for its procedures from ``sys.procedures``.
+
+        The capability for the ``introspect procedures`` family, with bodies
+        from ``OBJECT_DEFINITION``. Declared beside the routine DDL switches
+        because both answer the same question about the same catalogue:
+        whether this engine has procedures at all.
+        """
+        return True
+
+    def supports_function_introspection(self) -> bool:
+        """SQL Server answers for its functions from ``sys.objects``.
+
+        The capability for the ``introspect functions`` family. The same
+        catalogue row answers for procedures, so the two switches live
+        together -- but they name different questions, and a caller asking
+        about functions should not have to ask about procedures to find out.
+        """
+        return True
+
     def supports_create_procedure(self) -> bool:
         """CREATE PROCEDURE is supported since SQL Server 2005."""
         return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]

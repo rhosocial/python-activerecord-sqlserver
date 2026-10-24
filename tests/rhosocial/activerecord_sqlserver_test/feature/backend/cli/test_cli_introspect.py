@@ -202,10 +202,9 @@ class TestParserContract:
     def test_schemas_type_accepted(self):
         assert make_args(["introspect", "schemas"]).type == "schemas"
 
-    def test_schema_defaults_to_dbo(self):
-        args = make_args(["introspect", "tables"])
-        assert args.schema == "dbo"
-        assert make_args(["introspect", "tables", "--schema", "sales"]).schema == "sales"
+    def test_schema_flag_is_not_offered(self):
+        with pytest.raises(SystemExit):
+            make_args(["introspect", "tables", "--schema", "sales"])
 
     def test_name_optional_and_include_system_flag(self):
         args = make_args(["introspect", "columns", "users"])
@@ -272,17 +271,15 @@ class TestHandleDispatch:
         assert isinstance(payload, list)
         assert payload[0]["method"] == method
 
-    def test_tables_receives_schema_and_include_system(self, capsys):
+    def test_tables_receives_include_system_and_no_schema(self, capsys):
         introspect_mod.handle(
-            make_args(
-                ["introspect", "tables", "--database", "db", "--schema", "sales", "--include-system"]
-            )
+            make_args(["introspect", "tables", "--database", "db", "--include-system"])
         )
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
         assert method == "list_tables"
-        assert kwargs == {"schema": "sales", "include_system": True}
+        assert kwargs == {"schema": None, "include_system": True}
 
-    def test_schemas_ignore_the_schema_flag(self):
+    def test_schemas_take_no_scope_argument(self):
         introspect_mod.handle(make_args(["introspect", "schemas", "--database", "db"]))
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
         assert (method, kwargs) == ("list_schemas", {})
@@ -350,7 +347,7 @@ class TestHandleDispatch:
         introspect_mod.handle(make_args(["introspect", "triggers", "--database", "db"]))
         calls = FakeIntrospector.instances[-1].calls
         assert calls == [
-            ("list_triggers", {"table_name": None, "schema": "dbo"}),
+            ("list_triggers", {"table_name": None, "schema": None}),
         ]
 
     def test_database_without_name_reports_database_info(self, capsys):

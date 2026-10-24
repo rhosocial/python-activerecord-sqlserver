@@ -35,7 +35,6 @@ list types take no name.
 | Option | Default | Description |
 | :--- | :--- | :--- |
 | `-o, --output` | `table` | `table` (rich), `json`, `csv`, `tsv`. |
-| `--schema` | `dbo` | The schema to read. |
 | `--include-system` | off | Include system objects. |
 | `--host`, `--port`, `--database` | env or defaults | Connection endpoint. `SQLSERVER_*` env vars are honoured, and arguments override them. |
 | `--user` / `--username`, `--password` | env | Credentials. |
@@ -51,9 +50,10 @@ list types take no name.
 *   **Read-only.** `introspect` never writes. It does not create, drop, or
     alter anything, so it is safe to run against an instance whose schema
     matters.
-*   **The schema is explicit.** `--schema` defaults to `dbo`; the catalogue
-    views are then asked about that schema rather than resolving names
-    through the login's default schema, which differs between logins.
+*   **The connection fixes the scope.** A run names one database, so the
+    catalogue views are asked about that database; there is no second
+    question about which schema to read. SQL Server's default schema is
+    `dbo`, and a login that changes it changes it for the connection.
 *   **`--driver` matters when the default is wrong.** The CLI's default driver
     string is a recent one; if your machine has only an older ODBC driver
     installed, pass it explicitly.
@@ -65,11 +65,11 @@ list types take no name.
 ```bash
 # The SQL Server-specific families
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect schemas --database sales
-python -m rhosocial.activerecord.backend.impl.sqlserver introspect procedures --schema dbo --database sales
-python -m rhosocial.activerecord.backend.impl.sqlserver introspect sequences --schema dbo -o json
+python -m rhosocial.activerecord.backend.impl.sqlserver introspect procedures --database sales
+python -m rhosocial.activerecord.backend.impl.sqlserver introspect sequences -o json
 
 # One table in full
-python -m rhosocial.activerecord.backend.impl.sqlserver introspect table orders --schema dbo --database sales
+python -m rhosocial.activerecord.backend.impl.sqlserver introspect table orders --database sales
 
 # Named connection saved by the named-connection subcommand
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect tables --named-connection prod --database sales

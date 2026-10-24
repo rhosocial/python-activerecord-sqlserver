@@ -103,9 +103,6 @@ def create_parser(subparsers):
   # Output as JSON
   %(prog)s tables --database mydb -o json
 
-  # Specify schema
-  %(prog)s tables --database mydb --schema dbo
-
   # Using environment variables for connection
   export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa
   %(prog)s tables
@@ -138,11 +135,6 @@ def create_parser(subparsers):
         nargs="?",
         default=None,
         help="Table/view name (required for some types)",
-    )
-    parser.add_argument(
-        "--schema",
-        default="dbo",
-        help='Schema name (default: dbo)',
     )
     parser.add_argument(
         "--include-system",
@@ -203,33 +195,33 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     if kind == "table" or (kind == "database" and args.name):
         return [(
             "get_table_info",
-            {"table_name": _require_name(args, kind), "schema": args.schema},
+            {"table_name": _require_name(args, kind), "schema": None},
         )]
     if kind == "database":
         return [("get_database_info", {})]
     if kind == "tables":
         return [(
             "list_tables",
-            {"schema": args.schema, "include_system": args.include_system},
+            {"schema": None, "include_system": args.include_system},
         )]
     if kind == "views":
         return [(
             "list_views",
-            {"schema": args.schema, "include_system": args.include_system},
+            {"schema": None, "include_system": args.include_system},
         )]
     if kind == "triggers":
         # ``list_triggers`` already takes an optional table; iterating tables
         # here was never needed, and it swallowed each table's error.
         return [(
             "list_triggers",
-            {"table_name": args.name, "schema": args.schema},
+            {"table_name": args.name, "schema": None},
         )]
     if kind == "procedures":
-        return [("list_procedures", {"schema": args.schema})]
+        return [("list_procedures", {"schema": None})]
     if kind == "functions":
-        return [("list_functions", {"schema": args.schema})]
+        return [("list_functions", {"schema": None})]
     if kind == "sequences":
-        return [("list_sequences", {"schema": args.schema})]
+        return [("list_sequences", {"schema": None})]
     if kind == "schemas":
         return [("list_schemas", {})]
 
@@ -237,7 +229,7 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     method = f"list_{kind.replace('-', '_')}"
     return [(
         method,
-        {"table_name": _require_name(args, kind), "schema": args.schema},
+        {"table_name": _require_name(args, kind), "schema": None},
     )]
 
 
