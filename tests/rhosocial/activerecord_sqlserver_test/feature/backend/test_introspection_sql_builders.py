@@ -4,7 +4,7 @@
 Covers the SQL injection hardening changes: every ``_build_*_sql`` method
 returns parameterized SQL (``?`` placeholders) with separate params, instead
 of string-interpolated values.  Also covers the catalog-row to ``full_type``
-rebuild in ``_parse_columns``: the ``-1`` (MAX) marker that the rebuild used to
+rebuild in ``parse_columns``: the ``-1`` (MAX) marker that the rebuild used to
 drop, and the ``DATETIME_PRECISION`` parameter of
 ``time``/``datetime2``/``datetimeoffset``, which it used to ignore.
 
@@ -183,7 +183,7 @@ class TestBuildSchemaListSql:
     def test_dangling_principal_row_still_a_schema(self):
         """A NULL owner parses to None, the row survives (mirrors the join)."""
         introspector = make_introspector()
-        schemas = introspector._parse_schemas(
+        schemas = introspector.parse_schemas(
             [{"schema_id": 5, "schema_name": "orphan", "owner": None}]
         )
         assert schemas[0].owner is None
@@ -298,7 +298,7 @@ class TestParseBackendSpecificTypes:
             "is_ms_shipped": 0,
             **overrides,
         }
-        return make_introspector()._parse_routines([row])[0]
+        return make_introspector().parse_routines([row])[0]
 
     def test_routine_type_code_stripped_and_flagged(self):
         routine = self._routine()
@@ -324,7 +324,7 @@ class TestParseBackendSpecificTypes:
             "is_cached": 1,
             "cache_size": 50,
         }
-        seq = introspector._parse_sequences([row])[0]
+        seq = introspector.parse_sequences([row])[0]
         assert seq.start_value == Decimal("5")
         assert seq.increment == Decimal("2")
         assert seq.maximum_value == Decimal("9223372036854775807")
@@ -339,7 +339,7 @@ class TestParseBackendSpecificTypes:
             {"sequence_name": "seq", "start_value": "not-a-number"},
             {"sequence_name": "seq", "cache_size": None},
         ]
-        parsed = introspector._parse_sequences(rows)
+        parsed = introspector.parse_sequences(rows)
         assert parsed[0].start_value is None
         assert parsed[0].cache_size is None
 
@@ -353,7 +353,7 @@ class TestParseBackendSpecificTypes:
             "property_name": "MS_Description",
             "property_value": None,
         }
-        prop = introspector._parse_extended_properties([row])[0]
+        prop = introspector.parse_extended_properties([row])[0]
         # A property set to NULL is a value, not a missing row.
         assert prop.value is None
         assert prop.name == "MS_Description"
@@ -446,7 +446,7 @@ class TestStatusQueries:
 
 
 class TestParseColumnsFullTypeRebuild:
-    """Offline tests for the ``full_type`` rebuild in ``_parse_columns``.
+    """Offline tests for the ``full_type`` rebuild in ``parse_columns``.
 
     ``INFORMATION_SCHEMA.COLUMNS.CHARACTER_MAXIMUM_LENGTH`` reports ``-1``
     for the MAX-capable declarations.  The rebuild used to skip any
@@ -466,7 +466,7 @@ class TestParseColumnsFullTypeRebuild:
             **catalog,
         }
         introspector = make_introspector()
-        return introspector._parse_columns([row], "t", "dbo")[0]
+        return introspector.parse_columns([row], "t", "dbo")[0]
 
     def test_nvarchar_max_marker_rebuilds_to_max(self):
         dialect = make_introspector()._backend.dialect
@@ -525,7 +525,7 @@ class TestParseColumnsFullTypeRebuild:
 
 
 class TestParseColumnsDatetimePrecision:
-    """Offline tests for the ``DATETIME_PRECISION`` rebuild in ``_parse_columns``.
+    """Offline tests for the ``DATETIME_PRECISION`` rebuild in ``parse_columns``.
 
     Appendix F.4-1..3: the three temporal types that carry a
     fractional-seconds precision report it only in ``DATETIME_PRECISION``
@@ -558,7 +558,7 @@ class TestParseColumnsDatetimePrecision:
             "DATETIME_PRECISION": dt_precision,
         }
         introspector = make_introspector()
-        return introspector._parse_columns([row], "t", "dbo")[0]
+        return introspector.parse_columns([row], "t", "dbo")[0]
 
     def test_explicit_precision_rebuilds_and_matches_declared(self):
         dialect = make_introspector()._backend.dialect

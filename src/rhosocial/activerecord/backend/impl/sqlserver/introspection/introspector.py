@@ -133,7 +133,8 @@ _SEQUENCE_NUMERIC_COLUMNS = (
 class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     """Shared non-I/O logic for SQL Server introspectors."""
 
-    def _get_default_schema(self) -> str:
+    @property
+    def default_schema(self) -> str:
         return "dbo"
 
     def _get_version(self) -> tuple:
@@ -185,7 +186,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         self, schema: Optional[str], include_system: bool,
         include_views: bool = True, table_type: Optional[str] = None,
     ) -> Tuple[str, tuple]:
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         conditions = [self._eq(self._col("TABLE_SCHEMA"), self._lit(target))]
         if table_type:
             conditions.append(self._eq(self._col("TABLE_TYPE"), self._lit(table_type)))
@@ -209,7 +210,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             ArithmeticOperator,
         )
 
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         # OBJECT_ID takes the qualified object name as one string. SQL Server
         # spells string concatenation with ``+`` (``||`` only from 2025), so
         # this is the arithmetic ``add`` node, not the standard concatenation.
@@ -295,7 +296,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     ) -> Tuple[str, tuple]:
         from rhosocial.activerecord.backend.expression import IsNullPredicate, JoinClause
 
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         joins = JoinClause(
             self.dialect,
             JoinClause(
@@ -355,7 +356,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     ) -> Tuple[str, tuple]:
         from rhosocial.activerecord.backend.expression import FunctionCall, JoinClause
 
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         joins = JoinClause(
             self.dialect,
             JoinClause(
@@ -423,7 +424,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     def _build_view_list_sql(
         self, schema: Optional[str], include_system: bool
     ) -> Tuple[str, tuple]:
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         return self._select(
             [self._col("TABLE_NAME", alias="view_name")],
             from_=self._relation("VIEWS", "INFORMATION_SCHEMA"),
@@ -434,7 +435,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     def _build_view_info_sql(
         self, view_name: str, schema: Optional[str]
     ) -> Tuple[str, tuple]:
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         return self._select(
             [
                 self._col("TABLE_NAME", alias="view_name"),
@@ -453,7 +454,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     ) -> Tuple[str, tuple]:
         from rhosocial.activerecord.backend.expression import FunctionCall, JoinClause
 
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         joins = JoinClause(
             self.dialect,
             JoinClause(
@@ -616,7 +617,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         ``FN``/``IF``/``TF``/``FS``/``FT`` codes. What differs is the code
         set, and that is the argument.
         """
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         joined = self._join(
             self._relation("objects", "sys", alias="o"),
             self._relation("schemas", "sys", alias="s"),
@@ -666,7 +667,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         so a projection that selected them raw could not be fetched at all --
         which is why the cast is in the statement rather than the parser.
         """
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         joined = self._join(
             self._relation("sequences", "sys", alias="q"),
             self._relation("schemas", "sys", alias="s"),
@@ -708,7 +709,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     # Parse methods — pure Python, no I/O
     # ------------------------------------------------------------------
 
-    def _parse_database_info(self, rows: List[Dict[str, Any]]) -> IntrospectionDatabaseInfo:
+    def parse_database_info(self, rows: List[Dict[str, Any]]) -> IntrospectionDatabaseInfo:
         row = rows[0] if rows else {}
         version_str = row.get("version", "Unknown")
         parts = version_str.split(".")
@@ -725,10 +726,10 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             collation=row.get("collation"),
         )
 
-    def _parse_tables(
+    def parse_tables(
         self, rows: List[Dict[str, Any]], schema: Optional[str]
     ) -> List[IntrospectionTableInfo]:
-        target = schema or self._get_default_schema()
+        target = schema or self.default_schema
         return [
             IntrospectionTableInfo(
                 name=row["TABLE_NAME"],
@@ -741,7 +742,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             for row in rows
         ]
 
-    def _parse_columns(
+    def parse_columns(
         self, rows: List[Dict[str, Any]], table_name: str, schema: str,
         primary_keys: Optional[List[str]] = None,
     ) -> List[IntrospectionColumnInfo]:
@@ -824,7 +825,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             ))
         return columns
 
-    def _parse_indexes(
+    def parse_indexes(
         self, rows: List[Dict[str, Any]], table_name: str, schema: str
     ) -> List[IndexInfo]:
         type_map = {
@@ -853,7 +854,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             ))
         return list(index_map.values())
 
-    def _parse_foreign_keys(
+    def parse_foreign_keys(
         self, rows: List[Dict[str, Any]], table_name: str, schema: str
     ) -> List[IntrospectionForeignKeyInfo]:
         action_map = {
@@ -888,7 +889,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             )
         return list(fk_map.values())
 
-    def _parse_views(
+    def parse_views(
         self, rows: List[Dict[str, Any]], schema: str
     ) -> List[IntrospectionViewInfo]:
         return [
@@ -900,7 +901,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             for row in rows
         ]
 
-    def _parse_view_info(
+    def parse_view_info(
         self, rows: List[Dict[str, Any]], view_name: str, schema: str
     ) -> Optional[IntrospectionViewInfo]:
         if not rows:
@@ -913,7 +914,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             is_updatable=row.get("IS_UPDATABLE") == "YES",
         )
 
-    def _parse_triggers(
+    def parse_triggers(
         self, rows: List[Dict[str, Any]], schema: str
     ) -> List[IntrospectionTriggerInfo]:
         return [
@@ -935,7 +936,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     # Backend-specific parsers
     # ------------------------------------------------------------------
 
-    def _parse_schemas(
+    def parse_schemas(
         self, rows: List[Dict[str, Any]]
     ) -> List[SQLServerSchemaInfo]:
         return [
@@ -947,7 +948,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             for row in rows
         ]
 
-    def _parse_extended_properties(
+    def parse_extended_properties(
         self, rows: List[Dict[str, Any]]
     ) -> List[SQLServerExtendedPropertyInfo]:
         properties: List[SQLServerExtendedPropertyInfo] = []
@@ -968,7 +969,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             )
         return properties
 
-    def _parse_routines(
+    def parse_routines(
         self, rows: List[Dict[str, Any]]
     ) -> List[SQLServerRoutineInfo]:
         return [
@@ -984,7 +985,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             for row in rows
         ]
 
-    def _parse_sequences(
+    def parse_sequences(
         self, rows: List[Dict[str, Any]]
     ) -> List[SQLServerSequenceInfo]:
         sequences: List[SQLServerSequenceInfo] = []
@@ -1064,7 +1065,7 @@ class SyncSQLServerIntrospector(
     def list_columns(
         self, table_name: str, schema: Optional[str] = None
     ) -> List[IntrospectionColumnInfo]:
-        target = schema if schema is not None else self._get_default_schema()
+        target = schema if schema is not None else self.default_schema
         key = self._cache.key(
             IntrospectionScope.COLUMN, table_name, schema=target
         )
@@ -1078,7 +1079,7 @@ class SyncSQLServerIntrospector(
 
         sql, params = self._build_column_info_sql(table_name, schema)
         rows = self._executor.execute(sql, params)
-        columns = self._parse_columns(
+        columns = self.parse_columns(
             rows, table_name, target, primary_keys
         )
         self._cache.set(key, columns)
@@ -1103,7 +1104,7 @@ class SyncSQLServerIntrospector(
             return cached
 
         sql, params = self._build_schema_list_sql()
-        schemas = self._parse_schemas(self._executor.execute(sql, params))
+        schemas = self.parse_schemas(self._executor.execute(sql, params))
         self._cache.set(key, schemas)
         return schemas
 
@@ -1147,7 +1148,7 @@ class SyncSQLServerIntrospector(
         sql, params = self._build_extended_property_list_sql(
             major_id, minor_id, class_name, schema
         )
-        properties = self._parse_extended_properties(
+        properties = self.parse_extended_properties(
             self._executor.execute(sql, params)
         )
         self._cache.set(key, properties)
@@ -1165,7 +1166,7 @@ class SyncSQLServerIntrospector(
             return cached
 
         sql, params = self._build_procedure_list_sql(schema)
-        procedures = self._parse_routines(self._executor.execute(sql, params))
+        procedures = self.parse_routines(self._executor.execute(sql, params))
         self._cache.set(key, procedures)
         return procedures
 
@@ -1181,7 +1182,7 @@ class SyncSQLServerIntrospector(
             return cached
 
         sql, params = self._build_function_list_sql(schema)
-        functions = self._parse_routines(self._executor.execute(sql, params))
+        functions = self.parse_routines(self._executor.execute(sql, params))
         self._cache.set(key, functions)
         return functions
 
@@ -1195,7 +1196,7 @@ class SyncSQLServerIntrospector(
             return cached
 
         sql, params = self._build_sequence_list_sql(schema)
-        sequences = self._parse_sequences(self._executor.execute(sql, params))
+        sequences = self.parse_sequences(self._executor.execute(sql, params))
         self._cache.set(key, sequences)
         return sequences
 
@@ -1242,7 +1243,7 @@ class AsyncSQLServerIntrospector(
     async def list_columns(
         self, table_name: str, schema: Optional[str] = None
     ) -> List[IntrospectionColumnInfo]:
-        target = schema if schema is not None else self._get_default_schema()
+        target = schema if schema is not None else self.default_schema
         key = self._cache.key(
             IntrospectionScope.COLUMN, table_name, schema=target
         )
@@ -1256,7 +1257,7 @@ class AsyncSQLServerIntrospector(
 
         sql, params = self._build_column_info_sql(table_name, schema)
         rows = await self._executor.execute(sql, params)
-        columns = self._parse_columns(
+        columns = self.parse_columns(
             rows, table_name, target, primary_keys
         )
         self._cache.set(key, columns)
@@ -1277,7 +1278,7 @@ class AsyncSQLServerIntrospector(
             return cached
 
         sql, params = self._build_schema_list_sql()
-        schemas = self._parse_schemas(await self._executor.execute(sql, params))
+        schemas = self.parse_schemas(await self._executor.execute(sql, params))
         self._cache.set(key, schemas)
         return schemas
 
@@ -1302,7 +1303,7 @@ class AsyncSQLServerIntrospector(
         sql, params = self._build_extended_property_list_sql(
             major_id, minor_id, class_name, schema
         )
-        properties = self._parse_extended_properties(
+        properties = self.parse_extended_properties(
             await self._executor.execute(sql, params)
         )
         self._cache.set(key, properties)
@@ -1320,7 +1321,7 @@ class AsyncSQLServerIntrospector(
             return cached
 
         sql, params = self._build_procedure_list_sql(schema)
-        procedures = self._parse_routines(
+        procedures = self.parse_routines(
             await self._executor.execute(sql, params)
         )
         self._cache.set(key, procedures)
@@ -1338,7 +1339,7 @@ class AsyncSQLServerIntrospector(
             return cached
 
         sql, params = self._build_function_list_sql(schema)
-        functions = self._parse_routines(
+        functions = self.parse_routines(
             await self._executor.execute(sql, params)
         )
         self._cache.set(key, functions)
@@ -1354,7 +1355,7 @@ class AsyncSQLServerIntrospector(
             return cached
 
         sql, params = self._build_sequence_list_sql(schema)
-        sequences = self._parse_sequences(
+        sequences = self.parse_sequences(
             await self._executor.execute(sql, params)
         )
         self._cache.set(key, sequences)
