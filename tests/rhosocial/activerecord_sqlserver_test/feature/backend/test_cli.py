@@ -66,8 +66,13 @@ class TestCLIParseArgs:
         register_commands(subparsers)
         intro_parser = self._get_subparser(parser, 'introspect')
         assert intro_parser is not None, "introspect subparser not found"
-        actions = {a.dest for a in intro_parser._actions}
-        assert any("column" in a or "table" in a or "schema" in a for a in actions)
+        actions = {a.dest: a for a in intro_parser._actions}
+        # What to ask is a positional `type`, drawn from the families this
+        # backend answers; the optional `name` narrows the table-scoped ones.
+        assert "type" in actions
+        assert {"tables", "views", "columns", "indexes", "foreign-keys", "triggers"} <= set(
+            actions["type"].choices or ()
+        )
 
 
 class TestCLIHelp:

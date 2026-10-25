@@ -1085,6 +1085,23 @@ LEGITIMATE_NON_RENDERS = {
         NotImplementedError,
         _NO_FORMATTER,
     ),
+    # Two introspection statements ask for a *bundle* -- a table with its
+    # columns, indexes and keys; a trigger with its table and definition -- and
+    # this backend answers each part with a statement of its own (the column,
+    # index and foreign-key queries; ``sys.triggers`` filtered by name). It
+    # declares neither bundle formatter, so the core stub refuses it by name.
+    # Pinned rather than implemented: a formatter nobody asks for would be SQL
+    # this backend never runs.
+    "rhosocial.activerecord.backend.expression.introspection."
+    "TableInfoQueryStatement": (
+        NotImplementedError,
+        "Subclass must implement format_table_info_query_statement",
+    ),
+    "rhosocial.activerecord.backend.expression.introspection."
+    "TriggerInfoQueryStatement": (
+        NotImplementedError,
+        "Subclass must implement format_trigger_info_query_statement",
+    ),
 
     # ---- the root of the row-source tree ----
     # No concrete source renders through `format_table_source`; each overrides

@@ -1,26 +1,38 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_introspection_sql_builders.py
-"""Offline tests for the introspector's pure-Python paths.
+"""Offline tests for the introspection questions, and the SQL they render.
 
-Covers the SQL injection hardening changes: every ``_build_*_sql`` method
-returns parameterized SQL (``?`` placeholders) with separate params, instead
-of string-interpolated values.  Also covers the catalog-row to ``full_type``
-rebuild in ``parse_columns``: the ``-1`` (MAX) marker that the rebuild used to
-drop, and the ``DATETIME_PRECISION`` parameter of
-``time``/``datetime2``/``datetimeoffset``, which it used to ignore.
+Covers the injection hardening: every question is parameterized (``?``
+placeholders) with its values kept in a separate tuple, instead of
+string-interpolated. Also covers the catalog-row to ``full_type`` rebuild in
+``parse_columns``: the ``-1`` (MAX) marker that the rebuild used to drop, and
+the ``DATETIME_PRECISION`` parameter of ``time``/``datetime2``/
+``datetimeoffset``, which it used to ignore.
 
-The builders now assemble a ``QueryStatement`` from expression nodes and let
-the dialect render it (org guide §16.2), so the assertions below read the
-parameterization off the *rendered* statement rather than off a text template
-this layer used to own: what has to hold is that every value the caller passed
-became a bind parameter and no value leaked into the text. The identifier
-spelling is the dialect's, so it is asserted as ``[schema].[TABLE]`` where a
-position matters and left free where it does not.
+Every question here is a ``QueryStatement`` over expression nodes, rendered by
+the dialect (org guide §16.2). For the families core models that means the
+dialect's ``format_*_query_statement`` writes the text -- the introspector only
+constructs the statement; for the families only this backend has, the
+introspector's own builders do. Either way what the assertions read is the
+*rendered* statement: the value the caller passed became a bind parameter and
+no value leaked into the text. The identifier spelling is the dialect's, so it
+is asserted as ``[schema].[TABLE]`` where a position matters and left free
+where it does not.
 """
 
 from decimal import Decimal
 
 import pytest
 
+from rhosocial.activerecord.backend.expression.introspection import (
+    ColumnInfoQueryStatement,
+    DatabaseInfoQueryStatement,
+    ForeignKeyQueryStatement,
+    IndexInfoQueryStatement,
+    TableListQueryStatement,
+    TriggerListQueryStatement,
+    ViewInfoQueryStatement,
+    ViewListQueryStatement,
+)
 from rhosocial.activerecord.backend.expression.types import DataType, TextType
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
@@ -50,24 +62,30 @@ def make_introspector() -> SyncSQLServerIntrospector:
     return introspector
 
 
+def make_dialect():
+    """The dialect the introspector renders its statements with."""
+    return make_introspector()._backend.dialect
+
+
 class TestBuildTableListSql:
     def test_default_schema_parameterized(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_table_list_sql(None, False)
+        sql, params = TableListQueryStatement(make_dialect()).to_sql()
         assert "[TABLE_SCHEMA] = ?" in sql
         assert params == ("dbo",)
         assert "'dbo'" not in sql
 
     def test_with_table_type_parameterized(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_table_list_sql("sys", False, table_type="BASE TABLE")
+        sql, params = TableListQueryStatement(
+            make_dialect(), schema="sys", table_type="BASE TABLE"
+        ).to_sql()
         assert "[TABLE_TYPE] = ?" in sql
         assert params == ("sys", "BASE TABLE")
         assert "'BASE TABLE'" not in sql
 
     def test_without_views_no_table_type(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_table_list_sql("dbo", False, include_views=False)
+        sql, params = TableListQueryStatement(
+            make_dialect(), schema="dbo", include_views=False
+        ).to_sql()
         # The implicit "tables only" filter is part of the question, not data,
         # so it stays an inline literal exactly as the template wrote it.
         assert "BASE TABLE" in sql
@@ -76,22 +94,21 @@ class TestBuildTableListSql:
 
 class TestBuildColumnInfoSql:
     def test_parameterized(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_column_info_sql("users", "dbo")
+        sql, params = ColumnInfoQueryStatement(
+            make_dialect(), "users", schema="dbo"
+        ).to_sql()
         assert "[TABLE_SCHEMA] = ?" in sql
         assert "[TABLE_NAME] = ?" in sql
         assert params == ("dbo", "users")
 
     def test_selects_datetime_precision(self):
         """The temporal parameter lives only in ``DATETIME_PRECISION``."""
-        introspector = make_introspector()
-        sql, _ = introspector._build_column_info_sql("users", "dbo")
+        sql, _ = ColumnInfoQueryStatement(make_dialect(), "users", schema="dbo").to_sql()
         assert "DATETIME_PRECISION" in sql
 
     def test_identity_flag_rides_the_column(self):
         """``COLUMNPROPERTY(..., 'IsIdentity')`` keeps its alias in the node."""
-        introspector = make_introspector()
-        sql, _ = introspector._build_column_info_sql("users", "dbo")
+        sql, _ = ColumnInfoQueryStatement(make_dialect(), "users", schema="dbo").to_sql()
         assert "COLUMNPROPERTY" in sql
         assert "IS_IDENTITY" in sql
         assert "IsIdentity" in sql
@@ -109,8 +126,9 @@ class TestBuildPrimaryKeySql:
 
 class TestBuildIndexInfoSql:
     def test_parameterized(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_index_info_sql("users", "dbo")
+        sql, params = IndexInfoQueryStatement(
+            make_dialect(), "users", schema="dbo"
+        ).to_sql()
         assert "[s].[name] = ?" in sql
         assert "[t].[name] = ?" in sql
         assert params == ("dbo", "users")
@@ -118,8 +136,9 @@ class TestBuildIndexInfoSql:
 
 class TestBuildForeignKeySql:
     def test_parameterized(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_foreign_key_sql("users", "dbo")
+        sql, params = ForeignKeyQueryStatement(
+            make_dialect(), "users", schema="dbo"
+        ).to_sql()
         assert "[s].[name] = ?" in sql
         assert "[t].[name] = ?" in sql
         assert params == ("dbo", "users")
@@ -127,16 +146,16 @@ class TestBuildForeignKeySql:
 
 class TestBuildViewListSql:
     def test_parameterized(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_view_list_sql("dbo", False)
+        sql, params = ViewListQueryStatement(make_dialect(), schema="dbo").to_sql()
         assert "[TABLE_SCHEMA] = ?" in sql
         assert params == ("dbo",)
 
 
 class TestBuildViewInfoSql:
     def test_parameterized(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_view_info_sql("active_users", "dbo")
+        sql, params = ViewInfoQueryStatement(
+            make_dialect(), "active_users", schema="dbo"
+        ).to_sql()
         assert "[TABLE_SCHEMA] = ?" in sql
         assert "[TABLE_NAME] = ?" in sql
         assert params == ("dbo", "active_users")
@@ -144,22 +163,21 @@ class TestBuildViewInfoSql:
 
 class TestBuildTriggerListSql:
     def test_with_table_name_parameterized(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_trigger_list_sql("orders", "dbo")
+        sql, params = TriggerListQueryStatement(
+            make_dialect(), schema="dbo", table_name="orders"
+        ).to_sql()
         assert "[s].[name] = ? AND [t].[name] = ?" in sql
         assert params == ("dbo", "orders")
 
     def test_without_table_name(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_trigger_list_sql(None, "dbo")
+        sql, params = TriggerListQueryStatement(make_dialect(), schema="dbo").to_sql()
         assert "[t].[name] = ?" not in sql
         assert params == ("dbo",)
 
 
 class TestBuildDatabaseInfoSql:
     def test_returns_sql(self):
-        introspector = make_introspector()
-        sql, params = introspector._build_database_info_sql()
+        sql, params = DatabaseInfoQueryStatement(make_dialect()).to_sql()
         assert "DB_NAME()" in sql
         assert "SERVERPROPERTY('ProductVersion')" in sql
         assert params == ()

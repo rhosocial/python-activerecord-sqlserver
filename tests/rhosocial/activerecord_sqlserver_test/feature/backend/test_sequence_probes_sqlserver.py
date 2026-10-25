@@ -183,9 +183,11 @@ SEQUENCE_OPTION_PROBES = [
 
 #: Sequence probes that answer about the statement or the sequence object, not
 #: about one of its options. ``supports_sequence`` is the master switch every
-#: sequence formatter consults; the other four are declaration-only answers
-#: that no formatter in core or this backend reads, so no option behaviour can
-#: follow them. They are named here rather than silently skipped.
+#: sequence formatter consults; ``supports_sequence_introspection`` answers for
+#: the ``introspect sequences`` family rather than for a statement. The other
+#: four are declaration-only answers that no formatter in core or this backend
+#: reads, so no option behaviour can follow them. They are named here rather
+#: than silently skipped.
 NON_OPTION_PROBES = frozenset(
     {
         "supports_sequence",
@@ -193,6 +195,7 @@ NON_OPTION_PROBES = frozenset(
         "supports_drop_sequence",
         "supports_alter_sequence",
         "supports_sequence_as_data_type",
+        "supports_sequence_introspection",
     }
 )
 

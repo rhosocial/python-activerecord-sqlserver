@@ -7,7 +7,7 @@ using INFORMATION_SCHEMA and sys.* catalog views.
 
 import copy
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.introspection.base import (
     IntrospectorMixin,
@@ -36,6 +36,7 @@ from rhosocial.activerecord.backend.introspection.types import (
 )
 from rhosocial.activerecord.backend.expression.types._base import DataType
 
+from ..mixins.introspection import DEFAULT_SCHEMA
 from ..query_nodes import SQLServerNodeBuilderMixin
 from .types import (
     SQLServerExtendedPropertyInfo,
@@ -43,6 +44,9 @@ from .types import (
     SQLServerSchemaInfo,
     SQLServerSequenceInfo,
 )
+
+if TYPE_CHECKING:  # pragma: no cover
+    from rhosocial.activerecord.backend.dialect import SQLDialectBase
 
 #: ``INFORMATION_SCHEMA.COLUMNS.CHARACTER_MAXIMUM_LENGTH`` reports ``-1``
 #: for a MAX-capable column.  Only these three spell that marker as a length
@@ -135,125 +139,27 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
 
     @property
     def default_schema(self) -> str:
-        return "dbo"
+        return DEFAULT_SCHEMA
+
+    @property
+    def _node_dialect(self) -> "SQLDialectBase":
+        """The dialect the node builders bind their trees to."""
+        return self.dialect
 
     def _get_version(self) -> tuple:
         return getattr(self._backend, '_version', (15, 0, 0))
 
     # ------------------------------------------------------------------
-    # SQL builders
+    # Backend-specific questions
     #
-    # Every query below is a QueryStatement over catalogue relations built
-    # from expression nodes; the dialect writes the SQL. What each query
-    # *asks* is then a structure the rest of the framework can inspect,
-    # instead of text assembled one clause at a time in this layer.
-    #
-    # The parameter positions are the ones the concatenated form used: a
-    # schema or table name it bound stays bound, and a value it wrote into
-    # the statement (``'BASE TABLE'``, ``'PRIMARY KEY'``, ``'IsIdentity'``)
-    # stays an inline literal, so every caller keeps the parameter tuple it
-    # already had.
+    # Every family core models is a statement its dialect renders; this
+    # layer constructs it and executes what comes back. What core has no
+    # statement for is built here -- the primary key is SQL Server's own
+    # question, and so are the families below it. Each is a tree of the same
+    # expression nodes, and each carries the family name into its cache key
+    # (see the managers below) so two families never answer each other's
+    # question.
     # ------------------------------------------------------------------
-
-    def _cast_server_property(self, name: str, alias: Optional[str] = None):
-        """``CAST(SERVERPROPERTY('<name>') AS NVARCHAR(128))``, optionally aliased.
-
-        The property name is a literal of the statement, not data, so it stays
-        inline: the request carries no parameters.
-        """
-        from rhosocial.activerecord.backend.expression import FunctionCall
-        from ..expression.types import SQLServerNVarCharType
-
-        node = FunctionCall(
-            self.dialect, "SERVERPROPERTY", self._lit(name, inline=True)
-        ).cast(SQLServerNVarCharType(self.dialect, 128))
-        return node.as_(alias) if alias else node
-
-    def _build_database_info_sql(self) -> Tuple[str, tuple]:
-        from rhosocial.activerecord.backend.expression import FunctionCall
-
-        # No FROM: this query reads no table, it asks the engine a question.
-        return self._select(
-            [
-                FunctionCall(self.dialect, "DB_NAME", alias="db_name"),
-                self._cast_server_property("ProductVersion", "version"),
-                self._cast_server_property("Collation", "collation"),
-                self._cast_server_property("Edition", "edition"),
-            ]
-        )
-
-    def _build_table_list_sql(
-        self, schema: Optional[str], include_system: bool,
-        include_views: bool = True, table_type: Optional[str] = None,
-    ) -> Tuple[str, tuple]:
-        target = schema or self.default_schema
-        conditions = [self._eq(self._col("TABLE_SCHEMA"), self._lit(target))]
-        if table_type:
-            conditions.append(self._eq(self._col("TABLE_TYPE"), self._lit(table_type)))
-        elif not include_views:
-            conditions.append(
-                self._eq(self._col("TABLE_TYPE"), self._lit("BASE TABLE", inline=True))
-            )
-        return self._select(
-            [self._col("TABLE_NAME"), self._col("TABLE_TYPE")],
-            from_=self._relation("TABLES", "INFORMATION_SCHEMA"),
-            where=self._and(*conditions),
-            order_by=[self._col("TABLE_NAME")],
-        )
-
-    def _build_column_info_sql(
-        self, table_name: str, schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        from rhosocial.activerecord.backend.expression import FunctionCall
-        from rhosocial.activerecord.backend.expression.operators import (
-            ArithmeticOperation,
-            ArithmeticOperator,
-        )
-
-        target = schema or self.default_schema
-        # OBJECT_ID takes the qualified object name as one string. SQL Server
-        # spells string concatenation with ``+`` (``||`` only from 2025), so
-        # this is the arithmetic ``add`` node, not the standard concatenation.
-        qualified_name = ArithmeticOperation(
-            self.dialect,
-            ArithmeticOperator.ADD,
-            ArithmeticOperation(
-                self.dialect,
-                ArithmeticOperator.ADD,
-                self._col("TABLE_SCHEMA", "c"),
-                self._lit(".", inline=True),
-            ),
-            self._col("TABLE_NAME", "c"),
-        )
-        is_identity = FunctionCall(
-            self.dialect,
-            "COLUMNPROPERTY",
-            FunctionCall(self.dialect, "OBJECT_ID", qualified_name),
-            self._col("COLUMN_NAME", "c"),
-            self._lit("IsIdentity", inline=True),
-            alias="IS_IDENTITY",
-        )
-        return self._select(
-            [
-                self._col("COLUMN_NAME", "c"),
-                self._col("DATA_TYPE", "c"),
-                self._col("IS_NULLABLE", "c"),
-                self._col("COLUMN_DEFAULT", "c"),
-                self._col("CHARACTER_MAXIMUM_LENGTH", "c"),
-                self._col("NUMERIC_PRECISION", "c"),
-                self._col("NUMERIC_SCALE", "c"),
-                self._col("DATETIME_PRECISION", "c"),
-                self._col("ORDINAL_POSITION", "c"),
-                self._col("COLLATION_NAME", "c"),
-                is_identity,
-            ],
-            from_=self._relation("COLUMNS", "INFORMATION_SCHEMA", alias="c"),
-            where=self._and(
-                self._eq(self._col("TABLE_SCHEMA", "c"), self._lit(target)),
-                self._eq(self._col("TABLE_NAME", "c"), self._lit(table_name)),
-            ),
-            order_by=[self._col("ORDINAL_POSITION", "c")],
-        )
 
     def _build_primary_key_sql(
         self, table_name: str, schema: str
@@ -290,218 +196,6 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
                 ),
             ),
         )
-
-    def _build_index_info_sql(
-        self, table_name: str, schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        from rhosocial.activerecord.backend.expression import IsNullPredicate, JoinClause
-
-        target = schema or self.default_schema
-        joins = JoinClause(
-            self.dialect,
-            JoinClause(
-                self.dialect,
-                JoinClause(
-                    self.dialect,
-                    JoinClause(
-                        self.dialect,
-                        self._relation("indexes", "sys", alias="i"),
-                        self._relation("tables", "sys", alias="t"),
-                        join_type="JOIN",
-                        condition=self._eq(
-                            self._col("object_id", "i"), self._col("object_id", "t")
-                        ),
-                    ),
-                    self._relation("schemas", "sys", alias="s"),
-                    join_type="JOIN",
-                    condition=self._eq(
-                        self._col("schema_id", "t"), self._col("schema_id", "s")
-                    ),
-                ),
-                self._relation("index_columns", "sys", alias="ic"),
-                join_type="JOIN",
-                condition=self._and(
-                    self._eq(self._col("object_id", "i"), self._col("object_id", "ic")),
-                    self._eq(self._col("index_id", "i"), self._col("index_id", "ic")),
-                ),
-            ),
-            self._relation("columns", "sys", alias="c"),
-            join_type="JOIN",
-            condition=self._and(
-                self._eq(self._col("object_id", "ic"), self._col("object_id", "c")),
-                self._eq(self._col("column_id", "ic"), self._col("column_id", "c")),
-            ),
-        )
-        return self._select(
-            [
-                self._col("name", "i", alias="index_name"),
-                self._col("is_unique", "i"),
-                self._col("is_primary_key", "i"),
-                self._col("type_desc", "i", alias="index_type"),
-                self._col("name", "c", alias="column_name"),
-                self._col("key_ordinal", "ic", alias="column_position"),
-                self._col("is_descending_key", "ic"),
-            ],
-            from_=joins,
-            where=self._and(
-                self._eq(self._col("name", "s"), self._lit(target)),
-                self._eq(self._col("name", "t"), self._lit(table_name)),
-                IsNullPredicate(self.dialect, self._col("name", "i"), is_not=True),
-            ),
-            order_by=[self._col("name", "i"), self._col("key_ordinal", "ic")],
-        )
-
-    def _build_foreign_key_sql(
-        self, table_name: str, schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        from rhosocial.activerecord.backend.expression import FunctionCall, JoinClause
-
-        target = schema or self.default_schema
-        joins = JoinClause(
-            self.dialect,
-            JoinClause(
-                self.dialect,
-                JoinClause(
-                    self.dialect,
-                    self._relation("foreign_keys", "sys", alias="fk"),
-                    self._relation("foreign_key_columns", "sys", alias="fc"),
-                    join_type="JOIN",
-                    condition=self._eq(
-                        self._col("object_id", "fk"),
-                        self._col("constraint_object_id", "fc"),
-                    ),
-                ),
-                self._relation("tables", "sys", alias="t"),
-                join_type="JOIN",
-                condition=self._eq(
-                    self._col("parent_object_id", "fk"), self._col("object_id", "t")
-                ),
-            ),
-            self._relation("schemas", "sys", alias="s"),
-            join_type="JOIN",
-            condition=self._eq(
-                self._col("schema_id", "t"), self._col("schema_id", "s")
-            ),
-        )
-        return self._select(
-            [
-                self._col("name", "fk", alias="fk_name"),
-                FunctionCall(
-                    self.dialect,
-                    "COL_NAME",
-                    self._col("parent_object_id", "fc"),
-                    self._col("parent_column_id", "fc"),
-                    alias="col_name",
-                ),
-                FunctionCall(
-                    self.dialect,
-                    "OBJECT_NAME",
-                    self._col("referenced_object_id", "fk"),
-                    alias="ref_table",
-                ),
-                FunctionCall(
-                    self.dialect,
-                    "COL_NAME",
-                    self._col("referenced_object_id", "fc"),
-                    self._col("referenced_column_id", "fc"),
-                    alias="ref_col",
-                ),
-                self._col("delete_referential_action_desc", "fk", alias="on_delete"),
-                self._col("update_referential_action_desc", "fk", alias="on_update"),
-                self._col("constraint_column_id", "fc", alias="col_position"),
-            ],
-            from_=joins,
-            where=self._and(
-                self._eq(self._col("name", "s"), self._lit(target)),
-                self._eq(self._col("name", "t"), self._lit(table_name)),
-            ),
-            order_by=[
-                self._col("name", "fk"),
-                self._col("constraint_column_id", "fc"),
-            ],
-        )
-
-    def _build_view_list_sql(
-        self, schema: Optional[str], include_system: bool
-    ) -> Tuple[str, tuple]:
-        target = schema or self.default_schema
-        return self._select(
-            [self._col("TABLE_NAME", alias="view_name")],
-            from_=self._relation("VIEWS", "INFORMATION_SCHEMA"),
-            where=self._eq(self._col("TABLE_SCHEMA"), self._lit(target)),
-            order_by=[self._col("TABLE_NAME")],
-        )
-
-    def _build_view_info_sql(
-        self, view_name: str, schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        target = schema or self.default_schema
-        return self._select(
-            [
-                self._col("TABLE_NAME", alias="view_name"),
-                self._col("VIEW_DEFINITION", alias="definition"),
-                self._col("IS_UPDATABLE"),
-            ],
-            from_=self._relation("VIEWS", "INFORMATION_SCHEMA"),
-            where=self._and(
-                self._eq(self._col("TABLE_SCHEMA"), self._lit(target)),
-                self._eq(self._col("TABLE_NAME"), self._lit(view_name)),
-            ),
-        )
-
-    def _build_trigger_list_sql(
-        self, table_name: Optional[str], schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        from rhosocial.activerecord.backend.expression import FunctionCall, JoinClause
-
-        target = schema or self.default_schema
-        joins = JoinClause(
-            self.dialect,
-            JoinClause(
-                self.dialect,
-                self._relation("triggers", "sys", alias="tr"),
-                self._relation("tables", "sys", alias="t"),
-                join_type="JOIN",
-                condition=self._eq(
-                    self._col("parent_id", "tr"), self._col("object_id", "t")
-                ),
-            ),
-            self._relation("schemas", "sys", alias="s"),
-            join_type="JOIN",
-            condition=self._eq(
-                self._col("schema_id", "t"), self._col("schema_id", "s")
-            ),
-        )
-        conditions = [self._eq(self._col("name", "s"), self._lit(target))]
-        if table_name:
-            conditions.append(self._eq(self._col("name", "t"), self._lit(table_name)))
-        return self._select(
-            [
-                self._col("name", "tr", alias="trigger_name"),
-                self._col("name", "t", alias="table_name"),
-                self._col("is_disabled", "tr"),
-                self._col("is_instead_of_trigger", "tr"),
-                FunctionCall(
-                    self.dialect,
-                    "OBJECT_DEFINITION",
-                    self._col("object_id", "tr"),
-                    alias="definition",
-                ),
-            ],
-            from_=joins,
-            where=self._and(*conditions),
-            order_by=[self._col("name", "tr")],
-        )
-
-    # ------------------------------------------------------------------
-    # Backend-specific questions
-    #
-    # Core models what every backend has; these are the catalogue families
-    # SQL Server has and core has no scope for. Each is built from the same
-    # expression nodes as the shared ones, and each carries the family name
-    # into its cache key (see the managers below) so two families never
-    # answer each other's question.
-    # ------------------------------------------------------------------
 
     def _build_schema_list_sql(self) -> Tuple[str, tuple]:
         """``sys.schemas`` with the owning principal's name.
@@ -1077,7 +771,9 @@ class SyncSQLServerIntrospector(
         pk_rows = self._executor.execute(pk_sql, pk_params)
         primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
 
-        sql, params = self._build_column_info_sql(table_name, schema)
+        sql, params = self.column_info_statement(
+            table_name=table_name, schema=schema
+        ).to_sql()
         rows = self._executor.execute(sql, params)
         columns = self.parse_columns(
             rows, table_name, target, primary_keys
@@ -1255,7 +951,9 @@ class AsyncSQLServerIntrospector(
         pk_rows = await self._executor.execute(pk_sql, pk_params)
         primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
 
-        sql, params = self._build_column_info_sql(table_name, schema)
+        sql, params = self.column_info_statement(
+            table_name=table_name, schema=schema
+        ).to_sql()
         rows = await self._executor.execute(sql, params)
         columns = self.parse_columns(
             rows, table_name, target, primary_keys

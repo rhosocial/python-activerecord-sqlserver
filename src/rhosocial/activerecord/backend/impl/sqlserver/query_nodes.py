@@ -345,82 +345,89 @@ def health_check_sql(dialect: "SQLDialectBase") -> Tuple[str, tuple]:
 
 
 class SQLServerNodeBuilderMixin:
-    """The node builders above, bound to ``self.dialect``.
+    """The node builders above, bound to the object that owns the spelling.
 
-    For the introspectors, which reach their dialect through the core
-    introspector mixin and can therefore ask these questions with no dialect
-    argument at all.
+    Two families ask these questions. The introspectors reach their dialect
+    through the core introspector mixin; the dialect itself is the spelling.
+    They share no base class, so the binding is asked for once -- here, under
+    :attr:`_node_dialect` -- and every builder below reads it from there.
     """
 
-    #: The dialect these nodes are bound to.
+    #: The dialect an introspector reaches through core's introspector mixin.
+    #: A dialect that uses these builders overrides ``_node_dialect`` instead.
     dialect: "SQLDialectBase"
+
+    @property
+    def _node_dialect(self) -> "SQLDialectBase":
+        """The dialect every node built here is bound to."""
+        return self.dialect
 
     def _col(self, name: str, table: Optional[str] = None, alias: Optional[str] = None):
         """A column reference, qualified by its relation alias when given."""
-        return column(self.dialect, name, table=table, alias=alias)
+        return column(self._node_dialect, name, table=table, alias=alias)
 
     def _lit(self, value: Any, inline: bool = False):
         """A value in a predicate position; *inline* keeps it out of params."""
-        return literal(self.dialect, value, inline=inline)
+        return literal(self._node_dialect, value, inline=inline)
 
     def _relation(
         self, name: str, schema_name: Optional[str] = None, alias: Optional[str] = None
     ) -> "NamedRelationRef":
         """A readable relation, optionally aliased."""
-        return relation(self.dialect, name, schema_name=schema_name, alias=alias)
+        return relation(self._node_dialect, name, schema_name=schema_name, alias=alias)
 
     def _join(self, left, right, condition=None, join_type: str = "JOIN"):
         """Join two row sources on *condition*."""
-        return join(self.dialect, left, right, condition=condition, join_type=join_type)
+        return join(self._node_dialect, left, right, condition=condition, join_type=join_type)
 
     def _and(self, *conditions):
         """The conjunction of *conditions*, as one predicate node."""
-        return conjunction(self.dialect, *conditions)
+        return conjunction(self._node_dialect, *conditions)
 
     def _eq(self, left, right):
         """Equality between two expression nodes."""
-        return compare(self.dialect, "eq", left, right)
+        return compare(self._node_dialect, "eq", left, right)
 
     def _gt(self, left, right):
         """``left > right`` between two expression nodes."""
-        return compare(self.dialect, "gt", left, right)
+        return compare(self._node_dialect, "gt", left, right)
 
     def _in(self, operand, values: Tuple[Any, ...]):
         """``operand IN (...)``, with the values inline as the text had them."""
-        return contained_in(self.dialect, operand, values)
+        return contained_in(self._node_dialect, operand, values)
 
     def _is_not_null(self, operand):
         """``operand IS NOT NULL``."""
-        return is_not_null(self.dialect, operand)
+        return is_not_null(self._node_dialect, operand)
 
     def _fn(self, name: str, *args, alias: Optional[str] = None, niladic: bool = False):
         """A function call node, optionally aliased."""
-        return call(self.dialect, name, *args, alias=alias, niladic=niladic)
+        return call(self._node_dialect, name, *args, alias=alias, niladic=niladic)
 
     def _cast(self, node, type_name: str):
         """``CAST(node AS type_name)``."""
-        return cast(self.dialect, node, type_name)
+        return cast(self._node_dialect, node, type_name)
 
     def _mul(self, left, right):
         """``left * right`` as an arithmetic node."""
-        return multiply(self.dialect, left, right)
+        return multiply(self._node_dialect, left, right)
 
     def _add(self, left, right):
         """``left + right`` as an arithmetic node (SQL Server's concatenation)."""
-        return add(self.dialect, left, right)
+        return add(self._node_dialect, left, right)
 
     def _row_count_wildcard(self):
         """The ``*`` that counts rows, as ``COUNT(*)`` takes it."""
-        return row_count(self.dialect)
+        return row_count(self._node_dialect)
 
     def _subquery(self, select, from_=None, where=None, alias=None):
         """A scalar subquery in a select list."""
-        return subquery(self.dialect, select, from_=from_, where=where, alias=alias)
+        return subquery(self._node_dialect, select, from_=from_, where=where, alias=alias)
 
     def _query(self, select, from_=None, where=None, group_by=None, order_by=None, limit=None):
         """A ``QueryStatement`` node, ready to render or to nest."""
         return query(
-            self.dialect,
+            self._node_dialect,
             select,
             from_=from_,
             where=where,
@@ -432,7 +439,7 @@ class SQLServerNodeBuilderMixin:
     def _select(self, select, from_=None, where=None, group_by=None, order_by=None, limit=None):
         """Render one SELECT from nodes, in the dialect's own spelling."""
         return select_sql(
-            self.dialect,
+            self._node_dialect,
             select,
             from_=from_,
             where=where,
