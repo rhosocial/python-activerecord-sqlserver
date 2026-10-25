@@ -118,9 +118,9 @@ class SQLServerExtendedPropertyListQueryStatement(IntrospectionExpression):
         dialect: "SQLDialectBase",
         *,
         major_id: int,
-        minor_id: Optional[int],
-        class_name: str,
-        schema: Optional[str],
+        minor_id: Optional[int] = None,
+        class_name: str = "OBJECT_OR_COLUMN",
+        schema: Optional[str] = None,
     ):
         super().__init__(dialect, schema=schema)
         self.major_id: int = major_id
