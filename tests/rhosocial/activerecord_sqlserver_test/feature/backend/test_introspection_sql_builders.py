@@ -12,11 +12,12 @@ Every question here is a ``QueryStatement`` over expression nodes, rendered by
 the dialect (org guide §16.2). For the families core models that means the
 dialect's ``format_*_query_statement`` writes the text -- the introspector only
 constructs the statement; for the families only this backend has, the
-introspector's own builders do. Either way what the assertions read is the
-*rendered* statement: the value the caller passed became a bind parameter and
-no value leaked into the text. The identifier spelling is the dialect's, so it
-is asserted as ``[schema].[TABLE]`` where a position matters and left free
-where it does not.
+statement class lives in ``expression/introspection.py`` and its formatter in
+``mixins/introspection.py``, and the introspector's ``*_statement`` factory
+names one. Either way what the assertions read is the *rendered* statement: the
+value the caller passed became a bind parameter and no value leaked into the
+text. The identifier spelling is the dialect's, so it is asserted as
+``[schema].[TABLE]`` where a position matters and left free where it does not.
 """
 
 from decimal import Decimal
@@ -117,7 +118,7 @@ class TestBuildColumnInfoSql:
 class TestBuildPrimaryKeySql:
     def test_parameterized(self):
         introspector = make_introspector()
-        sql, params = introspector._build_primary_key_sql("users", "dbo")
+        sql, params = introspector.primary_key_statement(table_name="users", schema="dbo").to_sql()
         assert "[TABLE_SCHEMA] = ?" in sql
         assert "[TABLE_NAME] = ?" in sql
         assert params == ("dbo", "users")
@@ -186,7 +187,7 @@ class TestBuildDatabaseInfoSql:
 class TestBuildSchemaListSql:
     def test_owner_resolved_by_principal_id_not_name(self):
         introspector = make_introspector()
-        sql, params = introspector._build_schema_list_sql()
+        sql, params = introspector.schema_list_statement().to_sql()
         assert sql == (
             "SELECT [s].[schema_id], [s].[name] AS [schema_name], "
             "[p].[name] AS [owner] FROM [sys].[schemas] AS [s] "
@@ -211,9 +212,9 @@ class TestBuildSchemaListSql:
 class TestBuildExtendedPropertyListSql:
     def test_every_filter_is_a_bind_parameter(self):
         introspector = make_introspector()
-        sql, params = introspector._build_extended_property_list_sql(
-            123, 1, "OBJECT_OR_COLUMN", "dbo"
-        )
+        sql, params = introspector.extended_property_list_statement(
+            major_id=123, minor_id=1, class_name="OBJECT_OR_COLUMN", schema="dbo"
+        ).to_sql()
         assert params == (123, "OBJECT_OR_COLUMN", 1, "dbo")
         assert "'dbo'" not in sql and "'OBJECT_OR_COLUMN'" not in sql
         assert "[ep].[major_id] = ?" in sql
@@ -224,9 +225,9 @@ class TestBuildExtendedPropertyListSql:
     def test_value_cast_off_the_sql_variant(self):
         """``value`` is sql_variant, which the driver cannot fetch (HY106)."""
         introspector = make_introspector()
-        sql, params = introspector._build_extended_property_list_sql(
-            123, None, "OBJECT_OR_COLUMN", None
-        )
+        sql, params = introspector.extended_property_list_statement(
+            major_id=123, minor_id=None, class_name="OBJECT_OR_COLUMN", schema=None
+        ).to_sql()
         assert "CAST([ep].[value] AS NVARCHAR(4000)) AS [property_value]" in sql
         # No minor_id, no schema: two predicates only.
         assert params == (123, "OBJECT_OR_COLUMN")
@@ -234,44 +235,62 @@ class TestBuildExtendedPropertyListSql:
     def test_unknown_class_refused_before_the_query(self):
         introspector = make_introspector()
         for bad in ("", "MS_Description", "object_or_column"):
+            # The refusal is the formatter's -- it happens when the statement
+            # is rendered, before anything reaches the server.
             with pytest.raises(ValueError):
-                introspector._build_extended_property_list_sql(123, None, bad, None)
+                introspector.extended_property_list_statement(
+                    major_id=123, minor_id=None, class_name=bad, schema=None
+                ).to_sql()
 
     def test_schema_only_narrows_object_scoped_classes(self):
         introspector = make_introspector()
         # INDEX is object-scoped (a major_id in sys.objects space)...
-        introspector._build_extended_property_list_sql(1, None, "INDEX", "dbo")
+        introspector.extended_property_list_statement(
+            major_id=1, minor_id=None, class_name="INDEX", schema="dbo"
+        ).to_sql()
         # ...but DATABASE/SCHEMA properties have no object to narrow by.
         with pytest.raises(ValueError):
-            introspector._build_extended_property_list_sql(1, None, "DATABASE", "dbo")
+            introspector.extended_property_list_statement(
+                major_id=1, minor_id=None, class_name="DATABASE", schema="dbo"
+            ).to_sql()
         with pytest.raises(ValueError):
-            introspector._build_extended_property_list_sql(1, None, "SCHEMA", "dbo")
+            introspector.extended_property_list_statement(
+                major_id=1, minor_id=None, class_name="SCHEMA", schema="dbo"
+            ).to_sql()
+
+    def test_public_manager_refuses_at_the_same_point(self):
+        """``list_extended_properties`` is where the refusal is observed."""
+        introspector = make_introspector()
+        with pytest.raises(ValueError, match="unknown extended-property class"):
+            introspector.list_extended_properties(123, class_name="MS_Description")
+        with pytest.raises(ValueError, match="object-scoped extended properties"):
+            introspector.list_extended_properties(1, class_name="DATABASE", schema="dbo")
 
 
 class TestBuildRoutineListSql:
     def test_procedures_ask_for_p_and_pc(self):
         introspector = make_introspector()
-        sql, params = introspector._build_procedure_list_sql(None)
+        sql, params = introspector.procedure_list_statement(schema=None).to_sql()
         assert "[o].[type] IN ('P', 'PC')" in sql
         assert params == ("dbo",)
 
     def test_functions_ask_for_the_five_codes(self):
         introspector = make_introspector()
-        sql, params = introspector._build_function_list_sql(None)
+        sql, params = introspector.function_list_statement(schema=None).to_sql()
         assert "[o].[type] IN ('FN', 'IF', 'TF', 'FS', 'FT')" in sql
         assert params == ("dbo",)
 
     def test_explicit_schema_is_a_parameter(self):
         introspector = make_introspector()
-        sql, params = introspector._build_procedure_list_sql("sales")
+        sql, params = introspector.procedure_list_statement(schema="sales").to_sql()
         assert "[s].[name] = ?" in sql
         assert "'sales'" not in sql
         assert params == ("sales",)
 
     def test_procedures_and_functions_differ_only_in_codes(self):
         introspector = make_introspector()
-        procs, _ = introspector._build_procedure_list_sql("dbo")
-        fns, _ = introspector._build_function_list_sql("dbo")
+        procs, _ = introspector.procedure_list_statement(schema="dbo").to_sql()
+        fns, _ = introspector.function_list_statement(schema="dbo").to_sql()
         assert procs.replace("IN ('P', 'PC')", "") == fns.replace(
             "IN ('FN', 'IF', 'TF', 'FS', 'FT')", ""
         )
@@ -280,7 +299,7 @@ class TestBuildRoutineListSql:
 class TestBuildSequenceListSql:
     def test_sql_variant_columns_are_cast_to_text(self):
         introspector = make_introspector()
-        sql, params = introspector._build_sequence_list_sql(None)
+        sql, params = introspector.sequence_list_statement(schema=None).to_sql()
         for column in (
             "start_value",
             "increment",
@@ -295,7 +314,7 @@ class TestBuildSequenceListSql:
 
     def test_explicit_schema_is_a_parameter(self):
         introspector = make_introspector()
-        sql, params = introspector._build_sequence_list_sql("sales")
+        sql, params = introspector.sequence_list_statement(schema="sales").to_sql()
         assert "[s].[name] = ?" in sql
         assert "'sales'" not in sql
         assert params == ("sales",)

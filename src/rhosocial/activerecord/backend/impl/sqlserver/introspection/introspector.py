@@ -47,6 +47,13 @@ from .types import (
 
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
+    from ..expression.introspection import (
+        SQLServerExtendedPropertyListQueryStatement,
+        SQLServerPrimaryKeyQueryStatement,
+        SQLServerRoutineListQueryStatement,
+        SQLServerSchemaListQueryStatement,
+        SQLServerSequenceListQueryStatement,
+    )
 
 #: ``INFORMATION_SCHEMA.COLUMNS.CHARACTER_MAXIMUM_LENGTH`` reports ``-1``
 #: for a MAX-capable column.  Only these three spell that marker as a length
@@ -93,45 +100,11 @@ _DATETIME_PRECISION_TYPES = frozenset({"time", "datetime2", "datetimeoffset"})
 #: catalog rebuild; it is recorded here rather than silently widened.
 _DATETIME_DEFAULT_PRECISION = 7
 
-#: The ``sys.extended_properties.class_desc`` values SQL Server documents.
-#: The property table is shared by objects, columns, schemas, indexes,
-#: parameters and so on, and ``major_id``/``minor_id`` mean something
-#: different for each; accepting a name outside this set would silently
-#: return nothing instead of saying the family is unknown.
-_EXTENDED_PROPERTY_CLASSES = frozenset({
-    "DATABASE",
-    "OBJECT_OR_COLUMN",
-    "PARAMETER",
-    "SCHEMA",
-    "DATABASE_PRINCIPAL",
-    "ASSEMBLY",
-    "TYPE",
-    "INDEX",
-    "XML_SCHEMA_COLLECTION",
-    "XML_SCHEMA_NAMESPACE",
-    "TYPE_SCHEMA",
-    "XML_INDEX",
-    "PLAN_GUIDE",
-})
-
 #: ``sys.objects.type`` codes for user-defined functions: scalar (``FN``),
 #: inline table-valued (``IF``), multi-statement table-valued (``TF``),
 #: CLR scalar (``FS``) and CLR table-valued (``FT``). ``sys.procedures``
 #: covers the procedure half.
 _FUNCTION_TYPE_CODES = ("FN", "IF", "TF", "FS", "FT")
-
-#: ``sys.sequences`` stores these as ``sql_variant``. The ODBC driver refuses
-#: to fetch that type (``HY106``), so every one of them is cast to text in the
-#: statement and parsed back here. Keeping the list in one place is what stops
-#: a later column from being added to the projection without its cast.
-_SEQUENCE_NUMERIC_COLUMNS = (
-    "start_value",
-    "increment",
-    "minimum_value",
-    "maximum_value",
-    "current_value",
-)
-
 
 
 class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
@@ -150,254 +123,97 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         return getattr(self._backend, '_version', (15, 0, 0))
 
     # ------------------------------------------------------------------
-    # Backend-specific questions
+    # Backend-specific statement factories
     #
     # Every family core models is a statement its dialect renders; this
-    # layer constructs it and executes what comes back. What core has no
-    # statement for is built here -- the primary key is SQL Server's own
-    # question, and so are the families below it. Each is a tree of the same
-    # expression nodes, and each carries the family name into its cache key
-    # (see the managers below) so two families never answer each other's
+    # layer constructs it and executes what comes back. The families core has
+    # no statement for are SQL Server's own -- the primary key, schemas,
+    # extended properties, routines and sequences -- and each gets a factory
+    # here returning the statement object. Each collects every parameter at
+    # construction (keyword-only: a question is asked once and never edited),
+    # the dialect renders it, and each carries the family name into its cache
+    # key (see the managers below) so two families never answer each other's
     # question.
+    #
+    # Nothing here renders: a SQL string is the dialect formatter's, so a
+    # factory below names a statement and stops.
     # ------------------------------------------------------------------
 
-    def _build_primary_key_sql(
-        self, table_name: str, schema: str
-    ) -> Tuple[str, tuple]:
-        from rhosocial.activerecord.backend.expression import JoinClause
+    def primary_key_statement(
+        self, *, table_name: str, schema: str
+    ) -> "SQLServerPrimaryKeyQueryStatement":
+        """Return the statement that lists one table's primary-key columns."""
+        from ..expression.introspection import SQLServerPrimaryKeyQueryStatement
 
-        # The two catalogue views are joined on the constraint name *and* the
-        # schema, so a same-named constraint in another schema cannot contribute
-        # a column to this table's key.
-        join = JoinClause(
-            self.dialect,
-            self._relation("TABLE_CONSTRAINTS", "INFORMATION_SCHEMA", alias="tc"),
-            self._relation("CONSTRAINT_COLUMN_USAGE", "INFORMATION_SCHEMA", alias="ccu"),
-            join_type="JOIN",
-            condition=self._and(
-                self._eq(
-                    self._col("CONSTRAINT_NAME", "tc"),
-                    self._col("CONSTRAINT_NAME", "ccu"),
-                ),
-                self._eq(
-                    self._col("TABLE_SCHEMA", "tc"), self._col("TABLE_SCHEMA", "ccu")
-                ),
-            ),
-        )
-        return self._select(
-            [self._col("COLUMN_NAME", "ccu")],
-            from_=join,
-            where=self._and(
-                self._eq(self._col("TABLE_SCHEMA", "tc"), self._lit(schema)),
-                self._eq(self._col("TABLE_NAME", "tc"), self._lit(table_name)),
-                self._eq(
-                    self._col("CONSTRAINT_TYPE", "tc"),
-                    self._lit("PRIMARY KEY", inline=True),
-                ),
-            ),
-        )
+        return SQLServerPrimaryKeyQueryStatement(self.dialect, table_name=table_name, schema=schema)
 
-    def _build_schema_list_sql(self) -> Tuple[str, tuple]:
-        """``sys.schemas`` with the owning principal's name.
+    def schema_list_statement(self) -> "SQLServerSchemaListQueryStatement":
+        """Return the statement that lists this database's schemas."""
+        from ..expression.introspection import SQLServerSchemaListQueryStatement
 
-        ``sys.schemas`` is joined to ``sys.database_principals`` on
-        ``principal_id`` -- not on ``name`` -- because a schema and its owner
-        need not share a name. The join is a ``LEFT JOIN``: the catalogue
-        keeps a schema after its owning principal is dropped, leaving
-        ``principal_id`` dangling, and that row is still a schema.
-        """
-        joined = self._join(
-            self._relation("schemas", "sys", alias="s"),
-            self._relation("database_principals", "sys", alias="p"),
-            join_type="LEFT JOIN",
-            condition=self._eq(
-                self._col("principal_id", "s"), self._col("principal_id", "p")
-            ),
-        )
-        return self._select(
-            [
-                self._col("schema_id", "s"),
-                self._col("name", "s", alias="schema_name"),
-                self._col("name", "p", alias="owner"),
-            ],
-            from_=joined,
-            order_by=[self._col("name", "s")],
-        )
+        return SQLServerSchemaListQueryStatement(self.dialect)
 
-    def _build_extended_property_list_sql(
+    def extended_property_list_statement(
         self,
+        *,
         major_id: int,
-        minor_id: Optional[int],
-        class_name: str,
-        schema: Optional[str],
-    ) -> Tuple[str, tuple]:
-        """``sys.extended_properties`` for one object, optionally one column.
+        minor_id: Optional[int] = None,
+        class_name: str = "OBJECT_OR_COLUMN",
+        schema: Optional[str] = None,
+    ) -> "SQLServerExtendedPropertyListQueryStatement":
+        """Return the statement that reads one object's extended properties.
 
-        ``value`` is ``sql_variant`` and the driver cannot fetch it, so it is
-        cast to ``NVARCHAR(4000)`` in the statement: the property text is
-        what a caller wants, and truncation beyond 4000 characters is
-        impossible to avoid without a second round trip.
-
-        The schema filter is the one part that is not a column of
-        ``sys.extended_properties``: it resolves ``major_id`` through
-        ``sys.objects`` and ``sys.schemas``. That join only means something
-        for the object-scoped classes (``OBJECT_OR_COLUMN`` above all), so
-        asking for a schema while listing, say, ``DATABASE`` properties is a
-        contradiction rather than an empty answer -- refused before the
-        query is built.
+        ``major_id`` is the object id for ``OBJECT_OR_COLUMN`` (class 1) and
+        the id in the family's own space for the other classes; ``minor_id``
+        narrows to one column's properties. ``schema`` only means something
+        for the object-scoped classes, and the formatter refuses it for a
+        family that has none rather than returning nothing.
         """
-        if class_name not in _EXTENDED_PROPERTY_CLASSES:
-            raise ValueError(
-                f"unknown extended-property class {class_name!r}; "
-                f"expected one of {sorted(_EXTENDED_PROPERTY_CLASSES)}"
-            )
-        if schema is not None and class_name not in ("OBJECT_OR_COLUMN", "INDEX"):
-            raise ValueError(
-                f"a schema can only narrow object-scoped extended properties; "
-                f"{class_name!r} has no schema"
-            )
-
-        joined = self._join(
-            self._relation("extended_properties", "sys", alias="ep"),
-            self._relation("objects", "sys", alias="o"),
-            join_type="LEFT JOIN",
-            condition=self._eq(
-                self._col("major_id", "ep"), self._col("object_id", "o")
-            ),
-        )
-        joined = self._join(
-            joined,
-            self._relation("schemas", "sys", alias="s"),
-            join_type="LEFT JOIN",
-            condition=self._eq(
-                self._col("schema_id", "o"), self._col("schema_id", "s")
-            ),
+        from ..expression.introspection import (
+            SQLServerExtendedPropertyListQueryStatement,
         )
 
-        conditions = [
-            self._eq(self._col("major_id", "ep"), self._lit(major_id)),
-            self._eq(self._col("class_desc", "ep"), self._lit(class_name)),
-        ]
-        if minor_id is not None:
-            conditions.append(
-                self._eq(self._col("minor_id", "ep"), self._lit(minor_id))
-            )
-        if schema is not None:
-            conditions.append(self._eq(self._col("name", "s"), self._lit(schema)))
-
-        return self._select(
-            [
-                self._col("class", "ep", alias="class_id"),
-                self._col("class_desc", "ep", alias="class_name"),
-                self._col("major_id", "ep", alias="major_id"),
-                self._col("minor_id", "ep", alias="minor_id"),
-                self._col("name", "ep", alias="property_name"),
-                self._cast(
-                    self._col("value", "ep"), "NVARCHAR(4000)"
-                ).as_("property_value"),
-            ],
-            from_=joined,
-            where=self._and(*conditions),
-            order_by=[self._col("minor_id", "ep"), self._col("name", "ep")],
+        return SQLServerExtendedPropertyListQueryStatement(
+            self.dialect,
+            major_id=major_id,
+            minor_id=minor_id,
+            class_name=class_name,
+            schema=schema,
         )
 
-    def _build_routine_list_sql(
-        self, type_codes: Tuple[str, ...], schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        """Schema-scoped routines of the given ``sys.objects.type`` codes.
+    def routine_list_statement(
+        self, *, type_codes: Tuple[str, ...], schema: Optional[str]
+    ) -> "SQLServerRoutineListQueryStatement":
+        """Return the statement that lists the routines with these type codes.
 
-        One builder for both families: a procedure is a routine whose
-        ``sys.objects.type`` is ``P``/``PC`` and a function is one of the
-        ``FN``/``IF``/``TF``/``FS``/``FT`` codes. What differs is the code
-        set, and that is the argument.
+        One statement class for both routine families -- what separates a
+        procedure from a function is the ``sys.objects.type`` code set.
         """
-        target = schema or self.default_schema
-        joined = self._join(
-            self._relation("objects", "sys", alias="o"),
-            self._relation("schemas", "sys", alias="s"),
-            join_type="JOIN",
-            condition=self._eq(
-                self._col("schema_id", "o"), self._col("schema_id", "s")
-            ),
-        )
-        return self._select(
-            [
-                self._col("name", "o", alias="routine_name"),
-                self._col("name", "s", alias="schema_name"),
-                self._col("type", "o", alias="type_code"),
-                self._col("type_desc", "o"),
-                self._col("create_date", "o", alias="created_at"),
-                self._col("modify_date", "o", alias="modified_at"),
-                self._col("is_ms_shipped", "o"),
-            ],
-            from_=joined,
-            where=self._and(
-                self._in(self._col("type", "o"), type_codes),
-                self._eq(self._col("name", "s"), self._lit(target)),
-            ),
-            order_by=[self._col("name", "o")],
+        from ..expression.introspection import SQLServerRoutineListQueryStatement
+
+        return SQLServerRoutineListQueryStatement(
+            self.dialect, type_codes=type_codes, schema=schema
         )
 
-    def _build_procedure_list_sql(
-        self, schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        """Stored procedures: ``sys.objects`` types ``P`` and ``PC``."""
-        return self._build_routine_list_sql(("P", "PC"), schema)
+    def procedure_list_statement(
+        self, *, schema: Optional[str]
+    ) -> "SQLServerRoutineListQueryStatement":
+        """Return the statement that lists procedures (types ``P``/``PC``)."""
+        return self.routine_list_statement(type_codes=("P", "PC"), schema=schema)
 
-    def _build_function_list_sql(
-        self, schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        """User-defined functions: the five ``sys.objects`` function codes."""
-        return self._build_routine_list_sql(_FUNCTION_TYPE_CODES, schema)
+    def function_list_statement(
+        self, *, schema: Optional[str]
+    ) -> "SQLServerRoutineListQueryStatement":
+        """Return the statement that lists user-defined functions."""
+        return self.routine_list_statement(type_codes=_FUNCTION_TYPE_CODES, schema=schema)
 
-    def _build_sequence_list_sql(
-        self, schema: Optional[str]
-    ) -> Tuple[str, tuple]:
-        """``sys.sequences`` with every ``sql_variant`` value cast to text.
+    def sequence_list_statement(
+        self, *, schema: Optional[str]
+    ) -> "SQLServerSequenceListQueryStatement":
+        """Return the statement that lists this database's sequences."""
+        from ..expression.introspection import SQLServerSequenceListQueryStatement
 
-        ``start_value``/``increment``/``minimum_value``/``maximum_value``/
-        ``current_value`` are ``sql_variant``. pyodbc raises
-        ``ODBC SQL type -25 is not yet supported`` on the very first of them,
-        so a projection that selected them raw could not be fetched at all --
-        which is why the cast is in the statement rather than the parser.
-        """
-        target = schema or self.default_schema
-        joined = self._join(
-            self._relation("sequences", "sys", alias="q"),
-            self._relation("schemas", "sys", alias="s"),
-            join_type="JOIN",
-            condition=self._eq(
-                self._col("schema_id", "q"), self._col("schema_id", "s")
-            ),
-        )
-        projection = [
-            self._col("name", "q", alias="sequence_name"),
-            self._col("name", "s", alias="schema_name"),
-            self._fn(
-                "TYPE_NAME", self._col("user_type_id", "q"), alias="data_type"
-            ),
-        ]
-        for column in _SEQUENCE_NUMERIC_COLUMNS:
-            projection.append(
-                self._cast(
-                    self._col(column, "q"), "NVARCHAR(64)"
-                ).as_(column)
-            )
-        projection.extend(
-            [
-                self._col("is_cycling", "q"),
-                self._col("is_cached", "q"),
-                self._cast(self._col("cache_size", "q"), "BIGINT").as_(
-                    "cache_size"
-                ),
-            ]
-        )
-        return self._select(
-            projection,
-            from_=joined,
-            where=self._eq(self._col("name", "s"), self._lit(target)),
-            order_by=[self._col("name", "q")],
-        )
+        return SQLServerSequenceListQueryStatement(self.dialect, schema=schema)
 
     # ------------------------------------------------------------------
     # Parse methods — pure Python, no I/O
@@ -767,7 +583,9 @@ class SyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        pk_sql, pk_params = self._build_primary_key_sql(table_name, target)
+        pk_sql, pk_params = self.primary_key_statement(
+            table_name=table_name, schema=target
+        ).to_sql()
         pk_rows = self._executor.execute(pk_sql, pk_params)
         primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
 
@@ -799,7 +617,7 @@ class SyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_schema_list_sql()
+        sql, params = self.schema_list_statement().to_sql()
         schemas = self.parse_schemas(self._executor.execute(sql, params))
         self._cache.set(key, schemas)
         return schemas
@@ -841,9 +659,12 @@ class SyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_extended_property_list_sql(
-            major_id, minor_id, class_name, schema
-        )
+        sql, params = self.extended_property_list_statement(
+            major_id=major_id,
+            minor_id=minor_id,
+            class_name=class_name,
+            schema=schema,
+        ).to_sql()
         properties = self.parse_extended_properties(
             self._executor.execute(sql, params)
         )
@@ -861,7 +682,7 @@ class SyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_procedure_list_sql(schema)
+        sql, params = self.procedure_list_statement(schema=schema).to_sql()
         procedures = self.parse_routines(self._executor.execute(sql, params))
         self._cache.set(key, procedures)
         return procedures
@@ -877,7 +698,7 @@ class SyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_function_list_sql(schema)
+        sql, params = self.function_list_statement(schema=schema).to_sql()
         functions = self.parse_routines(self._executor.execute(sql, params))
         self._cache.set(key, functions)
         return functions
@@ -891,7 +712,7 @@ class SyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_sequence_list_sql(schema)
+        sql, params = self.sequence_list_statement(schema=schema).to_sql()
         sequences = self.parse_sequences(self._executor.execute(sql, params))
         self._cache.set(key, sequences)
         return sequences
@@ -947,7 +768,9 @@ class AsyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        pk_sql, pk_params = self._build_primary_key_sql(table_name, target)
+        pk_sql, pk_params = self.primary_key_statement(
+            table_name=table_name, schema=target
+        ).to_sql()
         pk_rows = await self._executor.execute(pk_sql, pk_params)
         primary_keys = [r.get("COLUMN_NAME") for r in pk_rows]
 
@@ -975,7 +798,7 @@ class AsyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_schema_list_sql()
+        sql, params = self.schema_list_statement().to_sql()
         schemas = self.parse_schemas(await self._executor.execute(sql, params))
         self._cache.set(key, schemas)
         return schemas
@@ -998,9 +821,12 @@ class AsyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_extended_property_list_sql(
-            major_id, minor_id, class_name, schema
-        )
+        sql, params = self.extended_property_list_statement(
+            major_id=major_id,
+            minor_id=minor_id,
+            class_name=class_name,
+            schema=schema,
+        ).to_sql()
         properties = self.parse_extended_properties(
             await self._executor.execute(sql, params)
         )
@@ -1018,7 +844,7 @@ class AsyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_procedure_list_sql(schema)
+        sql, params = self.procedure_list_statement(schema=schema).to_sql()
         procedures = self.parse_routines(
             await self._executor.execute(sql, params)
         )
@@ -1036,7 +862,7 @@ class AsyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_function_list_sql(schema)
+        sql, params = self.function_list_statement(schema=schema).to_sql()
         functions = self.parse_routines(
             await self._executor.execute(sql, params)
         )
@@ -1052,7 +878,7 @@ class AsyncSQLServerIntrospector(
         if cached is not None:
             return cached
 
-        sql, params = self._build_sequence_list_sql(schema)
+        sql, params = self.sequence_list_statement(schema=schema).to_sql()
         sequences = self.parse_sequences(
             await self._executor.execute(sql, params)
         )

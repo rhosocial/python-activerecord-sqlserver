@@ -23,9 +23,12 @@ list; see the comment there for why the position matters.
 
 The questions themselves are expression trees, and the text they render is
 written here too, in ``format_*_query_statement``: a SQL string is a formatting
-artefact and belongs to the dialect (org guide §16.2). The introspector above
-this layer constructs a statement and executes what these return, so no family
-core models is spelled anywhere but in this module.
+artefact and belongs to the dialect (org guide §16.2). That covers the families
+core models *and* the ones only SQL Server has -- the primary key, schemas,
+extended properties, routines and sequences -- whose statements live in
+``expression/introspection.py``. The introspector above this layer constructs a
+statement and executes what these return, so no family is spelled anywhere but
+in this module.
 """
 
 from typing import Optional, Tuple, TYPE_CHECKING
@@ -44,6 +47,13 @@ if TYPE_CHECKING:  # pragma: no cover
         ViewInfoQueryStatement,
         ViewListQueryStatement,
     )
+    from ..expression.introspection import (
+        SQLServerExtendedPropertyListQueryStatement,
+        SQLServerPrimaryKeyQueryStatement,
+        SQLServerRoutineListQueryStatement,
+        SQLServerSchemaListQueryStatement,
+        SQLServerSequenceListQueryStatement,
+    )
 
 __all__ = ["DEFAULT_SCHEMA", "SQLServerIntrospectionMixin"]
 
@@ -51,6 +61,48 @@ __all__ = ["DEFAULT_SCHEMA", "SQLServerIntrospectionMixin"]
 #: so the introspector's ``default_schema`` and the statements below cannot
 #: drift apart.
 DEFAULT_SCHEMA = "dbo"
+
+#: The ``sys.extended_properties.class_desc`` values SQL Server documents.
+#: The property table is shared by objects, columns, schemas, indexes,
+#: parameters and so on, and ``major_id``/``minor_id`` mean something
+#: different for each; accepting a name outside this set would silently
+#: return nothing instead of saying the family is unknown.
+_EXTENDED_PROPERTY_CLASSES = frozenset(
+    {
+        "DATABASE",
+        "OBJECT_OR_COLUMN",
+        "PARAMETER",
+        "SCHEMA",
+        "DATABASE_PRINCIPAL",
+        "ASSEMBLY",
+        "TYPE",
+        "INDEX",
+        "XML_SCHEMA_COLLECTION",
+        "XML_SCHEMA_NAMESPACE",
+        "TYPE_SCHEMA",
+        "XML_INDEX",
+        "PLAN_GUIDE",
+    }
+)
+
+#: The extended-property classes whose ``major_id`` is an object id, and which
+#: therefore have a schema the ``sys.objects``/``sys.schemas`` join can narrow.
+#: Every other class names an id in its own space, so a schema filter would be
+#: a silent "no rows" rather than a contradiction -- refused before the query
+#: is built, below.
+_OBJECT_SCOPED_PROPERTY_CLASSES = frozenset({"OBJECT_OR_COLUMN", "INDEX"})
+
+#: ``sys.sequences`` stores these as ``sql_variant``. The ODBC driver refuses
+#: to fetch that type (``HY106``), so every one of them is cast to text in the
+#: statement. Keeping the list in one place is what stops a later column from
+#: being added to the projection without its cast.
+_SEQUENCE_NUMERIC_COLUMNS = (
+    "start_value",
+    "increment",
+    "minimum_value",
+    "maximum_value",
+    "current_value",
+)
 
 
 class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
@@ -462,4 +514,255 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             from_=joins,
             where=self._and(*conditions),
             order_by=[self._col("name", "tr")],
+        )
+
+    # ------------------------------------------------------------------ #
+    # SQL Server's own object families
+    #
+    # The primary key, schemas, extended properties, routines and sequences
+    # have no core statement class: the question is this backend's own. Each
+    # formatter below renders one of those statements from the nodes, and the
+    # construction lives here because the SQL is the dialect's -- the
+    # introspector only constructs the statement and executes what comes back.
+    # ------------------------------------------------------------------ #
+
+    def format_primary_key_query_statement(
+        self, expr: "SQLServerPrimaryKeyQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render the primary-key column list of one table.
+
+        The two catalogue views are joined on the constraint name *and* the
+        schema, so a same-named constraint in another schema cannot contribute
+        a column to this table's key.
+        """
+        from rhosocial.activerecord.backend.expression import JoinClause
+
+        params = expr.get_params()
+        table_name = params.get("table_name")
+        target = params.get("schema")
+
+        join = JoinClause(
+            self._node_dialect,
+            self._relation("TABLE_CONSTRAINTS", "INFORMATION_SCHEMA", alias="tc"),
+            self._relation("CONSTRAINT_COLUMN_USAGE", "INFORMATION_SCHEMA", alias="ccu"),
+            join_type="JOIN",
+            condition=self._and(
+                self._eq(
+                    self._col("CONSTRAINT_NAME", "tc"),
+                    self._col("CONSTRAINT_NAME", "ccu"),
+                ),
+                self._eq(
+                    self._col("TABLE_SCHEMA", "tc"), self._col("TABLE_SCHEMA", "ccu")
+                ),
+            ),
+        )
+        return self._select(
+            [self._col("COLUMN_NAME", "ccu")],
+            from_=join,
+            where=self._and(
+                self._eq(self._col("TABLE_SCHEMA", "tc"), self._lit(target)),
+                self._eq(self._col("TABLE_NAME", "tc"), self._lit(table_name)),
+                self._eq(
+                    self._col("CONSTRAINT_TYPE", "tc"),
+                    self._lit("PRIMARY KEY", inline=True),
+                ),
+            ),
+        )
+
+    def format_schema_list_query_statement(
+        self, expr: "SQLServerSchemaListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``sys.schemas`` with the owning principal's name.
+
+        ``sys.schemas`` is joined to ``sys.database_principals`` on
+        ``principal_id`` -- not on ``name`` -- because a schema and its owner
+        need not share a name. The join is a ``LEFT JOIN``: the catalogue
+        keeps a schema after its owning principal is dropped, leaving
+        ``principal_id`` dangling, and that row is still a schema.
+        """
+        joined = self._join(
+            self._relation("schemas", "sys", alias="s"),
+            self._relation("database_principals", "sys", alias="p"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("principal_id", "s"), self._col("principal_id", "p")
+            ),
+        )
+        return self._select(
+            [
+                self._col("schema_id", "s"),
+                self._col("name", "s", alias="schema_name"),
+                self._col("name", "p", alias="owner"),
+            ],
+            from_=joined,
+            order_by=[self._col("name", "s")],
+        )
+
+    def format_extended_property_list_query_statement(
+        self, expr: "SQLServerExtendedPropertyListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``sys.extended_properties`` for one object, optionally one column.
+
+        ``value`` is ``sql_variant`` and the driver cannot fetch it, so it is
+        cast to ``NVARCHAR(4000)`` in the statement: the property text is what
+        a caller wants, and truncation beyond 4000 characters is impossible to
+        avoid without a second round trip.
+
+        The schema filter is the one part that is not a column of
+        ``sys.extended_properties``: it resolves ``major_id`` through
+        ``sys.objects`` and ``sys.schemas``. That join only means something
+        for the object-scoped classes (``OBJECT_OR_COLUMN`` above all), so
+        asking for a schema while listing, say, ``DATABASE`` properties is a
+        contradiction rather than an empty answer -- refused before the query
+        is built.
+        """
+        params = expr.get_params()
+        major_id = params.get("major_id")
+        minor_id = params.get("minor_id")
+        class_name = params.get("class_name")
+        schema = params.get("schema")
+
+        if class_name not in _EXTENDED_PROPERTY_CLASSES:
+            raise ValueError(
+                f"unknown extended-property class {class_name!r}; "
+                f"expected one of {sorted(_EXTENDED_PROPERTY_CLASSES)}"
+            )
+        if schema is not None and class_name not in _OBJECT_SCOPED_PROPERTY_CLASSES:
+            raise ValueError(
+                f"a schema can only narrow object-scoped extended properties; "
+                f"{class_name!r} has no schema"
+            )
+
+        joined = self._join(
+            self._relation("extended_properties", "sys", alias="ep"),
+            self._relation("objects", "sys", alias="o"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("major_id", "ep"), self._col("object_id", "o")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("schemas", "sys", alias="s"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("schema_id", "o"), self._col("schema_id", "s")
+            ),
+        )
+
+        conditions = [
+            self._eq(self._col("major_id", "ep"), self._lit(major_id)),
+            self._eq(self._col("class_desc", "ep"), self._lit(class_name)),
+        ]
+        if minor_id is not None:
+            conditions.append(
+                self._eq(self._col("minor_id", "ep"), self._lit(minor_id))
+            )
+        if schema is not None:
+            conditions.append(self._eq(self._col("name", "s"), self._lit(schema)))
+
+        return self._select(
+            [
+                self._col("class", "ep", alias="class_id"),
+                self._col("class_desc", "ep", alias="class_name"),
+                self._col("major_id", "ep", alias="major_id"),
+                self._col("minor_id", "ep", alias="minor_id"),
+                self._col("name", "ep", alias="property_name"),
+                self._cast(
+                    self._col("value", "ep"), "NVARCHAR(4000)"
+                ).as_("property_value"),
+            ],
+            from_=joined,
+            where=self._and(*conditions),
+            order_by=[self._col("minor_id", "ep"), self._col("name", "ep")],
+        )
+
+    def format_routine_list_query_statement(
+        self, expr: "SQLServerRoutineListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render the schema-scoped routines of the admitted ``sys.objects.type`` codes.
+
+        One formatter for both families: a procedure is a routine whose
+        ``sys.objects.type`` is ``P``/``PC`` and a function is one of the
+        ``FN``/``IF``/``TF``/``FS``/``FT`` codes. What differs is the code
+        set, and that is the parameter the statement carries.
+        """
+        params = expr.get_params()
+        type_codes = params.get("type_codes")
+        target = params.get("schema") or DEFAULT_SCHEMA
+
+        joined = self._join(
+            self._relation("objects", "sys", alias="o"),
+            self._relation("schemas", "sys", alias="s"),
+            join_type="JOIN",
+            condition=self._eq(
+                self._col("schema_id", "o"), self._col("schema_id", "s")
+            ),
+        )
+        return self._select(
+            [
+                self._col("name", "o", alias="routine_name"),
+                self._col("name", "s", alias="schema_name"),
+                self._col("type", "o", alias="type_code"),
+                self._col("type_desc", "o"),
+                self._col("create_date", "o", alias="created_at"),
+                self._col("modify_date", "o", alias="modified_at"),
+                self._col("is_ms_shipped", "o"),
+            ],
+            from_=joined,
+            where=self._and(
+                self._in(self._col("type", "o"), type_codes),
+                self._eq(self._col("name", "s"), self._lit(target)),
+            ),
+            order_by=[self._col("name", "o")],
+        )
+
+    def format_sequence_list_query_statement(
+        self, expr: "SQLServerSequenceListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``sys.sequences`` with every ``sql_variant`` value cast to text.
+
+        ``start_value``/``increment``/``minimum_value``/``maximum_value``/
+        ``current_value`` are ``sql_variant``. pyodbc raises
+        ``ODBC SQL type -25 is not yet supported`` on the very first of them,
+        so a projection that selected them raw could not be fetched at all --
+        which is why the cast is in the statement rather than the parser.
+        """
+        params = expr.get_params()
+        target = params.get("schema") or DEFAULT_SCHEMA
+        joined = self._join(
+            self._relation("sequences", "sys", alias="q"),
+            self._relation("schemas", "sys", alias="s"),
+            join_type="JOIN",
+            condition=self._eq(
+                self._col("schema_id", "q"), self._col("schema_id", "s")
+            ),
+        )
+        projection = [
+            self._col("name", "q", alias="sequence_name"),
+            self._col("name", "s", alias="schema_name"),
+            self._fn(
+                "TYPE_NAME", self._col("user_type_id", "q"), alias="data_type"
+            ),
+        ]
+        for column in _SEQUENCE_NUMERIC_COLUMNS:
+            projection.append(
+                self._cast(
+                    self._col(column, "q"), "NVARCHAR(64)"
+                ).as_(column)
+            )
+        projection.extend(
+            [
+                self._col("is_cycling", "q"),
+                self._col("is_cached", "q"),
+                self._cast(self._col("cache_size", "q"), "BIGINT").as_(
+                    "cache_size"
+                ),
+            ]
+        )
+        return self._select(
+            projection,
+            from_=joined,
+            where=self._eq(self._col("name", "s"), self._lit(target)),
+            order_by=[self._col("name", "q")],
         )
