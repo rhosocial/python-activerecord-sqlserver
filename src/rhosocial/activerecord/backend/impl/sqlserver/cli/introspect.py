@@ -31,7 +31,6 @@ OUTPUT_CHOICES = ['table', 'json', 'csv', 'tsv']
 INTROSPECT_TYPES = [
     "tables",
     "views",
-    "table",
     "columns",
     "indexes",
     "foreign-keys",
@@ -71,9 +70,6 @@ def create_parser(subparsers):
 
   # List all views
   %(prog)s views --database mydb
-
-  # Get detailed table info (columns, indexes, foreign keys)
-  %(prog)s table users --database mydb
 
   # Get column details for a table
   %(prog)s columns users --database mydb
@@ -185,18 +181,11 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     """Map the requested type to ``(introspector method, kwargs)`` calls.
 
     This is the single place that decides which introspector method answers
-    which type. ``table`` and ``database <name>`` share ``get_table_info``:
-    the detailed table view and the per-table database view are the same
-    question, and it is answered by the method that fills columns, indexes
-    and foreign keys in one object.
+    which type: one type, one question. The table detail that used to be
+    assembled here went with the aggregate type it belonged to.
     """
     kind = args.type
 
-    if kind == "table" or (kind == "database" and args.name):
-        return [(
-            "get_table_info",
-            {"table_name": _require_name(args, kind), "schema": None},
-        )]
     if kind == "database":
         return [("get_database_info", {})]
     if kind == "tables":
@@ -250,26 +239,11 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
 def _value_sections(
     method: str, kwargs: Dict[str, Any], value: Any
 ) -> List[Tuple[str, Any]]:
-    """Turn one introspector result into the sections to render.
+    """Turn one introspection result into the sections to render.
 
-    A table detail expands into its columns and, when present, its indexes
-    and foreign keys -- the three lists are what ``get_table_info`` already
-    filled, so rendering them costs no further query.
+    One result, one section. Nothing is expanded into parts here any more,
+    because no type asks more than one question.
     """
-    if method == "get_table_info":
-        name = kwargs["table_name"]
-        if value is None:
-            print(
-                f"Error: table '{kwargs.get('schema')}.{name}' not found",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        sections: List[Tuple[str, Any]] = [(f"Columns of {name}", value.columns)]
-        if value.indexes:
-            sections.append((f"Indexes of {name}", value.indexes))
-        if value.foreign_keys:
-            sections.append((f"Foreign Keys of {name}", value.foreign_keys))
-        return sections
 
     if method == "get_database_info":
         return [(_title_for(method, kwargs), [value])]

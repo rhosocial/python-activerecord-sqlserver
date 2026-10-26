@@ -233,20 +233,22 @@ class TestDispatchContract:
     @pytest.mark.parametrize("kind", introspect_mod.INTROSPECT_TYPES)
     def test_type_maps_to_a_real_method_on_both_managers(self, kind):
         argv = ["introspect", kind]
-        if kind in ("table", "columns", "indexes", "foreign-keys"):
+        if kind in ("columns", "indexes", "foreign-keys"):
             argv.append("users")
         for method, _kwargs in introspect_mod._steps(make_args(argv)):
             assert hasattr(SyncSQLServerIntrospector, method), method
             assert hasattr(AsyncSQLServerIntrospector, method), method
 
-    def test_database_with_a_name_also_maps_to_a_real_method(self):
-        methods = [
-            method
-            for method, _ in introspect_mod._steps(
-                make_args(["introspect", "database", "users"])
-            )
+    def test_database_takes_no_object_name(self):
+        """``database`` answers the database's own facts, with or without a name.
+
+        It used to accept a table name and render that table's columns,
+        indexes and foreign keys -- the same three questions the aggregate
+        ``table`` type answered. Both are gone; a name is now simply unused.
+        """
+        assert introspect_mod._steps(make_args(["introspect", "database"])) == [
+            ("get_database_info", {})
         ]
-        assert methods == ["get_table_info"]
 
 
 class TestHandleDispatch:
@@ -284,51 +286,8 @@ class TestHandleDispatch:
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
         assert (method, kwargs) == ("list_schemas", {})
 
-    def test_table_detail_renders_columns_indexes_fks(self, capsys):
-        introspect_mod.handle(make_args(["introspect", "table", "users", "--database", "db"]))
-        inst = FakeIntrospector.instances[-1]
-        assert [m for m, _ in inst.calls] == ["get_table_info"]
-        documents = _json_documents(capsys.readouterr().out)
-        assert [doc[0]["method"] for doc in documents] == [
-            "columns",
-            "indexes",
-            "foreign_keys",
-        ]
 
-    def test_table_detail_without_secondary_lists_renders_columns_only(self, monkeypatch, capsys):
-        class ColumnsOnly(FakeIntrospector):
-            def get_table_info(self, table_name, schema=None):
-                table = FakeTable(table_name)
-                table.indexes = []
-                table.foreign_keys = []
-                self.calls.append(("get_table_info", {"table_name": table_name}))
-                return table
-
-        monkeypatch.setattr(
-            introspect_mod,
-            "SQLServerBackend",
-            _tracking_class(FakeBackendBase, "ColumnsOnlyBackend", ColumnsOnly),
-        )
-        introspect_mod.handle(make_args(["introspect", "table", "users", "--database", "db"]))
-        documents = _json_documents(capsys.readouterr().out)
-        assert [doc[0]["method"] for doc in documents] == ["columns"]
-
-    def test_missing_table_exits_nonzero(self, monkeypatch, capsys):
-        monkeypatch.setattr(
-            introspect_mod,
-            "SQLServerBackend",
-            _tracking_class(
-                FakeBackendBase, "MissingBackend", FakeMissingTableIntrospector
-            ),
-        )
-        with pytest.raises(SystemExit) as exc:
-            introspect_mod.handle(
-                make_args(["introspect", "table", "ghost", "--database", "db"])
-            )
-        assert exc.value.code == 1
-        assert "not found" in capsys.readouterr().err
-
-    @pytest.mark.parametrize("kind", ["table", "columns", "indexes", "foreign-keys"])
+    @pytest.mark.parametrize("kind", ["columns", "indexes", "foreign-keys"])
     def test_missing_name_exits_for_table_scoped_types(self, kind, capsys):
         with pytest.raises(SystemExit) as exc:
             introspect_mod.handle(make_args(["introspect", kind, "--database", "db"]))
@@ -355,13 +314,17 @@ class TestHandleDispatch:
         payload = json.loads(capsys.readouterr().out)
         assert payload == [{"db_name": "db", "version": "16.0.4250.1"}]
 
-    def test_database_with_name_shows_table_detail(self, capsys):
+    def test_database_with_a_name_is_not_a_table_detail(self, capsys):
+        """A name must not smuggle the aggregate back in.
+
+        ``database users`` used to answer the same three-part table detail as
+        ``table users``; both are gone, so the name changes nothing.
+        """
         introspect_mod.handle(
             make_args(["introspect", "database", "users", "--database", "db"])
         )
-        method, kwargs = FakeIntrospector.instances[-1].calls[-1]
-        assert method == "get_table_info"
-        assert kwargs["table_name"] == "users"
+        method, _kwargs = FakeIntrospector.instances[-1].calls[-1]
+        assert method == "get_database_info"
 
 
 class TestHandleLifecycleAndConfig:
