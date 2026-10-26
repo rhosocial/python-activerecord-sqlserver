@@ -15,6 +15,8 @@ suites see the same catalogue.
 
 import json
 
+import pytest
+
 
 from rhosocial.activerecord.backend.impl.sqlserver.__main__ import main
 
@@ -47,6 +49,7 @@ def _connection_argv(config):
     ]
 
 
+@pytest.fixture
 def probed_backend(sqlserver_backend_single):
     create_probe_objects(sqlserver_backend_single)
     yield sqlserver_backend_single
