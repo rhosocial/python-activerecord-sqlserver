@@ -15,13 +15,11 @@ suites see the same catalogue.
 
 import json
 
-import pytest
 
 from rhosocial.activerecord.backend.impl.sqlserver.__main__ import main
 
 from tests.rhosocial.activerecord_sqlserver_test.feature.backend.introspection_probe import (
     PROBE_FUNCTION,
-    PROBE_PARENT,
     PROBE_PROCEDURE,
     PROBE_SEQUENCE,
     PROBE_TABLE,
@@ -49,25 +47,6 @@ def _connection_argv(config):
     ]
 
 
-def _documents(text):
-    """Every standalone JSON document in *text*, in order.
-
-    A table detail renders as three sections, each its own document, so the
-    output is not one JSON array.
-    """
-    decoder = json.JSONDecoder()
-    index, documents = 0, []
-    while index < len(text):
-        while index < len(text) and text[index].isspace():
-            index += 1
-        if index >= len(text):
-            break
-        document, index = decoder.raw_decode(text, index)
-        documents.append(document)
-    return documents
-
-
-@pytest.fixture
 def probed_backend(sqlserver_backend_single):
     create_probe_objects(sqlserver_backend_single)
     yield sqlserver_backend_single
@@ -105,27 +84,6 @@ class TestIntrospectLiveCli:
         payload = json.loads(capsys.readouterr().out)
         assert isinstance(payload, list) and payload
         assert all(row["name"] for row in payload)
-
-    def test_table_detail_renders_three_sections(self, probed_backend, capsys):
-        main(
-            [
-                "introspect",
-                "table",
-                PROBE_TABLE,
-                "-o",
-                "json",
-                *_connection_argv(probed_backend.config),
-            ]
-        )
-        documents = _documents(capsys.readouterr().out)
-        assert len(documents) == 3
-        columns, indexes, foreign_keys = documents
-        # Three sections: columns of the probe table, its index, its FK.
-        assert "id" in [c["name"] for c in columns]
-        assert "label" in [c["name"] for c in columns]
-        assert indexes, "the primary key is an index"
-        assert foreign_keys, "the probe table carries an FK to its parent"
-        assert any(PROBE_PARENT in str(row.values()) for row in foreign_keys)
 
     def test_columns(self, probed_backend, capsys):
         main(

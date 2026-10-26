@@ -318,13 +318,14 @@ class TestHandleDispatch:
         """A name must not smuggle the aggregate back in.
 
         ``database users`` used to answer the same three-part table detail as
-        ``table users``; both are gone, so the name changes nothing.
+        ``table users``. Both are gone, so the name changes nothing: the
+        payload is the database's own facts, with no columns or indexes in it.
         """
         introspect_mod.handle(
             make_args(["introspect", "database", "users", "--database", "db"])
         )
-        method, _kwargs = FakeIntrospector.instances[-1].calls[-1]
-        assert method == "get_database_info"
+        payload = json.loads(capsys.readouterr().out)
+        assert payload == [{"db_name": "db", "version": "16.0.4250.1"}]
 
 
 class TestHandleLifecycleAndConfig:
