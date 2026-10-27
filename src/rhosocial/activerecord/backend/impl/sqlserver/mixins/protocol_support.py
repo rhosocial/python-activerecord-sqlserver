@@ -12,7 +12,7 @@ raise ``UnsupportedFeatureError`` with a clear message instead of
 silently returning a stub.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.objects import Index, Table, View
@@ -52,15 +52,15 @@ class SQLServerProtocolSupportMixin:
 
     def supports_offset_fetch(self) -> bool:
         """OFFSET FETCH pagination requires SQL Server 2012+."""
-        return self.version >= (11, 0, 0)
+        return self.version_at_least((11, 0, 0))
 
     def supports_order_by_in_subquery(self) -> bool:
         """ORDER BY in subqueries is allowed with TOP/OFFSET FETCH (2012+)."""
-        return self.version >= (11, 0, 0)
+        return self.version_at_least((11, 0, 0))
 
     def supports_fulltext_catalog(self) -> bool:
         """FULLTEXT catalogs require SQL Server 2005+."""
-        return self.version >= (9, 0, 0)
+        return self.version_at_least((9, 0, 0))
 
     def format_create_full_text_catalog_statement(
         self, catalog_name: str, as_default: bool = False
@@ -178,7 +178,7 @@ class SQLServerProtocolSupportMixin:
 
     def supports_readpast(self) -> bool:
         """READPAST hint requires SQL Server 2019+."""
-        return self.version >= (15, 0, 0)
+        return self.version_at_least((15, 0, 0))
 
     def format_table_hint_locking(self, hint_type: str) -> Tuple[str, tuple]:
         """Format a locking table hint delegating to SQLServerTableHintClause."""
@@ -193,11 +193,11 @@ class SQLServerProtocolSupportMixin:
 
     def supports_try_cast(self) -> bool:
         """TRY_CAST requires SQL Server 2012+."""
-        return self.version >= (11, 0, 0)
+        return self.version_at_least((11, 0, 0))
 
     def supports_try_convert(self) -> bool:
         """TRY_CONVERT requires SQL Server 2012+."""
-        return self.version >= (11, 0, 0)
+        return self.version_at_least((11, 0, 0))
 
     def format_try_cast_expression(self, expr_sql: str, target_type: str) -> Tuple[str, tuple]:
         """Format TRY_CAST(expr AS type)."""
@@ -232,7 +232,7 @@ class SQLServerProtocolSupportMixin:
 
     def supports_tablesample(self) -> bool:
         """SQL Server supports TABLESAMPLE since 2005."""
-        return self.version >= (9, 0, 0)
+        return self.version_at_least((9, 0, 0))
 
     def format_tablesample_clause(
         self,
@@ -323,7 +323,7 @@ class SQLServerProtocolSupportMixin:
 
     def supports_system_versioning(self) -> bool:
         """Temporal table system-versioning requires SQL Server 2016+."""
-        return self.version >= (13, 0, 0)
+        return self.version_at_least((13, 0, 0))
 
     def format_temporal_period_definition(self, start_column: str, end_column: str) -> Tuple[str, tuple]:
         """Format PERIOD FOR SYSTEM_TIME (start, end)."""
@@ -448,8 +448,8 @@ class SQLServerProtocolSupportMixin:
         if name in self._JSON_FUNCTION_UNSUPPORTED:
             return False
         if name in self._JSON_FUNCTION_2022:
-            return self.version >= (16, 0, 0)
-        return self.version >= self._JSON_FUNCTION_MIN_VERSION
+            return self.version_at_least((16, 0, 0))
+        return self.version_at_least(self._JSON_FUNCTION_MIN_VERSION)
 
     def format_json_extract_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a JSON extraction as JSON_VALUE (single path only).
@@ -649,11 +649,11 @@ class SQLServerProtocolSupportMixin:
 
     def supports_spatial_type(self, type_name: str) -> bool:
         """SQL Server supports geometry/geography since 2008 (10.0)."""
-        return self.version >= (10, 0, 0) and type_name.upper() in self._SPATIAL_TYPES
+        return self.version_at_least((10, 0, 0)) and type_name.upper() in self._SPATIAL_TYPES
 
     def supports_spatial_index(self) -> bool:
         """SQL Server supports spatial indexes since 2008 (10.0)."""
-        return self.version >= (10, 0, 0)
+        return self.version_at_least((10, 0, 0))
 
     def supports_geojson(self) -> bool:
         """STAsGeoJSON is not available in the installed SQL Server types assembly."""

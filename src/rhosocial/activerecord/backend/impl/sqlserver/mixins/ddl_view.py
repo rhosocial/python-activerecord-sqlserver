@@ -20,7 +20,7 @@ class SQLServerViewMixin:
 
     def supports_indexed_view(self) -> bool:
         """SQL Server supports indexed views (similar to materialized views)."""
-        return self.version >= SQL_SERVER_2005
+        return self.version_at_least(SQL_SERVER_2005)
 
     def supports_create_or_replace_view(self) -> bool:
         """SQL Server does not support CREATE OR REPLACE VIEW (uses CREATE OR ALTER)."""
@@ -32,7 +32,7 @@ class SQLServerViewMixin:
 
     def supports_if_exists_view(self) -> bool:
         """SQL Server supports DROP VIEW IF EXISTS (2016+)."""
-        return self.version >= SQL_SERVER_2016
+        return self.version_at_least(SQL_SERVER_2016)
 
 
     def supports_create_view_bind_parameters(self) -> bool:

@@ -293,6 +293,10 @@ def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
     """Handle introspect subcommand synchronously."""
     try:
         backend.connect()
+        # Adapt before the first question: the dialect's capability gates and
+        # its version-syntax rendering read a version the handshake supplies,
+        # and a CLI that skipped this asked them while they still refused.
+        backend.introspect_and_adapt()
         introspector = backend.introspector
         sections: List[Tuple[str, Any]] = []
         for method, kwargs in _steps(args):
@@ -318,6 +322,7 @@ async def _handle_introspect_async(args, backend, provider):
     """Handle introspect subcommand asynchronously."""
     try:
         await backend.connect()
+        await backend.introspect_and_adapt()
         introspector = backend.introspector
         sections: List[Tuple[str, Any]] = []
         for method, kwargs in _steps(args):

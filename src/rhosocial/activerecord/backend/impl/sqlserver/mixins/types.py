@@ -1128,7 +1128,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         unconditional ``True`` would send the DDL and let the server answer,
         which is the failure mode a capability question exists to prevent.
         """
-        return self.version >= (10, 0, 0)
+        return self.version_at_least((10, 0, 0))
 
     def supports_data_type_json(self) -> bool:
         """Unconditional, because the storage this concept renders to has

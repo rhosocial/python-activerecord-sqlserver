@@ -53,19 +53,19 @@ class SQLServerRoutineMixin:
 
     def supports_create_procedure(self) -> bool:
         """CREATE PROCEDURE is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_ROUTINE_VERSION)  # type: ignore[attr-defined]
 
     def supports_create_function(self) -> bool:
         """CREATE FUNCTION is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_ROUTINE_VERSION)  # type: ignore[attr-defined]
 
     def supports_drop_procedure(self) -> bool:
         """DROP PROCEDURE is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_ROUTINE_VERSION)  # type: ignore[attr-defined]
 
     def supports_drop_function(self) -> bool:
         """DROP FUNCTION is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_ROUTINE_VERSION)  # type: ignore[attr-defined]
 
     def _routine_object_name(
         self,

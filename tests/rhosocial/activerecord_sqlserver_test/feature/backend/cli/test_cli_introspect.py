@@ -120,6 +120,7 @@ class FakeBackendBase:
         self.connection_config = connection_config
         self._connection = object()
         self.disconnects = 0
+        self.adaptations = 0
         self.introspector = self.introspector_class()
         type(self).created.append(connection_config)
         type(self).instances.append(self)
@@ -127,6 +128,11 @@ class FakeBackendBase:
     def connect(self):
         if self.connect_error is not None:
             raise self.connect_error
+
+    def introspect_and_adapt(self):
+        # The command must ask the server what it is talking to before the
+        # first question; the capability gates and version rendering need it.
+        self.adaptations += 1
 
     def disconnect(self):
         self.disconnects += 1
@@ -137,6 +143,9 @@ class FakeAsyncBackendBase(FakeBackendBase):
 
     async def connect(self):
         FakeBackendBase.connect(self)
+
+    async def introspect_and_adapt(self):
+        FakeBackendBase.introspect_and_adapt(self)
 
     async def disconnect(self):
         self.disconnects += 1
@@ -281,6 +290,14 @@ class TestHandleDispatch:
         assert method == "list_tables"
         assert kwargs == {"schema": None, "include_system": True}
 
+    def test_the_backend_is_adapted_before_the_first_question(self):
+        introspect_mod.handle(
+            make_args(["introspect", "tables", "--database", "db"])
+        )
+        # The capability gates and version rendering need the handshake's
+        # version; the command must ask for it rather than hope something did.
+        assert introspect_mod.SQLServerBackend.instances[-1].adaptations == 1
+
     def test_schemas_take_no_scope_argument(self):
         introspect_mod.handle(make_args(["introspect", "schemas", "--database", "db"]))
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
@@ -373,10 +390,11 @@ class TestHandleErrors:
 
 class TestHandleAsync:
     def test_async_tables_dispatch(self, monkeypatch, capsys):
+        cls = _tracking_class(FakeAsyncBackendBase, "AsyncFake")
         monkeypatch.setattr(
             async_backend_mod,
             "AsyncSQLServerBackend",
-            _tracking_class(FakeAsyncBackendBase, "AsyncFake"),
+            cls,
             raising=False,
         )
         introspect_mod.handle(
@@ -384,6 +402,7 @@ class TestHandleAsync:
         )
         payload = json.loads(capsys.readouterr().out)
         assert payload[0]["method"] == "list_tables"
+        assert cls.instances[-1].adaptations == 1
 
     def test_async_schemas_dispatch(self, monkeypatch, capsys):
         monkeypatch.setattr(

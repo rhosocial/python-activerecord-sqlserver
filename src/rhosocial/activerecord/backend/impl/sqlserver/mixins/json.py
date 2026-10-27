@@ -12,7 +12,7 @@ class SQLServerJSONMixin:
 
     def supports_json_type(self) -> bool:
         """JSON functions are supported since SQL Server 2016."""
-        return self.version >= SQL_SERVER_2016
+        return self.version_at_least(SQL_SERVER_2016)
 
     def get_json_access_operator(self) -> Optional[str]:
         """SQL Server doesn't have -> operator, uses JSON_VALUE/JSON_QUERY."""

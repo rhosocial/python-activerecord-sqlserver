@@ -27,15 +27,15 @@ class SQLServerColumnstoreIndexMixin:
 
     def supports_nonclustered_columnstore(self) -> bool:
         """NONCLUSTERED columnstore requires SQL Server 2012+."""
-        return self.version >= _SQL_SERVER_NONCLUSTERED_COLUMNSTORE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_NONCLUSTERED_COLUMNSTORE_VERSION)  # type: ignore[attr-defined]
 
     def supports_clustered_columnstore(self) -> bool:
         """CLUSTERED columnstore requires SQL Server 2014+."""
-        return self.version >= _SQL_SERVER_CLUSTERED_COLUMNSTORE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_CLUSTERED_COLUMNSTORE_VERSION)  # type: ignore[attr-defined]
 
     def supports_columnstore_order(self) -> bool:
         """ORDER (...) requires SQL Server 2022+."""
-        return self.version >= _SQL_SERVER_COLUMNSTORE_ORDER_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_COLUMNSTORE_ORDER_VERSION)  # type: ignore[attr-defined]
 
     def format_columnstore_index_statement(
         self, expr: "SQLServerColumnstoreIndexStatement"

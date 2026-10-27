@@ -34,15 +34,15 @@ class SQLServerTriggerDdlMixin:
 
     def supports_trigger(self) -> bool:
         """Triggers are supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_TRIGGER_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_TRIGGER_VERSION)  # type: ignore[attr-defined]
 
     def supports_create_trigger(self) -> bool:
         """CREATE TRIGGER is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_TRIGGER_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_TRIGGER_VERSION)  # type: ignore[attr-defined]
 
     def supports_drop_trigger(self) -> bool:
         """DROP TRIGGER is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_TRIGGER_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_TRIGGER_VERSION)  # type: ignore[attr-defined]
 
     def _get_trigger_name(self, expr: Any) -> str:
         # Every T-SQL trigger expression names itself through its declared

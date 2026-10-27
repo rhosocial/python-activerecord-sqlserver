@@ -7,7 +7,7 @@ class SQLServerIndexMixin:
 
     def supports_index_if_exists(self) -> bool:
         """SQL Server supports DROP INDEX IF EXISTS (2016+)."""
-        return self.version >= SQL_SERVER_2016
+        return self.version_at_least(SQL_SERVER_2016)
 
     def supports_partial_index(self) -> bool:
         """SQL Server supports filtered indexes (WHERE clause)."""

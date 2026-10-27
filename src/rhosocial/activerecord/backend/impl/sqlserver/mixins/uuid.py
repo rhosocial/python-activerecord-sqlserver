@@ -6,14 +6,6 @@ existed since SQL Server 2005 and needs no extension, so unlike PostgreSQL
 there is nothing version-dependent to resolve here.
 """
 
-from typing import Tuple, TYPE_CHECKING
-
-if TYPE_CHECKING:  # pragma: no cover
-    from rhosocial.activerecord.backend.expression.uuid import (
-        UUIDCastFunction,
-        UUIDGenerationExpression,
-    )
-
 
 class SQLServerUUIDMixin:
     """UUID value support for SQL Server.
@@ -40,7 +32,7 @@ class SQLServerUUIDMixin:
         than returning a constant so the answer has one place to change if a
         future deprecation lands.
         """
-        return self.version >= (9, 0, 0)
+        return self.version_at_least((9, 0, 0))
 
 
 __all__ = ["SQLServerUUIDMixin"]

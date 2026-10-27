@@ -92,6 +92,19 @@ _EXTENDED_PROPERTY_CLASSES = frozenset(
 #: is built, below.
 _OBJECT_SCOPED_PROPERTY_CLASSES = frozenset({"OBJECT_OR_COLUMN", "INDEX"})
 
+#: ``sys.objects.type`` codes the table question admits, and the spellings a
+#: caller can name a kind with. ``U`` is a user table, ``V`` a view and ``S``
+#: a system table; ``INFORMATION_SCHEMA.TABLES`` would have said "BASE TABLE"
+#: or "VIEW" and dropped the ``S`` rows altogether, which is why the table
+#: list reads ``sys.objects`` instead. See ``format_table_list_query_statement``.
+_TABLE_KIND_CODES = {
+    "TABLE": ("U",),
+    "BASE TABLE": ("U",),
+    "VIEW": ("V",),
+    "SYSTEM TABLE": ("S",),
+    "SYSTEM_TABLE": ("S",),
+}
+
 #: ``sys.sequences`` stores these as ``sql_variant``. The ODBC driver refuses
 #: to fetch that type (``HY106``), so every one of them is cast to text in the
 #: statement. Keeping the list in one place is what stops a later column from
@@ -201,27 +214,60 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
     ) -> Tuple[str, tuple]:
         """Format the table list query.
 
-        ``include_system`` is part of the shared question but is not consulted:
-        ``INFORMATION_SCHEMA.TABLES`` is scoped to the current database's
-        objects, so there is no server-owned row to add or drop.
+        ``sys.objects`` is read rather than ``INFORMATION_SCHEMA.TABLES``
+        because the information-schema view folds the object kinds into two
+        two-word spellings and omits every ``is_ms_shipped`` row: the one row
+        that says "this is a system table" never reached the parser, so a
+        caller asking for system tables got a shorter list with no word about
+        it. The catalogue view carries ``sys.objects.type`` (``U`` user
+        table, ``V`` view, ``S`` system table) and ``is_ms_shipped``, which
+        are the two facts the question is about.
+
+        ``include_system`` is therefore honoured here: adopting ``S`` and
+        dropping the ``is_ms_shipped`` filter is what makes the CLI's
+        ``--include-system`` flag change the answer instead of being ignored.
+        An explicit ``table_type`` narrows the admitted codes and, when it
+        names system tables, implies ``include_system`` for that query.
         """
         params = expr.get_params()
         target = params.get("schema") or DEFAULT_SCHEMA
         include_views = params.get("include_views", True)
+        include_system = params.get("include_system", False)
         table_type = params.get("table_type")
 
-        conditions = [self._eq(self._col("TABLE_SCHEMA"), self._lit(target))]
         if table_type:
-            conditions.append(self._eq(self._col("TABLE_TYPE"), self._lit(table_type)))
-        elif not include_views:
-            conditions.append(
-                self._eq(self._col("TABLE_TYPE"), self._lit("BASE TABLE", inline=True))
+            codes = _TABLE_KIND_CODES.get(
+                str(table_type).upper(), (str(table_type),)
             )
+        else:
+            codes = ("U", "V") if include_views else ("U",)
+            if include_system:
+                codes = codes + ("S",)
+
+        conditions = [self._eq(self._col("name", "s"), self._lit(target))]
+        conditions.append(self._in(self._col("type", "o"), codes))
+        if not include_system and "S" not in codes:
+            # A system table is an ``is_ms_shipped`` object; without this the
+            # flag would still be ignored for the kinds a caller named.
+            conditions.append(
+                self._eq(self._col("is_ms_shipped", "o"), self._lit(0, inline=True))
+            )
+
+        joined = self._join(
+            self._relation("objects", "sys", alias="o"),
+            self._relation("schemas", "sys", alias="s"),
+            condition=self._eq(
+                self._col("schema_id", "o"), self._col("schema_id", "s")
+            ),
+        )
         return self._select(
-            [self._col("TABLE_NAME"), self._col("TABLE_TYPE")],
-            from_=self._relation("TABLES", "INFORMATION_SCHEMA"),
+            [
+                self._col("name", "o", alias="TABLE_NAME"),
+                self._col("type", "o", alias="TABLE_TYPE"),
+            ],
+            from_=joined,
             where=self._and(*conditions),
-            order_by=[self._col("TABLE_NAME")],
+            order_by=[self._col("name", "o")],
         )
 
     def format_column_info_query_statement(

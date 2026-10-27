@@ -35,7 +35,7 @@ class SQLServerPartitionMixin:
 
     def supports_table_partitioning(self) -> bool:
         """SQL Server supports table partitioning (Enterprise Edition)."""
-        return self.version >= _SQL_SERVER_PARTITION_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_PARTITION_VERSION)  # type: ignore[attr-defined]
 
     def supports_partitioned_table_creation(self) -> bool:
         return self.supports_table_partitioning()

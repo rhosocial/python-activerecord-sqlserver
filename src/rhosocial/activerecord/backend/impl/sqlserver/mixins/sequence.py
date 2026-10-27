@@ -80,19 +80,19 @@ class SQLServerSequenceMixin:
 
     def supports_sequence(self) -> bool:
         """SQL Server 2012+ has SEQUENCE objects."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_create_sequence(self) -> bool:
         """SQL Server 2012+ supports CREATE SEQUENCE."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_drop_sequence(self) -> bool:
         """SQL Server 2012+ supports DROP SEQUENCE."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_alter_sequence(self) -> bool:
         """SQL Server 2012+ supports ALTER SEQUENCE."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_sequence_if_not_exists(self) -> bool:
         """SQL Server has no CREATE SEQUENCE IF NOT EXISTS."""
@@ -100,11 +100,11 @@ class SQLServerSequenceMixin:
 
     def supports_sequence_if_exists(self) -> bool:
         """DROP SEQUENCE IF EXISTS arrived in SQL Server 2016 (13.x)."""
-        return self.version >= SQL_SERVER_2016  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2016)  # type: ignore[attr-defined]
 
     def supports_sequence_start(self) -> bool:
         """CREATE SEQUENCE accepts START WITH from SQL Server 2012."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_alter_sequence_start(self) -> bool:
         """Whether ALTER SEQUENCE accepts the START WITH option.
@@ -125,23 +125,23 @@ class SQLServerSequenceMixin:
 
     def supports_sequence_increment(self) -> bool:
         """CREATE/ALTER SEQUENCE accept INCREMENT BY from SQL Server 2012."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_sequence_minvalue(self) -> bool:
         """CREATE/ALTER SEQUENCE accept MINVALUE from SQL Server 2012."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_sequence_maxvalue(self) -> bool:
         """CREATE/ALTER SEQUENCE accept MAXVALUE from SQL Server 2012."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_sequence_cycle(self) -> bool:
         """CREATE/ALTER SEQUENCE accept CYCLE / NO CYCLE from SQL Server 2012."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_sequence_cache(self) -> bool:
         """CREATE/ALTER SEQUENCE accept CACHE from SQL Server 2012."""
-        return self.version >= SQL_SERVER_2012  # type: ignore[attr-defined]
+        return self.version_at_least(SQL_SERVER_2012)  # type: ignore[attr-defined]
 
     def supports_sequence_order(self) -> bool:
         """SQL Server has no ORDER / NOORDER sequence option."""

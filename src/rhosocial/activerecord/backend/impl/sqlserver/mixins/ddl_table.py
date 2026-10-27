@@ -1,17 +1,5 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_table.py
-from typing import Tuple, TYPE_CHECKING
-
 from .version_constants import SQL_SERVER_2016
-
-if TYPE_CHECKING:
-    from rhosocial.activerecord.backend.expression.statements import (
-        CreateTableStatement,
-        DropTableStatement,
-        AlterTableStatement,
-        ColumnDefinition,
-        TableConstraint,
-        IndexDefinition,
-    )
 
 
 class SQLServerTableMixin:
@@ -28,7 +16,7 @@ class SQLServerTableMixin:
 
     def supports_if_exists_table(self) -> bool:
         """SQL Server supports DROP TABLE IF EXISTS (2016+)."""
-        return self.version >= SQL_SERVER_2016
+        return self.version_at_least(SQL_SERVER_2016)
 
     def supports_drop_table_cascade(self) -> bool:
         """SQL Server does not support CASCADE for DROP TABLE."""

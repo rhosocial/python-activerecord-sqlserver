@@ -16,7 +16,7 @@ class SQLServerLockingMixin:
 
     def supports_for_update_skip_locked(self) -> bool:
         """SQL Server 2019+ supports READPAST with UPDLOCK."""
-        return self.version >= SQL_SERVER_2019
+        return self.version_at_least(SQL_SERVER_2019)
 
     def format_for_update_clause(self, clause: "ForUpdateClause") -> Tuple[str, tuple]:
         """Format FOR UPDATE for SQL Server using table hints.

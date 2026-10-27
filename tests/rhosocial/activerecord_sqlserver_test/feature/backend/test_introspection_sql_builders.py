@@ -35,6 +35,7 @@ from rhosocial.activerecord.backend.expression.introspection import (
     ViewListQueryStatement,
 )
 from rhosocial.activerecord.backend.expression.types import DataType, TextType
+from rhosocial.activerecord.backend.introspection.types import TableType
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
@@ -49,7 +50,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
 )
 
 
-def make_introspector() -> SyncSQLServerIntrospector:
+def make_introspector(version=(16, 0, 0)) -> SyncSQLServerIntrospector:
     config = SQLServerConnectionConfig(
         host="localhost",
         port=1433,
@@ -57,8 +58,7 @@ def make_introspector() -> SyncSQLServerIntrospector:
         username="sa",
         password="",
     )
-    backend = SQLServerBackend(connection_config=config)
-    backend._version = (16, 0, 0)
+    backend = SQLServerBackend(connection_config=config, version=version)
     introspector = SyncSQLServerIntrospector(backend, executor=object())
     return introspector
 
@@ -69,28 +69,119 @@ def make_dialect():
 
 
 class TestBuildTableListSql:
+    """The table list reads ``sys.objects``, where the kind is a letter.
+
+    ``INFORMATION_SCHEMA.TABLES`` spelled the kind as two words and dropped
+    every ``is_ms_shipped`` row, so a system table was indistinguishable from
+    a user table and the CLI's ``--include-system`` flag changed nothing. The
+    catalogue view carries ``sys.objects.type`` (``U``/``V``/``S``) and the
+    ``is_ms_shipped`` flag, which are the two facts the question is about.
+    """
+
     def test_default_schema_parameterized(self):
         sql, params = TableListQueryStatement(make_dialect()).to_sql()
-        assert "[TABLE_SCHEMA] = ?" in sql
+        assert "[s].[name] = ?" in sql
         assert params == ("dbo",)
         assert "'dbo'" not in sql
+
+    def test_kinds_are_the_catalogue_codes(self):
+        sql, _ = TableListQueryStatement(make_dialect()).to_sql()
+        assert "[o].[type] IN ('U', 'V')" in sql
+        # System tables are ms-shipped objects: they stay out unless asked for.
+        assert "[o].[is_ms_shipped] = 0" in sql
+        assert "[sys].[objects] AS [o]" in sql
 
     def test_with_table_type_parameterized(self):
         sql, params = TableListQueryStatement(
             make_dialect(), schema="sys", table_type="BASE TABLE"
         ).to_sql()
-        assert "[TABLE_TYPE] = ?" in sql
-        assert params == ("sys", "BASE TABLE")
-        assert "'BASE TABLE'" not in sql
+        assert "[s].[name] = ?" in sql
+        assert "[o].[type] IN ('U')" in sql
+        assert params == ("sys",)
+        assert "'sys'" not in sql
 
     def test_without_views_no_table_type(self):
         sql, params = TableListQueryStatement(
             make_dialect(), schema="dbo", include_views=False
         ).to_sql()
-        # The implicit "tables only" filter is part of the question, not data,
-        # so it stays an inline literal exactly as the template wrote it.
-        assert "BASE TABLE" in sql
+        assert "[o].[type] IN ('U')" in sql
         assert params == ("dbo",)
+
+    def test_include_system_admits_the_system_kind(self):
+        sql, params = TableListQueryStatement(
+            make_dialect(), schema="sys", include_system=True
+        ).to_sql()
+        assert "[o].[type] IN ('U', 'V', 'S')" in sql
+        assert "is_ms_shipped" not in sql
+        assert params == ("sys",)
+
+    def test_naming_the_system_kind_implies_include_system(self):
+        """``table_type='SYSTEM TABLE'`` would otherwise filter out its own rows."""
+        sql, params = TableListQueryStatement(
+            make_dialect(), schema="sys", table_type="SYSTEM TABLE"
+        ).to_sql()
+        assert "[o].[type] IN ('S')" in sql
+        assert "is_ms_shipped" not in sql
+        assert params == ("sys",)
+
+
+class TestParseTables:
+    """``sys.objects.type`` becomes the shared table-kind vocabulary."""
+
+    @staticmethod
+    def _parse(code):
+        row = {"TABLE_NAME": "t", "TABLE_TYPE": code}
+        return make_introspector().parse_tables([row], "dbo")[0].table_type
+
+    def test_user_table_is_a_base_table(self):
+        assert self._parse("U") == TableType.BASE_TABLE
+
+    def test_view_stays_a_view(self):
+        assert self._parse("V") == TableType.VIEW
+
+    def test_system_table_is_named_as_one(self):
+        assert self._parse("S") == TableType.SYSTEM_TABLE
+
+    def test_information_schema_spellings_still_parse(self):
+        assert self._parse("BASE TABLE") == TableType.BASE_TABLE
+        assert self._parse("VIEW") == TableType.VIEW
+
+
+class TestParseDatabaseInfo:
+    """The version comes from what the server told the dialect, never a raise."""
+
+    def test_version_is_taken_from_the_adapted_server(self):
+        introspector = make_introspector(version=(16, 0, 4250))
+        info = introspector.parse_database_info(
+            [{"db_name": "master", "version": "16.0.4250.1", "collation": "x"}]
+        )
+        assert info.version == "16.0.4250"
+        assert info.version_tuple == (16, 0, 4250)
+        assert info.name == "master"
+        assert info.collation == "x"
+
+    def test_row_is_the_fallback_when_nothing_adapted(self):
+        introspector = make_introspector()
+        introspector._backend._version = None
+        introspector._backend._dialect._version = None
+        info = introspector.parse_database_info(
+            [{"db_name": "master", "version": "16.0.4250.1"}]
+        )
+        assert info.version == "16.0.4250.1"
+        assert info.version_tuple == (16, 0, 4250)
+
+    def test_unknown_version_is_spelled_out(self):
+        introspector = make_introspector()
+        introspector._backend._version = None
+        introspector._backend._dialect._version = None
+        info = introspector.parse_database_info([])
+        assert info.version == "unknown"
+        assert info.version_tuple == (0, 0, 0)
+
+    def test_a_statement_answering_no_size_reports_none(self):
+        info = make_introspector().parse_database_info([{"db_name": "master"}])
+        assert info.table_count is None
+        assert info.size_bytes is None
 
 
 class TestBuildColumnInfoSql:

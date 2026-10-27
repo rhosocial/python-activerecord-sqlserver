@@ -41,10 +41,15 @@ class SQLServerFunctionMixin:
         min_version = version_range[0]
         max_version = version_range[1]
 
-        if min_version is not None and self.version < min_version:
+        version = self.version_or_none
+        if version is None:
+            # A capability nobody has confirmed is not claimed.
             return False
 
-        if max_version is not None and self.version > max_version:
+        if min_version is not None and version < min_version:
+            return False
+
+        if max_version is not None and version > max_version:
             return False
 
         return True

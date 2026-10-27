@@ -106,6 +106,20 @@ _DATETIME_DEFAULT_PRECISION = 7
 #: covers the procedure half.
 _FUNCTION_TYPE_CODES = ("FN", "IF", "TF", "FS", "FT")
 
+#: ``sys.objects.type`` -> ``TableType``, with the two-word spellings an
+#: ``INFORMATION_SCHEMA``-shaped row would carry kept beside the codes. The
+#: catalogue is the only layer that distinguishes a system table from a user
+#: one, so the mapping belongs here: folding ``S`` into ``BASE_TABLE`` would
+#: erase the one fact the caller asked for.
+_TABLE_TYPE_BY_CODE = {
+    "U": TableType.BASE_TABLE,
+    "BASE TABLE": TableType.BASE_TABLE,
+    "V": TableType.VIEW,
+    "VIEW": TableType.VIEW,
+    "S": TableType.SYSTEM_TABLE,
+    "SYSTEM TABLE": TableType.SYSTEM_TABLE,
+}
+
 
 class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     """Shared non-I/O logic for SQL Server introspectors."""
@@ -220,13 +234,26 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     # ------------------------------------------------------------------
 
     def parse_database_info(self, rows: List[Dict[str, Any]]) -> IntrospectionDatabaseInfo:
+        """Read the database row, taking the version from the server.
+
+        ``server_version`` is the version the dialect was adapted to, or the
+        one the backend cached from its last handshake; reading it never
+        raises. The row's own ``version`` is the fallback, and ``"unknown"``
+        with ``(0, 0, 0)`` is the answer when nothing knows -- rather than the
+        strict ``dialect.version``, which would refuse to report a database
+        just because nothing had adapted yet.
+
+        The statement answers only these three facts, so ``table_count`` and
+        ``size_bytes`` stay ``None``: they are questions of their own and this
+        parser does not ask them on the side.
+        """
         row = rows[0] if rows else {}
-        version_str = row.get("version", "Unknown")
-        parts = version_str.split(".")
-        try:
-            version_tuple = tuple(int(p) for p in parts[:3])
-        except (ValueError, IndexError):
-            version_tuple = (0, 0, 0)
+        version_tuple = self.server_version
+        if version_tuple is not None:
+            version_str = ".".join(str(part) for part in version_tuple)
+        else:
+            version_str = str(row.get("version") or "unknown")
+            version_tuple = self.parse_version_tuple(version_str)
         return IntrospectionDatabaseInfo(
             name=row.get("db_name", ""),
             version=version_str,
@@ -236,17 +263,35 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             collation=row.get("collation"),
         )
 
+    @staticmethod
+    def parse_version_tuple(version_str: str) -> Tuple[int, int, int]:
+        """Read up to three numeric components, ``(0, 0, 0)`` when unreadable."""
+        parts = version_str.split(".")
+        try:
+            parsed = tuple(int(part) for part in parts[:3])
+        except (ValueError, TypeError):
+            return (0, 0, 0)
+        return parsed + (0,) * (3 - len(parsed))
+
     def parse_tables(
         self, rows: List[Dict[str, Any]], schema: Optional[str]
     ) -> List[IntrospectionTableInfo]:
+        """Map ``sys.objects.type`` onto the shared table-kind vocabulary.
+
+        ``U`` is a base table, ``V`` a view and ``S`` a system table; the
+        two-word spellings are accepted too, so a row that came from an
+        ``INFORMATION_SCHEMA``-shaped question still parses. An unknown code
+        reads as a base table, which is the least surprising answer for a
+        relation this backend listed as one.
+        """
         target = schema or self.default_schema
         return [
             IntrospectionTableInfo(
                 name=row["TABLE_NAME"],
                 schema=target,
-                table_type=(
-                    TableType.VIEW if row.get("TABLE_TYPE") == "VIEW"
-                    else TableType.BASE_TABLE
+                table_type=_TABLE_TYPE_BY_CODE.get(
+                    str(row.get("TABLE_TYPE") or "").strip().upper(),
+                    TableType.BASE_TABLE,
                 ),
             )
             for row in rows
