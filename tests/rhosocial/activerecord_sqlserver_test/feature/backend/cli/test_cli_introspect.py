@@ -77,6 +77,17 @@ class FakeIntrospector:
     def list_schemas(self):
         return self._record("list_schemas")
 
+    def list_extended_properties(
+        self,
+        major_id=None,
+        *,
+        table_name=None,
+        minor_id=None,
+        class_name="OBJECT_OR_COLUMN",
+        schema=None,
+    ):
+        return self._record("list_extended_properties", table_name=table_name, schema=schema)
+
     def get_view_info(self, view_name, schema=None):
         self.calls.append(("get_view_info", {"view_name": view_name, "schema": schema}))
         return {"name": view_name, "definition": "CREATE VIEW v AS SELECT 1"}
@@ -110,6 +121,30 @@ class FakeAsyncIntrospector(FakeIntrospector):
 
     async def list_triggers(self, table_name=None, schema=None):
         return FakeIntrospector.list_triggers(self, table_name, schema)
+
+    async def list_extended_properties(
+        self,
+        major_id=None,
+        *,
+        table_name=None,
+        minor_id=None,
+        class_name="OBJECT_OR_COLUMN",
+        schema=None,
+    ):
+        return FakeIntrospector.list_extended_properties(
+            self,
+            major_id,
+            table_name=table_name,
+            minor_id=minor_id,
+            class_name=class_name,
+            schema=schema,
+        )
+
+    async def get_view_info(self, view_name, schema=None):
+        return FakeIntrospector.get_view_info(self, view_name, schema)
+
+    async def table_exists(self, table_name, schema=None):
+        return FakeIntrospector.table_exists(self, table_name, schema)
 
     async def get_database_info(self):
         return FakeIntrospector.get_database_info(self)
@@ -250,7 +285,7 @@ class TestDispatchContract:
     @pytest.mark.parametrize("kind", introspect_mod.INTROSPECT_TYPES)
     def test_type_maps_to_a_real_method_on_both_managers(self, kind):
         argv = ["introspect", kind]
-        if kind in ("columns", "indexes", "foreign-keys"):
+        if kind in ("columns", "indexes", "foreign-keys", "extended-properties"):
             argv.append("users")
         for method, _kwargs in introspect_mod._steps(make_args(argv)):
             assert hasattr(SyncSQLServerIntrospector, method), method
@@ -277,6 +312,7 @@ class TestHandleDispatch:
             (["columns", "users"], "list_columns"),
             (["indexes", "users"], "list_indexes"),
             (["foreign-keys", "users"], "list_foreign_keys"),
+            (["extended-properties", "users"], "list_extended_properties"),
             (["triggers"], "list_triggers"),
             (["procedures"], "list_procedures"),
             (["functions"], "list_functions"),
@@ -312,7 +348,9 @@ class TestHandleDispatch:
         assert (method, kwargs) == ("list_schemas", {})
 
 
-    @pytest.mark.parametrize("kind", ["columns", "indexes", "foreign-keys"])
+    @pytest.mark.parametrize(
+        "kind", ["columns", "indexes", "foreign-keys", "extended-properties"]
+    )
     def test_missing_name_exits_for_table_scoped_types(self, kind, capsys):
         with pytest.raises(SystemExit) as exc:
             introspect_mod.handle(make_args(["introspect", kind, "--database", "db"]))
@@ -356,6 +394,58 @@ class TestHandleDispatch:
             introspect_mod.handle(make_args(["introspect", "views", "nope", "--database", "db"]))
         assert exc.value.code == 1
         assert "View 'nope' not found" in capsys.readouterr().err
+
+    def test_extended_properties_ask_by_table_name(self):
+        """A name is the whole question: the statement resolves the object id."""
+        introspect_mod.handle(
+            make_args(["introspect", "extended-properties", "users", "--database", "db"])
+        )
+        method, kwargs = FakeIntrospector.instances[-1].calls[-1]
+        assert (method, kwargs) == (
+            "list_extended_properties",
+            {"table_name": "users", "schema": None},
+        )
+
+    def test_a_table_without_properties_is_not_a_missing_table(
+        self, monkeypatch, capsys
+    ):
+        """No rows and no table are two answers, and only the second is an error."""
+
+        class NoPropertiesIntrospector(FakeIntrospector):
+            def list_extended_properties(self, *args, **kwargs):
+                return []
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(FakeBackendBase, "NoPropertiesBackend", NoPropertiesIntrospector),
+        )
+        introspect_mod.handle(
+            make_args(["introspect", "extended-properties", "users", "--database", "db"])
+        )
+        assert json.loads(capsys.readouterr().out) == []
+
+    def test_an_unknown_table_exits_one(self, monkeypatch, capsys):
+        class UnknownTableIntrospector(FakeIntrospector):
+            def list_extended_properties(self, *args, **kwargs):
+                return []
+
+            def table_exists(self, table_name, schema=None):
+                return False
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(FakeBackendBase, "UnknownTableBackend", UnknownTableIntrospector),
+        )
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(
+                    ["introspect", "extended-properties", "ghost", "--database", "db"]
+                )
+            )
+        assert exc.value.code == 1
+        assert "Table 'ghost' not found" in capsys.readouterr().err
 
     def test_triggers_without_name_asks_once_for_all(self):
         introspect_mod.handle(make_args(["introspect", "triggers", "--database", "db"]))
@@ -464,3 +554,59 @@ class TestHandleAsync:
                 make_args(["introspect", "tables", "--database", "db", "--async"])
             )
         assert exc.value.code != 0
+
+    def test_async_extended_properties_dispatch(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            async_backend_mod,
+            "AsyncSQLServerBackend",
+            _tracking_class(FakeAsyncBackendBase, "AsyncExtFake"),
+            raising=False,
+        )
+        introspect_mod.handle(
+            make_args(
+                [
+                    "introspect",
+                    "extended-properties",
+                    "users",
+                    "--database",
+                    "db",
+                    "-o",
+                    "json",
+                    "--async",
+                ]
+            )
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[0]["method"] == "list_extended_properties"
+
+    def test_async_unknown_table_exits_one(self, monkeypatch, capsys):
+        """The existence read is awaited too, not left as an unfired coroutine."""
+
+        class UnknownTable(FakeAsyncIntrospector):
+            async def list_extended_properties(self, *args, **kwargs):
+                return []
+
+            async def table_exists(self, table_name, schema=None):
+                return False
+
+        monkeypatch.setattr(
+            async_backend_mod,
+            "AsyncSQLServerBackend",
+            _tracking_class(FakeAsyncBackendBase, "AsyncUnknownTable", UnknownTable),
+            raising=False,
+        )
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(
+                    [
+                        "introspect",
+                        "extended-properties",
+                        "ghost",
+                        "--database",
+                        "db",
+                        "--async",
+                    ]
+                )
+            )
+        assert exc.value.code == 1
+        assert "Table 'ghost' not found" in capsys.readouterr().err

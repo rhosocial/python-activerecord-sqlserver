@@ -163,6 +163,17 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         """``sys.triggers``, which also distinguishes INSTEAD OF."""
         return True
 
+    def supports_extended_property_introspection(self) -> bool:
+        """``sys.extended_properties``, where ``MS_Description`` lives.
+
+        Declared as its own family rather than folded into
+        ``supports_table_introspection``: "can this server list and describe
+        tables" and "can it read the properties hanging off their objects" are
+        two questions, and a caller gating on the first would be told nothing
+        about the second.
+        """
+        return True
+
     # ========== Query Formatting ==========
     #
     # The parameter positions are the ones the concatenated form used: a
@@ -687,6 +698,12 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
     ) -> Tuple[str, tuple]:
         """Render ``sys.extended_properties`` for one object, optionally one column.
 
+        Two ways to name the object, one query each: by ``major_id`` when the
+        caller already has the id, or by ``table_name`` when all it has is a
+        name. The named form joins ``sys.tables`` and ``sys.schemas`` -- the
+        one place a table's name resolves to an id -- so the caller needs no
+        first round trip to turn a name into a ``major_id``.
+
         ``value`` is ``sql_variant`` and the driver cannot fetch it, so it is
         cast to ``NVARCHAR(4000)`` in the statement: the property text is what
         a caller wants, and truncation beyond 4000 characters is impossible to
@@ -699,9 +716,17 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         asking for a schema while listing, say, ``DATABASE`` properties is a
         contradiction rather than an empty answer -- refused before the query
         is built.
+
+        A ``table_name`` narrows the question even further: only
+        ``OBJECT_OR_COLUMN`` properties hang off a table, so any other class
+        asked by table name is refused rather than answered with no rows. The
+        named selection can only reach what ``sys.tables`` holds -- base tables.
+        A view's properties have no row there and are reachable through the
+        ``major_id`` selection only.
         """
         params = expr.get_params()
         major_id = params.get("major_id")
+        table_name = params.get("table_name")
         minor_id = params.get("minor_id")
         class_name = params.get("class_name")
         schema = params.get("schema")
@@ -715,6 +740,44 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             raise ValueError(
                 f"a schema can only narrow object-scoped extended properties; "
                 f"{class_name!r} has no schema"
+            )
+
+        if table_name is not None:
+            if class_name != "OBJECT_OR_COLUMN":
+                raise ValueError(
+                    f"a table name only names OBJECT_OR_COLUMN properties; "
+                    f"{class_name!r} keeps its objects in another catalogue"
+                )
+            target = schema or DEFAULT_SCHEMA
+            joined = self._join(
+                self._join(
+                    self._relation("extended_properties", "sys", alias="ep"),
+                    self._relation("tables", "sys", alias="t"),
+                    join_type="JOIN",
+                    condition=self._eq(
+                        self._col("major_id", "ep"), self._col("object_id", "t")
+                    ),
+                ),
+                self._relation("schemas", "sys", alias="s"),
+                join_type="JOIN",
+                condition=self._eq(
+                    self._col("schema_id", "t"), self._col("schema_id", "s")
+                ),
+            )
+            conditions = [
+                self._eq(self._col("class_desc", "ep"), self._lit(class_name)),
+                self._eq(self._col("name", "t"), self._lit(table_name)),
+                self._eq(self._col("name", "s"), self._lit(target)),
+            ]
+            if minor_id is not None:
+                conditions.append(
+                    self._eq(self._col("minor_id", "ep"), self._lit(minor_id))
+                )
+            return self._select(
+                self._extended_property_projection(),
+                from_=joined,
+                where=self._and(*conditions),
+                order_by=[self._col("minor_id", "ep"), self._col("name", "ep")],
             )
 
         joined = self._join(
@@ -746,20 +809,25 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             conditions.append(self._eq(self._col("name", "s"), self._lit(schema)))
 
         return self._select(
-            [
-                self._col("class", "ep", alias="class_id"),
-                self._col("class_desc", "ep", alias="class_name"),
-                self._col("major_id", "ep", alias="major_id"),
-                self._col("minor_id", "ep", alias="minor_id"),
-                self._col("name", "ep", alias="property_name"),
-                self._cast(
-                    self._col("value", "ep"), "NVARCHAR(4000)"
-                ).as_("property_value"),
-            ],
+            self._extended_property_projection(),
             from_=joined,
             where=self._and(*conditions),
             order_by=[self._col("minor_id", "ep"), self._col("name", "ep")],
         )
+
+    def _extended_property_projection(self) -> list:
+
+        """The extended-property columns both selections of that family project."""
+        return [
+            self._col("class", "ep", alias="class_id"),
+            self._col("class_desc", "ep", alias="class_name"),
+            self._col("major_id", "ep", alias="major_id"),
+            self._col("minor_id", "ep", alias="minor_id"),
+            self._col("name", "ep", alias="property_name"),
+            self._cast(self._col("value", "ep"), "NVARCHAR(4000)").as_(
+                "property_value"
+            ),
+        ]
 
     def format_routine_list_query_statement(
         self, expr: "SQLServerRoutineListQueryStatement"

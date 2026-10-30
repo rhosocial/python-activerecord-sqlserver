@@ -21,6 +21,7 @@ import pytest
 from rhosocial.activerecord.backend.impl.sqlserver.__main__ import main
 
 from tests.rhosocial.activerecord_sqlserver_test.feature.backend.introspection_probe import (
+    PROBE_DESCRIPTION,
     PROBE_FUNCTION,
     PROBE_PROCEDURE,
     PROBE_SEQUENCE,
@@ -191,6 +192,38 @@ class TestIntrospectLiveCli:
         payload = json.loads(capsys.readouterr().out)
         assert isinstance(payload, list) and payload
         assert any(row["name"] == "dbo" for row in payload)
+
+    def test_extended_properties_by_table_name(self, probed_backend, capsys):
+        """``extended-properties NAME`` is the only way the CLI reads a comment."""
+        main(
+            [
+                "introspect",
+                "extended-properties",
+                PROBE_TABLE,
+                "-o",
+                "json",
+                *_connection_argv(probed_backend.config),
+            ]
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert isinstance(payload, list) and payload
+        property_row = [r for r in payload if r["name"] == "MS_Description"][0]
+        assert property_row["value"] == PROBE_DESCRIPTION
+
+    def test_extended_properties_of_an_unknown_table_exits_one(self, probed_backend):
+        """The empty answer is checked against the catalogue, so a typo is an error."""
+        with pytest.raises(SystemExit) as exc:
+            main(
+                [
+                    "introspect",
+                    "extended-properties",
+                    "zz_no_such_table",
+                    "-o",
+                    "json",
+                    *_connection_argv(probed_backend.config),
+                ]
+            )
+        assert exc.value.code == 1
 
     def test_procedures(self, probed_backend, capsys):
         main(

@@ -463,6 +463,48 @@ class TestBuildExtendedPropertyListSql:
         with pytest.raises(ValueError, match="object-scoped extended properties"):
             introspector.list_extended_properties(1, class_name="DATABASE", schema="dbo")
 
+    def test_a_table_name_resolves_the_id_in_the_same_query(self):
+        """The named selection joins ``sys.tables``/``sys.schemas`` itself.
+
+        That is what makes the CLI's ``extended-properties users`` one query
+        rather than "find the object id, then read the properties".
+        """
+        introspector = make_introspector()
+        sql, params = introspector.extended_property_list_statement(
+            table_name="users", schema="dbo"
+        ).to_sql()
+        assert "[sys].[extended_properties] AS [ep]" in sql
+        assert "[sys].[tables] AS [t]" in sql
+        assert "[sys].[schemas] AS [s]" in sql
+        assert "[t].[object_id]" in sql and "[ep].[major_id]" in sql
+        assert "CAST([ep].[value] AS NVARCHAR(4000)) AS [property_value]" in sql
+        # The name and schema are the caller's, so they stay bound; the
+        # class is part of the question, so it stays an inline literal.
+        assert params == ("OBJECT_OR_COLUMN", "users", "dbo")
+        assert "'users'" not in sql and "'dbo'" not in sql
+
+    def test_a_table_name_defaults_the_schema(self):
+        sql, params = make_introspector().extended_property_list_statement(
+            table_name="users"
+        ).to_sql()
+        assert params == ("OBJECT_OR_COLUMN", "users", "dbo")
+
+    def test_a_table_name_only_names_object_or_column_properties(self):
+        introspector = make_introspector()
+        with pytest.raises(ValueError, match="a table name only names OBJECT_OR_COLUMN"):
+            introspector.extended_property_list_statement(
+                table_name="users", class_name="INDEX"
+            ).to_sql()
+
+    def test_exactly_one_of_id_and_table_name(self):
+        introspector = make_introspector()
+        with pytest.raises(ValueError, match="exactly one of"):
+            introspector.extended_property_list_statement()
+        with pytest.raises(ValueError, match="exactly one of"):
+            introspector.extended_property_list_statement(
+                major_id=1, table_name="users"
+            )
+
 
 class TestBuildRoutineListSql:
     def test_procedures_ask_for_p_and_pc(self):

@@ -19,7 +19,7 @@ import asyncio
 import sys
 from dataclasses import asdict, is_dataclass
 from enum import Enum
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
@@ -34,6 +34,7 @@ INTROSPECT_TYPES = [
     "columns",
     "indexes",
     "foreign-keys",
+    "extended-properties",
     "triggers",
     "database",
     "procedures",
@@ -71,6 +72,9 @@ def create_parser(subparsers):
   # List all views
   %(prog)s views --database mydb
 
+  # One view, with its definition and IS_UPDATABLE
+  %(prog)s views active_users --database mydb
+
   # Get column details for a table
   %(prog)s columns users --database mydb
 
@@ -79,6 +83,9 @@ def create_parser(subparsers):
 
   # Get foreign key relationships
   %(prog)s foreign-keys users --database mydb
+
+  # Get a table's extended properties (MS_Description and friends)
+  %(prog)s extended-properties users --database mydb
 
   # List triggers (all of them, or one table's)
   %(prog)s triggers --database mydb
@@ -224,7 +231,7 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     if kind == "schemas":
         return [("list_schemas", {})]
 
-    # columns / indexes / foreign-keys
+    # columns / indexes / foreign-keys / extended-properties
     method = f"list_{kind.replace('-', '_')}"
     return [(
         method,
@@ -245,28 +252,74 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
         return f"Indexes of {name}"
     if method == "list_foreign_keys":
         return f"Foreign Keys of {name}"
+    if method == "list_extended_properties":
+        return f"Extended Properties of {name}"
     return method
 
 
 #: The per-object questions, and the name each one answers with nothing. A type
 #: with no single object to be missing is absent: an empty *list* is a true
 #: answer for those ("this schema has no triggers"), not a failed lookup.
-_NAMED_TYPES: Dict[str, Tuple[str, str]] = {"get_view_info": ("View", "view_name")}
+_NAMED_TYPES: Dict[str, Tuple[str, str]] = {
+    "get_view_info": ("View", "view_name"),
+    "list_extended_properties": ("Table", "table_name"),
+}
 
 
-def _require_found(method: str, kwargs: Dict[str, Any], value: Any) -> None:
-    """Refuse a NAME that named nothing, rather than print an empty answer."""
-    if value:
-        return
-    spec = _NAMED_TYPES.get(method)
-    if spec is None:
-        return
-    label, argument = spec
+def _missing_from(
+    method: str, kwargs: Dict[str, Any], value: Any
+) -> Optional[Tuple[str, str]]:
+    """The ``(label, name)`` of a NAME that answered nothing, or ``None``.
+
+    An empty result is only ambiguous for a question that named one object.
+    Extended properties are the one that can come back empty for two genuinely
+    different reasons -- a table with no ``MS_Description`` and a table that is
+    not there both answer with no rows -- so for that type the name is checked
+    against the catalogue before it is called missing.
+    """
+    if value or method not in _NAMED_TYPES:
+        return None
+    label, argument = _NAMED_TYPES[method]
     name = kwargs.get(argument)
-    if name is None:
-        return
+    return None if name is None else (label, name)
+
+
+def _report_missing(missing: Tuple[str, str]) -> None:
+    """Say that a NAME named nothing, and leave with the "no such object" code."""
+    label, name = missing
     print(f"Error: {label} '{name}' not found", file=sys.stderr)
     sys.exit(1)
+
+
+def _require_found(introspector: Any, method: str, kwargs: Dict[str, Any], value: Any) -> None:
+    """Refuse a NAME that named nothing, rather than print an empty answer."""
+    missing = _missing_from(method, kwargs, value)
+    if missing is None:
+        return
+    if method == "list_extended_properties" and introspector.table_exists(
+        kwargs["table_name"], kwargs.get("schema")
+    ):
+        return  # the table is there; it simply carries no properties
+    _report_missing(missing)
+
+
+async def _require_found_async(
+    introspector: Any, method: str, kwargs: Dict[str, Any], value: Any
+) -> None:
+    """``_require_found`` against an asynchronous introspector.
+
+    Same question, same answer, one ``await``: the existence read is the
+    introspector's, and this backend's asynchronous manager answers with a
+    coroutine.
+    """
+    missing = _missing_from(method, kwargs, value)
+    if missing is None:
+        return
+    if method == "list_extended_properties" and await introspector.table_exists(
+        kwargs["table_name"], kwargs.get("schema")
+    ):
+        return
+    _report_missing(missing)
 
 
 def _value_sections(
@@ -334,7 +387,7 @@ def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
         sections: List[Tuple[str, Any]] = []
         for method, kwargs in _steps(args):
             value = getattr(introspector, method)(**kwargs)
-            _require_found(method, kwargs, value)
+            _require_found(introspector, method, kwargs, value)
             sections.extend(_value_sections(method, kwargs, value))
         _render(provider, sections)
 
@@ -361,7 +414,7 @@ async def _handle_introspect_async(args, backend, provider):
         sections: List[Tuple[str, Any]] = []
         for method, kwargs in _steps(args):
             value = await getattr(introspector, method)(**kwargs)
-            _require_found(method, kwargs, value)
+            await _require_found_async(introspector, method, kwargs, value)
             sections.extend(_value_sections(method, kwargs, value))
         _render(provider, sections)
 

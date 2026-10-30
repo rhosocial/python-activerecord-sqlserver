@@ -98,10 +98,25 @@ class SQLServerSchemaListQueryStatement(IntrospectionExpression):
 class SQLServerExtendedPropertyListQueryStatement(IntrospectionExpression):
     """Ask for ``sys.extended_properties`` rows of one catalogue object.
 
+    The object is named one of two ways, and exactly one of them:
+
+    * ``major_id`` -- its catalogue id, when the caller already has it. The id
+      means something different in each ``class_desc`` family;
+    * ``table_name`` -- a table's name, which the dialect resolves through
+      ``sys.tables``/``sys.schemas`` in the same query. It is the way a caller
+      who only has a name can ask, and it costs one round trip rather than
+      two.
+
+    Naming both (or neither) is a malformed question, refused at construction
+    rather than answered by guessing which one was meant.
+
     Args:
         dialect: The dialect the statement is bound to.
         major_id: The object id for ``OBJECT_OR_COLUMN`` (class 1), or the id
             in the family's own space for another class.
+        table_name: The table whose properties are wanted. Only
+            ``OBJECT_OR_COLUMN`` has a table, and the dialect refuses any other
+            class rather than returning nothing.
         minor_id: ``None`` for every row of the object, or the exact
             ``minor_id`` -- ``0`` for an object-level property, a
             ``column_id`` for a column-level one.
@@ -117,13 +132,20 @@ class SQLServerExtendedPropertyListQueryStatement(IntrospectionExpression):
         self,
         dialect: "SQLDialectBase",
         *,
-        major_id: int,
+        major_id: Optional[int] = None,
+        table_name: Optional[str] = None,
         minor_id: Optional[int] = None,
         class_name: str = "OBJECT_OR_COLUMN",
         schema: Optional[str] = None,
     ):
+        if (major_id is None) == (table_name is None):
+            raise ValueError(
+                "an extended-property question takes exactly one of "
+                "major_id or table_name"
+            )
         super().__init__(dialect, schema=schema)
-        self.major_id: int = major_id
+        self.major_id: Optional[int] = major_id
+        self.table_name: Optional[str] = table_name
         self.minor_id: Optional[int] = minor_id
         self.class_name: str = class_name
 
@@ -135,8 +157,9 @@ class SQLServerExtendedPropertyListQueryStatement(IntrospectionExpression):
     def __repr__(self) -> str:
         return (
             f"SQLServerExtendedPropertyListQueryStatement("
-            f"major_id={self.major_id!r}, minor_id={self.minor_id!r}, "
-            f"class_name={self.class_name!r}, schema={self.schema!r})"
+            f"major_id={self.major_id!r}, table_name={self.table_name!r}, "
+            f"minor_id={self.minor_id!r}, class_name={self.class_name!r}, "
+            f"schema={self.schema!r})"
         )
 
 

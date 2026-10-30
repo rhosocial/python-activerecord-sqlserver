@@ -170,18 +170,21 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     def extended_property_list_statement(
         self,
         *,
-        major_id: int,
+        major_id: Optional[int] = None,
+        table_name: Optional[str] = None,
         minor_id: Optional[int] = None,
         class_name: str = "OBJECT_OR_COLUMN",
         schema: Optional[str] = None,
     ) -> "SQLServerExtendedPropertyListQueryStatement":
         """Return the statement that reads one object's extended properties.
 
-        ``major_id`` is the object id for ``OBJECT_OR_COLUMN`` (class 1) and
-        the id in the family's own space for the other classes; ``minor_id``
-        narrows to one column's properties. ``schema`` only means something
-        for the object-scoped classes, and the formatter refuses it for a
-        family that has none rather than returning nothing.
+        The object is named by ``major_id`` -- the object id for
+        ``OBJECT_OR_COLUMN`` (class 1) and the id in the family's own space for
+        the other classes -- or by ``table_name``, which the statement resolves
+        through ``sys.tables``. The statement takes exactly one of the two;
+        ``minor_id`` narrows to one column's properties. ``schema`` only means
+        something for the object-scoped classes, and the formatter refuses it
+        for a family that has none rather than returning nothing.
         """
         from ..expression.introspection import (
             SQLServerExtendedPropertyListQueryStatement,
@@ -190,6 +193,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         return SQLServerExtendedPropertyListQueryStatement(
             self.dialect,
             major_id=major_id,
+            table_name=table_name,
             minor_id=minor_id,
             class_name=class_name,
             schema=schema,
@@ -698,16 +702,27 @@ class SyncSQLServerIntrospector(
 
     def list_extended_properties(
         self,
-        major_id: int,
+        major_id: Optional[int] = None,
+        *,
+        table_name: Optional[str] = None,
         minor_id: Optional[int] = None,
         class_name: str = "OBJECT_OR_COLUMN",
         schema: Optional[str] = None,
     ) -> List[SQLServerExtendedPropertyInfo]:
         """List ``sys.extended_properties`` rows for one catalogue object.
 
+        The object is named by id or by table name, and exactly one of the
+        two: ``major_id`` when the caller has the object id, ``table_name``
+        when all it has is the name -- the statement resolves that name
+        through ``sys.tables`` itself, so it is one query rather than a lookup
+        followed by a read.
+
         Args:
             major_id: The object id for ``OBJECT_OR_COLUMN`` (class 1), or the
                 id in the family's own space for other classes.
+            table_name: The table whose properties are wanted. Only
+                ``OBJECT_OR_COLUMN`` has a table, and the statement refuses any
+                other class rather than returning nothing.
             minor_id: ``None`` for every row of the object (the object's own
                 properties plus its columns'), or the exact ``minor_id`` --
                 ``0`` for an object-level property, a ``column_id`` for a
@@ -719,13 +734,13 @@ class SyncSQLServerIntrospector(
                 that has none raises ``ValueError`` instead of returning
                 nothing.
 
-        The cache entry is keyed on the object id rather than a table name,
-        so ``invalidate_cache(TABLE, "<table>")`` does not drop it; clear the
-        scope or pass the object id instead.
+        The cache entry is keyed on whichever name was given, so
+        ``invalidate_cache(TABLE, "<table>")`` drops the one asked by table
+        name but not the one asked by id; clear the scope for the latter.
         """
         key = self._cache.key(
             IntrospectionScope.TABLE,
-            str(major_id),
+            table_name if table_name is not None else str(major_id),
             schema=schema,
             extra=f"extended_properties:{class_name}:{minor_id}",
         )
@@ -735,6 +750,7 @@ class SyncSQLServerIntrospector(
 
         sql, params = self.extended_property_list_statement(
             major_id=major_id,
+            table_name=table_name,
             minor_id=minor_id,
             class_name=class_name,
             schema=schema,
@@ -879,15 +895,21 @@ class AsyncSQLServerIntrospector(
 
     async def list_extended_properties(
         self,
-        major_id: int,
+        major_id: Optional[int] = None,
+        *,
+        table_name: Optional[str] = None,
         minor_id: Optional[int] = None,
         class_name: str = "OBJECT_OR_COLUMN",
         schema: Optional[str] = None,
     ) -> List[SQLServerExtendedPropertyInfo]:
-        """List ``sys.extended_properties`` rows for one catalogue object."""
+        """List ``sys.extended_properties`` rows for one catalogue object.
+
+        Same signature and same cache key as the synchronous manager: the
+        object is named by id or by table name, and exactly one of the two.
+        """
         key = self._cache.key(
             IntrospectionScope.TABLE,
-            str(major_id),
+            table_name if table_name is not None else str(major_id),
             schema=schema,
             extra=f"extended_properties:{class_name}:{minor_id}",
         )
@@ -897,6 +919,7 @@ class AsyncSQLServerIntrospector(
 
         sql, params = self.extended_property_list_statement(
             major_id=major_id,
+            table_name=table_name,
             minor_id=minor_id,
             class_name=class_name,
             schema=schema,
