@@ -28,20 +28,55 @@ from .output import create_provider
 
 OUTPUT_CHOICES = ['table', 'json', 'csv', 'tsv']
 
-INTROSPECT_TYPES = [
-    "tables",
-    "views",
-    "columns",
-    "indexes",
-    "foreign-keys",
-    "extended-properties",
-    "triggers",
-    "database",
-    "procedures",
-    "functions",
-    "sequences",
-    "schemas",
-]
+#: CLI type -> the dialect capability switch that answers for it.
+#:
+#: The advertised list below is derived from this mapping, so a family cannot
+#: be added to one place and forgotten in the other: a type is in both or in
+#: neither. A type whose switch is False on the *connected* server is refused
+#: when handled rather than run and answered with an empty list -- "this
+#: server cannot answer that" and "this database holds none" are different
+#: answers.
+_TYPE_CAPABILITIES = {
+    "tables": "supports_table_introspection",
+    "views": "supports_view_introspection",
+    "columns": "supports_column_introspection",
+    "indexes": "supports_index_introspection",
+    "foreign-keys": "supports_foreign_key_introspection",
+    "extended-properties": "supports_extended_property_introspection",
+    "triggers": "supports_trigger_introspection",
+    "database": "supports_database_info",
+    "procedures": "supports_procedure_introspection",
+    "functions": "supports_function_introspection",
+    "sequences": "supports_sequence_introspection",
+    "schemas": "supports_schema_introspection",
+}
+
+INTROSPECT_TYPES = list(_TYPE_CAPABILITIES)
+
+#: What a NAME means per type, and whether the type takes one at all.
+#:
+#: ``required`` -- the name *is* the question (one table's columns);
+#: ``optional`` -- the name narrows a list to one table or one view;
+#: ``forbidden`` -- the type answers for the database, and a name that looks
+#: like a filter would be silently ignored, which is the one thing a NAME
+#: argument must never be.
+#:
+#: ``views NAME`` is a view name and ``triggers NAME`` is a *table* name: the
+#: two are not the same kind of argument, which is why this table exists.
+_NAME_RULES = {
+    "tables": "forbidden",
+    "views": "optional",
+    "columns": "required",
+    "indexes": "required",
+    "foreign-keys": "required",
+    "extended-properties": "required",
+    "triggers": "optional",
+    "database": "forbidden",
+    "procedures": "forbidden",
+    "functions": "forbidden",
+    "sequences": "forbidden",
+    "schemas": "forbidden",
+}
 
 #: Titles for the one-result types. The table-scoped types build their title
 #: from the table name instead (see ``_title_for``).
@@ -109,6 +144,13 @@ def create_parser(subparsers):
   # Using environment variables for connection
   export SQLSERVER_HOST=localhost SQLSERVER_DATABASE=mydb SQLSERVER_USERNAME=sa
   %(prog)s tables
+
+NAME per type:
+  columns, indexes, foreign-keys, extended-properties
+                              a table name, required
+  views                       a view name, optional
+  triggers                    a table name, optional
+  everything else             no name: refused with exit 2, never ignored
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -137,7 +179,10 @@ def create_parser(subparsers):
         "name",
         nargs="?",
         default=None,
-        help="Table/view name (required for some types)",
+        help=(
+            "Object name: a table name for the table-scoped types, a view name "
+            "for views. Types that answer for the database take none."
+        ),
     )
     parser.add_argument(
         "--include-system",
@@ -148,6 +193,50 @@ def create_parser(subparsers):
     return parser
 
 
+def _refuse_unused_name(args) -> None:
+    """Refuse a NAME the requested type cannot use, rather than ignore it.
+
+    ``introspect tables users`` used to list every table and exit 0, which
+    reads as "the filter matched everything" or "the filter was applied" --
+    the most misleading shape a wrong answer can take. A name for a type that
+    answers for the database is a misuse of the argument, so it leaves with 2.
+    """
+    if not args.name:
+        return
+    if _NAME_RULES.get(args.type) != "forbidden":
+        return
+    print(
+        f"Error: {args.type} introspection takes no name",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def _require_capability(backend, kind: str) -> None:
+    """Refuse a type the connected server cannot answer.
+
+    The dialect is adapted before this runs, so the switch answers for the
+    server in front of us rather than for the newest release this backend
+    knows.
+    """
+    switch = _TYPE_CAPABILITIES.get(kind)
+    if switch is None:
+        return
+    dialect = getattr(backend, "dialect", None)
+    if dialect is None:
+        # A stub standing in for the backend (the offline CLI tests) has no
+        # dialect to ask; a real one always does.
+        return
+    supported = getattr(dialect, switch, None)
+    if supported is None or supported():
+        return
+    print(
+        f"Error: {kind} introspection is not supported by this server",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
 def handle(args):
     """Handle the introspect subcommand."""
     provider = create_provider(args.output, ascii_borders=args.rich_ascii)
@@ -156,6 +245,10 @@ def handle(args):
     if not named_conn and not args.database:
         print("Error: --database is required for introspection", file=sys.stderr)
         sys.exit(1)
+
+    # Before a connection is opened: whether a NAME belongs to the type is a
+    # question about the request, not about the server.
+    _refuse_unused_name(args)
 
     config = resolve_connection_config_from_args(args)
 
@@ -383,6 +476,7 @@ def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
         # its version-syntax rendering read a version the handshake supplies,
         # and a CLI that skipped this asked them while they still refused.
         backend.introspect_and_adapt()
+        _require_capability(backend, args.type)
         introspector = backend.introspector
         sections: List[Tuple[str, Any]] = []
         for method, kwargs in _steps(args):
@@ -410,6 +504,7 @@ async def _handle_introspect_async(args, backend, provider):
     try:
         await backend.connect()
         await backend.introspect_and_adapt()
+        _require_capability(backend, args.type)
         introspector = backend.introspector
         sections: List[Tuple[str, Any]] = []
         for method, kwargs in _steps(args):

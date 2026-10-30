@@ -31,12 +31,13 @@ statement and executes what these return, so no family is spelled anywhere but
 in this module.
 """
 
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from ..query_nodes import SQLServerNodeBuilderMixin
 
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
+    from rhosocial.activerecord.backend.introspection.types import IntrospectionScope
     from rhosocial.activerecord.backend.expression.introspection import (
         ColumnInfoQueryStatement,
         DatabaseInfoQueryStatement,
@@ -173,6 +174,31 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         about the second.
         """
         return True
+
+    def get_supported_introspection_scopes(self) -> List["IntrospectionScope"]:
+        """The catalogue families this dialect answers, as core names them.
+
+        Core's default is the empty list -- the right answer for a backend that
+        cannot introspect, and the same wrong answer the switches above were
+        declared to stop giving here: a caller asking "what can I introspect"
+        was told "nothing" by a server that answers eleven families.
+        ``SEQUENCE`` is included because ``IntrospectionScope`` has it and
+        ``sys.sequences`` answers it.
+        """
+        from rhosocial.activerecord.backend.introspection.types import (
+            IntrospectionScope,
+        )
+
+        return [
+            IntrospectionScope.DATABASE,
+            IntrospectionScope.TABLE,
+            IntrospectionScope.COLUMN,
+            IntrospectionScope.INDEX,
+            IntrospectionScope.FOREIGN_KEY,
+            IntrospectionScope.VIEW,
+            IntrospectionScope.TRIGGER,
+            IntrospectionScope.SEQUENCE,
+        ]
 
     # ========== Query Formatting ==========
     #

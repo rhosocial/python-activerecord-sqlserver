@@ -459,18 +459,144 @@ class TestHandleDispatch:
         payload = json.loads(capsys.readouterr().out)
         assert payload == [{"db_name": "db", "version": "16.0.4250.1"}]
 
-    def test_database_with_a_name_is_not_a_table_detail(self, capsys):
-        """A name must not smuggle the aggregate back in.
+    def test_database_with_a_name_is_refused(self):
+        """A name must not smuggle the aggregate back in -- nor be ignored.
 
         ``database users`` used to answer the same three-part table detail as
-        ``table users``. Both are gone, so the name changes nothing: the
-        payload is the database's own facts, with no columns or indexes in it.
+        ``table users``. Both are gone. A name is now refused instead of
+        ignored: silently answering the unnamed question reads as a filter that
+        matched everything, which is the one shape a wrong answer must not take.
         """
-        introspect_mod.handle(
-            make_args(["introspect", "database", "users", "--database", "db"])
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(["introspect", "database", "users", "--database", "db"])
+            )
+        assert exc.value.code == 2
+
+
+class TestDeclaredVocabulary:
+    """The advertised types, the switches and the NAME rules are one statement."""
+
+    def test_the_advertised_list_is_the_capability_table(self):
+        assert list(introspect_mod._TYPE_CAPABILITIES) == introspect_mod.INTROSPECT_TYPES
+
+    def test_every_declared_type_has_a_name_rule(self):
+        assert set(introspect_mod._NAME_RULES) == set(introspect_mod.INTROSPECT_TYPES)
+
+    def test_the_removed_aggregate_is_not_readvertised(self):
+        assert "table" not in introspect_mod.INTROSPECT_TYPES
+        assert "table" not in introspect_mod._TYPE_CAPABILITIES
+
+    @pytest.mark.parametrize(
+        ("kind", "switch"), sorted(introspect_mod._TYPE_CAPABILITIES.items())
+    )
+    def test_every_switch_is_declared_by_the_dialect(self, kind, switch):
+        from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+
+        dialect = SQLServerDialect(version=(16, 0, 0))
+        answer = getattr(dialect, switch, None)
+        assert callable(answer), f"{kind} names {switch}, which the dialect lacks"
+        assert answer() is True
+
+    def test_help_lists_every_declared_type(self, capsys):
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command")
+        introspect_mod.create_parser(sub)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["introspect", "--help"])
+        help_text = capsys.readouterr().out
+        for kind in introspect_mod.INTROSPECT_TYPES:
+            assert kind in help_text
+
+
+class TestSupportedScopes:
+    """``get_supported_introspection_scopes`` is not core's empty default."""
+
+    @staticmethod
+    def _scopes():
+        from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+
+        return SQLServerDialect(version=(16, 0, 0)).get_supported_introspection_scopes()
+
+    def test_the_scopes_are_the_families_that_answer(self):
+        from rhosocial.activerecord.backend.introspection.types import IntrospectionScope
+
+        assert set(self._scopes()) == {
+            IntrospectionScope.DATABASE,
+            IntrospectionScope.TABLE,
+            IntrospectionScope.COLUMN,
+            IntrospectionScope.INDEX,
+            IntrospectionScope.FOREIGN_KEY,
+            IntrospectionScope.VIEW,
+            IntrospectionScope.TRIGGER,
+            IntrospectionScope.SEQUENCE,
+        }
+
+    def test_a_caller_is_not_told_nothing(self):
+        assert self._scopes()
+
+    def test_every_declared_switch_answers_true(self):
+        from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+
+        dialect = SQLServerDialect(version=(16, 0, 0))
+        for switch in introspect_mod._TYPE_CAPABILITIES.values():
+            assert getattr(dialect, switch)() is True, switch
+
+
+class TestCapabilityGate:
+    def test_a_switch_that_says_no_refuses_the_type(self, monkeypatch, capsys):
+        cls = _tracking_class(FakeBackendBase, "RefusingBackend")
+        cls.dialect = type(
+            "RefusingDialect",
+            (),
+            {"supports_table_introspection": lambda self: False},
+        )()
+        monkeypatch.setattr(introspect_mod, "SQLServerBackend", cls)
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(make_args(["introspect", "tables", "--database", "db"]))
+        assert exc.value.code == 2
+        assert (
+            "Error: tables introspection is not supported by this server"
+            in capsys.readouterr().err
         )
-        payload = json.loads(capsys.readouterr().out)
-        assert payload == [{"db_name": "db", "version": "16.0.4250.1"}]
+        # Asked after the adaptation: the switch answers for this server.
+        assert cls.instances[-1].adaptations == 1
+        assert cls.instances[-1].introspector.calls == [], "refused before the question"
+
+    def test_a_stub_without_a_dialect_is_not_refused(self):
+        """The offline fakes have no dialect; the gate must not invent one."""
+        introspect_mod.handle(make_args(["introspect", "tables", "--database", "db"]))
+        assert FakeIntrospector.instances[-1].calls != []
+
+
+class TestNameGate:
+    @pytest.mark.parametrize(
+        "kind",
+        ["tables", "database", "procedures", "functions", "sequences", "schemas"],
+    )
+    def test_a_name_the_type_cannot_use_exits_two(self, kind, capsys):
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(["introspect", kind, "users", "--database", "db"])
+            )
+        assert exc.value.code == 2
+        assert f"Error: {kind} introspection takes no name" in capsys.readouterr().err
+
+    def test_a_forbidden_name_is_refused_before_connecting(self, capsys):
+        with pytest.raises(SystemExit):
+            introspect_mod.handle(
+                make_args(["introspect", "schemas", "dbo", "--database", "db"])
+            )
+        assert introspect_mod.SQLServerBackend.created == []
+        assert "takes no name" in capsys.readouterr().err
+
+    def test_the_optional_names_are_not_refused(self):
+        introspect_mod.handle(make_args(["introspect", "views", "users", "--database", "db"]))
+        assert FakeIntrospector.instances[-1].calls[-1][0] == "get_view_info"
+        introspect_mod.handle(
+            make_args(["introspect", "triggers", "users", "--database", "db"])
+        )
+        assert FakeIntrospector.instances[-1].calls[-1][0] == "list_triggers"
 
 
 class TestHandleLifecycleAndConfig:
