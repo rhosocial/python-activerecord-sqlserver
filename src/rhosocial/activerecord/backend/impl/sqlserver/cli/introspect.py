@@ -183,6 +183,10 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     This is the single place that decides which introspector method answers
     which type: one type, one question. The table detail that used to be
     assembled here went with the aggregate type it belonged to.
+
+    The NAME each type accepts is decided here too, because it *is* part of
+    the question: ``views NAME`` is the single-view question, not a filter over
+    the list.
     """
     kind = args.type
 
@@ -194,6 +198,12 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
             {"schema": None, "include_system": args.include_system},
         )]
     if kind == "views":
+        # One named view is a different question from the list: it answers
+        # with the definition and ``is_updatable``. The list now carries the
+        # same two facts, so filtering it here would be a second way to ask
+        # the first question.
+        if args.name:
+            return [("get_view_info", {"view_name": args.name, "schema": None})]
         return [(
             "list_views",
             {"schema": None, "include_system": args.include_system},
@@ -226,6 +236,8 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
     """The heading for one section of output."""
     if method in _RESULT_TITLES:
         return _RESULT_TITLES[method]
+    if method == "get_view_info":
+        return f"View {kwargs.get('view_name', '')}"
     name = kwargs.get("table_name", "")
     if method == "list_columns":
         return f"Columns of {name}"
@@ -234,6 +246,27 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
     if method == "list_foreign_keys":
         return f"Foreign Keys of {name}"
     return method
+
+
+#: The per-object questions, and the name each one answers with nothing. A type
+#: with no single object to be missing is absent: an empty *list* is a true
+#: answer for those ("this schema has no triggers"), not a failed lookup.
+_NAMED_TYPES: Dict[str, Tuple[str, str]] = {"get_view_info": ("View", "view_name")}
+
+
+def _require_found(method: str, kwargs: Dict[str, Any], value: Any) -> None:
+    """Refuse a NAME that named nothing, rather than print an empty answer."""
+    if value:
+        return
+    spec = _NAMED_TYPES.get(method)
+    if spec is None:
+        return
+    label, argument = spec
+    name = kwargs.get(argument)
+    if name is None:
+        return
+    print(f"Error: {label} '{name}' not found", file=sys.stderr)
+    sys.exit(1)
 
 
 def _value_sections(
@@ -301,6 +334,7 @@ def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
         sections: List[Tuple[str, Any]] = []
         for method, kwargs in _steps(args):
             value = getattr(introspector, method)(**kwargs)
+            _require_found(method, kwargs, value)
             sections.extend(_value_sections(method, kwargs, value))
         _render(provider, sections)
 
@@ -327,6 +361,7 @@ async def _handle_introspect_async(args, backend, provider):
         sections: List[Tuple[str, Any]] = []
         for method, kwargs in _steps(args):
             value = await getattr(introspector, method)(**kwargs)
+            _require_found(method, kwargs, value)
             sections.extend(_value_sections(method, kwargs, value))
         _render(provider, sections)
 

@@ -26,6 +26,7 @@ from tests.rhosocial.activerecord_sqlserver_test.feature.backend.introspection_p
     PROBE_SEQUENCE,
     PROBE_TABLE,
     PROBE_TRIGGER,
+    PROBE_VIEW,
     create_probe_objects,
     drop_probe_objects,
 )
@@ -87,6 +88,37 @@ class TestIntrospectLiveCli:
         payload = json.loads(capsys.readouterr().out)
         assert isinstance(payload, list) and payload
         assert all(row["name"] for row in payload)
+
+    def test_one_view_answers_with_its_definition(self, probed_backend, capsys):
+        """``views NAME`` is the single-view question, and it carries the text."""
+        main(
+            [
+                "introspect",
+                "views",
+                PROBE_VIEW,
+                "-o",
+                "json",
+                *_connection_argv(probed_backend.config),
+            ]
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert payload and payload[0]["name"] == PROBE_VIEW
+        assert "CREATE VIEW" in payload[0]["definition"]
+
+    def test_the_view_list_carries_the_definitions_too(self, probed_backend, capsys):
+        """The list projects the same definition the single-view question does."""
+        main(
+            [
+                "introspect",
+                "views",
+                "-o",
+                "json",
+                *_connection_argv(probed_backend.config),
+            ]
+        )
+        payload = json.loads(capsys.readouterr().out)
+        row = [r for r in payload if r["name"] == PROBE_VIEW][0]
+        assert "CREATE VIEW" in row["definition"]
 
     def test_columns(self, probed_backend, capsys):
         main(

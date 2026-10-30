@@ -447,11 +447,21 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     def parse_views(
         self, rows: List[Dict[str, Any]], schema: str
     ) -> List[IntrospectionViewInfo]:
+        """Read the list rows into view info, definition included.
+
+        The list statement projects ``VIEW_DEFINITION`` and ``IS_UPDATABLE``
+        (see ``format_view_list_query_statement``), so the two facts the
+        single-view question answers are on every row here as well.
+        ``definition`` stays ``None`` only when the server withheld it -- a view
+        whose text the caller may not read answers with ``NULL``, which is a
+        different thing from a parser that never selected the column.
+        """
         return [
             IntrospectionViewInfo(
                 name=row.get("view_name", ""),
                 schema=schema,
-                definition=None,
+                definition=row.get("definition"),
+                is_updatable=row.get("IS_UPDATABLE") == "YES",
             )
             for row in rows
         ]

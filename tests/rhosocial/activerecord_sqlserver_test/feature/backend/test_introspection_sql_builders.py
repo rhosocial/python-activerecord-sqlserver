@@ -242,6 +242,50 @@ class TestBuildViewListSql:
         assert "[TABLE_SCHEMA] = ?" in sql
         assert params == ("dbo",)
 
+    def test_list_projects_the_definition_it_used_to_drop(self):
+        """The list answers the same two facts as the single-view question.
+
+        It used to project ``TABLE_NAME`` alone, so every listed view carried
+        ``definition = null`` while the single-view statement had always
+        selected it.
+        """
+        sql, params = ViewListQueryStatement(make_dialect(), schema="dbo").to_sql()
+        assert "[VIEW_DEFINITION] AS [definition]" in sql
+        assert "[IS_UPDATABLE]" in sql
+        assert params == ("dbo",), "the definition adds no parameter"
+
+
+class TestParseViews:
+    """The list parser reads what the list statement projects."""
+
+    def test_definition_and_updatability_are_read(self):
+        views = make_introspector().parse_views(
+            [
+                {
+                    "view_name": "v1",
+                    "definition": "CREATE VIEW v1 AS SELECT 1",
+                    "IS_UPDATABLE": "YES",
+                },
+                {
+                    "view_name": "v2",
+                    "definition": "CREATE VIEW v2 AS SELECT 2",
+                    "IS_UPDATABLE": "NO",
+                },
+            ],
+            "dbo",
+        )
+        assert views[0].definition == "CREATE VIEW v1 AS SELECT 1"
+        assert views[0].is_updatable is True
+        assert views[1].is_updatable is False
+
+    def test_a_withheld_definition_stays_none(self):
+        """``VIEW_DEFINITION`` is NULL when the caller may not read the text."""
+        views = make_introspector().parse_views(
+            [{"view_name": "v1", "definition": None, "IS_UPDATABLE": "NO"}], "dbo"
+        )
+        assert views[0].definition is None
+        assert views[0].schema == "dbo"
+
 
 class TestBuildViewInfoSql:
     def test_parameterized(self):

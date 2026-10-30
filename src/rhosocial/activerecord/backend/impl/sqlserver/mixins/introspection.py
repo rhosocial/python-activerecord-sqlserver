@@ -479,11 +479,27 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
 
         ``include_system`` is not consulted for the same reason as in the table
         list: ``INFORMATION_SCHEMA.VIEWS`` holds no server-owned row here.
+
+        The definition is read here, not only in the single-view query: the
+        list used to project ``TABLE_NAME`` alone, so every row of ``introspect
+        views`` carried ``definition = null`` although the single-view question
+        right below had always projected it. Both read ``VIEW_DEFINITION`` from
+        the same ``INFORMATION_SCHEMA.VIEWS`` row, so the list and the
+        single-view answer cannot disagree.
+
+        ``VIEW_DEFINITION`` is ``NULL`` for a view whose text the caller may not
+        read -- unlike ``OBJECT_DEFINITION()``, which returns the text to a
+        caller holding ``VIEW DEFINITION``. Keeping both questions on the
+        information-schema view is deliberate: one source, one visibility rule.
         """
         params = expr.get_params()
         target = params.get("schema") or DEFAULT_SCHEMA
         return self._select(
-            [self._col("TABLE_NAME", alias="view_name")],
+            [
+                self._col("TABLE_NAME", alias="view_name"),
+                self._col("VIEW_DEFINITION", alias="definition"),
+                self._col("IS_UPDATABLE"),
+            ],
             from_=self._relation("VIEWS", "INFORMATION_SCHEMA"),
             where=self._eq(self._col("TABLE_SCHEMA"), self._lit(target)),
             order_by=[self._col("TABLE_NAME")],

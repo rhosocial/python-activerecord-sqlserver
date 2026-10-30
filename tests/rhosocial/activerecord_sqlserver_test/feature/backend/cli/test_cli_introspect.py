@@ -77,6 +77,14 @@ class FakeIntrospector:
     def list_schemas(self):
         return self._record("list_schemas")
 
+    def get_view_info(self, view_name, schema=None):
+        self.calls.append(("get_view_info", {"view_name": view_name, "schema": schema}))
+        return {"name": view_name, "definition": "CREATE VIEW v AS SELECT 1"}
+
+    def table_exists(self, table_name, schema=None):
+        self.calls.append(("table_exists", {"table_name": table_name, "schema": schema}))
+        return True
+
     def get_database_info(self):
         return {"db_name": "db", "version": "16.0.4250.1"}
 
@@ -318,6 +326,36 @@ class TestHandleDispatch:
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
         assert method == "list_triggers"
         assert kwargs["table_name"] == "users"
+
+    def test_views_without_a_name_lists(self):
+        introspect_mod.handle(make_args(["introspect", "views", "--database", "db"]))
+        method, kwargs = FakeIntrospector.instances[-1].calls[-1]
+        assert (method, kwargs) == ("list_views", {"schema": None, "include_system": False})
+
+    def test_views_with_a_name_asks_the_single_view(self, capsys):
+        """A name is the single-view question, not a filter over the list."""
+        introspect_mod.handle(
+            make_args(["introspect", "views", "active_users", "--database", "db"])
+        )
+        method, kwargs = FakeIntrospector.instances[-1].calls[-1]
+        assert (method, kwargs) == ("get_view_info", {"view_name": "active_users", "schema": None})
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[0]["definition"]
+
+    def test_a_view_that_is_not_there_exits_one(self, monkeypatch, capsys):
+        class MissingViewIntrospector(FakeIntrospector):
+            def get_view_info(self, view_name, schema=None):
+                return None
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(FakeBackendBase, "MissingViewBackend", MissingViewIntrospector),
+        )
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(make_args(["introspect", "views", "nope", "--database", "db"]))
+        assert exc.value.code == 1
+        assert "View 'nope' not found" in capsys.readouterr().err
 
     def test_triggers_without_name_asks_once_for_all(self):
         introspect_mod.handle(make_args(["introspect", "triggers", "--database", "db"]))
