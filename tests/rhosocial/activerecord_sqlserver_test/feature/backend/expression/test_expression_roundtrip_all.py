@@ -907,6 +907,21 @@ def register_specials():
     register_special_constructor(
         "uuid.UUIDConstantExpression", lambda d: UUIDConstantExpression(d, "nil")
     )
+    # -- one backend-specific question, answered in the form a name allows -----
+    # The extended-properties statement names its object one of two ways -- the
+    # catalogue id or the table name -- and refuses a statement that names
+    # neither, because "the properties of nothing" is not a question. The
+    # introspective guess invents neither, so the table-name form is filled in
+    # here: it is the one a caller holding only a name uses, and the one the
+    # CLI asks.
+    from rhosocial.activerecord.backend.impl.sqlserver.expression.introspection import (
+        SQLServerExtendedPropertyListQueryStatement,
+    )
+
+    register_special_constructor(
+        "introspection.SQLServerExtendedPropertyListQueryStatement",
+        lambda d: SQLServerExtendedPropertyListQueryStatement(d, table_name="users"),
+    )
     # -- scalar string functions whose parameters are typed operands ----------
     # The introspective guess supplies a bare string where these classes take
     # SQLValue / BaseExpression operands, so the constructor refuses; each
