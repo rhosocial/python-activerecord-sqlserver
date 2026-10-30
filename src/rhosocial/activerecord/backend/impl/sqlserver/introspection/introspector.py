@@ -482,20 +482,39 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     def parse_triggers(
         self, rows: List[Dict[str, Any]], schema: str
     ) -> List[IntrospectionTriggerInfo]:
-        return [
-            IntrospectionTriggerInfo(
-                name=row.get("trigger_name", ""),
-                table_name=row.get("table_name", ""),
-                schema=schema,
-                timing=(
-                    "INSTEAD OF" if row.get("is_instead_of_trigger")
-                    else "AFTER"
-                ),
-                events=[],
-                definition=row.get("definition"),
-            )
-            for row in rows
-        ]
+        """Fold the one-row-per-event answer back into one row per trigger.
+
+        The list statement joins ``sys.trigger_events``, so a trigger that
+        fires on ``INSERT`` and ``UPDATE`` arrives twice. Each row's
+        ``is_disabled`` and ``definition`` are the trigger's, repeated per
+        event; ``status`` is read from the first instead of being written as
+        ``ENABLED`` for every trigger, which is what the hard-coded default
+        amounted to.
+        """
+        triggers: Dict[str, IntrospectionTriggerInfo] = {}
+        for row in rows:
+            name = row.get("trigger_name", "")
+            trigger = triggers.get(name)
+            if trigger is None:
+                trigger = IntrospectionTriggerInfo(
+                    name=name,
+                    table_name=row.get("table_name", ""),
+                    schema=schema,
+                    timing=(
+                        "INSTEAD OF" if row.get("is_instead_of_trigger")
+                        else "AFTER"
+                    ),
+                    events=[],
+                    definition=row.get("definition"),
+                    status="DISABLED" if row.get("is_disabled") else "ENABLED",
+                )
+                triggers[name] = trigger
+            event = row.get("event")
+            # A LEFT JOIN row for a trigger with no event of its own carries a
+            # NULL, which is the absence of an event rather than one.
+            if event and event not in trigger.events:
+                trigger.events.append(event)
+        return list(triggers.values())
 
     # ------------------------------------------------------------------
     # Backend-specific parsers

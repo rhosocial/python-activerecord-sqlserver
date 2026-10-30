@@ -22,6 +22,7 @@ PROBE_PROCEDURE = f"zz_introspect_proc{_SUFFIX}"
 PROBE_FUNCTION = f"zz_introspect_fn{_SUFFIX}"
 PROBE_SEQUENCE = f"zz_introspect_seq{_SUFFIX}"
 PROBE_TRIGGER = f"zz_introspect_trg{_SUFFIX}"
+PROBE_TRIGGER_DISABLED = f"zz_introspect_trg_off{_SUFFIX}"
 PROBE_DESCRIPTION = "introspection probe table"
 
 DDL_OPTIONS = ExecutionOptions(stmt_type=StatementType.DDL)
@@ -32,6 +33,8 @@ def probe_statements():
     return [
         f"IF OBJECT_ID('dbo.{PROBE_TRIGGER}', 'TR') IS NOT NULL "
         f"DROP TRIGGER dbo.{PROBE_TRIGGER}",
+        f"IF OBJECT_ID('dbo.{PROBE_TRIGGER_DISABLED}', 'TR') IS NOT NULL "
+        f"DROP TRIGGER dbo.{PROBE_TRIGGER_DISABLED}",
         f"IF OBJECT_ID('dbo.{PROBE_TABLE}', 'U') IS NOT NULL " f"DROP TABLE dbo.{PROBE_TABLE}",
         f"IF OBJECT_ID('dbo.{PROBE_PARENT}', 'U') IS NOT NULL " f"DROP TABLE dbo.{PROBE_PARENT}",
         f"IF OBJECT_ID('dbo.{PROBE_VIEW}', 'V') IS NOT NULL " f"DROP VIEW dbo.{PROBE_VIEW}",
@@ -58,6 +61,11 @@ def probe_statements():
             "AFTER INSERT AS BEGIN SET NOCOUNT ON; END"
         ),
         (
+            f"CREATE TRIGGER dbo.{PROBE_TRIGGER_DISABLED} ON dbo.{PROBE_TABLE} "
+            "AFTER UPDATE AS BEGIN SET NOCOUNT ON; END"
+        ),
+        f"DISABLE TRIGGER dbo.{PROBE_TRIGGER_DISABLED} ON dbo.{PROBE_TABLE}",
+        (
             "EXEC sys.sp_addextendedproperty "
             "@name=N'MS_Description', "
             f"@value=N'{PROBE_DESCRIPTION}', "
@@ -72,6 +80,8 @@ def teardown_statements():
     return [
         f"IF OBJECT_ID('dbo.{PROBE_TRIGGER}', 'TR') IS NOT NULL "
         f"DROP TRIGGER dbo.{PROBE_TRIGGER}",
+        f"IF OBJECT_ID('dbo.{PROBE_TRIGGER_DISABLED}', 'TR') IS NOT NULL "
+        f"DROP TRIGGER dbo.{PROBE_TRIGGER_DISABLED}",
         f"IF OBJECT_ID('dbo.{PROBE_VIEW}', 'V') IS NOT NULL " f"DROP VIEW dbo.{PROBE_VIEW}",
         f"IF OBJECT_ID('dbo.{PROBE_PROCEDURE}', 'P') IS NOT NULL "
         f"DROP PROCEDURE dbo.{PROBE_PROCEDURE}",

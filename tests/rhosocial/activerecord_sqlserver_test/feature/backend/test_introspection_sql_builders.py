@@ -310,6 +310,68 @@ class TestBuildTriggerListSql:
         assert "[t].[name] = ?" not in sql
         assert params == ("dbo",)
 
+    def test_events_are_joined_from_the_trigger_events_view(self):
+        """The events are not a column of ``sys.triggers``; they need a join."""
+        sql, params = TriggerListQueryStatement(make_dialect(), schema="dbo").to_sql()
+        assert "[sys].[trigger_events] AS [te]" in sql
+        assert "LEFT JOIN" in sql
+        assert "[te].[type_desc] AS [event]" in sql
+        # Ordered by trigger, then event, so a trigger's rows are contiguous.
+        assert sql.endswith("ORDER BY [tr].[name], [te].[type_desc]")
+        assert params == ("dbo",), "the join adds no parameter"
+
+
+class TestParseTriggers:
+    """The one-row-per-event answer is folded back into one row per trigger."""
+
+    @staticmethod
+    def _row(**overrides):
+        row = {
+            "trigger_name": "trg",
+            "table_name": "t",
+            "is_disabled": 0,
+            "is_instead_of_trigger": 0,
+            "event": "INSERT",
+            "definition": "CREATE TRIGGER trg ON t AFTER INSERT AS SELECT 1",
+        }
+        row.update(overrides)
+        return row
+
+    def test_events_are_collected_per_trigger_in_order(self):
+        triggers = make_introspector().parse_triggers(
+            [
+                self._row(event="DELETE"),
+                self._row(event="INSERT"),
+                self._row(event="UPDATE"),
+                self._row(trigger_name="other", event="INSERT"),
+            ],
+            "dbo",
+        )
+        assert [t.name for t in triggers] == ["trg", "other"]
+        assert triggers[0].events == ["DELETE", "INSERT", "UPDATE"]
+        assert triggers[1].events == ["INSERT"]
+
+    def test_status_follows_is_disabled(self):
+        trigger = make_introspector().parse_triggers([self._row()], "dbo")[0]
+        assert trigger.status == "ENABLED"
+        disabled = make_introspector().parse_triggers(
+            [self._row(is_disabled=1)], "dbo"
+        )[0]
+        assert disabled.status == "DISABLED"
+
+    def test_a_trigger_with_no_event_row_keeps_an_empty_list(self):
+        """The LEFT JOIN answers NULL, which is not an event."""
+        trigger = make_introspector().parse_triggers([self._row(event=None)], "dbo")[0]
+        assert trigger.events == []
+
+    def test_timing_and_definition_still_read(self):
+        trigger = make_introspector().parse_triggers(
+            [self._row(is_instead_of_trigger=1, event="DELETE")], "dbo"
+        )[0]
+        assert trigger.timing == "INSTEAD OF"
+        assert trigger.table_name == "t"
+        assert trigger.definition.startswith("CREATE TRIGGER")
+
 
 class TestBuildDatabaseInfoSql:
     def test_returns_sql(self):

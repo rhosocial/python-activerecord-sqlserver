@@ -26,6 +26,7 @@ from tests.rhosocial.activerecord_sqlserver_test.feature.backend.introspection_p
     PROBE_SEQUENCE,
     PROBE_TABLE,
     PROBE_TRIGGER,
+    PROBE_TRIGGER_DISABLED,
     PROBE_VIEW,
     create_probe_objects,
     drop_probe_objects,
@@ -152,6 +153,30 @@ class TestIntrospectLiveCli:
         assert PROBE_TRIGGER in names
         row = [r for r in payload if r.get("name") == PROBE_TRIGGER][0]
         assert row.get("table_name") == PROBE_TABLE
+
+    def test_triggers_carry_their_events_and_their_status(self, probed_backend, capsys):
+        """The firing event and ``is_disabled`` are on the row, not just selected.
+
+        ``events`` used to be ``[]`` for every trigger and ``status`` the
+        dataclass default ``ENABLED`` for every trigger, because the parser
+        wrote both rather than reading what the statement selected.
+        """
+        main(
+            [
+                "introspect",
+                "triggers",
+                "-o",
+                "json",
+                *_connection_argv(probed_backend.config),
+            ]
+        )
+        payload = json.loads(capsys.readouterr().out)
+        enabled = [r for r in payload if r.get("name") == PROBE_TRIGGER][0]
+        assert enabled["events"] == ["INSERT"]
+        assert enabled["status"] == "ENABLED"
+        disabled = [r for r in payload if r.get("name") == PROBE_TRIGGER_DISABLED][0]
+        assert disabled["events"] == ["UPDATE"]
+        assert disabled["status"] == "DISABLED"
 
     def test_schemas(self, probed_backend, capsys):
         main(

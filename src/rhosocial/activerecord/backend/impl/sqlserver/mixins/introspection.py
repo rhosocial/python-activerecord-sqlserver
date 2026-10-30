@@ -533,7 +533,20 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
     def format_trigger_list_query_statement(
         self, expr: "TriggerListQueryStatement"
     ) -> Tuple[str, tuple]:
-        """Format the trigger list query, optionally for one table."""
+        """Format the trigger list query, optionally for one table.
+
+        The firing events are not a column of ``sys.triggers``: they live one
+        table over, in ``sys.trigger_events``, one row per event
+        (``INSERT``/``UPDATE``/``DELETE``). Joining it is what makes ``events``
+        answerable at all -- the parser used to write ``[]`` for every trigger
+        because nothing selected the events. The join is a ``LEFT JOIN``: a
+        trigger row with no event of its own is still a trigger, and dropping it
+        would trade an empty list for a missing trigger.
+
+        One trigger now answers with one row per event, so the rows of a
+        trigger are contiguous (the list is ordered by trigger name, then by
+        event) and the parser folds them back together.
+        """
         from rhosocial.activerecord.backend.expression import FunctionCall, JoinClause
 
         params = expr.get_params()
@@ -544,7 +557,15 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             self._node_dialect,
             JoinClause(
                 self._node_dialect,
-                self._relation("triggers", "sys", alias="tr"),
+                JoinClause(
+                    self._node_dialect,
+                    self._relation("triggers", "sys", alias="tr"),
+                    self._relation("trigger_events", "sys", alias="te"),
+                    join_type="LEFT JOIN",
+                    condition=self._eq(
+                        self._col("object_id", "te"), self._col("object_id", "tr")
+                    ),
+                ),
                 self._relation("tables", "sys", alias="t"),
                 join_type="JOIN",
                 condition=self._eq(
@@ -566,6 +587,7 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
                 self._col("name", "t", alias="table_name"),
                 self._col("is_disabled", "tr"),
                 self._col("is_instead_of_trigger", "tr"),
+                self._col("type_desc", "te", alias="event"),
                 FunctionCall(
                     self._node_dialect,
                     "OBJECT_DEFINITION",
@@ -575,7 +597,7 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             ],
             from_=joins,
             where=self._and(*conditions),
-            order_by=[self._col("name", "tr")],
+            order_by=[self._col("name", "tr"), self._col("type_desc", "te")],
         )
 
     # ------------------------------------------------------------------ #
