@@ -124,6 +124,16 @@ class TestBuildTableListSql:
         assert "is_ms_shipped" not in sql
         assert params == ("sys",)
 
+    def test_the_comment_is_joined_from_extended_properties(self):
+        """SQL Server has no COMMENT clause; ``MS_Description`` is the comment."""
+        sql, params = TableListQueryStatement(make_dialect(), schema="dbo").to_sql()
+        assert "LEFT JOIN [sys].[extended_properties] AS [ep]" in sql
+        assert "[ep].[major_id] = [o].[object_id]" in sql
+        assert "[ep].[minor_id] = 0" in sql, "the object-level property, not a column's"
+        assert "[ep].[name] = 'MS_Description'" in sql
+        assert "CAST([ep].[value] AS NVARCHAR(4000)) AS [table_comment]" in sql
+        assert params == ("dbo",), "the comment adds no parameter"
+
 
 class TestParseTables:
     """``sys.objects.type`` becomes the shared table-kind vocabulary."""
@@ -145,6 +155,15 @@ class TestParseTables:
     def test_information_schema_spellings_still_parse(self):
         assert self._parse("BASE TABLE") == TableType.BASE_TABLE
         assert self._parse("VIEW") == TableType.VIEW
+
+    def test_the_joined_comment_is_read(self):
+        row = {"TABLE_NAME": "t", "TABLE_TYPE": "U", "table_comment": "what it holds"}
+        assert make_introspector().parse_tables([row], "dbo")[0].comment == "what it holds"
+
+    def test_a_table_without_a_comment_keeps_none(self):
+        """The LEFT JOIN answers NULL, which is "no comment", not an empty one."""
+        row = {"TABLE_NAME": "t", "TABLE_TYPE": "U", "table_comment": None}
+        assert make_introspector().parse_tables([row], "dbo")[0].comment is None
 
 
 class TestParseDatabaseInfo:
@@ -204,6 +223,24 @@ class TestBuildColumnInfoSql:
         assert "COLUMNPROPERTY" in sql
         assert "IS_IDENTITY" in sql
         assert "IsIdentity" in sql
+
+    def test_the_comment_is_joined_through_sys_columns(self):
+        """The property is keyed by the object id and the column id.
+
+        ``INFORMATION_SCHEMA.COLUMNS`` carries neither, so ``sys.columns`` is
+        joined to reach them; both joins are LEFT so a column without a
+        description keeps its row.
+        """
+        sql, params = ColumnInfoQueryStatement(
+            make_dialect(), "users", schema="dbo"
+        ).to_sql()
+        assert "LEFT JOIN [sys].[columns] AS [sc]" in sql
+        assert "[sc].[object_id] = OBJECT_ID(" in sql
+        assert "[sc].[name] = [c].[COLUMN_NAME]" in sql
+        assert "LEFT JOIN [sys].[extended_properties] AS [epc]" in sql
+        assert "[epc].[minor_id] = [sc].[column_id]" in sql
+        assert "CAST([epc].[value] AS NVARCHAR(4000)) AS [column_comment]" in sql
+        assert params == ("dbo", "users"), "the comment adds no parameter"
 
 
 class TestBuildPrimaryKeySql:
@@ -719,6 +756,28 @@ class TestStatusQueries:
         assert sql.startswith("SELECT SYSTEM_USER AS [session_user]")
         assert "CONNECTIONPROPERTY('net_transport')" in sql
         assert params == ()
+
+
+class TestParseColumnComment:
+    """The ``column_comment`` the joined property adds reaches ``ColumnInfo``."""
+
+    @staticmethod
+    def _parse_one(**catalog):
+        row = {
+            "COLUMN_NAME": "col",
+            "DATA_TYPE": "int",
+            "ORDINAL_POSITION": 1,
+            "IS_NULLABLE": "YES",
+            **catalog,
+        }
+        return make_introspector().parse_columns([row], "t", "dbo")[0]
+
+    def test_a_column_comment_is_read(self):
+        assert self._parse_one(column_comment="what it means").comment == "what it means"
+
+    def test_a_column_without_a_comment_keeps_none(self):
+        assert self._parse_one(column_comment=None).comment is None
+        assert self._parse_one().comment is None
 
 
 class TestParseColumnsFullTypeRebuild:

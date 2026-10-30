@@ -24,6 +24,7 @@ from tests.rhosocial.activerecord_sqlserver_test.feature.backend.introspection_p
     PROBE_FUNCTION,
     PROBE_PROCEDURE,
     PROBE_SEQUENCE,
+    PROBE_TABLE,
     create_probe_objects,
     create_probe_objects_async,
     drop_probe_objects,
@@ -126,6 +127,12 @@ class TestSyncBackendSpecific:
         properties = probed_backend.introspector.list_extended_properties(object_id, schema="dbo")
         assert_extended_properties(properties)
 
+    def test_tables_carry_their_comment(self, probed_backend):
+        """``MS_Description`` reaches ``TableInfo.comment`` through the join."""
+        tables = probed_backend.introspector.list_tables("dbo")
+        probe = [t for t in tables if t.name == PROBE_TABLE][0]
+        assert probe.comment == PROBE_DESCRIPTION
+
     def test_extended_properties_unknown_class_refused(self, probed_backend):
         with pytest.raises(ValueError):
             probed_backend.introspector.list_extended_properties(1, class_name="NOT_A_CLASS")
@@ -156,3 +163,8 @@ class TestAsyncBackendSpecific:
             object_id, schema="dbo"
         )
         assert_extended_properties(properties)
+
+    async def test_tables_carry_their_comment(self, probed_async_backend):
+        tables = await probed_async_backend.introspector.list_tables("dbo")
+        probe = [t for t in tables if t.name == PROBE_TABLE][0]
+        assert probe.comment == PROBE_DESCRIPTION

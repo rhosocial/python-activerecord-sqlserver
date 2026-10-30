@@ -297,6 +297,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
                     str(row.get("TABLE_TYPE") or "").strip().upper(),
                     TableType.BASE_TABLE,
                 ),
+                comment=row.get("table_comment"),
             )
             for row in rows
         ]
@@ -377,6 +378,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
                 is_primary_key=col_name in pk_set,
                 is_unique=False,
                 is_auto_increment=bool(row.get("IS_IDENTITY")),
+                comment=row.get("column_comment"),
                 character_maximum_length=max_len,
                 numeric_precision=precision,
                 numeric_scale=scale,

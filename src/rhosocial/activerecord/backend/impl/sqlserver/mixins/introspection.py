@@ -239,6 +239,14 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         ``--include-system`` flag change the answer instead of being ignored.
         An explicit ``table_type`` narrows the admitted codes and, when it
         names system tables, implies ``include_system`` for that query.
+
+        ``MS_Description`` is joined in as ``table_comment``: SQL Server has no
+        ``COMMENT`` clause, and ``sys.extended_properties`` is the only place a
+        table's comment lives. Without the join ``TableInfo.comment`` was
+        permanently ``None`` -- a declared field no backend could fill. The
+        join is a ``LEFT JOIN`` on the object-level property alone
+        (``minor_id = 0``), so a table without a comment still row-appears and a
+        column-level description cannot be mistaken for the table's.
         """
         params = expr.get_params()
         target = params.get("schema") or DEFAULT_SCHEMA
@@ -265,16 +273,32 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             )
 
         joined = self._join(
-            self._relation("objects", "sys", alias="o"),
-            self._relation("schemas", "sys", alias="s"),
-            condition=self._eq(
-                self._col("schema_id", "o"), self._col("schema_id", "s")
+            self._join(
+                self._relation("objects", "sys", alias="o"),
+                self._relation("schemas", "sys", alias="s"),
+                condition=self._eq(
+                    self._col("schema_id", "o"), self._col("schema_id", "s")
+                ),
+            ),
+            self._relation("extended_properties", "sys", alias="ep"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("major_id", "ep"), self._col("object_id", "o")),
+                self._eq(self._col("minor_id", "ep"), self._lit(0, inline=True)),
+                self._eq(self._col("class", "ep"), self._lit(1, inline=True)),
+                self._eq(
+                    self._col("name", "ep"),
+                    self._lit("MS_Description", inline=True),
+                ),
             ),
         )
         return self._select(
             [
                 self._col("name", "o", alias="TABLE_NAME"),
                 self._col("type", "o", alias="TABLE_TYPE"),
+                self._cast(self._col("value", "ep"), "NVARCHAR(4000)").as_(
+                    "table_comment"
+                ),
             ],
             from_=joined,
             where=self._and(*conditions),
@@ -290,8 +314,16 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         fractional-seconds precision of ``time``/``datetime2``/
         ``datetimeoffset`` lives. ``include_hidden`` is part of the shared
         question; SQL Server's catalog reports no hidden columns.
+
+        ``MS_Description`` is joined in as ``column_comment``, the second half
+        of the comment story the table list tells: the property is keyed by the
+        object id the column belongs to and the column's own id, neither of
+        which ``INFORMATION_SCHEMA.COLUMNS`` carries, so ``sys.columns`` is
+        joined to reach them. ``OBJECT_ID`` is evaluated on the qualified name
+        this statement already builds, and the join is a ``LEFT JOIN`` so a
+        column without a description keeps its row.
         """
-        from rhosocial.activerecord.backend.expression import FunctionCall
+        from rhosocial.activerecord.backend.expression import FunctionCall, JoinClause
         from rhosocial.activerecord.backend.expression.operators import (
             ArithmeticOperation,
             ArithmeticOperator,
@@ -315,13 +347,38 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             ),
             self._col("TABLE_NAME", "c"),
         )
+        object_id = FunctionCall(self._node_dialect, "OBJECT_ID", qualified_name)
         is_identity = FunctionCall(
             self._node_dialect,
             "COLUMNPROPERTY",
-            FunctionCall(self._node_dialect, "OBJECT_ID", qualified_name),
+            object_id,
             self._col("COLUMN_NAME", "c"),
             self._lit("IsIdentity", inline=True),
             alias="IS_IDENTITY",
+        )
+        joined = JoinClause(
+            self._node_dialect,
+            JoinClause(
+                self._node_dialect,
+                self._relation("COLUMNS", "INFORMATION_SCHEMA", alias="c"),
+                self._relation("columns", "sys", alias="sc"),
+                join_type="LEFT JOIN",
+                condition=self._and(
+                    self._eq(self._col("object_id", "sc"), object_id),
+                    self._eq(self._col("name", "sc"), self._col("COLUMN_NAME", "c")),
+                ),
+            ),
+            self._relation("extended_properties", "sys", alias="epc"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("class", "epc"), self._lit(1, inline=True)),
+                self._eq(self._col("major_id", "epc"), self._col("object_id", "sc")),
+                self._eq(self._col("minor_id", "epc"), self._col("column_id", "sc")),
+                self._eq(
+                    self._col("name", "epc"),
+                    self._lit("MS_Description", inline=True),
+                ),
+            ),
         )
         return self._select(
             [
@@ -336,8 +393,11 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
                 self._col("ORDINAL_POSITION", "c"),
                 self._col("COLLATION_NAME", "c"),
                 is_identity,
+                self._cast(self._col("value", "epc"), "NVARCHAR(4000)").as_(
+                    "column_comment"
+                ),
             ],
-            from_=self._relation("COLUMNS", "INFORMATION_SCHEMA", alias="c"),
+            from_=joined,
             where=self._and(
                 self._eq(self._col("TABLE_SCHEMA", "c"), self._lit(target)),
                 self._eq(self._col("TABLE_NAME", "c"), self._lit(table_name)),
