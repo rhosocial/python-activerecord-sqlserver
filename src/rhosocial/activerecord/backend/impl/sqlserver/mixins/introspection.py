@@ -175,6 +175,20 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         """
         return True
 
+    def supports_table_storage_introspection(self) -> bool:
+        """``sys.dm_db_partition_stats`` answers per-table storage.
+
+        SQL Server's storage is row-plus-index shaped -- a heap or clustered
+        index holds the rows, nonclustered indexes hold the rest -- so all
+        four narrow slots of ``IntrospectionTableInfo`` can be answered from
+        one partition-stats read per table: ``size_bytes`` the total,
+        ``data_size_bytes`` the table's own partitions and
+        ``index_size_bytes`` the nonclustered ones' pages. Before this was
+        declared, the listing left every slot ``None`` while the engine was
+        able to answer; a caller gating on the switch now learns that.
+        """
+        return True
+
     def get_supported_introspection_scopes(self) -> List["IntrospectionScope"]:
         """The catalogue families this dialect answers, as core names them.
 
@@ -221,6 +235,47 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             self._node_dialect, "SERVERPROPERTY", self._lit(name, inline=True)
         ).cast(SQLServerNVarCharType(self._node_dialect, 128))
         return node.as_(alias) if alias else node
+
+    def _partition_stats_bytes(self, alias: str, *, heap: bool = False, nonclustered: bool = False):
+        """One storage slot, read from ``sys.dm_db_partition_stats``.
+
+        The view counts one row per partition of one index, which is where
+        SQL Server answers "how much space does this table occupy": the
+        partitions of ``index_id`` 0 (a heap) or 1 (a clustered index) are
+        the table's own storage, and everything above 1 is a nonclustered
+        index's. Which bucket *alias* asks for is the two flags; with
+        neither, every partition of the object is summed -- the total.
+
+        A view has no partition rows at all, so the scalar subquery answers
+        NULL and the slot stays ``None``: an object whose storage is not a
+        question the engine answers for it is a different answer from zero
+        bytes, and claiming the zero would describe storage it does not have.
+
+        The page size is a constant of this engine -- SQL Server pages are
+        8 KiB with no configuration switch, unlike PostgreSQL's or Oracle's
+        -- so the multiplication is a fact of the engine rather than a read
+        that could come back unknown.
+        """
+        bucket = None
+        if heap:
+            bucket = self._in(self._col("index_id", "ps"), (0, 1))
+        elif nonclustered:
+            bucket = self._gt(
+                self._col("index_id", "ps"), self._lit(1, inline=True)
+            )
+        conditions = [
+            self._eq(self._col("object_id", "ps"), self._col("object_id", "o")),
+        ]
+        if bucket is not None:
+            conditions.append(bucket)
+        return self._mul(
+            self._subquery(
+                [self._fn("SUM", self._col("used_page_count", "ps"))],
+                from_=self._relation("dm_db_partition_stats", "sys", alias="ps"),
+                where=self._and(*conditions),
+            ),
+            self._lit(8192, inline=True),
+        ).as_(alias)
 
     def format_database_info_query_statement(
         self, expr: "DatabaseInfoQueryStatement"
@@ -273,6 +328,14 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         join is a ``LEFT JOIN`` on the object-level property alone
         (``minor_id = 0``), so a table without a comment still row-appears and a
         column-level description cannot be mistaken for the table's.
+
+        The storage slots ride the same listing as three scalar subqueries
+        rather than a join: ``sys.dm_db_partition_stats`` holds one row per
+        partition per index, and a GROUP BY over it would fold the object
+        kinds -- a view, which has no partitions, would vanish from the
+        listing instead of answering ``None`` for its storage. A subquery per
+        slot keeps every row and says plainly which slots a view cannot
+        answer; see :meth:`_partition_stats_bytes`.
         """
         params = expr.get_params()
         target = params.get("schema") or DEFAULT_SCHEMA
@@ -325,6 +388,9 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
                 self._cast(self._col("value", "ep"), "NVARCHAR(4000)").as_(
                     "table_comment"
                 ),
+                self._partition_stats_bytes("size_bytes"),
+                self._partition_stats_bytes("data_size_bytes", heap=True),
+                self._partition_stats_bytes("index_size_bytes", nonclustered=True),
             ],
             from_=joined,
             where=self._and(*conditions),

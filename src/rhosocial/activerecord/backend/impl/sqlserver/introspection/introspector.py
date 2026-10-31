@@ -287,6 +287,15 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         ``INFORMATION_SCHEMA``-shaped question still parses. An unknown code
         reads as a base table, which is the least surprising answer for a
         relation this backend listed as one.
+
+        The three storage slots arrive as the subqueries
+        ``_partition_stats_bytes`` projected. A subquery that found no
+        partition rows -- a view has none -- answers ``NULL``, which the
+        driver returns as ``None``, so "storage this engine does not track
+        for this object" stays ``None`` rather than being written as zero.
+        ``row_count`` is deliberately not answered: an exact count is a scan,
+        and an estimate is a table the engine keeps no estimate in, so the
+        slot says so instead of guessing.
         """
         target = schema or self.default_schema
         return [
@@ -298,6 +307,9 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
                     TableType.BASE_TABLE,
                 ),
                 comment=row.get("table_comment"),
+                size_bytes=row.get("size_bytes"),
+                data_size_bytes=row.get("data_size_bytes"),
+                index_size_bytes=row.get("index_size_bytes"),
             )
             for row in rows
         ]
