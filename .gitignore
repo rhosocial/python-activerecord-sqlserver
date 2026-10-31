@@ -212,3 +212,8 @@ __marimo__/
 .claude/tmp/
 tests/config/
 test_connection.py
+# Worktrees for feature/* and fix/* branches. Never tracked: a `git add -A`
+# from the repo root would commit each branch's whole toolchain -- the venv, the
+# build directory and the test artifacts -- and the directory disappears when the
+# branch merges, so the history would keep a second copy of the source tree.
+.worktree/

@@ -30,37 +30,38 @@ dialect = backend.dialect
 # SECTION: Business Logic (the pattern to learn)
 # ============================================================
 from rhosocial.activerecord.backend.expression import (
-    CreateTableExpression,
+    CreateTableStatement,
     ColumnDefinition,
     ColumnConstraint,
-    ColumnConstraintType,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements.ddl_table import IndexDefinition
+from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
+    ColumnUniqueConstraint,
+    IndexDefinition,
+)
 
 columns = [
     ColumnDefinition(
         name='id',
         data_type='INT',
         constraints=[
-            ColumnConstraint(
-                constraint_type=ColumnConstraintType.PRIMARY_KEY,
-                is_auto_increment=True,
-            ),
+            ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True)),
         ],
     ),
     ColumnDefinition(
         name='name',
         data_type='NVARCHAR(100)',
         constraints=[
-            ColumnConstraint(constraint_type=ColumnConstraintType.NOT_NULL),
+            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
         ],
     ),
     ColumnDefinition(
         name='email',
         data_type='NVARCHAR(200)',
         constraints=[
-            ColumnConstraint(constraint_type=ColumnConstraintType.UNIQUE),
+            ColumnConstraint(dialect, branch=ColumnUniqueConstraint(dialect)),
         ],
     ),
     ColumnDefinition(
@@ -76,7 +77,7 @@ indexes = [
     ),
 ]
 
-create_expr = CreateTableExpression(
+create_expr = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'users'),
     columns=columns,
@@ -101,9 +102,9 @@ print("Table created: users")
 # ============================================================
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
-from rhosocial.activerecord.backend.expression import DropTableExpression
+from rhosocial.activerecord.backend.expression import DropTableStatement
 
-drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'users'), if_exists=True)
+drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'users'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

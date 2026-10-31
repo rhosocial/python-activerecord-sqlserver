@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ...dialect import SQLServerDialect
 
 
-class SQLServerCreateTriggerExpression(BaseExpression):
+class SQLServerCreateTriggerStatement(BaseExpression):
     """SQL Server CREATE TRIGGER statement (2005+).
 
     Attributes:
@@ -33,13 +33,14 @@ class SQLServerCreateTriggerExpression(BaseExpression):
         or_alter: Whether to render ``CREATE OR ALTER TRIGGER``.
 
     Example:
-        >>> expr = SQLServerCreateTriggerExpression(
+        >>> expr = SQLServerCreateTriggerStatement(
         ...     dialect, "trg", "t", timing="AFTER", events=["INSERT"],
         ...     body="SET NOCOUNT ON;",
         ... )
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE TRIGGER [trg] ON [t] AFTER INSERT AS BEGIN SET NOCOUNT ON; END;"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -80,7 +81,7 @@ class SQLServerCreateTriggerExpression(BaseExpression):
         return self.dialect.format_create_trigger_statement(self)
 
 
-class SQLServerDropTriggerExpression(BaseExpression):
+class SQLServerDropTriggerStatement(BaseExpression):
     """SQL Server DROP TRIGGER statement (2005+).
 
     Attributes:
@@ -89,10 +90,11 @@ class SQLServerDropTriggerExpression(BaseExpression):
         if_exists: Render ``IF EXISTS`` (SQL Server 2016+ only).
 
     Example:
-        >>> expr = SQLServerDropTriggerExpression(dialect, "trg")
+        >>> expr = SQLServerDropTriggerStatement(dialect, "trg")
         >>> sql, params = expr.to_sql()
         >>> assert sql == "DROP TRIGGER [trg]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

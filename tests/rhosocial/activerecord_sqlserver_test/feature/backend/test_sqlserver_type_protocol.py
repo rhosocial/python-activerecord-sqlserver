@@ -174,7 +174,7 @@ class TestSupportsDataTypes:
     def test_backend_types_are_advertised_without_a_prior_import(self):
         """``supports_data_types()`` must not depend on load order.
 
-        ``_type_class_for(name)`` resolves a dispatch key by walking the live
+        ``type_class_for(name)`` resolves a dispatch key by walking the live
         subclass tree of ``DataType``, so a name whose class nobody imported
         resolves to ``None`` and silently drops out of the mapping.  It used to
         drop out: every test that caught this had imported a ``SQLServer*``
@@ -1607,7 +1607,7 @@ class TestParseRoundTripSweep:
         import importlib.util
         from pathlib import Path
 
-        path = Path(__file__).with_name("test_expression_roundtrip_all.py")
+        path = Path(__file__).parent / "expression" / "test_expression_roundtrip_all.py"
         spec = importlib.util.spec_from_file_location("sqlserver_rt_registry", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -1616,9 +1616,25 @@ class TestParseRoundTripSweep:
         return registry
 
     def test_every_rendered_type_parses_back_coherently(self, registry):
-        from rhosocial.activerecord.testsuite.utils.parse_contract import (
-            parse_roundtrip_failures,
+        # The testsuite dropped utils/expression in e05edb0 ("round-trip
+        # coverage moves to the owning repository") and parse_contract died
+        # with it -- it imported make_instance from the deleted harness. The
+        # sweep is vendored beside this repository's own harness for the same
+        # reason the matrix's is: a dead import is a dead test. It lives in the
+        # expression area now, so it is loaded by path the way the registry
+        # above is.
+        import importlib.util
+        from pathlib import Path
+
+        contract_path = (
+            Path(__file__).parent / "expression" / "expression_parse_contract.py"
         )
+        spec = importlib.util.spec_from_file_location(
+            "sqlserver_parse_contract", contract_path
+        )
+        contract = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(contract)
+        parse_roundtrip_failures = contract.parse_roundtrip_failures
 
         dialect = SQLServerDialect(SQL_SERVER_2022)
         failures = parse_roundtrip_failures(

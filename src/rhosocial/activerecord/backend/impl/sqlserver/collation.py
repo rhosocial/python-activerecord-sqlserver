@@ -7,8 +7,17 @@ from enum import Enum
 from typing import Dict, Optional, Tuple
 
 
-class SQLServerCollation(Enum):
-    """Common SQL Server collations for expression-level COLLATE."""
+class SQLServerCollation(str, Enum):
+    """Common SQL Server collations for expression-level COLLATE.
+
+    A member *is* the word it carries -- ``str.__str__``, not ``Enum.__str__``,
+    which would win the base order otherwise -- because the member rides inside
+    ``CollateFunction``'s params and a param that travels in an artifact must be
+    a JSON scalar. Plain ``Enum`` raises "not one of the value kinds" the moment
+    anything serialises the node, which is how the spelling was settled.
+    """
+
+    __str__ = str.__str__
 
     LATIN1_GENERAL_CI_AS = "Latin1_General_CI_AS"
     LATIN1_GENERAL_CS_AS = "Latin1_General_CS_AS"

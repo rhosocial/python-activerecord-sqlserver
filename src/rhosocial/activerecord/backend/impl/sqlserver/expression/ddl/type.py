@@ -8,14 +8,14 @@ from typing import Any, List, Optional, Sequence, Union
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.expression.objects import Type
-from rhosocial.activerecord.backend.expression.serialization import ExpressionRegistry
+from rhosocial.activerecord.backend.expression.serialization import default_registry
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnDefinition,
     IndexDefinition,
     TableConstraint,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_type import (
-    DropTypeExpression,
+    DropTypeStatement,
     TypeDefinition,
 )
 from rhosocial.activerecord.backend.expression.types import DataType
@@ -68,6 +68,7 @@ def _require_data_type(value: DataType, field_name: str) -> None:
 
 class SQLServerAliasTypeDefinition(TypeDefinition):
     """SQL Server alias TYPE definition."""
+    KIND_RESERVED = ("SQLServer",)
 
     definition_kind = "alias"
 
@@ -96,6 +97,7 @@ class SQLServerTableTypeDefinition(TypeDefinition):
     the reverse) and the reconstruction takes the same branch. Renderers read
     :attr:`constraint_definitions`, never one particular spelling's slot.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     definition_kind = "table"
 
@@ -157,6 +159,7 @@ class SQLServerTableTypeDefinition(TypeDefinition):
 
 class SQLServerClrTypeDefinition(TypeDefinition):
     """SQL Server CLR user-defined TYPE definition."""
+    KIND_RESERVED = ("SQLServer",)
 
     definition_kind = "clr"
 
@@ -174,7 +177,7 @@ class SQLServerClrTypeDefinition(TypeDefinition):
         self.class_name = class_name
 
 
-class SQLServerDropTypeExpression(DropTypeExpression):
+class SQLServerDropTypeExpression(DropTypeStatement):
     """SQL Server DROP TYPE expression with explicit unsupported behavior flags.
 
     ``type`` is the :class:`~rhosocial.activerecord.backend.expression.objects.Type`
@@ -182,6 +185,7 @@ class SQLServerDropTypeExpression(DropTypeExpression):
     ``RESTRICT`` for ``DROP TYPE``, and asking for one is an error here rather
     than a silently dropped token.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -201,8 +205,9 @@ class SQLServerDropTypeExpression(DropTypeExpression):
         self.restrict = restrict
 
 
-class SQLServerRenameTypeExpression(BaseExpression):
+class SQLServerRenameTypeStatement(BaseExpression):
     """SQL Server TYPE rename statement using ``sp_rename``."""
+    KIND_RESERVED = ("SQLServer",)
 
     @property
     def format_method(self) -> str:
@@ -233,13 +238,22 @@ _SQLSERVER_TYPE_EXPRESSIONS = (
     SQLServerTableTypeDefinition,
     SQLServerClrTypeDefinition,
     SQLServerDropTypeExpression,
-    SQLServerRenameTypeExpression,
+    SQLServerRenameTypeStatement,
     SQLServerColumnDefinition,
     SQLServerIndexDefinition,
 )
 
+# The kind whitelist the artifact reader resolves through. Registering into
+# the framework's default registry (the same singleton deserialization
+# consults) is what keeps these backend-owned kinds readable once a process
+# imports this package; re-registering a class the framework already knows
+# is a no-op. The nullability enum needs no registration of its own: an
+# artifact carries only JSON scalars, and this package normalises the enum
+# to a bool at construction (see _normalise_nullability), so no member ever
+# reaches the wire.
+_registry = default_registry()
 for _expression_class in _SQLSERVER_TYPE_EXPRESSIONS:
-    ExpressionRegistry.register(_expression_class)
+    _registry.register_node(_expression_class)
 
 
 __all__ = [
@@ -248,5 +262,5 @@ __all__ = [
     "SQLServerTableTypeDefinition",
     "SQLServerClrTypeDefinition",
     "SQLServerDropTypeExpression",
-    "SQLServerRenameTypeExpression",
+    "SQLServerRenameTypeStatement",
 ]

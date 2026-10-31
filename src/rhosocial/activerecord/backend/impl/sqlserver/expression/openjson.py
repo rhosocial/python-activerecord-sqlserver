@@ -39,6 +39,7 @@ class SQLServerOpenJsonExpression(BaseExpression):
         ...     alias='orders'
         ... )
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

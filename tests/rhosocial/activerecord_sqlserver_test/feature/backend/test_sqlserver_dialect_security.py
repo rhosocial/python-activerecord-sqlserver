@@ -75,9 +75,9 @@ def test_format_identifier_empty_string(dialect):
     assert dialect.format_identifier("") == "[]"
 
 
-def test_escape_sql_string_inherited(dialect):
-    """Test SQL Server inherits _escape_sql_string from base dialect."""
-    result = dialect._escape_sql_string("test's value")
+def testescape_sql_string_inherited(dialect):
+    """Test SQL Server inherits escape_sql_string from base dialect."""
+    result = dialect.escape_sql_string("test's value")
     assert result == "test''s value"
 
 

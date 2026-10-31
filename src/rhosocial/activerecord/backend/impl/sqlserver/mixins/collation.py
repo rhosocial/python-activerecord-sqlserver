@@ -1,11 +1,12 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/collation.py
-from typing import Any, Tuple, TYPE_CHECKING
+from enum import Enum
+from typing import TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from ..collation import validate_sqlserver_collation_name
 
 if TYPE_CHECKING:
-    from rhosocial.activerecord.backend.expression.collation import CollateExpression
+    from rhosocial.activerecord.backend.expression.collation import CollateFunction
 
 
 class SQLServerCollationMixin:
@@ -15,15 +16,17 @@ class SQLServerCollationMixin:
         """SQL Server supports expression-level COLLATE."""
         return True
 
-    def validate_collation_name(self, expr: "CollateExpression") -> str:
+    def validate_collation_name(self, expr: "CollateFunction") -> str:
         """Validate SQL Server collation names and return their SQL representation."""
-        if "schema" in expr.collation_options:
+        # Schema-qualified COLLATE (``schema.collation``) is the one option
+        # the core node names; SQL Server's grammar does not accept a
+        # qualified collation here, so the field is refused rather than
+        # silently dropped.
+        if expr.schema is not None:
             raise UnsupportedFeatureError(self.name, "schema-qualified COLLATE")
-        keyword = expr.collation_options.get("keyword", False)
-        unsupported = set(expr.collation_options) - {"keyword", "schema"}
-        if unsupported:
-            options = ", ".join(sorted(unsupported))
-            raise UnsupportedFeatureError(self.name, f"COLLATE options: {options}")
-        if keyword and expr.collation_name != "DATABASE_DEFAULT":
-            raise ValueError(f"Unsupported SQL Server collation keyword: {expr.collation_name!r}")
-        return validate_sqlserver_collation_name(expr.collation_name, getattr(self, "version", None))
+        # The core accepts a bare string or an enum member; the validator
+        # speaks strings, so a member is read through its value.
+        collation = expr.collation
+        if isinstance(collation, Enum):
+            collation = collation.value
+        return validate_sqlserver_collation_name(collation, getattr(self, "version", None))

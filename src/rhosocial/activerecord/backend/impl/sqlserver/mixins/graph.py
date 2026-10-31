@@ -39,33 +39,33 @@ class SQLServerGraphMixin:
 
     def supports_sql_graph(self) -> bool:
         """SQL Graph (node/edge tables + MATCH predicate) requires 2017+."""
-        return self.version >= SQL_SERVER_2017
+        return self.version_at_least(SQL_SERVER_2017)
 
     def supports_graph_table_kind(self) -> bool:
         """``CREATE TABLE ... AS NODE | AS EDGE`` requires SQL Server 2017+."""
-        return self.version >= SQL_SERVER_2017
+        return self.version_at_least(SQL_SERVER_2017)
 
     def supports_graph_pseudo_columns(self) -> bool:
         """Graph pseudo-columns (``$node_id`` etc.) require SQL Server 2017+."""
-        return self.version >= SQL_SERVER_2017
+        return self.version_at_least(SQL_SERVER_2017)
 
     def supports_shortest_path(self) -> bool:
         """``SHORTEST_PATH`` requires SQL Server 2019+."""
-        return self.version >= SQL_SERVER_2019
+        return self.version_at_least(SQL_SERVER_2019)
 
     def supports_graph_path_aggregates(self) -> bool:
         """Path aggregates require SQL Server 2019+."""
-        return self.version >= SQL_SERVER_2019
+        return self.version_at_least(SQL_SERVER_2019)
 
     def supports_edge_constraints(self) -> bool:
         """``CONNECTION`` edge constraints require SQL Server 2019+."""
-        return self.version >= SQL_SERVER_2019
+        return self.version_at_least(SQL_SERVER_2019)
 
     # endregion
 
     # region DDL formatting
 
-    def format_sqlserver_graph_table_kind(
+    def format_as_graph_table_expression(
         self, expr: "SQLServerAsGraphTableExpression"
     ) -> Tuple[str, tuple]:
         """Format the ``AS NODE`` / ``AS EDGE`` table-kind fragment."""
@@ -176,7 +176,7 @@ class SQLServerGraphMixin:
             params.extend(pattern_params)
         return f"MATCH({separator.join(parts)})", tuple(params)
 
-    def format_sqlserver_shortest_path(
+    def format_shortest_path_expression(
         self, expr: "SQLServerShortestPathExpression"
     ) -> Tuple[str, tuple]:
         """Format ``SHORTEST_PATH(<start>(<edge/node segments>)<quantifier>)``."""

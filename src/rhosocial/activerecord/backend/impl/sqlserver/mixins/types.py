@@ -61,7 +61,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
     A concept with several spellings (``INTEGER``/``INT``, ``DECIMAL``/
     ``NUMERIC``/``DEC``) declares them as a closed ``SPELLINGS`` list and the
     formatter states which of them this backend renders through
-    ``_check_spelling``.  T-SQL writes none of the alternatives below, so every
+    ``check_spelling``.  T-SQL writes none of the alternatives below, so every
     spelling of every concept is accepted and normalised to the T-SQL word —
     refusing one would refuse the concept's own default spelling, which is the
     spelling every plainly-constructed type carries.  The gate is still called
@@ -250,7 +250,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_refuse_unsigned_tinyint`, which is where a caller who writes
         ``TinyIntType(unsigned=True)`` is sent here by name.
         """
-        self._check_spelling(data_type, TinyIntType)
+        self.check_spelling(data_type, TinyIntType)
         return "TINYINT", ()
 
     def format_data_type_sqlserver_bit(self, data_type) -> Tuple[str, tuple]:
@@ -335,7 +335,23 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         lost by dropping the *concept* here; what would be lost is the caller's
         statement that this particular column holds no negative value, and that
         belongs in a ``CHECK`` constraint.
+
+        The shape of ``unsigned`` is checked here, at the rendering end, rather
+        than in the expression's constructor: an expression collects its
+        parameters without judging them, because only the formatter knows which
+        backend will have to honour this flag.  A non-boolean therefore arrives
+        here instead of being turned away at construction, and is named here --
+        testing its truth instead would let ``unsigned="yes"`` through the same
+        branch as ``True`` and report a refusal about a value the caller never
+        declared, while ``unsigned=0`` would slip past it and render the signed
+        column silently.
         """
+        if not isinstance(data_type.unsigned, bool):
+            raise TypeError(
+                f"unsigned must be a bool, got "
+                f"{type(data_type.unsigned).__name__}; it "
+                f"becomes a type modifier in the rendered DDL."
+            )
         if not data_type.unsigned:
             return
         raise UnsupportedFeatureError(
@@ -407,7 +423,21 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         ``UnsupportedFeatureError``, not ``ValueError``: this is a declaration
         the grammar cannot express at all rather than a wrong value, and the two
         exceptions do not share a base class.
+
+        The shape of ``unsigned`` is checked here for the reason given on
+        :meth:`_refuse_unsigned_integer`.  The attribute is read **directly**
+        rather than with ``getattr``: the expression classes are the protocol,
+        so whether ``unsigned`` exists is statically settled -- ``DecimalType``,
+        ``FloatType``, ``RealType`` and ``DoubleType`` all declare it in
+        ``PARAMETERS`` -- and a probe would turn "the caller passed the wrong
+        class" into a silent signed rendering.
         """
+        if not isinstance(data_type.unsigned, bool):
+            raise TypeError(
+                f"unsigned must be a bool, got "
+                f"{type(data_type.unsigned).__name__}; it "
+                f"becomes a type modifier in the rendered DDL."
+            )
         if not data_type.unsigned:
             return
         raise UnsupportedFeatureError(
@@ -457,7 +487,23 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         type, and the width a caller can have is whatever T-SQL offers.  A
         value that must be allowed to go negative needs ``SMALLINT``, the
         narrowest signed width T-SQL has.
+
+        The shape of ``unsigned`` is checked here too, for the reason given on
+        :meth:`_refuse_unsigned_integer`.  It is checked **here** and not on
+        :meth:`format_data_type_sqlserver_tinyint`, and that placement is what
+        keeps :class:`SQLServerTinyIntType` working: this helper is reached only
+        from the *generic* concept, whose caller may write either value,
+        whereas ``SQLServerTinyIntType`` pins ``unsigned=True`` in its own
+        ``__init__`` and must render, not be refused.  A guard that asked
+        "is this unsigned?" and then refused would turn that class's own
+        declaration into an error.
         """
+        if not isinstance(data_type.unsigned, bool):
+            raise TypeError(
+                f"unsigned must be a bool, got "
+                f"{type(data_type.unsigned).__name__}; it "
+                f"becomes a type modifier in the rendered DDL."
+            )
         if not data_type.unsigned:
             return
         raise UnsupportedFeatureError(
@@ -490,7 +536,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_refuse_unsigned_integer`, which is also where the reason for
         the refusal is written down.
         """
-        self._check_spelling(data_type, IntegerType)
+        self.check_spelling(data_type, IntegerType)
         self._refuse_unsigned_integer(data_type, "INT")
         return "INT", ()
 
@@ -500,7 +546,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
         ``unsigned`` is refused rather than ignored; see
         :meth:`_refuse_unsigned_integer`."""
-        self._check_spelling(data_type, BigIntType)
+        self.check_spelling(data_type, BigIntType)
         self._refuse_unsigned_integer(data_type, "BIGINT")
         return "BIGINT", ()
 
@@ -510,7 +556,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
         ``unsigned`` is refused rather than ignored; see
         :meth:`_refuse_unsigned_integer`."""
-        self._check_spelling(data_type, SmallIntType)
+        self.check_spelling(data_type, SmallIntType)
         self._refuse_unsigned_integer(data_type, "SMALLINT")
         return "SMALLINT", ()
 
@@ -530,7 +576,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         declares it; see :meth:`_refuse_unsigned_tinyint`, which is where that
         reasoning is written down and where the class to use instead is named.
         """
-        self._check_spelling(data_type, TinyIntType)
+        self.check_spelling(data_type, TinyIntType)
         self._refuse_unsigned_tinyint(data_type)
         return "TINYINT", ()
 
@@ -596,7 +642,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         both sides -- so there is no unsigned double-precision column on this
         server for the request to have become.
         """
-        self._check_spelling(data_type, DoubleType)
+        self.check_spelling(data_type, DoubleType)
         self._refuse_unsigned_numeric(data_type, "DOUBLE PRECISION")
         return "FLOAT(53)", ()
 
@@ -785,7 +831,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         still fires for a signed declaration.
         """
         self._refuse_unsigned_numeric(data_type, "DECIMAL")
-        self._check_spelling(data_type, DecimalType)
+        self.check_spelling(data_type, DecimalType)
         self._check_decimal_scale_sign(data_type)
         if data_type.scale is not None and data_type.precision is None:
             raise UnsupportedFeatureError(
@@ -826,7 +872,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
     def format_data_type_boolean(self, data_type: BooleanType) -> Tuple[str, tuple]:
         """``BIT`` for both spellings — T-SQL's own name for the boolean."""
-        self._check_spelling(data_type, BooleanType)
+        self.check_spelling(data_type, BooleanType)
         return "BIT", ()
 
     def format_data_type_varchar(self, data_type: VarCharType) -> Tuple[str, tuple]:
@@ -848,7 +894,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         backend checks the intersection of that page's two statements about the
         lower bound rather than picking one of them.
         """
-        self._check_spelling(data_type, VarCharType)
+        self.check_spelling(data_type, VarCharType)
         self._check_length("VARCHAR", data_type.length)
         length = data_type.length
         if length is None:
@@ -869,7 +915,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         A declared length is range-checked exactly as :meth:`format_data_type_varchar`
         range-checks a ``VARCHAR`` one; see :meth:`_check_length`.
         """
-        self._check_spelling(data_type, CharType)
+        self.check_spelling(data_type, CharType)
         self._check_length("CHAR", data_type.length)
         length = data_type.length
         if length is None:
@@ -885,7 +931,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         enums and byte strings here, and ``clob`` names the same unbounded
         concept, so it is accepted rather than refused.
         """
-        self._check_spelling(data_type, TextType)
+        self.check_spelling(data_type, TextType)
         return "NVARCHAR(MAX)", ()
 
     def format_data_type_datetime(self, data_type: DateTimeType) -> Tuple[str, tuple]:
@@ -985,7 +1031,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         unbounded byte storage — and is what an unbounded blob is on this
         dialect.
         """
-        self._check_spelling(data_type, BlobType)
+        self.check_spelling(data_type, BlobType)
         return "VARBINARY(MAX)", ()
 
     def format_data_type_custom(self, data_type: CustomType) -> Tuple[str, tuple]:
@@ -1082,7 +1128,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         unconditional ``True`` would send the DDL and let the server answer,
         which is the failure mode a capability question exists to prevent.
         """
-        return self.version >= (10, 0, 0)
+        return self.version_at_least((10, 0, 0))
 
     def supports_data_type_json(self) -> bool:
         """Unconditional, because the storage this concept renders to has

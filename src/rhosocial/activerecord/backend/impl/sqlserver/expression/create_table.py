@@ -7,8 +7,8 @@ SQL Server adds table-level graph features with no generic equivalent:
 * ``edge_constraints`` — ``CONSTRAINT <name> CONNECTION (...)`` (SQL Server
   2019+).
 
-They live on ``SQLServerCreateTableExpression`` (deriving the generic
-``CreateTableExpression``) and are rendered by the SQL Server
+They live on ``SQLServerCreateTableStatement`` (deriving the generic
+``CreateTableStatement``) and are rendered by the SQL Server
 ``format_create_table_statement`` override.
 """
 
@@ -16,7 +16,7 @@ from typing import Any, List, Optional, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnDefinition,
-    CreateTableExpression,
+    CreateTableStatement,
     CreateTableOptions,
     IndexDefinition,
     StorageOptionsExpression,
@@ -30,12 +30,13 @@ if TYPE_CHECKING:  # pragma: no cover
     )
 
 
-class SQLServerCreateTableExpression(CreateTableExpression):
+class SQLServerCreateTableStatement(CreateTableStatement):
     """A SQL Server CREATE TABLE statement extending the generic one.
 
     Adds the SQL Server-only ``graph_table_kind`` / ``edge_constraints`` table
     features.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

@@ -5,8 +5,8 @@ T-SQL ``CREATE PROCEDURE`` and ``CREATE FUNCTION`` use a distinctive syntax
 (parameters with leading ``@``, ``RETURNS``, ``AS BEGIN ... END`` bodies)
 that differs from the SQL/PSM form used by other backends. This mixin
 provides the capability switches and the formatters used by the
-``SQLServerCreateProcedureExpression`` / ``SQLServerCreateFunctionExpression``
-/ ``SQLServerDropRoutineExpression`` expressions.
+``SQLServerCreateProcedureStatement`` / ``SQLServerCreateFunctionStatement``
+/ ``SQLServerDropRoutineStatement`` expressions.
 """
 
 from typing import Any, List, Optional, Tuple, TYPE_CHECKING
@@ -15,9 +15,9 @@ from rhosocial.activerecord.backend.expression.objects import Function, Procedur
 
 if TYPE_CHECKING:
     from ..expression.ddl.routine import (
-        SQLServerCreateFunctionExpression,
-        SQLServerCreateProcedureExpression,
-        SQLServerDropRoutineExpression,
+        SQLServerCreateFunctionStatement,
+        SQLServerCreateProcedureStatement,
+        SQLServerDropRoutineStatement,
     )
 
 
@@ -31,21 +31,41 @@ _ROUTINE_KINDS = ("PROCEDURE", "FUNCTION")
 class SQLServerRoutineMixin:
     """SQL Server stored procedure / function capability and formatting."""
 
+    def supports_procedure_introspection(self) -> bool:
+        """SQL Server answers for its procedures from ``sys.procedures``.
+
+        The capability for the ``introspect procedures`` family, with bodies
+        from ``OBJECT_DEFINITION``. Declared beside the routine DDL switches
+        because both answer the same question about the same catalogue:
+        whether this engine has procedures at all.
+        """
+        return True
+
+    def supports_function_introspection(self) -> bool:
+        """SQL Server answers for its functions from ``sys.objects``.
+
+        The capability for the ``introspect functions`` family. The same
+        catalogue row answers for procedures, so the two switches live
+        together -- but they name different questions, and a caller asking
+        about functions should not have to ask about procedures to find out.
+        """
+        return True
+
     def supports_create_procedure(self) -> bool:
         """CREATE PROCEDURE is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_ROUTINE_VERSION)  # type: ignore[attr-defined]
 
     def supports_create_function(self) -> bool:
         """CREATE FUNCTION is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_ROUTINE_VERSION)  # type: ignore[attr-defined]
 
     def supports_drop_procedure(self) -> bool:
         """DROP PROCEDURE is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_ROUTINE_VERSION)  # type: ignore[attr-defined]
 
     def supports_drop_function(self) -> bool:
         """DROP FUNCTION is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_ROUTINE_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_ROUTINE_VERSION)  # type: ignore[attr-defined]
 
     def _routine_object_name(
         self,
@@ -74,7 +94,7 @@ class SQLServerRoutineMixin:
 
         Accepts either raw parameter strings (``"@x INT"``) or dictionaries
         with ``name`` / ``type`` keys (matching the core
-        ``CreateFunctionExpression`` convention).
+        ``CreateFunctionStatement`` convention).
 
         Raises:
             TypeError: A parameter is neither a string nor a dict. A parameter is
@@ -101,10 +121,13 @@ class SQLServerRoutineMixin:
         return ", ".join(parts)
 
     def _get_routine_name(self, expr: Any) -> str:
-        return getattr(expr, "name", None) or getattr(expr, "function_name", "")
+        # Every routine expression names itself through its declared ``name``
+        # field; the shadowed core function statement has no such field and
+        # fails here explicitly rather than reading as an empty name.
+        return expr.name
 
     def format_create_procedure_statement(
-        self, expr: "SQLServerCreateProcedureExpression"
+        self, expr: "SQLServerCreateProcedureStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE PROCEDURE for SQL Server (2005+).
 
@@ -127,22 +150,22 @@ class SQLServerRoutineMixin:
             raise ValueError("procedure name is required")
 
         parts = ["CREATE"]
-        if getattr(expr, "or_alter", False):
+        if expr.or_alter:
             parts.append("OR ALTER")
         parts.append("PROCEDURE")
-        parts.append(self._routine_object_name("PROCEDURE", name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name("PROCEDURE", name, expr.schema))
 
-        parameters = getattr(expr, "parameters", None) or []
+        parameters = expr.parameters or []
         if parameters:
             parts.append(self._format_params(list(parameters)))
 
-        if not getattr(expr, "body", None):
+        if not expr.body:
             raise ValueError("routine body is required")
         parts.append(f"AS BEGIN {expr.body} END;")
         return " ".join(parts), ()
 
     def format_create_function_statement(
-        self, expr: "SQLServerCreateFunctionExpression"
+        self, expr: "SQLServerCreateFunctionStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE FUNCTION for SQL Server (2005+).
 
@@ -162,25 +185,25 @@ class SQLServerRoutineMixin:
         name = self._get_routine_name(expr)
         if not name:
             raise ValueError("function name is required")
-        if not getattr(expr, "returns", None):
+        if not expr.returns:
             raise ValueError("RETURNS type is required for a scalar function")
 
         parts = ["CREATE"]
-        if getattr(expr, "or_alter", False):
+        if expr.or_alter:
             parts.append("OR ALTER")
         parts.append("FUNCTION")
-        parts.append(self._routine_object_name("FUNCTION", name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name("FUNCTION", name, expr.schema))
 
-        parameters = getattr(expr, "parameters", None) or []
+        parameters = expr.parameters or []
         parts.append(f"({self._format_params(list(parameters))})")
         parts.append(f"RETURNS {expr.returns}")
-        if not getattr(expr, "body", None):
+        if not expr.body:
             raise ValueError("function body is required")
         parts.append(f"AS BEGIN {expr.body} END;")
         return " ".join(parts), ()
 
     def format_drop_routine_statement(
-        self, expr: "SQLServerDropRoutineExpression"
+        self, expr: "SQLServerDropRoutineStatement"
     ) -> Tuple[str, tuple]:
         """Format DROP PROCEDURE / DROP FUNCTION for SQL Server (2005+).
 
@@ -190,7 +213,7 @@ class SQLServerRoutineMixin:
 
         ``IF EXISTS`` is rendered only on SQL Server 2016+.
         """
-        kind = getattr(expr, "kind", "PROCEDURE").upper()
+        kind = expr.kind.upper()
         if kind not in _ROUTINE_KINDS:
             raise ValueError(f"kind must be one of {_ROUTINE_KINDS}, got {kind!r}")
 
@@ -206,7 +229,7 @@ class SQLServerRoutineMixin:
             raise ValueError("routine name is required")
 
         parts = ["DROP", kind]
-        if getattr(expr, "if_exists", False) and self.version >= _SQL_SERVER_DROP_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
+        if expr.if_exists and self.version >= _SQL_SERVER_DROP_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
             parts.append("IF EXISTS")
-        parts.append(self._routine_object_name(kind, name, getattr(expr, "schema", None)))
+        parts.append(self._routine_object_name(kind, name, expr.schema))
         return " ".join(parts), ()

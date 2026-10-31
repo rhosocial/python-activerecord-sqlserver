@@ -1,7 +1,7 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/expression/functions.py
 """SQL Server-specific function expressions."""
 
-from typing import Any, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
 
@@ -17,6 +17,7 @@ class SQLServerTryCastExpression(BaseExpression):
     Example:
         >>> expr = SQLServerTryCastExpression(dialect, "value", "INT")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -39,7 +40,10 @@ class SQLServerTryCastExpression(BaseExpression):
             expr_sql, expr_params = self.expression.to_sql()
         else:
             expr_sql, expr_params = str(self.expression), ()
-        return f"TRY_CAST({expr_sql} AS {self.target_type})", expr_params
+        from rhosocial.activerecord.backend.expression.types import DataType
+
+        target_sql, _ = DataType.as_type(self.dialect, self.target_type).to_sql()
+        return f"TRY_CAST({expr_sql} AS {target_sql})", expr_params
 
 
 class SQLServerTryConvertExpression(BaseExpression):
@@ -50,6 +54,7 @@ class SQLServerTryConvertExpression(BaseExpression):
     Example:
         >>> expr = SQLServerTryConvertExpression(dialect, "INT", "value", style=100)
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -74,7 +79,10 @@ class SQLServerTryConvertExpression(BaseExpression):
             expr_sql, expr_params = self.expression.to_sql()
         else:
             expr_sql, expr_params = str(self.expression), ()
-        sql = f"TRY_CONVERT({self.target_type}, {expr_sql}"
+        from rhosocial.activerecord.backend.expression.types import DataType
+
+        target_sql, _ = DataType.as_type(self.dialect, self.target_type).to_sql()
+        sql = f"TRY_CONVERT({target_sql}, {expr_sql}"
         if self.style is not None:
             sql += f", {self.style}"
         sql += ")"
@@ -87,6 +95,7 @@ class SQLServerContainsPredicate(BaseExpression):
     Example:
         >>> expr = SQLServerContainsPredicate(dialect, "title", "database")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -123,6 +132,7 @@ class SQLServerFreetextPredicate(BaseExpression):
     Example:
         >>> expr = SQLServerFreetextPredicate(dialect, "title", "database design")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

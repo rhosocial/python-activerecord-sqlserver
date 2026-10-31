@@ -3,11 +3,20 @@
 SQL Server aggregate function factories.
 
 Functions: max_, min_, avg
+
+Each factory builds the core's classed aggregate node, which owns its kind
+and dispatches to its own dialect formatter (core 9b559030); the generic
+``FunctionCall`` is reserved for UDFs (core c5210245).
 """
 
 from typing import Union, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression import bases, core
+from rhosocial.activerecord.backend.expression.functions import (
+    AvgFunction,
+    MaxFunction,
+    MinFunction,
+)
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
@@ -31,22 +40,22 @@ def _convert_to_expression(
 def max_(
     dialect: "SQLServerDialect",
     expr: Union[str, "bases.BaseExpression"],
-) -> "core.FunctionCall":
-    """Creates a MAX function call."""
-    return core.FunctionCall(dialect, "MAX", [_convert_to_expression(dialect, expr)])
+) -> "MaxFunction":
+    """Creates a MAX aggregate through its class."""
+    return MaxFunction(dialect, _convert_to_expression(dialect, expr))
 
 
 def min_(
     dialect: "SQLServerDialect",
     expr: Union[str, "bases.BaseExpression"],
-) -> "core.FunctionCall":
-    """Creates a MIN function call."""
-    return core.FunctionCall(dialect, "MIN", [_convert_to_expression(dialect, expr)])
+) -> "MinFunction":
+    """Creates a MIN aggregate through its class."""
+    return MinFunction(dialect, _convert_to_expression(dialect, expr))
 
 
 def avg(
     dialect: "SQLServerDialect",
     expr: Union[str, "bases.BaseExpression"],
-) -> "core.FunctionCall":
-    """Creates an AVG function call."""
-    return core.FunctionCall(dialect, "AVG", [_convert_to_expression(dialect, expr)])
+) -> "AvgFunction":
+    """Creates an AVG aggregate through its class."""
+    return AvgFunction(dialect, _convert_to_expression(dialect, expr))

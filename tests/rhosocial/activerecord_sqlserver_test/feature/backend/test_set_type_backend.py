@@ -108,7 +108,7 @@ class TestSQLServerSetTypeBackend:
         sqlserver_backend.execute("DROP TABLE IF EXISTS #test_find_in_set")
 
     def test_format_set_literal_integration(self, sqlserver_backend):
-        """Test format_set_literal with database execution."""
+        """Test format_set_literal_expression with database execution."""
         sqlserver_backend.execute("""
             CREATE TABLE #test_set_literal (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -135,7 +135,7 @@ class TestSQLServerSetTypeBackend:
         sqlserver_backend.execute("DROP TABLE IF EXISTS #test_set_literal")
 
     def test_format_find_in_set_integration(self, sqlserver_backend):
-        """Test format_find_in_set with database execution."""
+        """Test format_find_in_set_expression with database execution."""
         sqlserver_backend.execute("""
             CREATE TABLE #test_find_format (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -163,7 +163,7 @@ class TestSQLServerSetTypeBackend:
         sqlserver_backend.execute("DROP TABLE IF EXISTS #test_find_format")
 
     def test_format_set_contains_integration(self, sqlserver_backend):
-        """Test format_set_contains with database execution."""
+        """Test format_set_contains_expression with database execution."""
         sqlserver_backend.execute("""
             CREATE TABLE #test_contains_format (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -324,7 +324,7 @@ class TestAsyncSQLServerSetTypeBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_set_literal_integration(self, async_sqlserver_backend):
-        """Test format_set_literal with database execution (async)."""
+        """Test format_set_literal_expression with database execution (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TABLE #test_async_set_literal (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -352,7 +352,7 @@ class TestAsyncSQLServerSetTypeBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_find_in_set_integration(self, async_sqlserver_backend):
-        """Test format_find_in_set with database execution (async)."""
+        """Test format_find_in_set_expression with database execution (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TABLE #test_async_find_format (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -378,7 +378,7 @@ class TestAsyncSQLServerSetTypeBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_set_contains_integration(self, async_sqlserver_backend):
-        """Test format_set_contains with database execution (async)."""
+        """Test format_set_contains_expression with database execution (async)."""
         await async_sqlserver_backend.execute("""
             CREATE TABLE #test_async_contains (
                 id INT IDENTITY(1,1) PRIMARY KEY,

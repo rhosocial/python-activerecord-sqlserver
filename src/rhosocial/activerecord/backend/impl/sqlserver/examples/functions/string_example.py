@@ -12,7 +12,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.functions import (
     string_split,
     format,
 )
-from rhosocial.activerecord.backend.expression import QueryExpression, Column
+from rhosocial.activerecord.backend.expression import QueryStatement, Column
 from rhosocial.activerecord.backend.expression.objects import Table
 
 dialect = SQLServerDialect(version=(16, 0, 0))
@@ -47,7 +47,7 @@ sql, params = result.to_sql()
 print(f"  SQL: {sql}")
 
 print("\n6. Using functions in a query:")
-query = QueryExpression(
+query = QueryStatement(
     dialect=dialect,
     select=[
         Column(dialect, "id"),
@@ -59,7 +59,7 @@ sql, params = query.to_sql()
 print(f"  SQL: {sql}")
 
 print("\n7. Using STRING_SPLIT in WHERE clause:")
-query = QueryExpression(
+query = QueryStatement(
     dialect=dialect,
     select=[Column(dialect, "id")],
     from_=Table(dialect, "users"),

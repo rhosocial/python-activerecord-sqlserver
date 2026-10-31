@@ -9,9 +9,9 @@ _SUGGESTION_MATERIALIZED_VIEW = "SQL Server does not support materialized views.
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import (
-        CreateViewExpression,
-        DropViewExpression,
-        CreateMaterializedViewExpression,
+        CreateViewStatement,
+        DropViewStatement,
+        CreateMaterializedViewStatement,
     )
 
 
@@ -20,7 +20,7 @@ class SQLServerViewMixin:
 
     def supports_indexed_view(self) -> bool:
         """SQL Server supports indexed views (similar to materialized views)."""
-        return self.version >= SQL_SERVER_2005
+        return self.version_at_least(SQL_SERVER_2005)
 
     def supports_create_or_replace_view(self) -> bool:
         """SQL Server does not support CREATE OR REPLACE VIEW (uses CREATE OR ALTER)."""
@@ -32,7 +32,29 @@ class SQLServerViewMixin:
 
     def supports_if_exists_view(self) -> bool:
         """SQL Server supports DROP VIEW IF EXISTS (2016+)."""
-        return self.version >= SQL_SERVER_2016
+        return self.version_at_least(SQL_SERVER_2016)
+
+
+    def supports_create_view_bind_parameters(self) -> bool:
+        """SQL Server refuses bind parameters in a view body.
+
+        Measured on 2019 / 2022 / 2025: a view whose definition binds is
+        rejected -- the placeholder is not a T-SQL variable, so the parser
+        stops at it -- while the same view with an inlined literal is
+        accepted.
+        """
+        return False
+    def supports_create_table_as(self) -> bool:
+        """SQL Server has no ``CREATE TABLE ... AS`` statement.
+
+        Measured on 2019 / 2022 / 2025 (``{SQL Server}`` driver): the portable
+        spelling is a syntax error near the keyword ``SELECT`` --
+        ``CREATE TABLE t AS SELECT ...`` is rejected whole.  SQL Server's own
+        population spelling is ``SELECT ... INTO <table>``, which is a
+        different statement shape, so the portable one is refused by name
+        rather than emitted in a form the server rejects.
+        """
+        return False
 
     def supports_with_data_clause(self) -> bool:
         """SQL Server has no ``WITH [NO] DATA`` population clause.
@@ -51,7 +73,7 @@ class SQLServerViewMixin:
         return True
 
     def format_create_view_statement(
-        self, expr: "CreateViewExpression"
+        self, expr: "CreateViewStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE VIEW statement for SQL Server.
 
@@ -66,7 +88,7 @@ class SQLServerViewMixin:
         """
         if not isinstance(expr.view, View):
             raise TypeError(
-                f"CreateViewExpression.view must be a View, "
+                f"CreateViewStatement.view must be a View, "
                 f"got {type(expr.view).__name__}"
             )
         parts = ["CREATE OR ALTER VIEW" if expr.replace else "CREATE VIEW"]
@@ -78,12 +100,14 @@ class SQLServerViewMixin:
             parts.append(f"({cols})")
 
         query_sql, query_params = expr.query.to_sql()
+        if query_params and not self.supports_create_view_bind_parameters():
+            self.refuse_ddl_bind_parameters("CREATE VIEW with bound parameters")
         as_sql = f"AS {query_sql}"
-        if expr.options and getattr(expr.options, "schemabinding", False):
+        if expr.options.schemabinding:
             as_sql = f"WITH SCHEMABINDING {as_sql}"
         parts.append(as_sql)
 
-        if expr.options and hasattr(expr.options, 'check_option') and expr.options.check_option:
+        if expr.options.check_option:
             if not self.supports_view_check_option():
                 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
                 raise UnsupportedFeatureError(
@@ -95,7 +119,7 @@ class SQLServerViewMixin:
         return " ".join(parts), query_params
 
     def format_drop_view_statement(
-        self, expr: "DropViewExpression"
+        self, expr: "DropViewStatement"
     ) -> Tuple[str, tuple]:
         """Format DROP VIEW statement for SQL Server.
 
@@ -115,7 +139,7 @@ class SQLServerViewMixin:
         """
         if not isinstance(expr.view, View):
             raise TypeError(
-                f"DropViewExpression.view must be a View, "
+                f"DropViewStatement.view must be a View, "
                 f"got {type(expr.view).__name__}"
             )
         if expr.cascade and not self.supports_cascade_view():
@@ -138,7 +162,7 @@ class SQLServerViewMixin:
         return " ".join(parts), ()
 
     def format_create_materialized_view_statement(
-        self, expr: "CreateMaterializedViewExpression"
+        self, expr: "CreateMaterializedViewStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE MATERIALIZED VIEW - not supported."""
         raise UnsupportedFeatureError(self.name, "CREATE MATERIALIZED VIEW", _SUGGESTION_MATERIALIZED_VIEW)

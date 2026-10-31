@@ -32,6 +32,7 @@ from ..config import SQLServerConnectionConfig
 from ..dialect import SQLServerDialect
 from ..transaction import SQLServerTransactionManager
 from ..mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
+from ..query_nodes import health_check_sql, server_property_value_sql
 
 
 class SQLServerUnicodeDialect(SQLServerDialect):
@@ -289,8 +290,9 @@ class SQLServerBackend(
             self.connect()
         
         try:
+            probe, probe_params = health_check_sql(self.dialect)
             cursor = self._connection.cursor()
-            cursor.execute("SELECT 1")
+            cursor.execute(probe, probe_params)
             cursor.fetchone()
             cursor.close()
         except (PyODBCError, InterfaceError) as e:
@@ -460,8 +462,11 @@ class SQLServerBackend(
         
         cursor = None
         try:
+            probe, probe_params = server_property_value_sql(
+                self.dialect, "ProductVersion"
+            )
             cursor = self._get_cursor()
-            cursor.execute("SELECT SERVERPROPERTY('ProductVersion')")
+            cursor.execute(probe, probe_params)
             version_str = cursor.fetchone()[0]
             
             parts = version_str.split('.')
@@ -497,8 +502,9 @@ class SQLServerBackend(
                     return True
                 return False
             
+            probe, probe_params = health_check_sql(self.dialect)
             cursor = self._get_cursor()
-            cursor.execute("SELECT 1")
+            cursor.execute(probe, probe_params)
             cursor.fetchone()
             cursor.close()
             return True

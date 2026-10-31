@@ -4,8 +4,8 @@
 T-SQL triggers use a syntax distinct from the SQL:1999 form rendered by the
 core ``TriggerMixin``: the body is an ``AS BEGIN ... END`` batch rather than
 ``EXECUTE FUNCTION``. This mixin provides the capability switches and the
-formatters used by ``SQLServerCreateTriggerExpression`` /
-``SQLServerDropTriggerExpression``.
+formatters used by ``SQLServerCreateTriggerStatement`` /
+``SQLServerDropTriggerStatement``.
 """
 
 from typing import Any, Tuple, TYPE_CHECKING
@@ -15,8 +15,8 @@ from rhosocial.activerecord.backend.expression.objects import Table, Trigger
 
 if TYPE_CHECKING:
     from ..expression.ddl.trigger import (
-        SQLServerCreateTriggerExpression,
-        SQLServerDropTriggerExpression,
+        SQLServerCreateTriggerStatement,
+        SQLServerDropTriggerStatement,
     )
 
 
@@ -34,21 +34,24 @@ class SQLServerTriggerDdlMixin:
 
     def supports_trigger(self) -> bool:
         """Triggers are supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_TRIGGER_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_TRIGGER_VERSION)  # type: ignore[attr-defined]
 
     def supports_create_trigger(self) -> bool:
         """CREATE TRIGGER is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_TRIGGER_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_TRIGGER_VERSION)  # type: ignore[attr-defined]
 
     def supports_drop_trigger(self) -> bool:
         """DROP TRIGGER is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_TRIGGER_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_TRIGGER_VERSION)  # type: ignore[attr-defined]
 
     def _get_trigger_name(self, expr: Any) -> str:
-        return getattr(expr, "name", None) or getattr(expr, "trigger_name", "")
+        # Every T-SQL trigger expression names itself through its declared
+        # ``name`` field; the shadowed SQL:1999 statements have no such field
+        # and fail here explicitly rather than reading as an empty name.
+        return expr.name
 
     def format_create_trigger_statement(
-        self, expr: "SQLServerCreateTriggerExpression"
+        self, expr: "SQLServerCreateTriggerStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE TRIGGER for SQL Server (2005+).
 
@@ -67,57 +70,56 @@ class SQLServerTriggerDdlMixin:
             "CREATE TRIGGER",
             "requires SQL Server 2005+.",
         )
-        if not hasattr(expr, "body"):
+        # The T-SQL form is rendered from this dialect's own trigger node; the
+        # SQL:1999 statement (no raw ``body`` -- it names a function instead)
+        # is refused by class rather than probed for the field.
+        from ..expression.ddl.trigger import SQLServerCreateTriggerStatement
+
+        if not isinstance(expr, SQLServerCreateTriggerStatement):
             raise UnsupportedFeatureError(
                 self.name,  # type: ignore[attr-defined]
                 "SQL:1999 CREATE TRIGGER",
-                "Use SQLServerCreateTriggerExpression for T-SQL trigger DDL.",
+                "Use SQLServerCreateTriggerStatement for T-SQL trigger DDL.",
             )
         name = self._get_trigger_name(expr)
         if not name:
             raise ValueError("trigger name is required")
-        table = getattr(expr, "table_name", None) or getattr(expr, "table", None)
+        table = expr.table
         if not table:
             raise ValueError("trigger table is required")
 
-        timing = getattr(expr, "timing", "AFTER").upper()
+        timing = expr.timing.upper()
         if timing not in _TRIGGER_TIMINGS:
             raise ValueError(f"timing must be one of {_TRIGGER_TIMINGS}, got {timing!r}")
 
-        events = [event.upper() for event in (getattr(expr, "events", None) or [])]
+        events = [event.upper() for event in (expr.events or [])]
         if not events:
             raise ValueError("at least one trigger event is required")
         for event in events:
             if event not in _TRIGGER_EVENTS:
                 raise ValueError(f"event must be one of {_TRIGGER_EVENTS}, got {event!r}")
-        if not getattr(expr, "body", None):
+        if not expr.body:
             raise ValueError("trigger body is required")
 
         parts = ["CREATE"]
-        if getattr(expr, "or_alter", False):
+        if expr.or_alter:
             parts.append("OR ALTER")
         parts.append("TRIGGER")
         # A trigger and the table it hangs off are both schema objects; a
         # trigger lives in the same schema as its table, so both names go
         # through the one qualified-name entry point.
         parts.append(
-            self.qualified_object_name_from_dotted(
-                Trigger, name, schema_name=getattr(expr, "schema", None)
-            )
+            self.qualified_object_name_from_dotted(Trigger, name, schema_name=expr.schema)
         )
         parts.append("ON")
-        parts.append(
-            self.qualified_object_name(
-                Table, table, schema_name=getattr(expr, "schema", None)
-            )
-        )
+        parts.append(self.qualified_object_name(Table, table, schema_name=expr.schema))
         parts.append(timing)
         parts.append(", ".join(events))
         parts.append(f"AS BEGIN {expr.body} END;")
         return " ".join(parts), ()
 
     def format_drop_trigger_statement(
-        self, expr: "SQLServerDropTriggerExpression"
+        self, expr: "SQLServerDropTriggerStatement"
     ) -> Tuple[str, tuple]:
         """Format DROP TRIGGER for SQL Server (2005+).
 
@@ -137,12 +139,10 @@ class SQLServerTriggerDdlMixin:
             raise ValueError("trigger name is required")
 
         parts = ["DROP", "TRIGGER"]
-        if getattr(expr, "if_exists", False) and self.version >= _SQL_SERVER_TRIGGER_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
+        if expr.if_exists and self.version >= _SQL_SERVER_TRIGGER_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
             parts.append("IF EXISTS")
         parts.append(
-            self.qualified_object_name_from_dotted(
-                Trigger, name, schema_name=getattr(expr, "schema", None)
-            )
+            self.qualified_object_name_from_dotted(Trigger, name, schema_name=expr.schema)
         )
         return " ".join(parts), ()
 

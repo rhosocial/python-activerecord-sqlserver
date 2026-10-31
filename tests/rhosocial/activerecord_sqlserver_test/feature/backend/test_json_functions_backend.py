@@ -124,7 +124,7 @@ class TestSQLServerJSONFunctionBackend:
         sqlserver_backend.execute("DROP TABLE IF EXISTS #test_json_contains")
 
     def test_format_json_extract_integration(self, sqlserver_backend):
-        """Test format_json_extract with database execution."""
+        """Test format_json_extract_expression with database execution."""
         if sqlserver_backend.dialect.version < (13, 0, 0):
             pytest.skip("JSON functions require SQL Server 2016+")
 
@@ -269,7 +269,7 @@ class TestAsyncSQLServerJSONFunctionBackend:
 
     @pytest.mark.asyncio
     async def test_async_format_json_extract_integration(self, async_sqlserver_backend):
-        """Test format_json_extract with database execution (async)."""
+        """Test format_json_extract_expression with database execution (async)."""
         if async_sqlserver_backend.dialect.version < (13, 0, 0):
             pytest.skip("JSON functions require SQL Server 2016+")
 

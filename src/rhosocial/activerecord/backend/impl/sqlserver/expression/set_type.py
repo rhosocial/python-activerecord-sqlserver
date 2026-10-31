@@ -3,7 +3,7 @@
 
 from typing import List, Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import SQLValueExpression
+from rhosocial.activerecord.backend.expression.bases import SQLValue
 from rhosocial.activerecord.backend.expression.mixins import (
     AliasableMixin,
     ComparisonMixin,
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
 
 
-class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server SET literal expression (comma-separated values in VARCHAR).
 
     SQL Server stores comma-separated values in VARCHAR columns.
@@ -21,6 +21,7 @@ class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValueExp
     Example:
         >>> expr = SQLServerSetLiteralExpression(dialect, ["a", "b", "c"])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -37,10 +38,10 @@ class SQLServerSetLiteralExpression(AliasableMixin, ComparisonMixin, SQLValueExp
 
     @property
     def format_method(self) -> str:
-        return "format_set_literal"
+        return "format_set_literal_expression"
 
 
-class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server FIND_IN_SET equivalent using LIKE predicate.
 
     SQL Server has no FIND_IN_SET; membership is checked with a LIKE predicate.
@@ -48,6 +49,7 @@ class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpr
     Example:
         >>> expr = SQLServerFindInSetExpression(dialect, "value", "set_column")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -64,15 +66,16 @@ class SQLServerFindInSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpr
 
     @property
     def format_method(self) -> str:
-        return "format_find_in_set"
+        return "format_find_in_set_expression"
 
 
-class SQLServerSetContainsExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerSetContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server SET containment predicate as AND-ed membership checks.
 
     Example:
         >>> expr = SQLServerSetContainsExpression(dialect, "col", ["a", "b"])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -89,4 +92,4 @@ class SQLServerSetContainsExpression(AliasableMixin, ComparisonMixin, SQLValueEx
 
     @property
     def format_method(self) -> str:
-        return "format_set_contains"
+        return "format_set_contains_expression"

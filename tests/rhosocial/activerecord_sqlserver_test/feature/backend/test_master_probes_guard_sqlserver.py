@@ -1,8 +1,8 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/test_master_probes_guard_sqlserver.py
-"""Guard: the four master probes that gate clauses SQL Server cannot spell.
+"""Guard: the master probes that gate clauses SQL Server cannot spell.
 
 The round gated three previously-decorative master probes behind real call
-sites in core (``format_cte_expression`` consults ``supports_materialized_cte``,
+sites in core (``format_cte_clause`` consults ``supports_materialized_cte``,
 ``format_truncate_statement`` consults ``supports_truncate``, and the new
 ``supports_with_data_clause`` decides ``WITH [NO] DATA`` on CTAS / materialized
 view create / materialized view refresh), and added ``supports_transaction_wait``
@@ -23,7 +23,13 @@ Measured answers (SQL Server 2019 / 2022 / 2025, port 11433 / 11434 / 11435,
   empties the table; ``TRUNCATE TABLE dbo.t CASCADE`` rejected.
 * ``supports_with_data_clause()`` -> **False**: ``SELECT ... INTO dbo.t``
   accepted, but the same statement with ``WITH DATA`` or ``WITH NO DATA`` is a
-  syntax error near ``with``; ``CREATE TABLE ... AS`` is a syntax error too.
+  syntax error near ``with``.
+* ``supports_create_table_as()`` -> **False**: SQL Server has no
+  ``CREATE TABLE ... AS`` statement at all -- the portable spelling is a
+  syntax error near the keyword ``SELECT``, so the statement is refused by
+  name.  SQL Server's own population spelling is ``SELECT ... INTO <table>``,
+  which is a different statement shape, so the portable one is not rendered in
+  a form the server rejects.
 * ``supports_materialized_cte()`` -> **False**: ``WITH c AS (...)`` accepted;
   ``AS MATERIALIZED`` and ``AS NOT MATERIALIZED`` are syntax errors.
 * ``supports_transaction_wait()`` -> **False**: ``BEGIN TRANSACTION WAIT`` is
@@ -34,17 +40,19 @@ Measured answers (SQL Server 2019 / 2022 / 2025, port 11433 / 11434 / 11435,
 
 Scope notes:
 
-* ``supports_materialized_cte`` and ``supports_with_data_clause`` are consulted
-  by core formatters this dialect inherits (``format_cte_expression``,
-  ``format_create_table_as_statement``), so the load-bearing walk flips them
-  through a subclass and checks the core render/refuse paths.
+* ``supports_materialized_cte`` is consulted by a core formatter this dialect
+  inherits (``format_cte_clause``), so the load-bearing walk flips it through a
+  subclass and checks the core render/refuse paths.
 * Materialized view create / refresh are refused *as statements* by this
-  dialect before any ``WITH [NO] DATA`` gate could run; the walk therefore
-  covers CTAS and the focused test below documents the subsumption instead of
-  pretending a clause-level refusal exists for a statement that does not exist.
+  dialect before any ``WITH [NO] DATA`` gate could run, and CTAS is refused
+  the same way -- SQL Server has no ``CREATE TABLE ... AS`` either.  The walk
+  therefore covers the CTEs and the focused tests below document the
+  subsumption instead of pretending a clause-level refusal exists for a
+  statement that does not exist.  ``supports_with_data_clause`` stays declared
+  so the measurement cannot drift, but it has no consumer here.
 * ``supports_truncate`` and ``supports_transaction_wait`` are consulted by this
   backend's own formatters (``format_truncate_statement``,
-  ``format_begin_transaction`` / ``format_set_transaction``), which is where the
+  ``format_begin_transaction_statement`` / ``format_set_transaction_statement``), which is where the
   pre-fix defects lived: the probes' answers could not change the behaviour.
 
 The guard is deliberately able to fail: ``TestTheGuardCanSeeADroppingFormatter``
@@ -60,21 +68,21 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.core import Column
 from rhosocial.activerecord.backend.expression.objects import MaterializedView, Table
-from rhosocial.activerecord.backend.expression.query_sources import CTEExpression
+from rhosocial.activerecord.backend.expression.query_sources import CTEClause
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
-    CreateTableAsExpression,
+    CreateTableAsStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_truncate import (
-    TruncateExpression,
+    TruncateStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_view import (
-    CreateMaterializedViewExpression,
-    RefreshMaterializedViewExpression,
+    CreateMaterializedViewStatement,
+    RefreshMaterializedViewStatement,
 )
-from rhosocial.activerecord.backend.expression.statements.dql import QueryExpression
+from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
 from rhosocial.activerecord.backend.expression.transaction import (
-    BeginTransactionExpression,
-    SetTransactionExpression,
+    BeginTransactionStatement,
+    SetTransactionStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
@@ -93,7 +101,7 @@ def _table(d, name="mp_guard_t"):
 
 
 def _query(d):
-    return QueryExpression(d, select=[Column(d, "a")], from_=_table(d, "s"))
+    return QueryStatement(d, select=[Column(d, "a")], from_=_table(d, "s"))
 
 
 def _declaring_class(probe_name):
@@ -133,7 +141,7 @@ MASTER_PROBE_CASES = (
         True,
         "TRUNCATE",
         r"TRUNCATE TABLE",
-        lambda d: TruncateExpression(d, _table(d)),
+        lambda d: TruncateStatement(d, _table(d)),
     ),
     MasterProbeCase(
         "materialized-cte",
@@ -141,7 +149,7 @@ MASTER_PROBE_CASES = (
         False,
         "MATERIALIZED CTE",
         r"AS MATERIALIZED",
-        lambda d: CTEExpression(d, "c", _query(d), materialized=True),
+        lambda d: CTEClause(d, "c", _query(d), materialized=True),
     ),
     MasterProbeCase(
         "not-materialized-cte",
@@ -149,23 +157,7 @@ MASTER_PROBE_CASES = (
         False,
         "NOT MATERIALIZED CTE",
         r"AS NOT MATERIALIZED",
-        lambda d: CTEExpression(d, "c", _query(d), not_materialized=True),
-    ),
-    MasterProbeCase(
-        "ctas-with-data",
-        "supports_with_data_clause",
-        False,
-        "WITH DATA",
-        r"WITH DATA",
-        lambda d: CreateTableAsExpression(d, _table(d), _query(d), with_data=True),
-    ),
-    MasterProbeCase(
-        "ctas-no-data",
-        "supports_with_data_clause",
-        False,
-        "WITH NO DATA",
-        r"WITH NO DATA",
-        lambda d: CreateTableAsExpression(d, _table(d), _query(d), no_data=True),
+        lambda d: CTEClause(d, "c", _query(d), not_materialized=True),
     ),
     MasterProbeCase(
         "begin-wait",
@@ -173,7 +165,7 @@ MASTER_PROBE_CASES = (
         False,
         "transaction WAIT",
         r"(?<!NO )\bWAIT\b",
-        lambda d: BeginTransactionExpression(d, wait=True),
+        lambda d: BeginTransactionStatement(d, wait=True),
     ),
     MasterProbeCase(
         "begin-no-wait",
@@ -181,7 +173,7 @@ MASTER_PROBE_CASES = (
         False,
         "transaction NO WAIT",
         r"\bNO WAIT\b",
-        lambda d: BeginTransactionExpression(d, no_wait=True),
+        lambda d: BeginTransactionStatement(d, no_wait=True),
     ),
     MasterProbeCase(
         "set-wait",
@@ -189,7 +181,7 @@ MASTER_PROBE_CASES = (
         False,
         "transaction WAIT",
         r"(?<!NO )\bWAIT\b",
-        lambda d: SetTransactionExpression(d, wait=True),
+        lambda d: SetTransactionStatement(d, wait=True),
     ),
     MasterProbeCase(
         "set-no-wait",
@@ -197,7 +189,7 @@ MASTER_PROBE_CASES = (
         False,
         "transaction NO WAIT",
         r"\bNO WAIT\b",
-        lambda d: SetTransactionExpression(d, no_wait=True),
+        lambda d: SetTransactionStatement(d, no_wait=True),
     ),
 )
 
@@ -324,11 +316,10 @@ class TestTheProbesAreDeclaredByThisBackend:
     def test_the_declaration_check_can_fail(self):
         """Sentinel: a genuinely inherited probe must not pass the check.
 
-        ``supports_create_table_as`` is a core default this backend does not
-        declare (it renders SQL Server CTAS through SELECT INTO instead), so if
-        it ever passed, the check would be vacuous.
+        ``supports_create_table_clone`` is a core default this backend does not
+        declare, so if it ever passed, the check would be vacuous.
         """
-        module = _declaring_module("supports_create_table_as")
+        module = _declaring_module("supports_create_table_clone")
         assert not module.startswith(BACKEND_PACKAGE), module
 
 
@@ -354,7 +345,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionExpression, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionStatement],
         ids=["begin", "set"],
     )
     def test_wait_is_refused_by_name(self, expression_cls):
@@ -366,7 +357,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionExpression, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionStatement],
         ids=["begin", "set"],
     )
     def test_no_wait_is_refused_by_name(self, expression_cls):
@@ -377,7 +368,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
 
     @pytest.mark.parametrize(
         "expression_cls",
-        [BeginTransactionExpression, SetTransactionExpression],
+        [BeginTransactionStatement, SetTransactionStatement],
         ids=["begin", "set"],
     )
     def test_both_wait_and_no_wait_are_mutually_exclusive(self, expression_cls):
@@ -387,7 +378,7 @@ class TestTheWaitPairHasFourDistinguishableStates:
             expression_cls(_dialect(), wait=True, no_wait=True)
 
     def test_neither_set_renders_no_clause(self):
-        sql, _params = BeginTransactionExpression(_dialect()).to_sql()
+        sql, _params = BeginTransactionStatement(_dialect()).to_sql()
         assert "WAIT" not in sql, sql
 
 
@@ -395,7 +386,7 @@ class TestTheTruncateFormatterFollowsTheProbe:
     """The SQL Server TRUNCATE override must consult ``supports_truncate()``."""
 
     def test_stock_renders_truncate_table(self):
-        sql, params = TruncateExpression(_dialect(), _table(_dialect())).to_sql()
+        sql, params = TruncateStatement(_dialect(), _table(_dialect())).to_sql()
         assert sql == "TRUNCATE TABLE [mp_guard_t]", sql
         assert params == ()
 
@@ -405,7 +396,7 @@ class TestTheTruncateFormatterFollowsTheProbe:
                 return False
 
         with pytest.raises(UnsupportedFeatureError) as excinfo:
-            TruncateExpression(NoTruncateDialect(SQL_SERVER_2022), _table(_dialect())).to_sql()
+            TruncateStatement(NoTruncateDialect(SQL_SERVER_2022), _table(_dialect())).to_sql()
         assert "TRUNCATE" in str(excinfo.value), str(excinfo.value)
 
 
@@ -413,14 +404,31 @@ class TestTheOtherThreeFormattersConsumeTheSpelling:
     """Focused checks that the request is never silently dropped."""
 
     def test_plain_cte_is_not_gated_by_the_materialized_probe(self):
-        sql, _params = CTEExpression(_dialect(), "c", _query(_dialect())).to_sql()
+        sql, _params = CTEClause(_dialect(), "c", _query(_dialect())).to_sql()
         assert "MATERIALIZED" not in sql, sql
 
-    def test_ctas_without_the_clause_is_not_gated(self):
-        sql, _params = CreateTableAsExpression(
-            _dialect(), _table(_dialect()), _query(_dialect())
-        ).to_sql()
-        assert "WITH DATA" not in sql, sql
+    def test_ctas_is_refused_by_the_statement_name(self):
+        """SQL Server has no ``CREATE TABLE ... AS``; the statement is refused.
+
+        The portable spelling is a syntax error near the keyword ``SELECT``
+        (measured on 2019 / 2022 / 2025), so the request is refused by the
+        statement name rather than rendered in a form the server rejects.
+        """
+        with pytest.raises(UnsupportedFeatureError) as excinfo:
+            CreateTableAsStatement(
+                _dialect(), _table(_dialect()), _query(_dialect())
+            ).to_sql()
+        assert "CREATE TABLE ... AS" in str(excinfo.value), str(excinfo.value)
+
+    def test_the_with_data_measurement_is_still_pinned(self):
+        """The clause gate stays declared even though no consumer remains.
+
+        CTAS and materialized view create / refresh are both refused as
+        statements, so ``WITH [NO] DATA`` has no consumer for this dialect.
+        The answer is still pinned here so a core default change cannot move
+        the measurement the next time a population spelling appears.
+        """
+        assert _dialect().supports_with_data_clause() is False
 
     def test_materialized_view_statements_subsume_the_with_data_gate(self):
         """CREATE / REFRESH are refused as statements; the clause gate never runs.
@@ -431,13 +439,13 @@ class TestTheOtherThreeFormattersConsumeTheSpelling:
         """
         for builder, feature in (
             (
-                lambda d: CreateMaterializedViewExpression(
+                lambda d: CreateMaterializedViewStatement(
                     d, MaterializedView(d, "mv"), _query(d), with_data=True
                 ),
                 "CREATE MATERIALIZED VIEW",
             ),
             (
-                lambda d: RefreshMaterializedViewExpression(
+                lambda d: RefreshMaterializedViewStatement(
                     d, MaterializedView(d, "mv"), with_data=True
                 ),
                 "REFRESH MATERIALIZED VIEW",
@@ -455,7 +463,6 @@ class TestTheGuardIsNotVacuous:
         assert set(PROBE_NAMES) == {
             "supports_truncate",
             "supports_materialized_cte",
-            "supports_with_data_clause",
             "supports_transaction_wait",
         }
 
@@ -509,7 +516,7 @@ class TestTheGuardCanSeeADroppingFormatter:
                 # The declaration says yes; the formatter below ignores it.
                 return True
 
-            def format_begin_transaction(self, expr):
+            def format_begin_transaction_statement(self, expr):
                 # The pre-fix shape: the wait pair was not read at all, so no
                 # spelling followed the declaration.
                 return "BEGIN TRANSACTION", ()

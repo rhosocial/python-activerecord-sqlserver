@@ -11,4 +11,4 @@ class SQLServerWindowMixin:
 
     def supports_window_frame_clause(self) -> bool:
         """Window frame clauses are supported since SQL Server 2012."""
-        return self.version >= SQL_SERVER_2012
+        return self.version_at_least(SQL_SERVER_2012)

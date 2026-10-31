@@ -7,7 +7,6 @@ based on the SQL Server version provided at initialization.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
-import copy
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
@@ -152,6 +151,7 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
+from .mixins.introspection import SQLServerIntrospectionMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
 from .mixins.graph import SQLServerGraphMixin
@@ -159,6 +159,7 @@ from .mixins.columnstore import SQLServerColumnstoreIndexMixin
 from .mixins.memory_optimized import SQLServerMemoryOptimizedMixin
 from .mixins.ddl_type import SQLServerTypeDDLMixin
 from .mixins.trim import SQLServerTrimMixin
+from .mixins.literal import SQLServerLiteralValueMixin
 from .mixins.routine import SQLServerRoutineMixin
 from .mixins.trigger import SQLServerTriggerDdlMixin
 from .mixins.protocol_support import SQLServerProtocolSupportMixin
@@ -207,8 +208,8 @@ from .reserved_words import SQLSERVER_RESERVED_WORDS
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
-    from rhosocial.activerecord.backend.expression.collation import CollateExpression
-    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayExpression, OrderedSetAggregation
+    from rhosocial.activerecord.backend.expression.collation import CollateFunction
+    from rhosocial.activerecord.backend.expression.advanced_functions import ArrayOperation, OrderedSetAggregation
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
         LimitOffsetClause,
@@ -216,30 +217,30 @@ if TYPE_CHECKING:
         QualifyClause,
     )
     from rhosocial.activerecord.backend.expression.statements import (
-        ExplainExpression,
-        CreateViewExpression,
-        DropViewExpression,
-        CreateMaterializedViewExpression,
+        ExplainStatement,
+        CreateViewStatement,
+        DropViewStatement,
+        CreateMaterializedViewStatement,
         ReturningClause,
-        InsertExpression,
+        InsertStatement,
         ColumnDefinition,
         TableConstraint,
         IndexDefinition,
-        CreateTableExpression,
-        CreateIndexExpression,
-        DropTableExpression,
-        CreateSchemaExpression,
-        DropSchemaExpression,
-        AlterSequenceExpression,
-        MergeExpression,
-        TruncateExpression,
+        CreateTableStatement,
+        CreateIndexStatement,
+        DropTableStatement,
+        CreateSchemaStatement,
+        DropSchemaStatement,
+        AlterSequenceStatement,
+        MergeStatement,
+        TruncateStatement,
     )
     from rhosocial.activerecord.backend.expression.transaction import (
-        BeginTransactionExpression,
-        SetTransactionExpression,
+        BeginTransactionStatement,
+        SetTransactionStatement,
     )
     from rhosocial.activerecord.backend.expression.statements.fulltext_match import (
-        FulltextMatchExpression,
+        FulltextMatch,
     )
 
 
@@ -254,6 +255,22 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 
 
 class SQLServerDialect(
+    # The bases below come in bundles: a backend mixin, then the core bundle
+    # it stands in for. The backend's answer has to come first -- a mixin
+    # placed after the class it overrides never wins -- so a new mixin goes
+    # immediately before the core mixin it overrides, and the pairing is read
+    # off the list. Two positions sit outside that pairing and are called out
+    # where they occur: a mixin that overrides a method ``SQLDialectBase``
+    # defines has to precede the base, and a mixin that subclasses a core
+    # mixin has to precede it too (C3: a subclass precedes its base).
+    # Value literals: SQL Server's tier-2 spellings -- 1/0 for the booleans
+    # T-SQL has no keywords for, the unquoted 0x hex constant, and quoted
+    # text a UNIQUEIDENTIFIER converts -- ahead of every other base and
+    # therefore of SQLDialectBase, whose format_literal ladder they refine.
+    # A mixin placed after the class it overrides never wins, and this one
+    # overrides the base; the position is first, like the SQLite literal
+    # mixin's, so the override is visible before the list grows long.
+    SQLServerLiteralValueMixin,
     # ``SQLDialectBase`` quotes identifiers with double quotes. Python resolves
     # base classes left to right, so the bracket-quoting mixin has to precede it
     # to win. This is also why the dialect body declares no ``format_identifier``
@@ -263,6 +280,13 @@ class SQLServerDialect(
     # one. The per-kind rendering lives in the core *NameMixin classes listed
     # below, which is where every object kind is spelled.
     SQLServerNamespaceMixin,
+    # Which catalogue questions SQL Server can answer. These override core's
+    # conservative default of ``False`` -- a default that is right for a
+    # backend which cannot introspect, and wrong for one which can, because a
+    # caller gating on the switch would conclude the capability is absent.
+    # Placed with the other backend answers, before the core bundle each
+    # replaces.
+    SQLServerIntrospectionMixin,
     # A JOIN side is a row source, not an object: it carries the alias the
     # object has no room for, and renders the relation's name through that
     # relation's own format_<kind>_object.
@@ -480,17 +504,6 @@ class SQLServerDialect(
 
     name = "SQL Server"
 
-    _NILADIC_FUNCTION_EQUIVALENTS = {
-        "NOW": "SYSDATETIME()",
-        "CURRENT_DATE": "CAST(GETDATE() AS DATE)",
-        "CURRENT_TIME": "CAST(GETDATE() AS TIME)",
-    }
-
-    _FUNCTION_NAME_EQUIVALENTS = {
-        "LENGTH": "LEN",
-        "CHAR_LENGTH": "LEN",
-    }
-
     _SQLSERVER_FUNCTION_VERSIONS = {
         "json_value": (SQL_SERVER_2016, None),
         "json_query": (SQL_SERVER_2016, None),
@@ -583,7 +596,7 @@ class SQLServerDialect(
         """Return IDENTITY(1,1) for auto-increment columns."""
         return "IDENTITY(1,1)", ()
 
-    def format_array_expression(self, _expr: "ArrayExpression") -> Tuple[str, tuple]:
+    def format_array_expression(self, _expr: "ArrayOperation") -> Tuple[str, tuple]:
         """Format array expression - not supported."""
         raise UnsupportedFeatureError(self.name, "Array operations", _SUGGESTION_ARRAY_TYPES)
 
@@ -621,7 +634,7 @@ class SQLServerDialect(
         raise UnsupportedFeatureError(self.name, f"{operation} grouping operation")
 
     def format_create_table_statement(
-        self, expr: "CreateTableExpression"
+        self, expr: "CreateTableStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE TABLE statement for SQL Server.
 
@@ -651,22 +664,22 @@ class SQLServerDialect(
 
         if not isinstance(expr.table, Table):
             raise TypeError(
-                f"CreateTableExpression.table must be a Table, "
+                f"CreateTableStatement.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
-        if getattr(expr, "tablespace", None):
+        if expr.tablespace:
             raise UnsupportedFeatureError(
                 self.name,
                 "TABLESPACE",
                 "SQL Server does not support table tablespaces.",
             )
-        if getattr(expr, "inherits", None):
+        if expr.inherits:
             raise UnsupportedFeatureError(
                 self.name,
                 "table INHERITS",
                 "SQL Server does not support table inheritance.",
             )
-        if getattr(getattr(expr, "table_options", None), "comment", None):
+        if expr.table_options is not None and expr.table_options.comment:
             # SQL Server has no inline table comment (its native
             # mechanism is sp_addextendedproperty, not implemented here); a
             # comment on the table options is never silently dropped.
@@ -726,8 +739,14 @@ class SQLServerDialect(
             column_parts.append(idx_sql)
             all_params.extend(idx_params)
 
-        # SQL Graph edge constraints (CONNECTION) are table-level constraints.
-        edge_constraints = getattr(expr, "edge_constraints", None)
+        # SQL Graph edge constraints (CONNECTION) are table-level constraints
+        # declared by the SQL Server CREATE TABLE node; the generic statement
+        # has no such field, so the dispatch is on the declared class.
+        from .expression.create_table import SQLServerCreateTableStatement
+
+        edge_constraints = (
+            expr.edge_constraints if isinstance(expr, SQLServerCreateTableStatement) else None
+        )
         if edge_constraints:
             for edge_constraint in edge_constraints:
                 ec_sql, ec_params = edge_constraint.to_sql()
@@ -742,13 +761,16 @@ class SQLServerDialect(
             all_params.extend(partition_params)
 
         from .expression.table_options import SQLServerCreateTableOptions
-        table_options = getattr(expr, "table_options", None)
+        table_options = expr.table_options
         if isinstance(table_options, SQLServerCreateTableOptions) and table_options.memory_optimized:
             durability = table_options.durability or "SCHEMA_ONLY"
             parts.append(self.format_memory_optimized_option(durability))
 
-        # SQL Graph table kind (AS NODE / AS EDGE), if requested.
-        graph_kind = getattr(expr, "graph_table_kind", None)
+        # SQL Graph table kind (AS NODE / AS EDGE), if requested. Like the
+        # edge constraints above, the field belongs to the SQL Server node.
+        graph_kind = (
+            expr.graph_table_kind if isinstance(expr, SQLServerCreateTableStatement) else None
+        )
         if graph_kind is not None:
             from .expression.ddl.graph import (
                 SQLServerAsGraphTableExpression,
@@ -774,14 +796,43 @@ class SQLServerDialect(
         Accepts both the generic ``ColumnDefinition`` and the SQL Server
         ``SQLServerColumnDefinition``; the latter's SQL Server-only attributes
         (``sparse`` / ``rowguidcol``) are rendered here.
+
+        Which kind each constraint is comes from its **branch class**, not from
+        a tag: ``ColumnConstraint`` holds the ``CONSTRAINT <name>`` prefix and
+        the trailing traits, and the branch holds what belongs to one
+        alternative.  Everything except the two kinds whose spelling the
+        memory-optimized flag changes is delegated to
+        :meth:`format_column_constraint`, which renders the prefix, dispatches
+        to the branch's own formatter, and appends the traits.
+
+        PRIMARY KEY and UNIQUE are spelled here rather than delegated because
+        ``NONCLUSTERED`` rides the *clause* and the branch formatter is
+        dispatched with a single argument (``format_constraint_branch`` reads
+        ``branch.format_method``), so there is no way to hand it the flag
+        without smuggling the flag in as dialect state.  ``IDENTITY(1,1)``
+        comes off the PRIMARY KEY branch's own ``is_auto_increment`` flag.
+
+        Because those two kinds do not reach
+        :meth:`format_column_constraint`, their traits are refused here by the
+        same helper that seam uses -- otherwise an explicitly requested
+        ``ENFORCED`` / ``DEFERRABLE`` on a PRIMARY KEY would be dropped without
+        a word.
+
+        Raises:
+            UnsupportedFeatureError: An ``ENFORCED`` / ``NOT ENFORCED`` /
+                ``DEFERRABLE`` / ``NOT DEFERRABLE`` / ``INITIALLY DEFERRED`` /
+                ``INITIALLY IMMEDIATE`` trait was requested on any constraint;
+                every one of the six spellings is Msg 102 or 156 on 2019.  Also
+                the column-comment refusal below.
         """
         from rhosocial.activerecord.backend.expression.statements import (
-            ColumnConstraintType,
+            ColumnPrimaryKeyConstraint,
+            ColumnUniqueConstraint,
         )
         from rhosocial.activerecord.backend.impl.sqlserver.expression.column import (
             SQLServerColumnDefinition,
         )
-        if getattr(col_def, "comment", None):
+        if col_def.comment:
             # SQL Server has no inline column comment (its native
             # mechanism is sp_addextendedproperty, not implemented here); a
             # comment on a column definition is never silently dropped.
@@ -797,94 +848,47 @@ class SQLServerDialect(
 
         constraint_parts = []
         for constraint in col_def.constraints:
-            if constraint.constraint_type == ColumnConstraintType.PRIMARY_KEY:
+            # The trait refusals run first and unconditionally, before either
+            # branch spelled below or the delegated core rendering, so no path
+            # can silently drop a clause T-SQL does not parse.  PRIMARY KEY and
+            # UNIQUE are spelled here rather than delegated, so this is the only
+            # place that sees their traits -- without the call they would be
+            # dropped without a word, which is the very failure the shared
+            # helper exists to prevent.
+            self._refuse_constraint_traits(
+                constraint,
+                deferrable=constraint.deferrable,
+                not_deferrable=constraint.not_deferrable,
+                initially_deferred=constraint.initially_deferred,
+                initially_immediate=constraint.initially_immediate,
+                enforced=constraint.enforced,
+                not_enforced=constraint.not_enforced,
+            )
+            branch = constraint.branch
+            if isinstance(branch, ColumnPrimaryKeyConstraint):
                 constraint_parts.append(
                     "PRIMARY KEY NONCLUSTERED" if memory_optimized else "PRIMARY KEY"
                 )
-            elif constraint.constraint_type == ColumnConstraintType.NOT_NULL:
-                constraint_parts.append("NOT NULL")
-            elif constraint.constraint_type == ColumnConstraintType.UNIQUE:
-                constraint_parts.append("UNIQUE NONCLUSTERED" if memory_optimized else "UNIQUE")
-            elif constraint.constraint_type == ColumnConstraintType.DEFAULT:
-                if constraint.default_value is not None:
-                    from rhosocial.activerecord.backend.expression import bases
-                    if isinstance(constraint.default_value, bases.BaseExpression):
-                        default_sql, default_params = constraint.default_value.to_sql()
-                        constraint_parts.append(f"DEFAULT {default_sql}")
-                        params.extend(default_params)
-                    elif isinstance(constraint.default_value, str):
-                        escaped = self._escape_sql_string(constraint.default_value)
-                        constraint_parts.append(f"DEFAULT '{escaped}'")
-                    else:
-                        constraint_parts.append(f"DEFAULT {constraint.default_value}")
-            elif constraint.constraint_type == ColumnConstraintType.NULL:
-                constraint_parts.append("NULL")
-            elif constraint.constraint_type == ColumnConstraintType.CHECK:
-                if constraint.check_condition is None:
-                    raise ValueError("CHECK constraint must have a check condition")
-                check_sql, check_params = constraint.check_condition.to_sql()
-                constraint_parts.append(f"CHECK ({check_sql})")
-                params.extend(check_params)
-
-            # The node's two-spelling constraint attributes are consumed here
-            # even though SQL Server cannot spell any of them: this override
-            # replaces core's column formatter, so an explicitly requested
-            # attribute is refused by name rather than silently dropped.
-            # Measured refused on 2019 / 2022 / 2025.
-            from rhosocial.activerecord.backend.dialect.mixins.ddl_table import (
-                normalize_column_constraint_type,
-            )
-
-            if constraint.enforced or constraint.not_enforced:
-                normalized = normalize_column_constraint_type(
-                    constraint.constraint_type
+                if branch.is_auto_increment:
+                    constraint_parts.append("IDENTITY(1,1)")
+            elif isinstance(branch, ColumnUniqueConstraint):
+                constraint_parts.append(
+                    "UNIQUE NONCLUSTERED" if memory_optimized else "UNIQUE"
                 )
-                if normalized not in {
-                    ColumnConstraintType.CHECK,
-                    ColumnConstraintType.FOREIGN_KEY,
-                }:
-                    raise ValueError(
-                        "ENFORCED/NOT ENFORCED is only valid for CHECK and "
-                        "FOREIGN KEY constraints"
-                    )
-                spelling = "ENFORCED" if constraint.enforced else "NOT ENFORCED"
-                if not self.supports_constraint_enforced():
-                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-                    raise UnsupportedFeatureError(
-                        self.name,
-                        f"constraint {spelling}",
-                        f"{self.name} does not support the {spelling} constraint.",
-                    )
-                constraint_parts.append(spelling)
-            if constraint.deferrable or constraint.not_deferrable:
-                spelling = (
-                    "DEFERRABLE" if constraint.deferrable else "NOT DEFERRABLE"
+            else:
+                # The rest -- NOT NULL, NULL, DEFAULT, CHECK, GENERATED, and the
+                # column-level REFERENCES that T-SQL refuses by name -- go
+                # through core's production formatter, which renders the
+                # CONSTRAINT prefix, dispatches to the branch, and appends the
+                # traits.  The trait refusals (ENFORCED / DEFERRABLE /
+                # INITIALLY, all Msg 102 or 156 on 2019) happen in
+                # ``SQLServerConstraintMixin.format_column_constraint``.
+                constraint_sql, constraint_params = self.format_column_constraint(
+                    constraint
                 )
-                if not self.supports_deferrable_constraint():
-                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-                    raise UnsupportedFeatureError(
-                        self.name,
-                        f"constraint {spelling}",
-                        f"{self.name} does not support the {spelling} constraint.",
-                    )
-                constraint_parts.append(spelling)
-            if constraint.initially_deferred or constraint.initially_immediate:
-                spelling = (
-                    "INITIALLY DEFERRED"
-                    if constraint.initially_deferred
-                    else "INITIALLY IMMEDIATE"
-                )
-                if not self.supports_deferrable_constraint():
-                    from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-                    raise UnsupportedFeatureError(
-                        self.name,
-                        f"constraint {spelling}",
-                        f"{self.name} does not support the {spelling} constraint.",
-                    )
-                constraint_parts.append(spelling)
-
-            if constraint.is_auto_increment:
-                constraint_parts.append("IDENTITY(1,1)")
+                if constraint_sql:
+                    constraint_parts.append(constraint_sql.strip())
+                    params.extend(constraint_params)
 
         if constraint_parts:
             parts.append(' '.join(constraint_parts))
@@ -915,133 +919,85 @@ class SQLServerDialect(
     ) -> Tuple[str, tuple]:
         """Format a table constraint for SQL Server.
 
-        The memory-optimized variants are why this overrides core's formatter at
-        all: ``PRIMARY KEY NONCLUSTERED`` and ``UNIQUE NONCLUSTERED`` are the
-        spellings a memory-optimized table needs.
+        Two reasons this overrides core's production renderer: the
+        memory-optimized spellings (``PRIMARY KEY NONCLUSTERED`` /
+        ``UNIQUE NONCLUSTERED``), and the refusal of the SQL-standard traits.
+        Everything else -- the ``CONSTRAINT <name>`` prefix, the branch bodies
+        for CHECK and FOREIGN KEY, and the ``REFERENCES`` clause with its
+        referential actions -- is core's, reached through ``super()``.
+
+        Which kind this is comes from the **branch class**.  ``EXCLUDE`` has
+        no T-SQL spelling, so it is refused by name by core's
+        ``format_table_exclude_constraint`` rather than silently dropped.
 
         Raises:
-            TypeError: ``t_const.foreign_key_table`` is not a Table. Another
-                object kind would have had its own name rendered as the
-                referenced relation, because the constraint renders that slot
-                through ``to_sql()``.
+            TypeError: The foreign-key branch's ``references`` does not pair a
+                Table with its columns.  Another object kind would have had its
+                own name rendered as the referenced relation.
+            UnsupportedFeatureError: ``ENFORCED`` / ``NOT ENFORCED`` /
+                ``DEFERRABLE`` / ``NOT DEFERRABLE`` / ``INITIALLY ...`` --
+                all Msg 102 or 156 on 2019 -- or ``CONSTRAINT <name>`` where
+                this dialect will not spell it.
         """
-        if t_const.foreign_key_table is not None and not isinstance(
-            t_const.foreign_key_table, Table
-        ):
-            raise TypeError(
-                f"TableConstraint.foreign_key_table must be a Table, "
-                f"got {type(t_const.foreign_key_table).__name__}"
-            )
         from rhosocial.activerecord.backend.expression.statements import (
-            TableConstraintType,
-            ForeignKeyConstraint,
-            ReferentialAction,
+            TableForeignKeyConstraint,
+            TablePrimaryKeyConstraint,
+            TableUniqueConstraint,
         )
 
-        parts = []
-        params: List[Any] = []
+        branch = t_const.branch
 
-        if t_const.name:
-            parts.append(f"CONSTRAINT {self.format_identifier(t_const.name)}")
-
-        if t_const.constraint_type == TableConstraintType.PRIMARY_KEY:
-            if t_const.columns:
-                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                if memory_optimized:
-                    parts.append(f"PRIMARY KEY NONCLUSTERED ({cols_str})")
-                else:
-                    parts.append(f"PRIMARY KEY ({cols_str})")
-        elif t_const.constraint_type == TableConstraintType.UNIQUE:
-            if t_const.columns:
-                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                if memory_optimized:
-                    parts.append(f"UNIQUE NONCLUSTERED ({cols_str})")
-                else:
-                    parts.append(f"UNIQUE ({cols_str})")
-        elif t_const.constraint_type == TableConstraintType.FOREIGN_KEY:
-            if t_const.columns and t_const.foreign_key_table and t_const.foreign_key_columns:
-                cols_str = ', '.join(self.format_identifier(c) for c in t_const.columns)
-                ref_cols_str = ', '.join(
-                    self.format_identifier(c) for c in t_const.foreign_key_columns
-                )
-                ref_table = t_const.foreign_key_table.to_sql()[0]
-                parts.append(
-                    f"FOREIGN KEY ({cols_str}) REFERENCES {ref_table} ({ref_cols_str})"
-                )
-                if isinstance(t_const, ForeignKeyConstraint):
-                    if t_const.on_delete != ReferentialAction.NO_ACTION:
-                        parts.append(f"ON DELETE {t_const.on_delete.value}")
-                    if t_const.on_update != ReferentialAction.NO_ACTION:
-                        parts.append(f"ON UPDATE {t_const.on_update.value}")
-        elif t_const.constraint_type == TableConstraintType.CHECK and t_const.check_condition:
-            check_sql, check_params = t_const.check_condition.to_sql()
-            parts.append(f"CHECK ({check_sql})")
-            params.extend(check_params)
-
-        # The node's two-spelling constraint attributes are consumed here even
-        # though SQL Server cannot spell any of them: this override replaces
-        # core's formatter, so an explicitly requested attribute is refused by
-        # name rather than silently dropped. Measured refused on 2019 / 2022 /
-        # 2025 (ENFORCED, NOT ENFORCED, DEFERRABLE, NOT DEFERRABLE, INITIALLY
-        # DEFERRED, INITIALLY IMMEDIATE). The probes gate the refusals, and the
-        # spelling is rendered when a probe answers True, so neither is
-        # decorative.
-        from rhosocial.activerecord.backend.dialect.mixins.ddl_table import (
-            normalize_table_constraint_type,
+        # The trait refusals run first and unconditionally, before either the
+        # memory-optimized spelling below or the delegated core rendering, so
+        # neither path can render a clause T-SQL does not parse.  The helper is
+        # the mixin's so the column seam (``format_column_constraint``) and
+        # this one cannot drift apart; core's own trait renderer would refuse
+        # the same traits too, but without naming the spelling that was asked
+        # for.
+        self._refuse_constraint_traits(
+            t_const,
+            deferrable=t_const.deferrable,
+            not_deferrable=t_const.not_deferrable,
+            initially_deferred=t_const.initially_deferred,
+            initially_immediate=t_const.initially_immediate,
+            enforced=t_const.enforced,
+            not_enforced=t_const.not_enforced,
         )
 
-        normalized_type = normalize_table_constraint_type(t_const.constraint_type)
-        if t_const.enforced or t_const.not_enforced:
-            if normalized_type not in {
-                TableConstraintType.CHECK,
-                TableConstraintType.FOREIGN_KEY,
-            }:
-                raise ValueError(
-                    "ENFORCED/NOT ENFORCED is only valid for CHECK and "
-                    "FOREIGN KEY constraints"
+        if isinstance(branch, TableForeignKeyConstraint):
+            referenced_table, _referenced_columns = branch.references
+            if referenced_table is not None and not isinstance(referenced_table, Table):
+                raise TypeError(
+                    f"TableForeignKeyConstraint.references must pair a Table "
+                    f"with its columns, got {type(referenced_table).__name__}"
                 )
-            spelling = "ENFORCED" if t_const.enforced else "NOT ENFORCED"
-            if not self.supports_constraint_enforced():
-                raise UnsupportedFeatureError(
-                    self.name,
-                    f"constraint {spelling}",
-                    f"{self.name} does not support the {spelling} constraint.",
-                )
-            parts.append(spelling)
-        if t_const.deferrable or t_const.not_deferrable:
-            spelling = "DEFERRABLE" if t_const.deferrable else "NOT DEFERRABLE"
-            if not self.supports_deferrable_constraint():
-                raise UnsupportedFeatureError(
-                    self.name,
-                    f"constraint {spelling}",
-                    f"{self.name} does not support the {spelling} constraint.",
-                )
-            parts.append(spelling)
-        if t_const.initially_deferred or t_const.initially_immediate:
-            spelling = (
-                "INITIALLY DEFERRED"
-                if t_const.initially_deferred
-                else "INITIALLY IMMEDIATE"
+
+        if memory_optimized and isinstance(
+            branch, (TablePrimaryKeyConstraint, TableUniqueConstraint)
+        ):
+            keyword = (
+                "PRIMARY KEY"
+                if isinstance(branch, TablePrimaryKeyConstraint)
+                else "UNIQUE"
             )
-            if not self.supports_deferrable_constraint():
-                raise UnsupportedFeatureError(
-                    self.name,
-                    f"constraint {spelling}",
-                    f"{self.name} does not support the {spelling} constraint.",
-                )
-            parts.append(spelling)
+            parts = []
+            if t_const.name:
+                parts.append(f"CONSTRAINT {self.format_identifier(t_const.name)}")
+            cols_str = ', '.join(self.format_identifier(c) for c in branch.columns)
+            parts.append(f"{keyword} NONCLUSTERED ({cols_str})")
+            return ' '.join(parts), ()
 
-        return ' '.join(parts), tuple(params)
+        return super().format_table_constraint(t_const)
 
     def format_inline_index(self, idx_def: "IndexDefinition") -> Tuple[str, tuple]:
         """Format an inline index definition for SQL Server."""
         from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
         for option, value in (
-            ("if_not_exists", getattr(idx_def, "if_not_exists", False)),
-            ("tablespace", getattr(idx_def, "tablespace", None)),
-            ("include_columns", getattr(idx_def, "include_columns", None)),
-            ("partial_condition", getattr(idx_def, "partial_condition", None)),
+            ("if_not_exists", idx_def.if_not_exists),
+            ("tablespace", idx_def.tablespace),
+            ("include_columns", idx_def.include_columns),
+            ("partial_condition", idx_def.partial_condition),
         ):
             if value:
                 raise UnsupportedFeatureError(
@@ -1081,7 +1037,7 @@ class SQLServerDialect(
 
         return ' '.join(parts), ()
 
-    def format_create_index_statement(self, expr: "CreateIndexExpression") -> Tuple[str, tuple]:
+    def format_create_index_statement(self, expr: "CreateIndexStatement") -> Tuple[str, tuple]:
         """Format CREATE INDEX statement for SQL Server.
 
         SQL Server doesn't support IF NOT EXISTS for CREATE INDEX, and has no
@@ -1097,20 +1053,20 @@ class SQLServerDialect(
 
         if not isinstance(expr.index, Index):
             raise TypeError(
-                f"CreateIndexExpression.index must be an Index, "
+                f"CreateIndexStatement.index must be an Index, "
                 f"got {type(expr.index).__name__}"
             )
         if not isinstance(expr.table, Table):
             raise TypeError(
-                f"CreateIndexExpression.table must be a Table, "
+                f"CreateIndexStatement.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
-        if getattr(expr, "if_not_exists", False):
+        if expr.if_not_exists:
             raise UnsupportedFeatureError(
                 self.name, "CREATE INDEX IF NOT EXISTS",
                 "SQL Server has no CREATE INDEX IF NOT EXISTS syntax.",
             )
-        if getattr(expr, "tablespace", None):
+        if expr.tablespace:
             raise UnsupportedFeatureError(
                 self.name, "index TABLESPACE",
                 "SQL Server has no index tablespace; use a filegroup instead.",
@@ -1121,7 +1077,7 @@ class SQLServerDialect(
         if expr.unique:
             parts.append("UNIQUE")
 
-        if hasattr(expr, 'index_type') and expr.index_type:
+        if expr.index_type:
             index_type = expr.index_type.upper()
             if index_type in ('CLUSTERED', 'NONCLUSTERED'):
                 parts.append(index_type)
@@ -1160,7 +1116,7 @@ class SQLServerDialect(
     # Answering the probes in SQLServerSequenceMixin is therefore the whole
     # implementation, and one renderer serves every dialect.
 
-    def format_alter_sequence_statement(self, expr: "AlterSequenceExpression") -> Tuple[str, tuple]:
+    def format_alter_sequence_statement(self, expr: "AlterSequenceStatement") -> Tuple[str, tuple]:
         """Format ALTER SEQUENCE for SQL Server.
 
         SQL Server's ALTER SEQUENCE grammar differs from the standard form core
@@ -1194,7 +1150,7 @@ class SQLServerDialect(
         """
         if not isinstance(expr.sequence, Sequence):
             raise TypeError(
-                f"AlterSequenceExpression.sequence must be a Sequence, "
+                f"AlterSequenceStatement.sequence must be a Sequence, "
                 f"got {type(expr.sequence).__name__}"
             )
         if not self.supports_sequence():
@@ -1284,7 +1240,7 @@ class SQLServerDialect(
                 parts.append("OWNED BY NONE")
         return " ".join(parts), ()
 
-    def format_truncate_statement(self, expr: "TruncateExpression") -> Tuple[str, tuple]:
+    def format_truncate_statement(self, expr: "TruncateStatement") -> Tuple[str, tuple]:
         """Format TRUNCATE TABLE for SQL Server.
 
         SQL Server's TRUNCATE TABLE is a DDL operation (minimal logging) with
@@ -1304,7 +1260,7 @@ class SQLServerDialect(
         """
         if not isinstance(expr.table, Table):
             raise TypeError(
-                f"TruncateExpression.table must be a Table, "
+                f"TruncateStatement.table must be a Table, "
                 f"got {type(expr.table).__name__}"
             )
         if not self.supports_truncate():
@@ -1335,7 +1291,7 @@ class SQLServerDialect(
             )
         return f"TRUNCATE TABLE {expr.table.to_sql()[0]}", ()
 
-    def format_merge_statement(self, expr: "MergeExpression") -> Tuple[str, tuple]:
+    def format_merge_statement(self, expr: "MergeStatement") -> Tuple[str, tuple]:
         """Format MERGE statement for SQL Server (2008+).
 
         SQL Server MERGE syntax:
@@ -1352,7 +1308,7 @@ class SQLServerDialect(
 
         if not isinstance(expr.target_table, Table):
             raise TypeError(
-                f"MergeExpression.target_table must be a Table, "
+                f"MergeStatement.target_table must be a Table, "
                 f"got {type(expr.target_table).__name__}"
             )
 
@@ -1367,9 +1323,18 @@ class SQLServerDialect(
         on_sql, on_params = expr.on_condition.to_sql()
         all_params.extend(on_params)
 
-        output_columns = getattr(expr, "output", None)
-        output_action = getattr(expr, "output_action", False)
-        holdlock = getattr(expr, "holdlock", False)
+        # OUTPUT / HOLDLOCK are declared by the SQL Server MERGE node; the
+        # generic statement has no such fields, so the dispatch is on the
+        # declared class and the generic node renders the plain MERGE form.
+        from .expression.dml import SQLServerMergeExpression
+
+        output_columns = None
+        output_action = False
+        holdlock = False
+        if isinstance(expr, SQLServerMergeExpression):
+            output_columns = expr.output
+            output_action = expr.output_action
+            holdlock = expr.holdlock
 
         parts = [
             f"MERGE INTO {target_sql}",
@@ -1435,38 +1400,28 @@ class SQLServerDialect(
         # T-SQL requires a MERGE statement to be terminated by a semi-colon.
         return " ".join(parts) + ";", tuple(all_params)
 
-    def format_function_call(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
-        """Format a function call, mapping MySQL/generic function names to
-        their SQL Server equivalents.
+    def format_char_length_function(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
+        """CHAR_LENGTH(operand) in T-SQL is ``LEN(operand)``.
 
-        SQL Server has no NOW(), CURRENT_DATE or CURRENT_TIME:
-        - NOW() is replaced by SYSDATETIME()
-        - CURRENT_DATE is replaced by CAST(GETDATE() AS DATE)
-        - CURRENT_TIME is replaced by CAST(GETDATE() AS TIME)
+        The unit differs with the spelling: SQL Server's ``LEN`` counts
+        UTF-16 code units, not bytes (``DATALENGTH`` is the byte count),
+        and it excludes trailing blanks -- the trailing spaces the standard
+        ``CHAR_LENGTH`` keeps counting. The core's
+        ``format_char_length_function`` docstring names SQL Server as the
+        backend whose ``LENGTH`` answers a different question, which is
+        why this override exists instead of the portable spelling.
 
-        SQL Server also has no generic ``LENGTH`` function; it uses ``LEN``.
-        Generic JSON operators/functions (``json_extract_text`` etc.) are
-        mapped to ``JSON_VALUE`` (see ``format_json_function_expression``).
+        This lives on the dialect body rather than a late mixin because
+        ``format_char_length_function`` rides into the MRO through
+        ``ExpressionMixin`` -> ``FunctionCallMixin`` at an early position
+        (right behind ``SQLDialectBase``), ahead of every SQL Server
+        mixin block; the class body is the one place guaranteed to win.
         """
-        name = getattr(expr, "func_name", None)
-        if name and name.upper() in self._NILADIC_FUNCTION_EQUIVALENTS:
-            sql = self._NILADIC_FUNCTION_EQUIVALENTS[name.upper()]
-            return self.apply_alias(sql, (), expr)
-        if name and name.upper() in self._FUNCTION_NAME_EQUIVALENTS:
-            renamed_expr = self._clone_with_func_name(expr, self._FUNCTION_NAME_EQUIVALENTS[name.upper()])
-            return super().format_function_call(renamed_expr)
-        return super().format_function_call(expr)
-
-    def _clone_with_func_name(self, expr: "bases.BaseExpression", new_name: str) -> "bases.BaseExpression":
-        """Return a shallow copy of ``expr`` with ``func_name`` replaced.
-
-        The base ``format_function_call`` renders ``expr.func_name.upper()``,
-        so remapping generic names (e.g. ``LENGTH`` -> ``LEN``) only requires
-        a shallow copy with the target name substituted.
-        """
-        clone = copy.copy(expr)
-        clone.func_name = new_name
-        return clone
+        operand_sql, operand_params = expr.operand.to_sql()
+        sql = f"LEN({operand_sql})"
+        if expr.alias:
+            sql = f"{sql} AS {self.format_identifier(expr.alias)}"
+        return sql, tuple(operand_params)
 
     def format_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format an arbitrary expression to SQL."""
@@ -1475,7 +1430,7 @@ class SQLServerDialect(
         return str(expr), ()
 
     def format_fulltext_match(
-        self, expr: "FulltextMatchExpression"
+        self, expr: "FulltextMatch"
     ) -> Tuple[str, tuple]:
         """Format SQL Server CONTAINS full-text search.
 
@@ -1618,7 +1573,7 @@ def _register_type_formatters():
     ``parse_type`` at runtime, and imports this backend's own ``DataType``
     classes so ``supports_data_types()`` can resolve the ``sqlserver_``-prefixed
     names to a class.  That last part is load order, not bookkeeping:
-    ``_type_class_for(name)`` resolves a name by walking the live subclass tree
+    ``type_class_for(name)`` resolves a name by walking the live subclass tree
     of ``DataType``, so a name whose class nothing has imported yet resolves to
     ``None`` and drops out of the mapping silently.  Nothing noticed, because
     every test that looked at the mapping imported a ``SQLServer*`` class in

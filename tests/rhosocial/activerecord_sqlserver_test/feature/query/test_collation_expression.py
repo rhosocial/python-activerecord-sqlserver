@@ -6,6 +6,7 @@ Tests for expression-level COLLATE support on SQL Server.
 import pytest
 
 from rhosocial.activerecord.backend.expression import Column, Literal
+from rhosocial.activerecord.backend.expression.collation import collate
 from rhosocial.activerecord.backend.impl.sqlserver.collation import SQLServerCollation
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
@@ -44,7 +45,11 @@ class TestSQLServerCollationExpression:
         assert params == ()
 
     def test_literal_collate_preserves_parameter_binding(self, dialect):
-        expr = Literal(dialect, "Alice").collate(SQLServerCollation.LATIN1_GENERAL_CI_AS)
+        # A value node carries no operation surface any more (the value waves
+        # moved collate onto its own node), so the factory is the way in: the
+        # operand still reaches the server as a bind parameter, which is the
+        # whole point of the case.
+        expr = collate(Literal(dialect, "Alice"), SQLServerCollation.LATIN1_GENERAL_CI_AS)
 
         sql, params = expr.to_sql()
 
@@ -52,7 +57,10 @@ class TestSQLServerCollationExpression:
         assert params == ("Alice",)
 
     def test_database_default_keyword_generates_sql(self, dialect):
-        expr = Column(dialect, "name").collate("DATABASE_DEFAULT", keyword=True)
+        # ``DATABASE_DEFAULT`` is a collation name the whitelist carries; the
+        # keyword flag the constructor used to take is gone with the options
+        # bag, so it is spelled as the plain string it always was.
+        expr = Column(dialect, "name").collate("DATABASE_DEFAULT")
 
         sql, params = expr.to_sql()
 
@@ -67,10 +75,13 @@ class TestSQLServerCollationExpression:
         with pytest.raises(Exception, match="schema-qualified COLLATE"):
             expr.to_sql()
 
-    def test_rejects_unsupported_keyword(self, dialect):
-        expr = Column(dialect, "name").collate("CATALOG_DEFAULT", keyword=True)
+    def test_rejects_unsupported_collation_name(self, dialect):
+        # What used to be the *keyword* refusal: the options bag is gone, so a
+        # name outside the whitelist is refused by name -- the same answer the
+        # plain-name case below gives, through the same validator.
+        expr = Column(dialect, "name").collate("CATALOG_DEFAULT")
 
-        with pytest.raises(ValueError, match="Unsupported SQL Server collation keyword"):
+        with pytest.raises(ValueError, match="Unsupported SQL Server collation"):
             expr.to_sql()
 
     def test_rejects_unsupported_collation(self, dialect):

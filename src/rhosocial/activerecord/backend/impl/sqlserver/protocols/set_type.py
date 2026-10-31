@@ -17,14 +17,14 @@ class SQLServerSetTypeSupport(Protocol):
         """Whether the MySQL-style SET type is supported (always False)."""
         ...
 
-    def format_set_literal(self, expr) -> Tuple[str, tuple]:
+    def format_set_literal_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSetLiteralExpression` node."""
         ...
 
-    def format_find_in_set(self, expr) -> Tuple[str, tuple]:
+    def format_find_in_set_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerFindInSetExpression` node."""
         ...
 
-    def format_set_contains(self, expr) -> Tuple[str, tuple]:
+    def format_set_contains_expression(self, expr) -> Tuple[str, tuple]:
         """Format a :class:`SQLServerSetContainsExpression` node."""
         ...

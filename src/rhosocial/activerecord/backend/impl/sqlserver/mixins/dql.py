@@ -6,7 +6,7 @@ from .version_constants import SQL_SERVER_2012
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.query_parts import LimitOffsetClause
-    from rhosocial.activerecord.backend.expression.statements import QueryExpression
+    from rhosocial.activerecord.backend.expression.statements import QueryStatement
 
 
 class SQLServerDQLMixin:
@@ -53,7 +53,7 @@ class SQLServerDQLMixin:
 
     def format_limit_offset_clause(self, clause: "LimitOffsetClause") -> Tuple[str, tuple]:
         """Format LIMIT/OFFSET clause for SQL Server using OFFSET FETCH syntax."""
-        if getattr(clause, "with_ties", False):
+        if clause.with_ties:
             raise UnsupportedFeatureError(
                 self.name, "FETCH NEXT ... ROWS WITH TIES",
                 "SQL Server supports WITH TIES only with TOP, not OFFSET FETCH."
@@ -79,7 +79,7 @@ class SQLServerDQLMixin:
 
         return " ".join(parts), ()
 
-    def format_query_statement(self, expr: "QueryExpression") -> Tuple[str, tuple]:
+    def format_query_statement(self, expr: "QueryStatement") -> Tuple[str, tuple]:
         sql, params = super().format_query_statement(expr)
         if expr.limit_offset is not None and expr.order_by is None:
             lo_sql = expr.limit_offset.to_sql()[0]

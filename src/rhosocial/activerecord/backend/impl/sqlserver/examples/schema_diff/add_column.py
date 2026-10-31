@@ -24,9 +24,9 @@ backend.introspect_and_adapt()
 dialect = backend.dialect
 
 from rhosocial.activerecord.backend.expression import (
-    DropTableExpression, CreateTableExpression, ColumnDefinition,
-    ColumnConstraint, ColumnConstraintType,
-    AlterTableExpression, AddColumn,
+    DropTableStatement, CreateTableStatement, ColumnDefinition,
+    ColumnConstraint, ColumnPrimaryKeyConstraint,
+    AlterTableStatement, AddColumnAction,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.types import (
@@ -35,16 +35,16 @@ from rhosocial.activerecord.backend.expression.types import (
 
 users = Table(dialect, "users")
 
-expr = DropTableExpression(dialect, users, if_exists=True)
+expr = DropTableStatement(dialect, users, if_exists=True)
 sql, params = expr.to_sql()
 backend.execute(sql, params)
 
 # Baseline table: ID, NAME
-expr = CreateTableExpression(
+expr = CreateTableStatement(
     dialect=dialect, table=users, columns=[
         ColumnDefinition(dialect, "id", IntegerType(dialect),
             constraints=[
-                ColumnConstraint(constraint_type=ColumnConstraintType.PRIMARY_KEY, is_auto_increment=True),
+                ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True)),
             ]),
         ColumnDefinition(dialect, "name", VarCharType(dialect, length=100)),
     ]
@@ -63,10 +63,10 @@ builder = SyncSchemaSnapshotBuilder(
 snap_before = builder.build()
 
 # Add a column
-alter = AlterTableExpression(
+alter = AlterTableStatement(
     dialect=dialect, table=users,
     actions=[
-        AddColumn(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
+        AddColumnAction(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
     ],
 )
 sql, params = alter.to_sql()

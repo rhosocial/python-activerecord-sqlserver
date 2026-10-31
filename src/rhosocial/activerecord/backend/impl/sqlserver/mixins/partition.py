@@ -17,6 +17,7 @@ from typing import Tuple, TYPE_CHECKING
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
 from ..expression.objects import PartitionFunction, PartitionScheme
+from ..expression.partition import SQLServerPartitionByRangeClause
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import PartitionClause
@@ -34,7 +35,7 @@ class SQLServerPartitionMixin:
 
     def supports_table_partitioning(self) -> bool:
         """SQL Server supports table partitioning (Enterprise Edition)."""
-        return self.version >= _SQL_SERVER_PARTITION_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_PARTITION_VERSION)  # type: ignore[attr-defined]
 
     def supports_partitioned_table_creation(self) -> bool:
         return self.supports_table_partitioning()
@@ -125,7 +126,14 @@ class SQLServerPartitionMixin:
             parts.append(key_sql)
             params.extend(key_params)
 
-        scheme = getattr(expr, "partition_scheme", None)
+        # The partition scheme is declared by the SQL Server clause node; the
+        # generic ``PartitionClause`` has no such field, so the dispatch is on
+        # the declared class and the generic clause takes the placeholder path.
+        scheme = (
+            expr.partition_scheme
+            if isinstance(expr, SQLServerPartitionByRangeClause)
+            else None
+        )
         if scheme:
             # The scheme is a named object of its own, not part of the table's
             # name: ``ON <scheme> (<keys>)`` names the scheme, and the table
@@ -176,7 +184,7 @@ class SQLServerPartitionMixin:
         self.validate_namespace(expr)
         return self.format_qualified_name(expr)
 
-    def format_sqlserver_partition_function(
+    def format_partition_function_expression(
         self, expr: "SQLServerPartitionFunctionExpression"
     ) -> Tuple[str, tuple]:
         """Format CREATE PARTITION FUNCTION statement.
@@ -210,7 +218,7 @@ class SQLServerPartitionMixin:
         )
         return sql, ()
 
-    def format_sqlserver_partition_scheme(
+    def format_partition_scheme_expression(
         self, expr: "SQLServerPartitionSchemeExpression"
     ) -> Tuple[str, tuple]:
         """Format CREATE PARTITION SCHEME statement.
@@ -221,7 +229,7 @@ class SQLServerPartitionMixin:
             [ALL] TO (filegroup1, filegroup2, ...)
 
         ``expr.function_name`` is the same deliberate text field as the one in
-        :meth:`format_sqlserver_partition_function`: the partition function is
+        :meth:`format_partition_function_expression`: the partition function is
         named by text and objectified at the rendering boundary.
         """
         scheme_name = self.qualified_object_name(PartitionScheme, expr.scheme_name)

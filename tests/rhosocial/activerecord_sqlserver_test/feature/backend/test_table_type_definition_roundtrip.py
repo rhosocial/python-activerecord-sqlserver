@@ -22,6 +22,10 @@ import inspect
 import pytest
 
 from rhosocial.activerecord.backend.expression.core import Literal
+from rhosocial.activerecord.backend.expression.predicates import (
+    ComparisonOperator,
+    ComparisonPredicate,
+)
 from rhosocial.activerecord.backend.expression.serialization import (
     deserialize,
     deserialize_json,
@@ -30,10 +34,11 @@ from rhosocial.activerecord.backend.expression.serialization import (
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnConstraint,
-    ColumnConstraintType,
     ColumnDefinition,
+    ColumnNotNullConstraint,
+    TableCheckConstraint,
     TableConstraint,
-    TableConstraintType,
+    TablePrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -43,7 +48,20 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
 from rhosocial.activerecord.backend.impl.sqlserver.expression.index import (
     SQLServerIndexDefinition,
 )
-from rhosocial.activerecord.testsuite.utils.expression import assert_params_equal
+# The harness now lives in the expression area; loaded by path, the way this
+# file already loads the round-trip module, because a module imported by name
+# would depend on a sys.path entry this run did not promise.
+import importlib.util as _importlib_util
+from pathlib import Path as _Path
+
+_harness_path = _Path(__file__).parent / "expression" / "expression_roundtrip_harness.py"
+_spec = _importlib_util.spec_from_file_location(
+    "sqlserver_roundtrip_harness", _harness_path
+)
+_harness = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_harness)
+
+assert_params_equal = _harness.assert_params_equal
 
 SQL_SERVER_2014 = (12, 0, 0)
 
@@ -59,14 +77,14 @@ def _columns(dialect):
             dialect,
             "id",
             IntegerType(dialect),
-            constraints=[ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)],
+            constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
         ),
         ColumnDefinition(dialect, "name", VarCharType(dialect, length=100)),
     ]
 
 
 def _constraints(dialect):
-    return [TableConstraint(dialect, TableConstraintType.PRIMARY_KEY, columns=["id"])]
+    return [TableConstraint(dialect, branch=TablePrimaryKeyConstraint(dialect, ["id"]))]
 
 
 def _round_trip(expr, dialect):
@@ -180,15 +198,15 @@ class TestSQLServerTableTypeDefinitionRoundTrip:
             columns=[ColumnDefinition(dialect, "id", IntegerType(dialect))],
             memory_optimized=True,
             table_constraints=[
-                TableConstraint(dialect, TableConstraintType.PRIMARY_KEY, columns=["id"])
+                TableConstraint(dialect, branch=TablePrimaryKeyConstraint(dialect, ["id"]))
             ],
         )
 
         params = _round_trip(expr, dialect)
 
         assert params["constraints"] is None
-        assert [c.constraint_type for c in params["table_constraints"]] == [
-            TableConstraintType.PRIMARY_KEY
+        assert [type(c.branch) for c in params["table_constraints"]] == [
+            TablePrimaryKeyConstraint
         ]
         assert expr.to_sql() == (
             "AS TABLE ([id] INT, PRIMARY KEY NONCLUSTERED ([id])) "
@@ -206,14 +224,18 @@ class TestSQLServerTableTypeDefinitionRoundTrip:
             )
 
     def test_check_constraint_condition_survives(self, dialect):
-        condition = Literal(dialect, 1, inline_literals=True) > Literal(
-            dialect, 0, inline_literals=True
-        )
-        check = TableConstraint(
+        # A CHECK's condition is a DDL position: no bind parameters, so each
+        # value is written as text by its own Literal -- the per-position
+        # decision the class makes, not a class-wide strategy any more. The
+        # comparison is its own node, not an operator off the value: a value
+        # node carries no comparison surface.
+        condition = ComparisonPredicate(
             dialect,
-            TableConstraintType.CHECK,
-            check_condition=condition,
+            ComparisonOperator.GT,
+            Literal(dialect, 1, inline=True),
+            Literal(dialect, 0, inline=True),
         )
+        check = TableConstraint(dialect, branch=TableCheckConstraint(dialect, condition))
         expr = SQLServerTableTypeDefinition(
             dialect,
             columns=_columns(dialect),

@@ -6,8 +6,8 @@ from rhosocial.activerecord.backend.expression.objects import Schema
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import (
-        CreateSchemaExpression,
-        DropSchemaExpression,
+        CreateSchemaStatement,
+        DropSchemaStatement,
     )
 
 
@@ -30,7 +30,7 @@ class SQLServerSchemaMixin:
         """SQL Server accepts CREATE SCHEMA ... AUTHORIZATION owner."""
         return True
 
-    def format_create_schema_statement(self, expr: "CreateSchemaExpression") -> Tuple[str, tuple]:
+    def format_create_schema_statement(self, expr: "CreateSchemaStatement") -> Tuple[str, tuple]:
         """Format CREATE SCHEMA for SQL Server.
 
         SQL Server uses CREATE SCHEMA schema_name [AUTHORIZATION owner_name].
@@ -43,7 +43,7 @@ class SQLServerSchemaMixin:
         """
         if not isinstance(expr.schema, Schema):
             raise TypeError(
-                f"CreateSchemaExpression.schema must be a Schema, "
+                f"CreateSchemaStatement.schema must be a Schema, "
                 f"got {type(expr.schema).__name__}"
             )
         parts = ["CREATE SCHEMA"]
@@ -52,7 +52,7 @@ class SQLServerSchemaMixin:
             parts.append(f"AUTHORIZATION {self.format_identifier(expr.authorization)}")
         return " ".join(parts), ()
 
-    def format_drop_schema_statement(self, expr: "DropSchemaExpression") -> Tuple[str, tuple]:
+    def format_drop_schema_statement(self, expr: "DropSchemaStatement") -> Tuple[str, tuple]:
         """Format DROP SCHEMA for SQL Server.
 
         SQL Server requires schema to be empty before dropping.
@@ -69,7 +69,7 @@ class SQLServerSchemaMixin:
         """
         if not isinstance(expr.schema, Schema):
             raise TypeError(
-                f"DropSchemaExpression.schema must be a Schema, "
+                f"DropSchemaStatement.schema must be a Schema, "
                 f"got {type(expr.schema).__name__}"
             )
         if expr.cascade and not self.supports_schema_cascade():

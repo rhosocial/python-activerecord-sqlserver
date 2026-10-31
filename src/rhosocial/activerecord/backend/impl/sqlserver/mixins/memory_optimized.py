@@ -27,7 +27,7 @@ class SQLServerMemoryOptimizedMixin:
 
     def supports_memory_optimized_tables(self) -> bool:
         """Memory-optimized tables require SQL Server 2014+."""
-        return self.version >= _SQL_SERVER_MEMORY_OPTIMIZED_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_MEMORY_OPTIMIZED_VERSION)  # type: ignore[attr-defined]
 
     def format_memory_optimized_option(self, durability: str = "SCHEMA_ONLY") -> str:
         """Format the In-Memory OLTP table option clause (2014+).

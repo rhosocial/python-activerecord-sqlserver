@@ -8,8 +8,8 @@ from rhosocial.activerecord.backend.schema import (
     SchemaDiffer,
 )
 from rhosocial.activerecord.backend.introspection.types import (
-    ColumnInfo, ColumnNullable, TableInfo, TableType,
-    IndexInfo, ForeignKeyInfo,
+    IntrospectionColumnInfo, ColumnNullable, IntrospectionTableInfo, TableType,
+    IndexInfo, IntrospectionForeignKeyInfo,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -18,10 +18,10 @@ from rhosocial.activerecord.backend.impl.sqlserver.schema import SQLServerSchema
 
 class TestSQLServerSchemaDiffer:
 
-    def _make_snapshot(self, dialect_class: str, columns: Dict[str, List[ColumnInfo]]) -> SchemaSnapshot:
+    def _make_snapshot(self, dialect_class: str, columns: Dict[str, List[IntrospectionColumnInfo]]) -> SchemaSnapshot:
         tables = {}
         for name, cols in columns.items():
-            tables[name] = TableInfo(
+            tables[name] = IntrospectionTableInfo(
                 name=name,
                 schema="dbo",
                 table_type=TableType.BASE_TABLE,
@@ -38,8 +38,8 @@ class TestSQLServerSchemaDiffer:
 
     def _make_column(self, name: str, data_type: str, ordinal: int,
                      nullable: bool = False, is_pk: bool = False,
-                     parsed_dt=None) -> ColumnInfo:
-        return ColumnInfo(
+                     parsed_dt=None) -> IntrospectionColumnInfo:
+        return IntrospectionColumnInfo(
             name=name,
             table_name="test",
             schema="dbo",

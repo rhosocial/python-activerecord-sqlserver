@@ -33,6 +33,7 @@ class SQLServerColumnDefinition(ColumnDefinition):
 
     Adds the SQL Server-only ``sparse`` and ``rowguidcol`` attributes.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -62,6 +63,7 @@ class SQLServerColumnDefinition(ColumnDefinition):
 
 class SQLServerColumnOptions(ColumnOptions):
     """SQL Server per-column options declaration."""
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

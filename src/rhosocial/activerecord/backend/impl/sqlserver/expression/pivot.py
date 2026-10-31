@@ -38,6 +38,7 @@ class SQLServerPivotExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "PIVOT (SUM([sales]) FOR [quarter] IN (Q1, Q2)) [p]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -90,6 +91,7 @@ class SQLServerUnpivotExpression(BaseExpression):
         >>> sql, params = expr.to_sql()
         >>> assert sql == "UNPIVOT ([val] FOR [col] IN ([a], [b])) [u]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

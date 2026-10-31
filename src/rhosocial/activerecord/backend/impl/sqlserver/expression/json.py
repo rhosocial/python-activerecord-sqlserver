@@ -3,7 +3,7 @@
 
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import SQLValueExpression
+from rhosocial.activerecord.backend.expression.bases import SQLValue
 from rhosocial.activerecord.backend.expression.mixins import (
     AliasableMixin,
     ComparisonMixin,
@@ -13,12 +13,13 @@ if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
 
 
-class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_VALUE expression for extracting scalar values.
 
     Example:
         >>> expr = SQLServerJSONExtractExpression(dialect, "data", "$.name")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -37,10 +38,10 @@ class SQLServerJSONExtractExpression(AliasableMixin, ComparisonMixin, SQLValueEx
 
     @property
     def format_method(self) -> str:
-        return "format_json_extract"
+        return "format_json_extract_expression"
 
 
-class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_UNQUOTE expression.
 
     Note: SQL Server's JSON_VALUE returns scalar values already unquoted,
@@ -49,6 +50,7 @@ class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValueEx
     Example:
         >>> expr = SQLServerJSONUnquoteExpression(dialect, "data")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -63,15 +65,16 @@ class SQLServerJSONUnquoteExpression(AliasableMixin, ComparisonMixin, SQLValueEx
 
     @property
     def format_method(self) -> str:
-        return "format_json_unquote"
+        return "format_json_unquote_expression"
 
 
-class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_OBJECT expression (2022+).
 
     Example:
         >>> expr = SQLServerJSONObjectExpression(dialect, [("name", "Alice"), ("age", 30)])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -86,15 +89,16 @@ class SQLServerJSONObjectExpression(AliasableMixin, ComparisonMixin, SQLValueExp
 
     @property
     def format_method(self) -> str:
-        return "format_json_object"
+        return "format_json_object_expression"
 
 
-class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_ARRAY expression (2022+).
 
     Example:
         >>> expr = SQLServerJSONArrayExpression(dialect, [1, "two", True])
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -109,15 +113,16 @@ class SQLServerJSONArrayExpression(AliasableMixin, ComparisonMixin, SQLValueExpr
 
     @property
     def format_method(self) -> str:
-        return "format_json_array"
+        return "format_json_array_expression"
 
 
-class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON containment check using OPENJSON (2016+).
 
     Example:
         >>> expr = SQLServerJSONContainsExpression(dialect, "data", "value")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -136,15 +141,16 @@ class SQLServerJSONContainsExpression(AliasableMixin, ComparisonMixin, SQLValueE
 
     @property
     def format_method(self) -> str:
-        return "format_json_contains"
+        return "format_json_contains_expression"
 
 
-class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_MODIFY expression (single path-value pair only).
 
     Example:
         >>> expr = SQLServerJSONSetExpression(dialect, "data", "$.name", "Bob")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -165,15 +171,16 @@ class SQLServerJSONSetExpression(AliasableMixin, ComparisonMixin, SQLValueExpres
 
     @property
     def format_method(self) -> str:
-        return "format_json_set"
+        return "format_json_set_expression"
 
 
-class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON property removal using JSON_MODIFY (single path only).
 
     Example:
         >>> expr = SQLServerJSONRemoveExpression(dialect, "data", "$.name")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -192,10 +199,10 @@ class SQLServerJSONRemoveExpression(AliasableMixin, ComparisonMixin, SQLValueExp
 
     @property
     def format_method(self) -> str:
-        return "format_json_remove"
+        return "format_json_remove_expression"
 
 
-class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server JSON_TYPE expression.
 
     Note: SQL Server has no JSON_TYPE; classify values via OPENJSON.
@@ -203,6 +210,7 @@ class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValueExpre
     Example:
         >>> expr = SQLServerJSONTypeExpression(dialect, "data")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -217,15 +225,16 @@ class SQLServerJSONTypeExpression(AliasableMixin, ComparisonMixin, SQLValueExpre
 
     @property
     def format_method(self) -> str:
-        return "format_json_type"
+        return "format_json_type_expression"
 
 
-class SQLServerJSONValidExpression(AliasableMixin, ComparisonMixin, SQLValueExpression):
+class SQLServerJSONValidExpression(AliasableMixin, ComparisonMixin, SQLValue):
     """SQL Server ISJSON function (equivalent of JSON_VALID).
 
     Example:
         >>> expr = SQLServerJSONValidExpression(dialect, "data")
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -240,4 +249,4 @@ class SQLServerJSONValidExpression(AliasableMixin, ComparisonMixin, SQLValueExpr
 
     @property
     def format_method(self) -> str:
-        return "format_json_valid"
+        return "format_json_valid_expression"

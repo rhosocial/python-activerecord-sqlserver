@@ -19,7 +19,7 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.fulltext import (
-    SQLServerCreateFullTextCatalogExpression,
+    SQLServerCreateFullTextCatalogStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.functions import (
     SQLServerContainsPredicate,
@@ -197,20 +197,20 @@ class TestNextValueFor:
     def test_next_value_for_in_select(self):
         d = SQLServerDialect(SQL_SERVER_2022)
         expr = SQLServerNextValueForExpression(d, "my_seq")
-        from rhosocial.activerecord.backend.expression import QueryExpression
+        from rhosocial.activerecord.backend.expression import QueryStatement
 
-        query = QueryExpression(dialect=d, select=[expr])
+        query = QueryStatement(dialect=d, select=[expr])
         sql, params = query.to_sql()
         assert "SELECT NEXT VALUE FOR [my_seq]" in sql
 
     def test_next_value_for_in_insert_values(self):
         d = SQLServerDialect(SQL_SERVER_2022)
-        from rhosocial.activerecord.backend.expression import InsertExpression
+        from rhosocial.activerecord.backend.expression import InsertStatement
         from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import ValuesSource
 
         seq = SQLServerNextValueForExpression(d, "my_seq")
-        insert = InsertExpression(
+        insert = InsertStatement(
             dialect=d,
             into=Table(d, "t"),
             columns=["id"],
@@ -369,7 +369,7 @@ class TestDelegatedFormatters:
         assert dialect.supports_fulltext_catalog() is True
 
     def test_format_create_fulltext_catalog_statement(self, dialect):
-        sql, params = SQLServerCreateFullTextCatalogExpression(dialect, "ftc").to_sql()
+        sql, params = SQLServerCreateFullTextCatalogStatement(dialect, "ftc").to_sql()
         assert sql == "CREATE FULLTEXT CATALOG [ftc]"
         assert params == ()
 
@@ -513,16 +513,16 @@ class TestDelegatedFormatters:
     def test_format_create_indexed_view_statement(self, dialect):
         from rhosocial.activerecord.backend.expression import (
             Column,
-            CreateViewExpression,
-            QueryExpression,
+            CreateViewStatement,
+            QueryStatement,
         )
         from rhosocial.activerecord.backend.expression.objects import Table, View
-        query = QueryExpression(
+        query = QueryStatement(
             dialect=dialect,
             select=[Column(dialect, "id"), Column(dialect, "name")],
             from_=Table(dialect, "users"),
         )
-        view = CreateViewExpression(dialect, View(dialect, "user_ids"), query)
+        view = CreateViewStatement(dialect, View(dialect, "user_ids"), query)
         sql, params = dialect.format_create_indexed_view_statement(view)
         assert sql == (
             "CREATE VIEW [user_ids] WITH SCHEMABINDING AS "
@@ -531,8 +531,8 @@ class TestDelegatedFormatters:
         assert params == ()
 
     def test_format_create_temporal_table_not_implemented(self, dialect):
-        from rhosocial.activerecord.backend.expression import Column, QueryExpression
+        from rhosocial.activerecord.backend.expression import Column, QueryStatement
 
-        query = QueryExpression(dialect=dialect, select=[Column(dialect, "id")])
+        query = QueryStatement(dialect=dialect, select=[Column(dialect, "id")])
         with pytest.raises(UnsupportedFeatureError):
             dialect.format_create_temporal_table_statement(query)

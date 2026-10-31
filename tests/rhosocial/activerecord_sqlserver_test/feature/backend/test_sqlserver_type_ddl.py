@@ -11,7 +11,7 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     DropTypeSupport,
 )
 from rhosocial.activerecord.backend.expression.serialization import (
-    ExpressionRegistry,
+    default_registry,
     deserialize,
     deserialize_json,
     deserialize_xml,
@@ -20,14 +20,21 @@ from rhosocial.activerecord.backend.expression.serialization import (
     serialize_xml,
 )
 from rhosocial.activerecord.backend.expression.statements import (
-    AlterTypeExpression,
+    AlterTypeStatement,
+    ColumnCheckConstraint,
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnDefaultConstraint,
     ColumnDefinition,
-    CreateTypeExpression,
-    DropTypeExpression,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
+    ColumnUniqueConstraint,
+    CreateTypeStatement,
+    DropTypeStatement,
+    TableCheckConstraint,
     TableConstraint,
-    TableConstraintType,
+    TableForeignKeyConstraint,
+    TablePrimaryKeyConstraint,
+    TableUniqueConstraint,
 )
 from rhosocial.activerecord.backend.expression.objects import Table, Type
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
@@ -39,7 +46,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.ddl.type import (
     SQLServerAliasTypeDefinition,
     SQLServerClrTypeDefinition,
     SQLServerDropTypeExpression,
-    SQLServerRenameTypeExpression,
+    SQLServerRenameTypeStatement,
     SQLServerTableTypeDefinition,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.index import (
@@ -96,7 +103,7 @@ def test_type_capability_version_boundaries():
         memory_optimized=True,
     )
     with pytest.raises(UnsupportedFeatureError):
-        CreateTypeExpression(sql2012, Type(sql2012, "too_old"), memory_definition).to_sql()
+        CreateTypeStatement(sql2012, Type(sql2012, "too_old"), memory_definition).to_sql()
     assert sql2012.supports_drop_type_if_exists() is False
     assert sql2016.supports_drop_type_if_exists() is True
     assert sql2016.supports_create_type_if_not_exists() is False
@@ -108,7 +115,7 @@ def test_type_capability_version_boundaries():
         columns=[ColumnDefinition(sql2005, "id", IntegerType(sql2005))],
     )
     with pytest.raises(UnsupportedFeatureError):
-        CreateTypeExpression(sql2005, Type(sql2005, "too_old"), table_definition).to_sql()
+        CreateTypeStatement(sql2005, Type(sql2005, "too_old"), table_definition).to_sql()
 
 
 def test_clr_definition_is_platform_gated():
@@ -130,7 +137,7 @@ def test_clr_definition_is_platform_gated():
     assert fabric.supports_clr_type_definition() is False
     assert fabric.supports_type_definition(SQLServerClrTypeDefinition) is False
     with pytest.raises(UnsupportedFeatureError):
-        CreateTypeExpression(azure, Type(azure, "clr_type"), definition).to_sql()
+        CreateTypeStatement(azure, Type(azure, "clr_type"), definition).to_sql()
 
 
 def test_backend_passes_deployment_target_from_connection_config():
@@ -173,7 +180,7 @@ def test_alias_type_schema_and_identifier_escaping():
         VarCharType(dialect, length=50),
         nullability="NOT NULL",
     )
-    expression = CreateTypeExpression(
+    expression = CreateTypeStatement(
         dialect,
         Type(dialect, "name]x", schema_name="app]schema"),
         definition,
@@ -188,7 +195,7 @@ def test_alias_type_schema_and_identifier_escaping():
 def test_type_name_dot_is_a_single_identifier():
     dialect = SQLServerDialect(SQL_SERVER_2022)
     definition = SQLServerAliasTypeDefinition(dialect, IntegerType(dialect))
-    expression = CreateTypeExpression(
+    expression = CreateTypeStatement(
         dialect,
         Type(dialect, "type.with.dot", schema_name="app"),
         definition,
@@ -207,7 +214,7 @@ def test_clr_type_sql():
         "sample_assembly",
         "Sample.Namespace.UserType",
     )
-    expression = CreateTypeExpression(
+    expression = CreateTypeStatement(
         dialect, Type(dialect, "clr_type", schema_name="app"), definition
     )
 
@@ -225,16 +232,12 @@ def test_table_type_columns_constraints_indexes_and_memory():
             dialect,
             "id",
             IntegerType(dialect),
-            constraints=[ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)],
+            constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
         ),
         ColumnDefinition(dialect, "name", VarCharType(dialect, length=100)),
     ]
     constraints = [
-        TableConstraint(
-            dialect,
-            TableConstraintType.PRIMARY_KEY,
-            columns=["id"],
-        )
+        TableConstraint(dialect, branch=TablePrimaryKeyConstraint(dialect, ["id"]))
     ]
     indexes = [SQLServerIndexDefinition(dialect, "ix_name", ["name"], type="NONCLUSTERED")]
     definition = SQLServerTableTypeDefinition(
@@ -244,7 +247,7 @@ def test_table_type_columns_constraints_indexes_and_memory():
         indexes=indexes,
         memory_optimized=True,
     )
-    expression = CreateTypeExpression(dialect, Type(dialect, "inventory_type"), definition)
+    expression = CreateTypeStatement(dialect, Type(dialect, "inventory_type"), definition)
     sql, params = expression.to_sql()
 
     assert sql.startswith("CREATE TYPE [inventory_type] AS TABLE (")
@@ -264,7 +267,7 @@ def test_memory_table_type_requires_an_index():
     )
 
     with pytest.raises(ValueError, match="at least one index"):
-        CreateTypeExpression(dialect, Type(dialect, "missing_index_type"), definition).to_sql()
+        CreateTypeStatement(dialect, Type(dialect, "missing_index_type"), definition).to_sql()
 
 
 def test_non_memory_table_type_keeps_regular_constraints():
@@ -276,20 +279,12 @@ def test_non_memory_table_type_keeps_regular_constraints():
             ColumnDefinition(dialect, "name", VarCharType(dialect, length=20)),
         ],
         constraints=[
-            TableConstraint(
-                dialect,
-                TableConstraintType.PRIMARY_KEY,
-                columns=["id"],
-            ),
-            TableConstraint(
-                dialect,
-                TableConstraintType.UNIQUE,
-                columns=["name"],
-            ),
+            TableConstraint(dialect, branch=TablePrimaryKeyConstraint(dialect, ["id"])),
+            TableConstraint(dialect, branch=TableUniqueConstraint(dialect, ["name"])),
         ],
     )
 
-    sql, params = CreateTypeExpression(dialect, Type(dialect, "regular_type"), definition).to_sql()
+    sql, params = CreateTypeStatement(dialect, Type(dialect, "regular_type"), definition).to_sql()
     assert "PRIMARY KEY ([id])" in sql
     assert "UNIQUE ([name])" in sql
     assert "MEMORY_OPTIMIZED" not in sql
@@ -306,20 +301,20 @@ def test_memory_table_type_column_key_constraints_use_nonclustered():
                 "id",
                 IntegerType(dialect),
                 constraints=[
-                    ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY),
+                    ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)),
                 ],
             ),
             ColumnDefinition(
                 dialect,
                 "code",
                 VarCharType(dialect, length=20),
-                constraints=[ColumnConstraint(dialect, ColumnConstraintType.UNIQUE)],
+                constraints=[ColumnConstraint(dialect, branch=ColumnUniqueConstraint(dialect))],
             ),
         ],
         memory_optimized=True,
     )
 
-    sql, params = CreateTypeExpression(dialect, Type(dialect, "column_keys_type"), definition).to_sql()
+    sql, params = CreateTypeStatement(dialect, Type(dialect, "column_keys_type"), definition).to_sql()
     assert "PRIMARY KEY NONCLUSTERED" in sql
     assert "UNIQUE NONCLUSTERED" in sql
     assert params == ()
@@ -337,11 +332,7 @@ def test_memory_table_type_rejects_unsupported_constraints():
                     "id",
                     IntegerType(dialect),
                     constraints=[
-                        ColumnConstraint(
-                            dialect,
-                            ColumnConstraintType.CHECK,
-                            check_condition=check,
-                        )
+                        ColumnConstraint(dialect, branch=ColumnCheckConstraint(dialect, check))
                     ],
                 )
             ],
@@ -352,11 +343,7 @@ def test_memory_table_type_rejects_unsupported_constraints():
             dialect,
             columns=[ColumnDefinition(dialect, "id", IntegerType(dialect))],
             constraints=[
-                TableConstraint(
-                    dialect,
-                    TableConstraintType.CHECK,
-                    check_condition=check,
-                )
+                TableConstraint(dialect, branch=TableCheckConstraint(dialect, check))
             ],
             indexes=[SQLServerIndexDefinition(dialect, "ix_id", ["id"])],
             memory_optimized=True,
@@ -367,10 +354,9 @@ def test_memory_table_type_rejects_unsupported_constraints():
             constraints=[
                 TableConstraint(
                     dialect,
-                    TableConstraintType.FOREIGN_KEY,
-                    columns=["id"],
-                    foreign_key_table=Table(dialect, "other"),
-                    foreign_key_columns=["id"],
+                    branch=TableForeignKeyConstraint(
+                        dialect, ["id"], (Table(dialect, "other"), ["id"])
+                    ),
                 )
             ],
             indexes=[SQLServerIndexDefinition(dialect, "ix_id", ["id"])],
@@ -380,7 +366,7 @@ def test_memory_table_type_rejects_unsupported_constraints():
 
     for definition in definitions:
         with pytest.raises(UnsupportedFeatureError):
-            CreateTypeExpression(dialect, Type(dialect, "invalid_memory_type"), definition).to_sql()
+            CreateTypeStatement(dialect, Type(dialect, "invalid_memory_type"), definition).to_sql()
 
 
 def test_memory_table_type_default_is_supported_from_2014():
@@ -393,11 +379,7 @@ def test_memory_table_type_default_is_supported_from_2014():
                 "id",
                 IntegerType(dialect),
                 constraints=[
-                    ColumnConstraint(
-                        dialect,
-                        ColumnConstraintType.DEFAULT,
-                        default_value=0,
-                    )
+                    ColumnConstraint(dialect, branch=ColumnDefaultConstraint(dialect, 0))
                 ],
             )
         ],
@@ -405,7 +387,7 @@ def test_memory_table_type_default_is_supported_from_2014():
         memory_optimized=True,
     )
 
-    sql, params = CreateTypeExpression(dialect, Type(dialect, "default_type"), definition).to_sql()
+    sql, params = CreateTypeStatement(dialect, Type(dialect, "default_type"), definition).to_sql()
     assert "DEFAULT 0" in sql
     assert params == ()
 
@@ -420,11 +402,7 @@ def test_memory_table_type_check_and_unique_version_gates():
                 "id",
                 IntegerType(sql2014),
                 constraints=[
-                    ColumnConstraint(
-                        sql2014,
-                        ColumnConstraintType.CHECK,
-                        check_condition=RawSQLPredicate(sql2014, "1 = 1"),
-                    )
+                    ColumnConstraint(sql2014, branch=ColumnCheckConstraint(sql2014, RawSQLPredicate(sql2014, "1 = 1")))
                 ],
             )
         ],
@@ -432,7 +410,7 @@ def test_memory_table_type_check_and_unique_version_gates():
         memory_optimized=True,
     )
     with pytest.raises(UnsupportedFeatureError, match="2016\\+"):
-        CreateTypeExpression(sql2014, Type(sql2014, "check_2014"), check_2014).to_sql()
+        CreateTypeStatement(sql2014, Type(sql2014, "check_2014"), check_2014).to_sql()
 
     unique_2014 = SQLServerTableTypeDefinition(
         sql2014,
@@ -442,7 +420,7 @@ def test_memory_table_type_check_and_unique_version_gates():
                 "code",
                 IntegerType(sql2014),
                 constraints=[
-                    ColumnConstraint(sql2014, ColumnConstraintType.UNIQUE),
+                    ColumnConstraint(sql2014, branch=ColumnUniqueConstraint(sql2014)),
                 ],
             )
         ],
@@ -450,7 +428,7 @@ def test_memory_table_type_check_and_unique_version_gates():
         memory_optimized=True,
     )
     with pytest.raises(UnsupportedFeatureError, match="2016\\+"):
-        CreateTypeExpression(sql2014, Type(sql2014, "unique_2014"), unique_2014).to_sql()
+        CreateTypeStatement(sql2014, Type(sql2014, "unique_2014"), unique_2014).to_sql()
 
     sql2016 = SQLServerDialect(SQL_SERVER_2016)
     allowed = SQLServerTableTypeDefinition(
@@ -461,11 +439,7 @@ def test_memory_table_type_check_and_unique_version_gates():
                 "id",
                 IntegerType(sql2016),
                 constraints=[
-                    ColumnConstraint(
-                        sql2016,
-                        ColumnConstraintType.CHECK,
-                        check_condition=RawSQLPredicate(sql2016, "1 = 1"),
-                    )
+                    ColumnConstraint(sql2016, branch=ColumnCheckConstraint(sql2016, RawSQLPredicate(sql2016, "1 = 1")))
                 ],
             ),
             ColumnDefinition(
@@ -473,14 +447,14 @@ def test_memory_table_type_check_and_unique_version_gates():
                 "code",
                 IntegerType(sql2016),
                 constraints=[
-                    ColumnConstraint(sql2016, ColumnConstraintType.UNIQUE),
+                    ColumnConstraint(sql2016, branch=ColumnUniqueConstraint(sql2016)),
                 ],
             ),
         ],
         indexes=[SQLServerIndexDefinition(sql2016, "ix_id", ["id"])],
         memory_optimized=True,
     )
-    sql, params = CreateTypeExpression(sql2016, Type(sql2016, "keys_2016"), allowed).to_sql()
+    sql, params = CreateTypeStatement(sql2016, Type(sql2016, "keys_2016"), allowed).to_sql()
     assert "CHECK (1 = 1)" in sql
     assert "UNIQUE NONCLUSTERED" in sql
     assert params == ()
@@ -514,14 +488,14 @@ def test_memory_table_type_index_limit_before_2017(version):
     definition = _memory_type_with_indexes(dialect, 9)
 
     with pytest.raises(UnsupportedFeatureError, match="8 indexes"):
-        CreateTypeExpression(dialect, Type(dialect, "too_many_indexes"), definition).to_sql()
+        CreateTypeStatement(dialect, Type(dialect, "too_many_indexes"), definition).to_sql()
 
 
 def test_memory_table_type_index_limit_removed_in_2017():
     dialect = SQLServerDialect(SQL_SERVER_2017)
     definition = _memory_type_with_indexes(dialect, 9)
 
-    sql, params = CreateTypeExpression(dialect, Type(dialect, "many_indexes"), definition).to_sql()
+    sql, params = CreateTypeStatement(dialect, Type(dialect, "many_indexes"), definition).to_sql()
     assert sql.count("INDEX ") == 9
     assert params == ()
 
@@ -547,7 +521,7 @@ def test_memory_table_type_include_requires_2019(version):
     )
 
     with pytest.raises(UnsupportedFeatureError, match="2019\\+"):
-        CreateTypeExpression(dialect, Type(dialect, "include_type"), definition).to_sql()
+        CreateTypeStatement(dialect, Type(dialect, "include_type"), definition).to_sql()
 
 
 def test_memory_table_type_include_is_supported_from_2019():
@@ -569,7 +543,7 @@ def test_memory_table_type_include_is_supported_from_2019():
         memory_optimized=True,
     )
 
-    sql, params = CreateTypeExpression(dialect, Type(dialect, "include_type"), definition).to_sql()
+    sql, params = CreateTypeStatement(dialect, Type(dialect, "include_type"), definition).to_sql()
     assert "INCLUDE ([payload])" in sql
     assert params == ()
 
@@ -590,7 +564,7 @@ def test_table_type_hash_index_sql():
         ],
         memory_optimized=True,
     )
-    sql, params = CreateTypeExpression(dialect, Type(dialect, "hash_type"), definition).to_sql()
+    sql, params = CreateTypeStatement(dialect, Type(dialect, "hash_type"), definition).to_sql()
     assert "NONCLUSTERED HASH ([id]) WITH (BUCKET_COUNT = 1024)" in sql
     assert params == ()
 
@@ -602,9 +576,9 @@ def test_create_and_drop_type_fail_fast_options():
     status = Type(dialect, "status")
 
     with pytest.raises(UnsupportedFeatureError):
-        CreateTypeExpression(dialect, status, definition, if_not_exists=True).to_sql()
+        CreateTypeStatement(dialect, status, definition, if_not_exists=True).to_sql()
     with pytest.raises(UnsupportedFeatureError):
-        CreateTypeExpression(dialect, status, definition, or_replace=True).to_sql()
+        CreateTypeStatement(dialect, status, definition, or_replace=True).to_sql()
     with pytest.raises(ValueError):
         SQLServerDropTypeExpression(dialect, status, cascade=True, restrict=True)
     with pytest.raises(UnsupportedFeatureError):
@@ -615,8 +589,8 @@ def test_create_and_drop_type_fail_fast_options():
     app_status = Type(dialect, "status", schema_name="app")
     pre_2016 = SQLServerDialect(SQL_SERVER_2012)
     with pytest.raises(UnsupportedFeatureError):
-        DropTypeExpression(pre_2016, app_status, if_exists=True).to_sql()
-    assert DropTypeExpression(
+        DropTypeStatement(pre_2016, app_status, if_exists=True).to_sql()
+    assert DropTypeStatement(
         dialect,
         app_status,
         if_exists=True,
@@ -626,7 +600,7 @@ def test_create_and_drop_type_fail_fast_options():
 def test_alter_type_is_explicitly_unsupported():
     dialect = SQLServerDialect(SQL_SERVER_2022)
     action = _DummyTypeAlterAction(dialect, "renamed")
-    expression = AlterTypeExpression(dialect, Type(dialect, "status"), [action])
+    expression = AlterTypeStatement(dialect, Type(dialect, "status"), [action])
 
     with pytest.raises(UnsupportedFeatureError, match="ALTER TYPE"):
         expression.to_sql()
@@ -634,7 +608,7 @@ def test_alter_type_is_explicitly_unsupported():
 
 def test_rename_type_uses_sp_rename():
     dialect = SQLServerDialect(SQL_SERVER_2022)
-    expression = SQLServerRenameTypeExpression(
+    expression = SQLServerRenameTypeStatement(
         dialect,
         "old]name",
         "new]name",
@@ -649,6 +623,14 @@ def test_rename_type_uses_sp_rename():
 
 
 def test_type_expressions_are_explicitly_registered():
+    """The backend's type nodes assemble into the framework kind registry.
+
+    Writing an artifact needs no registry: the node reports its own kind.
+    Reading one resolves the kind through the framework's default registry,
+    which this backend's expression module fills at import -- so the three
+    codec channels round-trip these backend-owned kinds through the same
+    default path the core's own classes use.
+    """
     dialect = SQLServerDialect(SQL_SERVER_2022)
     expressions = (
         SQLServerAliasTypeDefinition(dialect, IntegerType(dialect)),
@@ -658,11 +640,13 @@ def test_type_expressions_are_explicitly_registered():
             columns=[ColumnDefinition(dialect, "id", IntegerType(dialect))],
         ),
         SQLServerDropTypeExpression(dialect, Type(dialect, "type_name")),
-        SQLServerRenameTypeExpression(dialect, "old_name", "new_name"),
+        SQLServerRenameTypeStatement(dialect, "old_name", "new_name"),
     )
     for expression in expressions:
-        fqn = f"{type(expression).__module__}.{type(expression).__name__}"
-        assert ExpressionRegistry.lookup(fqn) is type(expression)
+        # The kind whitelist is keyed by the kind derived from the class
+        # name; this backend fills the default registry at import.
+        kind = type(expression).kind()
+        assert default_registry().resolve_node(kind) is type(expression)
         for encoder, decoder in (
             (serialize, deserialize),
             (serialize_json, deserialize_json),
@@ -681,12 +665,11 @@ def test_table_type_rejects_foreign_key_constraint():
         constraints=[
             TableConstraint(
                 dialect,
-                TableConstraintType.FOREIGN_KEY,
-                columns=["id"],
-                foreign_key_table=Table(dialect, "other"),
-                foreign_key_columns=["id"],
+                branch=TableForeignKeyConstraint(
+                    dialect, ["id"], (Table(dialect, "other"), ["id"])
+                ),
             )
         ],
     )
     with pytest.raises(UnsupportedFeatureError):
-        CreateTypeExpression(dialect, Type(dialect, "invalid_type"), definition).to_sql()
+        CreateTypeStatement(dialect, Type(dialect, "invalid_type"), definition).to_sql()

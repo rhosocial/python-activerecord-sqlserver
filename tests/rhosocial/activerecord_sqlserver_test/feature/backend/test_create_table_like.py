@@ -3,18 +3,19 @@
 SQL Server CREATE TABLE behavior tests.
 
 SQL Server has no CREATE TABLE ... LIKE syntax and no TEMPORARY keyword.
-This module verifies that ``CreateTableLikeExpression`` raises
+This module verifies that ``CreateTableLikeStatement`` raises
 ``UnsupportedFeatureError`` (the dialect keeps
 ``supports_create_table_like`` at ``False``), temporary tables render
 ``#``-prefixed names, and identifiers use brackets.
 """
 import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-from rhosocial.activerecord.backend.expression import CreateTableExpression, ColumnDefinition
+from rhosocial.activerecord.backend.expression import CreateTableStatement, ColumnDefinition
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnConstraint,
-    ColumnConstraintType,
-    CreateTableLikeExpression,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
+    CreateTableLikeStatement,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType, VarCharType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -31,7 +32,7 @@ class TestSQLServerCreateTableLike:
     def test_basic_like_raises(self):
         """Test that CREATE TABLE ... LIKE raises UnsupportedFeatureError."""
         dialect = SQLServerDialect()
-        create_expr = CreateTableLikeExpression(
+        create_expr = CreateTableLikeStatement(
             dialect=dialect,
             table=Table(dialect, "users_copy"),
             like_table=Table(dialect, "users"),
@@ -42,7 +43,7 @@ class TestSQLServerCreateTableLike:
     def test_like_with_if_not_exists_raises(self):
         """Test CREATE TABLE ... LIKE with IF NOT EXISTS raises."""
         dialect = SQLServerDialect()
-        create_expr = CreateTableLikeExpression(
+        create_expr = CreateTableLikeStatement(
             dialect=dialect,
             table=Table(dialect, "users_copy"),
             like_table=Table(dialect, "users"),
@@ -54,7 +55,7 @@ class TestSQLServerCreateTableLike:
     def test_like_with_temporary_raises(self):
         """Test CREATE TABLE ... LIKE with temporary raises."""
         dialect = SQLServerDialect()
-        create_expr = CreateTableLikeExpression(
+        create_expr = CreateTableLikeStatement(
             dialect=dialect,
             table=Table(dialect, "temp_users"),
             like_table=Table(dialect, "users"),
@@ -66,7 +67,7 @@ class TestSQLServerCreateTableLike:
     def test_like_with_schema_qualified_table_raises(self):
         """Test CREATE TABLE ... LIKE with schema-qualified source raises."""
         dialect = SQLServerDialect()
-        create_expr = CreateTableLikeExpression(
+        create_expr = CreateTableLikeStatement(
             dialect=dialect,
             table=Table(dialect, "users_copy"),
             like_table=Table(dialect, "users", schema_name="production"),
@@ -77,7 +78,7 @@ class TestSQLServerCreateTableLike:
     def test_like_with_temporary_and_if_not_exists_raises(self):
         """Test CREATE TABLE ... LIKE with temporary and IF NOT EXISTS raises."""
         dialect = SQLServerDialect()
-        create_expr = CreateTableLikeExpression(
+        create_expr = CreateTableLikeStatement(
             dialect=dialect,
             table=Table(dialect, "temp_users_copy"),
             like_table=Table(dialect, "users", catalog_name="test_db"),
@@ -92,10 +93,10 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         columns = [
             ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
-                ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY)
+                ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect))
             ]),
         ]
-        create_expr = CreateTableExpression(
+        create_expr = CreateTableStatement(
             dialect=dialect,
             table=Table(dialect, "temp_users"),
             columns=columns,
@@ -113,13 +114,13 @@ class TestSQLServerCreateTableLike:
         dialect = SQLServerDialect()
         columns = [
             ColumnDefinition(dialect, "id", IntegerType(dialect), constraints=[
-                ColumnConstraint(dialect, ColumnConstraintType.PRIMARY_KEY)
+                ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect))
             ]),
             ColumnDefinition(dialect, "name", VarCharType(dialect, length=255), constraints=[
-                ColumnConstraint(dialect, ColumnConstraintType.NOT_NULL)
+                ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))
             ])
         ]
-        create_expr = CreateTableExpression(
+        create_expr = CreateTableStatement(
             dialect=dialect,
             table=Table(dialect, "users"),
             columns=columns

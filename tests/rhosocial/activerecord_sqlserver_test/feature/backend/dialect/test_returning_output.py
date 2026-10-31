@@ -5,9 +5,10 @@ import pytest
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.core import (
+    AllColumnsWildcard,
     Column,
     FunctionCall,
-    WildcardExpression,
+    RowCountWildcard,
 )
 from rhosocial.activerecord.backend.expression.statements import ReturningClause
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -74,7 +75,18 @@ class TestSQLServerOutputFormatting:
             dialect.format_returning_clause(clause)
 
     def test_rejects_wildcard(self, dialect):
-        clause = ReturningClause(dialect, expressions=[WildcardExpression(dialect)])
+        clause = ReturningClause(dialect, expressions=[AllColumnsWildcard(dialect)])
+        with pytest.raises(UnsupportedFeatureError, match="wildcard in OUTPUT"):
+            dialect.format_returning_clause(clause)
+
+    def test_rejects_row_count_wildcard(self, dialect):
+        """The COUNT-side asterisk is refused by name too, not generically.
+
+        ``RowCountWildcard`` belongs to COUNT's argument; in an OUTPUT list it is
+        no more legal than the select-list expansion, and the refusal names the
+        wildcard rather than falling through to the generic expression message.
+        """
+        clause = ReturningClause(dialect, expressions=[RowCountWildcard(dialect)])
         with pytest.raises(UnsupportedFeatureError, match="wildcard in OUTPUT"):
             dialect.format_returning_clause(clause)
 

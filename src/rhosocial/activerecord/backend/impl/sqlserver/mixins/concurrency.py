@@ -16,10 +16,11 @@ class SQLServerConcurrencyMixin:
 
     def _fetch_concurrency_hint(self) -> None:
         try:
+            from ..query_nodes import max_worker_threads_sql
+
+            sql, params = max_worker_threads_sql(self.dialect)
             cursor = self._connection.cursor()
-            cursor.execute(
-                "SELECT value_in_use FROM sys.configurations WHERE name = 'max worker threads'"
-            )
+            cursor.execute(sql, params)
             row = cursor.fetchone()
             cursor.close()
 

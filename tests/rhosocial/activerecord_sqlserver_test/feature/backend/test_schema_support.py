@@ -9,12 +9,12 @@ are not supported by the server and must stay False.
 from rhosocial.activerecord.backend.dialect.protocols import NamespaceSupport
 from rhosocial.activerecord.backend.expression.objects import Schema, Table
 from rhosocial.activerecord.backend.expression.statements.ddl_schema import (
-    CreateSchemaExpression,
-    DropSchemaExpression,
+    CreateSchemaStatement,
+    DropSchemaStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnDefinition,
-    CreateTableExpression,
+    CreateTableStatement,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -92,7 +92,7 @@ class TestSchemaCapability:
         d = self._dialect()
         table = Table(d, "users", catalog_name="app", schema_name="dbo")
         column = ColumnDefinition(d, "id", IntegerType(d))
-        expr = CreateTableExpression(d, table, [column], if_not_exists=True)
+        expr = CreateTableStatement(d, table, [column], if_not_exists=True)
 
         sql, _ = expr.to_sql()
         guard = sql.splitlines()[0]
@@ -146,18 +146,18 @@ class TestSchemaDDLFormatting:
 
     def test_create_schema(self):
         d = self._dialect()
-        sql, params = CreateSchemaExpression(d, Schema(d, "app")).to_sql()
+        sql, params = CreateSchemaStatement(d, Schema(d, "app")).to_sql()
         assert sql == "CREATE SCHEMA [app]"
         assert "IF NOT EXISTS" not in sql
         assert params == ()
 
     def test_drop_schema(self):
         d = self._dialect()
-        sql, _ = DropSchemaExpression(d, Schema(d, "app")).to_sql()
+        sql, _ = DropSchemaStatement(d, Schema(d, "app")).to_sql()
         assert sql == "DROP SCHEMA [app]"
 
     def test_drop_schema_rejects_unsupported_if_exists(self):
         """The formatter must never emit IF EXISTS even if requested."""
         d = self._dialect()
-        sql, _ = DropSchemaExpression(d, Schema(d, "app"), if_exists=True).to_sql()
+        sql, _ = DropSchemaStatement(d, Schema(d, "app"), if_exists=True).to_sql()
         assert "IF EXISTS" not in sql

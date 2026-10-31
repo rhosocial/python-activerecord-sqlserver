@@ -24,11 +24,11 @@ class SQLServerPivotMixin:
 
     def supports_pivot(self) -> bool:
         """PIVOT is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_PIVOT_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_PIVOT_VERSION)  # type: ignore[attr-defined]
 
     def supports_unpivot(self) -> bool:
         """UNPIVOT is supported since SQL Server 2005."""
-        return self.version >= _SQL_SERVER_PIVOT_VERSION  # type: ignore[attr-defined]
+        return self.version_at_least(_SQL_SERVER_PIVOT_VERSION)  # type: ignore[attr-defined]
 
     def format_pivot(
         self, expr: "SQLServerPivotExpression"

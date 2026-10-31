@@ -12,20 +12,22 @@ generic equivalent:
 * ``sparse`` — the ``SPARSE`` storage clause.
 * ``masked_function`` / ``drop_masked`` — dynamic data masking.
 
-They live on ``SQLServerAlterColumn`` (deriving the generic ``AlterColumn``)
-and are rendered by the SQL Server ``format_alter_column_action`` override.
+They live on ``SQLServerAlterColumn`` (deriving the generic
+``AlterColumnAction``) and are rendered by the SQL Server
+``format_alter_column_action`` override.
 SQL Server does **not** share them with any other backend.
 """
 
 from typing import Any, Optional, Union, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.statements import (
-    AlterColumn,
+    AlterColumnAction,
     ColumnAlterOperation,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
+    from rhosocial.activerecord.backend.expression.types import DataType
 
 
 __all__ = [
@@ -33,12 +35,13 @@ __all__ = [
 ]
 
 
-class SQLServerAlterColumn(AlterColumn):
+class SQLServerAlterColumn(AlterColumnAction):
     """A SQL Server ``ALTER COLUMN`` action extending the generic one.
 
     Adds the SQL Server-only ``data_type``, ``collate``, ``not_null`` /
     ``nullable``, ``sparse``, ``masked_function`` and ``drop_masked`` fields.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -48,7 +51,7 @@ class SQLServerAlterColumn(AlterColumn):
         *,
         new_value: Any = None,
         cascade: bool = False,
-        data_type: Optional[str] = None,
+        data_type: Optional[Union[str, "DataType"]] = None,
         collate: Optional[str] = None,
         not_null: bool = False,
         nullable: bool = False,

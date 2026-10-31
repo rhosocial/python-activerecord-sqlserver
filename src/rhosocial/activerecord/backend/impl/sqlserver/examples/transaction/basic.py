@@ -27,28 +27,31 @@ backend = SQLServerBackend(connection_config=config)
 backend.connect()
 dialect = backend.dialect
 
-from rhosocial.activerecord.backend.expression import CreateTableExpression
+from rhosocial.activerecord.backend.expression import CreateTableStatement
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
     ColumnDefinition,
     ColumnConstraint,
-    ColumnConstraintType,
+    ColumnNotNullConstraint,
+    ColumnPrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
 
 ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
-create_table = CreateTableExpression(
+create_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'txn_users'),
     columns=[
         ColumnDefinition('id', 'INT', constraints=[
-            ColumnConstraint(ColumnConstraintType.PRIMARY_KEY),
-            ColumnConstraint(ColumnConstraintType.NOT_NULL, is_auto_increment=True),
+            ColumnConstraint(
+                dialect,
+                branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+            ),
         ]),
         ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
-            ColumnConstraint(ColumnConstraintType.NOT_NULL),
+            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
         ]),
     ],
     if_not_exists=True,
@@ -59,13 +62,13 @@ backend.execute(sql, params, options=ddl_options)
 # ============================================================
 # SECTION: Business Logic (the pattern to learn)
 # ============================================================
-from rhosocial.activerecord.backend.expression import InsertExpression, ValuesSource
+from rhosocial.activerecord.backend.expression import InsertStatement, ValuesSource
 from rhosocial.activerecord.backend.expression.core import Literal
 
 # Use transaction context manager for automatic commit/rollback
 # If an exception occurs, the transaction is automatically rolled back
 with backend.transaction():
-    insert_expr = InsertExpression(
+    insert_expr = InsertStatement(
         dialect=dialect,
         into=Table(dialect, 'txn_users'),
         columns=['name'],
@@ -74,7 +77,7 @@ with backend.transaction():
     sql, params = insert_expr.to_sql()
     backend.execute(sql, params)
     
-    insert_expr2 = InsertExpression(
+    insert_expr2 = InsertStatement(
         dialect=dialect,
         into=Table(dialect, 'txn_users'),
         columns=['name'],
@@ -91,9 +94,9 @@ print("Transaction committed")
 # ============================================================
 # SECTION: Execution (verify results)
 # ============================================================
-from rhosocial.activerecord.backend.expression import QueryExpression, Column
+from rhosocial.activerecord.backend.expression import QueryStatement, Column
 
-query = QueryExpression(
+query = QueryStatement(
     dialect=dialect,
     select=[Column(dialect, 'id'), Column(dialect, 'name')],
     from_=Table(dialect, 'txn_users'),
@@ -108,9 +111,9 @@ for row in result.data or []:
 # ============================================================
 # SECTION: Teardown (necessary for execution, reference only)
 # ============================================================
-from rhosocial.activerecord.backend.expression import DropTableExpression
+from rhosocial.activerecord.backend.expression import DropTableStatement
 
-drop_expr = DropTableExpression(dialect=dialect, table=Table(dialect, 'txn_users'), if_exists=True)
+drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'txn_users'), if_exists=True)
 sql, params = drop_expr.to_sql()
 backend.execute(sql, params, options=ddl_options)
 

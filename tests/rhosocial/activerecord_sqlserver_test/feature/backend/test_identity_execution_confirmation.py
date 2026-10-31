@@ -7,7 +7,7 @@ and every accepted verdict is guarded by a sentinel that must come back
 REJECTED -- a classifier that cannot see a rejection would make the
 confirmation vacuous.
 
-The SQL rendered by the dialect is what is executed: the ``CreateTableExpression``
+The SQL rendered by the dialect is what is executed: the ``CreateTableStatement``
 is built with an AR-layer ``IdentityAttribute``, exactly the path an application
 uses, and the rendered statement is handed to
 :func:`confirm_expression_execution`. Three outcomes stay distinct:
@@ -30,7 +30,7 @@ from rhosocial.activerecord.base import IdentityAttribute
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression import (
     ColumnDefinition,
-    CreateTableExpression,
+    CreateTableStatement,
 )
 from rhosocial.activerecord.backend.expression.execution_testing import (
     ExecutionConfirmationError,
@@ -61,7 +61,7 @@ def _create_table(dialect, table_name: str, *, generation=None, **identity_kwarg
     attribute = IdentityAttribute(
         generation=generation or "BY DEFAULT", **identity_kwargs
     )
-    return CreateTableExpression(
+    return CreateTableStatement(
         dialect=dialect,
         table=Table(dialect, table_name),
         columns=[

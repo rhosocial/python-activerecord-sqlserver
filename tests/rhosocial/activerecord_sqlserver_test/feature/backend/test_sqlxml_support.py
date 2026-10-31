@@ -19,4 +19,4 @@ class TestSQLServerSQLXMLSupport:
         dialect = SQLServerDialect((16, 0, 0))
 
         assert not hasattr(dialect, "supports_xmlparse")
-        assert not hasattr(dialect, "format_xmlparse_expression")
+        assert not hasattr(dialect, "format_xml_parse_expression")

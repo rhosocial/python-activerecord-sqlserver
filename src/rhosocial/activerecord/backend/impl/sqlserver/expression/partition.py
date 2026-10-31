@@ -22,9 +22,41 @@ if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
 
 
-class SQLServerPartitionRangeDirection(Enum):
+class SQLServerPartitionRangeDirection(str, Enum):
+    """Which side of each boundary value belongs to the partition.
+
+    A member *is* the word it carries -- ``str.__str__``, not ``Enum.__str__``,
+    which would win the base order otherwise -- because the member rides inside
+    the partition clauses' params and a param that travels in an artifact must
+    be a JSON scalar. Plain ``Enum`` raises "not one of the value kinds" the
+    moment anything serialises the node, which is how the spelling was settled.
+    """
+
+    __str__ = str.__str__
+
     LEFT = "LEFT"
     RIGHT = "RIGHT"
+
+
+def _as_range_direction(value: Any) -> SQLServerPartitionRangeDirection:
+    """Read a boundary direction as the member it names.
+
+    A member and the word it carries are the same thing here -- the enum is a
+    ``str`` subclass, so a word *is* the member's value -- but only the member
+    answers ``.value``, and an artifact hands back the word. Normalising at
+    construction keeps one spelling inside the node and lets the formatter read
+    a field rather than guess what it was given.
+    """
+    if isinstance(value, SQLServerPartitionRangeDirection):
+        return value
+    if isinstance(value, str):
+        try:
+            return SQLServerPartitionRangeDirection(value.strip().upper())
+        except ValueError:
+            pass
+    raise ValueError(
+        f"unknown RANGE direction {value!r}; use LEFT or RIGHT"
+    )
 
 
 class SQLServerPartitionByRangeClause(PartitionClause):
@@ -34,6 +66,7 @@ class SQLServerPartitionByRangeClause(PartitionClause):
     (LEFT or RIGHT) specifies which side of each boundary value
     belongs to the partition. RIGHT is the default in SQL Server.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     strategy_type = PartitionStrategy
 
@@ -51,7 +84,7 @@ class SQLServerPartitionByRangeClause(PartitionClause):
             keys,
         )
         self.partition_scheme = partition_scheme
-        self.range_direction = range_direction
+        self.range_direction = _as_range_direction(range_direction)
 
     def to_sql(self) -> SQLQueryAndParams:
         return self.dialect.format_partition_clause(self)
@@ -65,6 +98,7 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
         CREATE PARTITION FUNCTION pf_name (DATE)
         AS RANGE RIGHT FOR VALUES ('2020-01-01', '2021-01-01')
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -79,10 +113,10 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
         self.function_name = function_name
         self.data_type = data_type
         self.boundary_values = list(boundary_values)
-        self.range_direction = range_direction
+        self.range_direction = _as_range_direction(range_direction)
 
     def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_sqlserver_partition_function(self)
+        return self.dialect.format_partition_function_expression(self)
 
 
 class SQLServerPartitionSchemeExpression(BaseExpression):
@@ -94,6 +128,7 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         AS PARTITION pf_name
         TO ([PRIMARY], fg1, fg2)
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -113,4 +148,4 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
         self.all_filegroup = all_filegroup
 
     def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_sqlserver_partition_scheme(self)
+        return self.dialect.format_partition_scheme_expression(self)

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ...dialect import SQLServerDialect
 
 
-class SQLServerCreateProcedureExpression(BaseExpression):
+class SQLServerCreateProcedureStatement(BaseExpression):
     """SQL Server CREATE PROCEDURE statement (2005+).
 
     Attributes:
@@ -33,13 +33,14 @@ class SQLServerCreateProcedureExpression(BaseExpression):
         or_alter: Whether to render ``CREATE OR ALTER PROCEDURE``.
 
     Example:
-        >>> expr = SQLServerCreateProcedureExpression(
+        >>> expr = SQLServerCreateProcedureStatement(
         ...     dialect, "p", ["@x INT"], body="SET NOCOUNT ON; SELECT @x + 1;",
         ...     schema="dbo",
         ... )
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE PROCEDURE [dbo].[p] @x INT AS BEGIN SET NOCOUNT ON; SELECT @x + 1; END;"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -70,26 +71,27 @@ class SQLServerCreateProcedureExpression(BaseExpression):
         return self.dialect.format_create_procedure_statement(self)
 
 
-class SQLServerCreateFunctionExpression(BaseExpression):
+class SQLServerCreateFunctionStatement(BaseExpression):
     """SQL Server CREATE FUNCTION (scalar) statement (2005+).
 
     Attributes:
         name: Function name (may be schema-qualified like ``dbo.f``).
         parameters: List of parameters (see
-            ``SQLServerCreateProcedureExpression``).
+            ``SQLServerCreateProcedureStatement``).
         returns: Scalar return data type, e.g. ``INT``.
         body: Raw T-SQL body passed through verbatim.
         schema: Optional schema qualifier.
         or_alter: Whether to render ``CREATE OR ALTER FUNCTION``.
 
     Example:
-        >>> expr = SQLServerCreateFunctionExpression(
+        >>> expr = SQLServerCreateFunctionStatement(
         ...     dialect, "f", ["@x INT"], returns="INT",
         ...     body="RETURN @x * 2;", schema="dbo",
         ... )
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE FUNCTION [dbo].[f] (@x INT) RETURNS INT AS BEGIN RETURN @x * 2; END;"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -124,7 +126,7 @@ class SQLServerCreateFunctionExpression(BaseExpression):
         return self.dialect.format_create_function_statement(self)
 
 
-class SQLServerDropRoutineExpression(BaseExpression):
+class SQLServerDropRoutineStatement(BaseExpression):
     """SQL Server DROP PROCEDURE / DROP FUNCTION statement (2005+).
 
     Attributes:
@@ -134,10 +136,11 @@ class SQLServerDropRoutineExpression(BaseExpression):
         if_exists: Render ``IF EXISTS`` (SQL Server 2016+ only).
 
     Example:
-        >>> expr = SQLServerDropRoutineExpression(dialect, "p", "PROCEDURE")
+        >>> expr = SQLServerDropRoutineStatement(dialect, "p", "PROCEDURE")
         >>> sql, params = expr.to_sql()
         >>> assert sql == "DROP PROCEDURE [p]"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

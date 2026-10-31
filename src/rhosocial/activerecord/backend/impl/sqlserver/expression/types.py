@@ -42,6 +42,7 @@ class SQLServerNVarCharType(VarCharType):
     UCS-2/UTF-16 and cannot hold characters outside it, ``VARCHAR`` follows the
     database collation's code page.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_nvarchar"
 
@@ -57,6 +58,7 @@ class SQLServerNCharType(CharType):
     length: a shorter value is space-padded to ``n`` rather than stored as
     written.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_nchar"
 
@@ -74,6 +76,7 @@ class SQLServerNVarCharMaxType(VarCharType):
     than by a length of ``None`` on the base, because ``NVARCHAR`` and
     ``NVARCHAR(MAX)`` are different declarations in the catalog.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_nvarchar_max"
 
@@ -98,6 +101,7 @@ class SQLServerVarBinaryType(VarBinaryType):
     (:class:`SQLServerVarBinaryMaxType`).  Sibling ``SQLServerVarBinaryMaxType``
     stays on ``BlobType``, which is the concept that actually has no bound.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_varbinary"
 
@@ -116,6 +120,7 @@ class SQLServerVarBinaryMaxType(BlobType):
     lifted, which is what ``BlobType`` is.  Kept as its own class because the
     declaration differs, and a schema diff compares declarations.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_varbinary_max"
 
@@ -131,6 +136,7 @@ class SQLServerImageType(BlobType):
     the type exists for reading existing schemas rather than for writing new
     ones.  Same storage as the ``(MAX)`` spelling, hence :class:`BlobType`.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_image"
 
@@ -154,6 +160,7 @@ class SQLServerXmlType(XmlType):
     type's identity, so it does not appear here.  ``SQLServerXmlType`` and the
     core ``XmlType`` render the same SQL under their own namespaced names.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_xml"
 
@@ -176,6 +183,7 @@ class SQLServerTinyIntType(TinyIntType):
     a signed :class:`TinyIntType`, which is the whole point of recording the
     field rather than assuming it.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_tinyint"
 
@@ -201,6 +209,7 @@ class SQLServerBitType(BooleanType):
     concept's own (``boolean`` / ``bool``), not T-SQL's ``BIT``: ``BIT`` is the
     backend's word for the type, and it belongs to this class's ``name``.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_bit"
 
@@ -223,6 +232,7 @@ class SQLServerUniqueIdentifierType(UUIDType):
     type this dialect really renders, which is the only kind of substitute the
     contract allows.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_uniqueidentifier"
 

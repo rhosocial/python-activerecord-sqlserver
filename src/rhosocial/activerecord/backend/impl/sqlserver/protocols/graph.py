@@ -45,7 +45,7 @@ class SQLServerGraphSupport(Protocol):
 
     # region formatting
 
-    def format_sqlserver_graph_table_kind(self, expr: Any) -> Tuple[str, tuple]:
+    def format_as_graph_table_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format the ``AS NODE`` / ``AS EDGE`` table kind fragment."""
         ...  # pragma: no cover
 
@@ -69,7 +69,7 @@ class SQLServerGraphSupport(Protocol):
         """Format a ``MATCH (<pattern>)`` predicate."""
         ...  # pragma: no cover
 
-    def format_sqlserver_shortest_path(self, expr: Any) -> Tuple[str, tuple]:
+    def format_shortest_path_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format a ``SHORTEST_PATH (<pattern>{1,n})`` expression."""
         ...  # pragma: no cover
 

@@ -30,6 +30,12 @@ from ..dialect import SQLServerDialect
 from ..async_transaction import AsyncSQLServerTransactionManager
 from .backend import SQLServerUnicodeDialect
 from ..mixins import SQLServerBackendMixin
+from ..query_nodes import (
+    health_check_sql,
+    identity_columns_sql,
+    server_property_value_sql,
+    session_identity_sql,
+)
 
 try:
     import aioodbc
@@ -253,8 +259,9 @@ class AsyncSQLServerBackend(
 
     async def _get_scope_identity_async(self) -> Optional[int]:
         """Get the identity value of the last INSERT via @@IDENTITY."""
+        sql, params = session_identity_sql(self.dialect)
         async with await self._get_cursor() as cursor:
-            await cursor.execute("SELECT @@IDENTITY")
+            await cursor.execute(sql, params)
             row = await cursor.fetchone()
         if row and row[0] is not None:
             return int(row[0])
@@ -273,13 +280,9 @@ class AsyncSQLServerBackend(
             return self._identity_columns_cache[cache_key]
         columns: Set[str] = set()
         try:
+            sql, params = identity_columns_sql(self.dialect, table_name)
             async with await self._get_cursor() as cursor:
-                await cursor.execute(
-                    "SELECT c.name FROM sys.identity_columns c "
-                    "JOIN sys.tables t ON c.object_id = t.object_id "
-                    f"WHERE t.name = {self.dialect.p()} AND SCHEMA_NAME(t.schema_id) = 'dbo'",
-                    (table_name,),
-                )
+                await cursor.execute(sql, params)
                 for row in await cursor.fetchall():
                     columns.add(str(row[0]).lower())
         except Exception:
@@ -413,8 +416,8 @@ class AsyncSQLServerBackend(
                     data = []
                     for row in rows:
                         row_dict = dict(zip(column_names, row))
-                        adapted_row = self._adapt_row_types(row_dict, adapters)
-                        final_row = self._remap_row_columns(adapted_row, mapping)
+                        adapted_row = self.adapt_row_types(row_dict, adapters)
+                        final_row = self.remap_row_columns(adapted_row, mapping)
                         data.append(final_row)
                 elif cursor.description:
                     # Also process result when cursor has data (e.g. OUTPUT clause)
@@ -426,8 +429,8 @@ class AsyncSQLServerBackend(
                         data = []
                         for row in rows:
                             row_dict = dict(zip(column_names, row))
-                            adapted_row = self._adapt_row_types(row_dict, adapters)
-                            final_row = self._remap_row_columns(adapted_row, mapping)
+                            adapted_row = self.adapt_row_types(row_dict, adapters)
+                            final_row = self.remap_row_columns(adapted_row, mapping)
                             data.append(final_row)
                     except Exception:
                         data = None
@@ -500,8 +503,11 @@ class AsyncSQLServerBackend(
             await self.connect()
         
         try:
+            probe, probe_params = server_property_value_sql(
+                self.dialect, "ProductVersion"
+            )
             async with await self._get_cursor() as cursor:
-                await cursor.execute("SELECT SERVERPROPERTY('ProductVersion')")
+                await cursor.execute(probe, probe_params)
                 row = await cursor.fetchone()
                 
                 if row:
@@ -536,8 +542,9 @@ class AsyncSQLServerBackend(
                     return True
                 return False
             
+            probe, probe_params = health_check_sql(self.dialect)
             async with await self._get_cursor() as cursor:
-                await cursor.execute("SELECT 1")
+                await cursor.execute(probe, probe_params)
                 await cursor.fetchone()
             return True
             

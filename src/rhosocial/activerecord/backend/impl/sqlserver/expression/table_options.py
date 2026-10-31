@@ -30,6 +30,7 @@ class SQLServerCreateTableOptions(CreateTableOptions):
 
     Adds the SQL Server-only ``memory_optimized`` / ``durability`` options.
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,

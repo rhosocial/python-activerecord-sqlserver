@@ -84,6 +84,14 @@ class SQLServerNamespaceMixin(NamespaceMixin):
         """SQL Server models a catalog above the schema (the database)."""
         return True
 
+    def supports_schema_introspection(self) -> bool:
+        """SQL Server answers for its schemas from ``sys.schemas``.
+
+        The capability for the ``introspect schemas`` family, declared
+        beside the namespace rules that decide which of its levels a
+        name may carry."""
+        return True
+
     def supports_catalog_qualification(self) -> bool:
         """SQL Server renders the catalog when a name carries one."""
         return True

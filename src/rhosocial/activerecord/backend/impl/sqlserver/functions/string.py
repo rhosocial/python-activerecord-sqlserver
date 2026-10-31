@@ -7,7 +7,7 @@ Functions: string_agg, concat_ws, trim, format
 
 from typing import Union, Any, TYPE_CHECKING, List, Optional
 
-from rhosocial.activerecord.backend.expression import bases, core
+from rhosocial.activerecord.backend.expression import TrimExpression, bases, core
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
@@ -65,15 +65,22 @@ def trim(
     dialect: "SQLServerDialect",
     expression: Union[str, "bases.BaseExpression"],
     characters: Optional[str] = None,
-) -> "core.FunctionCall":
-    """Creates a TRIM function call (SQL Server 2017+)."""
+) -> "TrimExpression":
+    """Creates a TRIM node (SQL Server 2017+ for the characters form).
+
+    Built through the core ``TRIM`` node rather than a generic call, so the
+    dialect's ``format_trim_expression`` owns the T-SQL spelling -- which
+    puts the character set *before* the operand (``TRIM(chars FROM x)``):
+    the two-argument call shape this factory used to emit is not T-SQL at
+    all. BOTH is the direction SQL Server's TRIM has always trimmed.
+    """
     expr = _convert_to_expression(dialect, expression)
-    
+
     if characters:
         char_literal = core.Literal(dialect, characters)
-        return core.FunctionCall(dialect, "TRIM", [expr, char_literal])
-    
-    return core.FunctionCall(dialect, "TRIM", [expr])
+        return TrimExpression(dialect, expr, char_literal)
+
+    return TrimExpression(dialect, expr)
 
 
 def format(

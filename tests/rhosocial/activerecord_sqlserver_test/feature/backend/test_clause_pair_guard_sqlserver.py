@@ -20,7 +20,7 @@ both parameters       ``ValueError``
 
 Two kinds of pair appear here, and both are checked the same way:
 
-* **spellable** (``AlterSequenceExpression.cycle`` and friends): the dialect
+* **spellable** (``AlterSequenceStatement.cycle`` and friends): the dialect
   has a spelling for both sides, so the render asserts the spelling.
 * **unspellable** (``IdentityClause.cycle`` and friends): the server refuses
   the spelling, so an explicitly set parameter must be refused by name --
@@ -29,10 +29,9 @@ Two kinds of pair appear here, and both are checked the same way:
 
 Which pairs the dialect consumes was read from the source, not guessed:
 ``format_alter_sequence_statement`` and ``format_identity_clause`` read the
-sequence/identity pairs; ``format_set_operation_expression`` reads ``all_``;
-the SQL Server overrides of the core TRUNCATE / DROP VIEW / DROP SCHEMA /
-constraint / transaction formatters *replace* core's gated versions, so they
-carry the gates for the pairs those nodes grew.
+sequence/identity pairs; the SQL Server overrides of the core TRUNCATE /
+DROP VIEW / DROP SCHEMA / constraint / transaction formatters *replace* core's
+gated versions, so they carry the gates for the pairs those nodes grew.
 
 Every "unspellable" verdict is backed by a live-server measurement (SQL Server
 2019 / 2022 / 2025, ``{SQL Server}`` driver), recorded in the round's plan
@@ -51,32 +50,31 @@ import pytest
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.core import Column
 from rhosocial.activerecord.backend.expression.objects import Schema, Sequence, Table, View
-from rhosocial.activerecord.backend.expression.query_sources import SetOperationExpression
 from rhosocial.activerecord.backend.expression.statements.ddl_schema import (
-    DropSchemaExpression,
+    DropSchemaStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_sequence import (
-    AlterSequenceExpression,
+    AlterSequenceStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+    ColumnCheckConstraint,
     ColumnConstraint,
-    ColumnConstraintType,
     ColumnDefinition,
     ForeignKeyConstraint,
     IdentityClause,
+    TableCheckConstraint,
     TableConstraint,
-    TableConstraintType,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_truncate import (
-    TruncateExpression,
+    TruncateStatement,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_view import (
-    DropViewExpression,
+    DropViewStatement,
 )
-from rhosocial.activerecord.backend.expression.statements.dql import QueryExpression
+from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
 from rhosocial.activerecord.backend.expression.transaction import (
-    BeginTransactionExpression,
-    SetTransactionExpression,
+    BeginTransactionStatement,
+    SetTransactionStatement,
 )
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
@@ -84,7 +82,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.alter_column impor
     SQLServerAlterColumn,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.columnstore import (
-    SQLServerColumnstoreIndexExpression,
+    SQLServerColumnstoreIndexStatement,
 )
 
 
@@ -101,13 +99,7 @@ def _table(d, name="t"):
 
 
 def _query(d, table="t1"):
-    return QueryExpression(d, select=[Column(d, "a")], from_=_table(d, table))
-
-
-def _union(d, **kw):
-    return SetOperationExpression(
-        d, left=_query(d, "t1"), right=_query(d, "t2"), operation="UNION", **kw
-    )
+    return QueryStatement(d, select=[Column(d, "a")], from_=_table(d, table))
 
 
 def _predicate(d):
@@ -130,13 +122,7 @@ def _fk(d, **kw):
 
 
 def _check(d, **kw):
-    return TableConstraint(
-        d,
-        TableConstraintType.CHECK,
-        name="ck",
-        check_condition=_predicate(d),
-        **kw,
-    )
+    return TableConstraint(d, branch=TableCheckConstraint(d, _predicate(d)), name="ck", **kw)
 
 
 def _column_check(d, **kw):
@@ -151,13 +137,7 @@ def _column_check(d, **kw):
         "a",
         IntegerType(d),
         constraints=[
-            ColumnConstraint(
-                d,
-                ColumnConstraintType.CHECK,
-                name="ck",
-                check_condition=_predicate(d),
-                **kw,
-            )
+            ColumnConstraint(d, branch=ColumnCheckConstraint(d, _predicate(d)), name="ck", **kw)
         ],
     )
 
@@ -170,7 +150,7 @@ def _columnstore(d, **kw):
     """A columnstore index; NONCLUSTERED takes its key list, the rest do not."""
     if kw.get("nonclustered"):
         kw.setdefault("columns", ["c"])
-    return SQLServerColumnstoreIndexExpression(d, "ix", "t", **kw)
+    return SQLServerColumnstoreIndexStatement(d, "ix", "t", **kw)
 
 
 class PairCase:
@@ -216,16 +196,16 @@ class PairCase:
 PAIR_CASES = (
     # --- ALTER SEQUENCE: CYCLE / CACHE are spellable, ORDER is not ---
     PairCase(
-        "AlterSequenceExpression.cycle",
-        lambda d, **kw: AlterSequenceExpression(d, _seq(d), **kw),
+        "AlterSequenceStatement.cycle",
+        lambda d, **kw: AlterSequenceStatement(d, _seq(d), **kw),
         "cycle",
         "no_cycle",
         r"(?<!NO )CYCLE\b",
         r"NO CYCLE\b",
     ),
     PairCase(
-        "AlterSequenceExpression.cache",
-        lambda d, **kw: AlterSequenceExpression(d, _seq(d), **kw),
+        "AlterSequenceStatement.cache",
+        lambda d, **kw: AlterSequenceStatement(d, _seq(d), **kw),
         "cache",
         "no_cache",
         r"CACHE 10\b",
@@ -233,8 +213,8 @@ PAIR_CASES = (
         a_value=10,
     ),
     PairCase(
-        "AlterSequenceExpression.order",
-        lambda d, **kw: AlterSequenceExpression(d, _seq(d), **kw),
+        "AlterSequenceStatement.order",
+        lambda d, **kw: AlterSequenceStatement(d, _seq(d), **kw),
         "order",
         "no_order",
         r"(?<!NO )ORDER\b",
@@ -276,8 +256,8 @@ PAIR_CASES = (
     ),
     # --- TRUNCATE: the SQL Server override replaces core's gated formatter ---
     PairCase(
-        "TruncateExpression.cascade",
-        lambda d, **kw: TruncateExpression(d, _table(d), **kw),
+        "TruncateStatement.cascade",
+        lambda d, **kw: TruncateStatement(d, _table(d), **kw),
         "cascade",
         "restrict",
         r"CASCADE\b",
@@ -286,8 +266,8 @@ PAIR_CASES = (
         b_error=("TRUNCATE RESTRICT", "does not support TRUNCATE with RESTRICT"),
     ),
     PairCase(
-        "TruncateExpression.restart_identity",
-        lambda d, **kw: TruncateExpression(d, _table(d), **kw),
+        "TruncateStatement.restart_identity",
+        lambda d, **kw: TruncateStatement(d, _table(d), **kw),
         "restart_identity",
         "continue_identity",
         r"RESTART IDENTITY\b",
@@ -303,8 +283,8 @@ PAIR_CASES = (
     ),
     # --- DROP VIEW / DROP SCHEMA: same replacement argument ---
     PairCase(
-        "DropViewExpression.cascade",
-        lambda d, **kw: DropViewExpression(d, View(d, "v"), **kw),
+        "DropViewStatement.cascade",
+        lambda d, **kw: DropViewStatement(d, View(d, "v"), **kw),
         "cascade",
         "restrict",
         r"CASCADE\b",
@@ -313,8 +293,8 @@ PAIR_CASES = (
         b_error=("DROP VIEW RESTRICT", "does not support DROP VIEW RESTRICT"),
     ),
     PairCase(
-        "DropSchemaExpression.cascade",
-        lambda d, **kw: DropSchemaExpression(d, Schema(d, "s"), **kw),
+        "DropSchemaStatement.cascade",
+        lambda d, **kw: DropSchemaStatement(d, Schema(d, "s"), **kw),
         "cascade",
         "restrict",
         r"CASCADE\b",
@@ -322,20 +302,15 @@ PAIR_CASES = (
         a_error=("DROP SCHEMA CASCADE", "does not support DROP SCHEMA CASCADE"),
         b_error=("DROP SCHEMA RESTRICT", "does not support DROP SCHEMA RESTRICT"),
     ),
-    # --- set operations: ALL is spellable, DISTINCT is not (measured) ---
-    PairCase(
-        "SetOperationExpression.all_",
-        _union,
-        "all_",
-        "distinct",
-        r"\bALL\b",
-        r"\bDISTINCT\b",
-        b_error=("UNION DISTINCT", "no DISTINCT keyword in set operations"),
-    ),
+    # --- set operations: the op is a required word, not a pair -------------
+    # The pair guard models two *mutually exclusive* spellings (``a``/``b``).
+    # A set operation has one ``op`` word (``union`` / ``union_all``), so it is
+    # not a pair and does not belong here; the word forms are exercised by the
+    # roundtrip matrix and the dialect tests instead.
     # --- transactions: [NOT] DEFERRABLE is not a T-SQL transaction mode ---
     PairCase(
-        "BeginTransactionExpression.deferrable",
-        lambda d, **kw: BeginTransactionExpression(d, **kw),
+        "BeginTransactionStatement.deferrable",
+        lambda d, **kw: BeginTransactionStatement(d, **kw),
         "deferrable",
         "not_deferrable",
         r"(?<!NOT )DEFERRABLE\b",
@@ -344,8 +319,8 @@ PAIR_CASES = (
         b_error=("DEFERRABLE transaction", "the NOT DEFERRABLE transaction mode"),
     ),
     PairCase(
-        "SetTransactionExpression.deferrable",
-        lambda d, **kw: SetTransactionExpression(d, **kw),
+        "SetTransactionStatement.deferrable",
+        lambda d, **kw: SetTransactionStatement(d, **kw),
         "deferrable",
         "not_deferrable",
         r"(?<!NOT )DEFERRABLE\b",
@@ -411,7 +386,7 @@ PAIR_CASES = (
     ),
     # --- dialect-specific gap 2: CLUSTERED | NONCLUSTERED ---
     PairCase(
-        "SQLServerColumnstoreIndexExpression.clustered",
+        "SQLServerColumnstoreIndexStatement.clustered",
         _columnstore,
         "clustered",
         "nonclustered",
@@ -520,7 +495,7 @@ class TestSentinelIsGone:
 
     def test_alter_sequence_cache_zero_is_refused(self):
         with pytest.raises(ValueError, match="cache must be a positive integer"):
-            AlterSequenceExpression(_dialect(), _seq(_dialect()), cache=0)
+            AlterSequenceStatement(_dialect(), _seq(_dialect()), cache=0)
 
     def test_identity_cache_zero_is_refused(self):
         with pytest.raises(ValueError, match="cache must be a positive integer"):
@@ -532,7 +507,7 @@ class TestDialectGapValueConstraints:
 
     def test_nonclustered_columnstore_requires_key_columns(self):
         with pytest.raises(ValueError, match="NONCLUSTERED columnstore requires key columns"):
-            SQLServerColumnstoreIndexExpression(
+            SQLServerColumnstoreIndexStatement(
                 _dialect(), "ix", "t", nonclustered=True
             ).validate()
 
@@ -557,25 +532,24 @@ class TestGuardIsNotVacuous:
     def test_every_pair_is_covered(self):
         """The pairs the dialect consumes are all in this table."""
         expected = {
-            "AlterSequenceExpression.cycle",
-            "AlterSequenceExpression.cache",
-            "AlterSequenceExpression.order",
+            "AlterSequenceStatement.cycle",
+            "AlterSequenceStatement.cache",
+            "AlterSequenceStatement.order",
             "IdentityClause.cycle",
             "IdentityClause.cache",
             "IdentityClause.order",
-            "TruncateExpression.cascade",
-            "TruncateExpression.restart_identity",
-            "DropViewExpression.cascade",
-            "DropSchemaExpression.cascade",
-            "SetOperationExpression.all_",
-            "BeginTransactionExpression.deferrable",
-            "SetTransactionExpression.deferrable",
+            "TruncateStatement.cascade",
+            "TruncateStatement.restart_identity",
+            "DropViewStatement.cascade",
+            "DropSchemaStatement.cascade",
+            "BeginTransactionStatement.deferrable",
+            "SetTransactionStatement.deferrable",
             "ForeignKeyConstraint.deferrable",
             "ForeignKeyConstraint.initially_deferred",
             "TableConstraint.enforced",
             "ColumnConstraint.enforced",
             "SQLServerAlterColumn.not_null",
-            "SQLServerColumnstoreIndexExpression.clustered",
+            "SQLServerColumnstoreIndexStatement.clustered",
         }
         covered = {case.case_id for case in PAIR_CASES}
         missing = expected - covered
@@ -593,7 +567,7 @@ class TestTheGuardCanSeeADroppingFormatter:
 
     def test_alter_sequence_dropping_cycle_is_reported(self):
         case = next(
-            c for c in PAIR_CASES if c.case_id == "AlterSequenceExpression.cycle"
+            c for c in PAIR_CASES if c.case_id == "AlterSequenceStatement.cycle"
         )
 
         class DroppingCycleDialect(SQLServerDialect):
@@ -616,7 +590,7 @@ class TestTheGuardCanSeeADroppingFormatter:
 
     def test_truncate_dropping_cascade_is_reported(self):
         case = next(
-            c for c in PAIR_CASES if c.case_id == "TruncateExpression.cascade"
+            c for c in PAIR_CASES if c.case_id == "TruncateStatement.cascade"
         )
 
         class DroppingTruncateDialect(SQLServerDialect):

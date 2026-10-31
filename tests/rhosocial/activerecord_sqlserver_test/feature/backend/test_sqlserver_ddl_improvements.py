@@ -6,9 +6,9 @@ from unittest.mock import patch
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression import (
     Column,
-    CreateTableExpression,
-    CreateViewExpression,
-    QueryExpression,
+    CreateTableStatement,
+    CreateViewStatement,
+    QueryStatement,
 )
 from rhosocial.activerecord.backend.expression.objects import Table, View
 from rhosocial.activerecord.backend.expression.statements import (
@@ -23,7 +23,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDiale
 class TestSQLServerTableCapabilityGating:
     def test_table_declaration_defaults_are_absent(self):
         dialect = SQLServerDialect(version=(16, 0, 0))
-        expression = CreateTableExpression(
+        expression = CreateTableStatement(
             dialect,
             Table(dialect, "plain_table_defaults"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
@@ -37,7 +37,7 @@ class TestSQLServerTableCapabilityGating:
 
     def test_table_inherits_declaration_is_propagated_and_fails_fast(self):
         dialect = SQLServerDialect(version=(16, 0, 0))
-        expression = CreateTableExpression(
+        expression = CreateTableStatement(
             dialect,
             Table(dialect, "inheriting_table"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
@@ -50,7 +50,7 @@ class TestSQLServerTableCapabilityGating:
 
     def test_table_tablespace_declaration_is_propagated_and_fails_fast(self):
         dialect = SQLServerDialect(version=(16, 0, 0))
-        expression = CreateTableExpression(
+        expression = CreateTableStatement(
             dialect,
             Table(dialect, "tablespaced_table"),
             [ColumnDefinition(dialect, "id", IntegerType(dialect))],
@@ -68,10 +68,10 @@ class TestSQLServerViewCapabilityGating:
     def test_create_view_check_option_gated(self):
         """WITH CHECK OPTION must fail fast when the capability is off."""
         dialect = SQLServerDialect()
-        query = QueryExpression(
+        query = QueryStatement(
             dialect, select=[Column(dialect, "id")], from_=Table(dialect, "t")
         )
-        expr = CreateViewExpression(
+        expr = CreateViewStatement(
             dialect,
             view=View(dialect, "v"),
             query=query,

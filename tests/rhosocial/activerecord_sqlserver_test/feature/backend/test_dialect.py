@@ -101,10 +101,10 @@ class TestSQLServerDialectStatements:
         from rhosocial.activerecord.backend.expression.objects import Database
         from rhosocial.activerecord.backend.expression.statements.ddl_database import (
             AlterDatabaseAction,
-            AlterDatabaseExpression,
+            AlterDatabaseStatement,
         )
 
-        expr = AlterDatabaseExpression(
+        expr = AlterDatabaseStatement(
             database_dialect,
             Database(database_dialect, database),
             AlterDatabaseAction.OWNER_TO,
@@ -128,10 +128,10 @@ class TestSQLServerDialectStatements:
         from rhosocial.activerecord.backend.expression.objects import Database
         from rhosocial.activerecord.backend.expression.statements.ddl_database import (
             AlterDatabaseAction,
-            AlterDatabaseExpression,
+            AlterDatabaseStatement,
         )
 
-        expr = AlterDatabaseExpression(
+        expr = AlterDatabaseStatement(
             database_dialect,
             Database(database_dialect, "app_db"),
             AlterDatabaseAction[action],
@@ -142,9 +142,9 @@ class TestSQLServerDialectStatements:
     def test_format_create_index_basic(self, dialect: SQLServerDialect):
         """Test basic CREATE INDEX formatting."""
         from rhosocial.activerecord.backend.expression.objects import Index, Table
-        from rhosocial.activerecord.backend.expression.statements import CreateIndexExpression
+        from rhosocial.activerecord.backend.expression.statements import CreateIndexStatement
 
-        expr = CreateIndexExpression(
+        expr = CreateIndexStatement(
             dialect=dialect,
             index=Index(dialect, "idx_test"),
             table=Table(dialect, "test_table"),
@@ -159,9 +159,9 @@ class TestSQLServerDialectStatements:
     def test_format_create_unique_index(self, dialect: SQLServerDialect):
         """Test CREATE UNIQUE INDEX formatting."""
         from rhosocial.activerecord.backend.expression.objects import Index, Table
-        from rhosocial.activerecord.backend.expression.statements import CreateIndexExpression
+        from rhosocial.activerecord.backend.expression.statements import CreateIndexStatement
 
-        expr = CreateIndexExpression(
+        expr = CreateIndexStatement(
             dialect=dialect,
             index=Index(dialect, "idx_unique"),
             table=Table(dialect, "users"),

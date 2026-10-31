@@ -7,4 +7,4 @@ class SQLServerTemporalMixin:
 
     def supports_temporal_tables(self) -> bool:
         """SQL Server 2016+ supports temporal tables."""
-        return self.version >= SQL_SERVER_2016
+        return self.version_at_least(SQL_SERVER_2016)

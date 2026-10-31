@@ -3,8 +3,8 @@
 
 from rhosocial.activerecord.backend.expression.objects import Database
 from rhosocial.activerecord.backend.expression.statements.ddl_database import (
-    CreateDatabaseExpression,
-    DropDatabaseExpression,
+    CreateDatabaseStatement,
+    DropDatabaseStatement,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
@@ -21,12 +21,12 @@ def test_database_capabilities():
 
 def test_create_database_renders():
     dialect = _dialect()
-    sql, params = CreateDatabaseExpression(dialect, Database(dialect, "app")).to_sql()
+    sql, params = CreateDatabaseStatement(dialect, Database(dialect, "app")).to_sql()
     assert "CREATE DATABASE" in sql
     assert params == ()
 
 
 def test_drop_database_renders():
     dialect = _dialect()
-    sql, _ = DropDatabaseExpression(dialect, Database(dialect, "app")).to_sql()
+    sql, _ = DropDatabaseStatement(dialect, Database(dialect, "app")).to_sql()
     assert "DROP DATABASE" in sql

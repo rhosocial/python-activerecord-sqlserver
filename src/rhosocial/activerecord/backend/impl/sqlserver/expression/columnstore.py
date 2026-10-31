@@ -8,7 +8,7 @@ Columnstore indexes are the analytic workload workhorse of SQL Server:
     CREATE COLUMNSTORE INDEX cci ON t ORDER (c1, c2);       -- 2022+, ordered CCI
 
 SQL generation and version gating are delegated to the dialect's
-``format_create_columnstore_index_statement`` formatter.
+``format_columnstore_index_statement`` formatter.
 """
 
 from typing import Sequence, TYPE_CHECKING
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
 
 
-class SQLServerColumnstoreIndexExpression(BaseExpression):
+class SQLServerColumnstoreIndexStatement(BaseExpression):
     """SQL Server CREATE [CLUSTERED|NONCLUSTERED] COLUMNSTORE INDEX statement.
 
     Attributes:
@@ -38,12 +38,13 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
             columnstore (SQL Server 2022+).
 
     Example:
-        >>> expr = SQLServerColumnstoreIndexExpression(
+        >>> expr = SQLServerColumnstoreIndexStatement(
         ...     dialect, "cci", "t", clustered=True, order_columns=["c1", "c2"]
         ... )
         >>> sql, params = expr.to_sql()
         >>> assert sql == "CREATE CLUSTERED COLUMNSTORE INDEX [cci] ON [t] ORDER ([c1], [c2])"
     """
+    KIND_RESERVED = ("SQLServer",)
 
     def __init__(
         self,
@@ -78,4 +79,4 @@ class SQLServerColumnstoreIndexExpression(BaseExpression):
             raise ValueError("ORDER (...) is only valid for clustered columnstore")
 
     def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_create_columnstore_index_statement(self)
+        return self.dialect.format_columnstore_index_statement(self)

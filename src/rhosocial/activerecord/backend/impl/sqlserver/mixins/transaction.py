@@ -3,8 +3,8 @@ from typing import Any, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.transaction import (
-        BeginTransactionExpression,
-        SetTransactionExpression,
+        BeginTransactionStatement,
+        SetTransactionStatement,
     )
 
 
@@ -94,8 +94,8 @@ class SQLServerTransactionMixin:
                 f"{self.name} does not support the {spelling} transaction mode.",
             )
 
-    def format_begin_transaction(
-        self, expr: "BeginTransactionExpression"
+    def format_begin_transaction_statement(
+        self, expr: "BeginTransactionStatement"
     ) -> Tuple[str, tuple]:
         """Format BEGIN TRANSACTION for SQL Server."""
         from rhosocial.activerecord.backend.errors import UnsupportedTransactionModeError
@@ -117,7 +117,7 @@ class SQLServerTransactionMixin:
             return f"BEGIN TRANSACTION {wait_clause}", ()
         return "BEGIN TRANSACTION", ()
 
-    def format_set_transaction(self, expr: "SetTransactionExpression") -> Tuple[str, tuple]:
+    def format_set_transaction_statement(self, expr: "SetTransactionStatement") -> Tuple[str, tuple]:
         """Format SET TRANSACTION for SQL Server.
 
         SQL Server requires SET TRANSACTION ISOLATION LEVEL before BEGIN TRANSACTION.

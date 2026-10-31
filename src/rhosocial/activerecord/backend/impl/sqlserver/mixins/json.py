@@ -12,7 +12,7 @@ class SQLServerJSONMixin:
 
     def supports_json_type(self) -> bool:
         """JSON functions are supported since SQL Server 2016."""
-        return self.version >= SQL_SERVER_2016
+        return self.version_at_least(SQL_SERVER_2016)
 
     def get_json_access_operator(self) -> Optional[str]:
         """SQL Server doesn't have -> operator, uses JSON_VALUE/JSON_QUERY."""
@@ -27,15 +27,15 @@ class SQLServerJSONMixin:
 
         Args:
             expr: The JSON path node to format -- a
-                JSONDocumentExpression for ``->``, a
-                JSONTextExpression for ``->>``.
+                JSONDocumentValue for ``->``, a
+                JSONTextValue for ``->>``.
 
         Returns:
             (SQL string, params tuple).
         """
         col_sql, col_params = expr.column.to_sql()
 
-        escaped_path = self._escape_sql_string(expr.path)
+        escaped_path = self.escape_sql_string(expr.path)
         sql = f"JSON_VALUE({col_sql}, '{escaped_path}')"
         params = col_params
 
