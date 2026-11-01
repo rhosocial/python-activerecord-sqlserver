@@ -5,8 +5,6 @@ Pytest configuration for connection pool tests.
 This module provides fixtures for testing connection pools with SQL Server backends.
 """
 
-import asyncio
-import sys
 import os
 from typing import Dict, Any, Generator
 
@@ -24,16 +22,17 @@ from rhosocial.activerecord.connection.pool import (
 )
 
 
-def ensure_compatible_event_loop():
-    """Ensure event loop compatibility on Windows."""
-    if sys.platform == "win32":
-        policy = asyncio.get_event_loop_policy()
-        if not isinstance(policy, asyncio.WindowsSelectorEventLoopPolicy):
-            new_policy = asyncio.WindowsSelectorEventLoopPolicy()
-            asyncio.set_event_loop_policy(new_policy)
-
-
-ensure_compatible_event_loop()
+# No event loop workaround is needed on Windows. This backend's async driver
+# (aioodbc, which drives pyodbc) runs its work in a thread pool rather than
+# registering the socket with the loop, so the platform's default
+# ProactorEventLoop serves it fine; only a driver that registers the socket
+# itself (the way psycopg does) requires a selector loop. A
+# `WindowsSelectorEventLoopPolicy` switch used to sit here, copied from the
+# postgres suite -- it is deprecated for removal in Python 3.16, and
+# switching it would take asyncio subprocess and pipe I/O down with it. Do
+# not reintroduce it: if a future driver needs a selector loop, follow the
+# postgres suite's pytest_asyncio_loop_factories hook instead, which scopes
+# the choice to the tests rather than the process.
 
 # --- Scenario Loading Logic ---
 
