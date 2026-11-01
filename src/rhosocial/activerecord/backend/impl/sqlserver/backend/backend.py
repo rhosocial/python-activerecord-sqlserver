@@ -657,11 +657,11 @@ class SQLServerBackend(
         """Create a SQL Server introspector.
         
         Returns:
-            SyncSQLServerIntrospector instance
+            SQLServerIntrospector instance
         """
-        from ..introspection import SyncSQLServerIntrospector
-        from rhosocial.activerecord.backend.introspection.executor import SyncIntrospectorExecutor
-        return SyncSQLServerIntrospector(self, SyncIntrospectorExecutor(self))
+        from ..introspection import SQLServerIntrospector
+        from rhosocial.activerecord.backend.introspection.executor import IntrospectorExecutor
+        return SQLServerIntrospector(self, IntrospectorExecutor(self))
     
     def _parse_explain_result(self, raw_rows, sql, duration):
         """Parse SQL Server EXPLAIN result.

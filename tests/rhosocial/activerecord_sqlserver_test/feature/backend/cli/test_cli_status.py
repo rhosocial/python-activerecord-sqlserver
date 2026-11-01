@@ -231,7 +231,7 @@ class TestHandleSyncDispatch:
         self, fake_backend_cls, monkeypatch, capsys, status_type, method
     ):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         RecordingIntrospector.instances = []
@@ -241,7 +241,7 @@ class TestHandleSyncDispatch:
 
     def test_overview_dispatch_and_json_payload(self, fake_backend_cls, monkeypatch, capsys):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         RecordingIntrospector.instances = []
@@ -256,7 +256,7 @@ class TestHandleSyncDispatch:
         self, fake_backend_cls, monkeypatch, capsys, fmt
     ):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(make_args(["status", "all", "--database", "db", "-o", fmt]))
@@ -268,7 +268,7 @@ class TestHandleSyncDispatch:
     ):
         assert status_mod.RICH_AVAILABLE is False  # rich not installed in this env
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(
@@ -281,7 +281,7 @@ class TestHandleSyncDispatch:
         self, fake_backend_cls, monkeypatch, capsys
     ):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(make_args(["status", "config", "--database", "db", "-o", "csv"]))
@@ -290,7 +290,7 @@ class TestHandleSyncDispatch:
 
     def test_disconnect_called_in_finally(self, fake_backend_cls, monkeypatch, capsys):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(make_args(["status", "users", "--database", "db"]))
@@ -298,7 +298,7 @@ class TestHandleSyncDispatch:
 
     def test_connection_config_resolved_from_args(self, fake_backend_cls, monkeypatch, capsys):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         argv = [
@@ -325,7 +325,7 @@ class TestHandleSyncDispatch:
         self, fake_backend_cls, monkeypatch, ssl_mode, expected_encrypt, expected_trust
     ):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(
@@ -350,7 +350,7 @@ class TestHandleSyncDispatch:
         self, fake_backend_cls, monkeypatch, extra_args, expected_encrypt, expected_trust
     ):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(make_args(["status", "users", "--database", "db"] + extra_args))
@@ -360,7 +360,7 @@ class TestHandleSyncDispatch:
 
     def test_ssl_disabled_disables_encrypt(self, fake_backend_cls, monkeypatch):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(
@@ -372,7 +372,7 @@ class TestHandleSyncDispatch:
 
     def test_ssl_verify_full_requires_cert_check(self, fake_backend_cls, monkeypatch):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(
@@ -384,7 +384,7 @@ class TestHandleSyncDispatch:
 
     def test_trusted_connection_passthrough(self, fake_backend_cls, monkeypatch):
         monkeypatch.setattr(
-            f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector", RecordingIntrospector
+            f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector", RecordingIntrospector
         )
         monkeypatch.setattr(status_mod, "SQLServerBackend", fake_backend_cls)
         status_mod.handle(
@@ -408,12 +408,12 @@ class TestHandleErrors:
                     raise introspector_exc
 
             monkeypatch.setattr(
-                f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector",
+                f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector",
                 ExplodingIntrospector,
             )
         else:
             monkeypatch.setattr(
-                f"{STATUS_INTROSPECTOR_MODULE}.SyncSQLServerStatusIntrospector",
+                f"{STATUS_INTROSPECTOR_MODULE}.SQLServerStatusIntrospector",
                 RecordingIntrospector,
             )
         with pytest.raises(SystemExit) as exc:

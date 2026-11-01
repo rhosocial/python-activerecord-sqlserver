@@ -20,7 +20,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.backend import async_backend 
 from rhosocial.activerecord.backend.impl.sqlserver.cli import introspect as introspect_mod
 from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
     AsyncSQLServerIntrospector,
-    SyncSQLServerIntrospector,
+    SQLServerIntrospector,
 )
 
 
@@ -288,7 +288,7 @@ class TestDispatchContract:
         if kind in ("columns", "indexes", "foreign-keys", "extended-properties"):
             argv.append("users")
         for method, _kwargs in introspect_mod._steps(make_args(argv)):
-            assert hasattr(SyncSQLServerIntrospector, method), method
+            assert hasattr(SQLServerIntrospector, method), method
             assert hasattr(AsyncSQLServerIntrospector, method), method
 
     def test_database_takes_no_object_name(self):

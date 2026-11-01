@@ -126,13 +126,13 @@ def _format_size(size_bytes: int) -> str:
 def _handle_status_sync(args, backend: SQLServerBackend, provider):
     """Handle status subcommand synchronously."""
     from rhosocial.activerecord.backend.introspection.status import StatusCategory
-    from ..introspection.status_introspector import SyncSQLServerStatusIntrospector
+    from ..introspection.status_introspector import SQLServerStatusIntrospector
 
     try:
         backend.connect()
         backend.introspect_and_adapt()
 
-        status_introspector = SyncSQLServerStatusIntrospector(backend)
+        status_introspector = SQLServerStatusIntrospector(backend)
         status_type = args.type
 
         if status_type == "all":

@@ -1,7 +1,7 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/introspection/introspector.py
 """SQL Server concrete introspectors.
 
-Implements SyncAbstractIntrospector and AsyncAbstractIntrospector for SQL Server
+Implements AbstractIntrospector and AsyncAbstractIntrospector for SQL Server
 using INFORMATION_SCHEMA and sys.* catalog views.
 """
 
@@ -11,12 +11,12 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.introspection.base import (
     IntrospectorMixin,
-    SyncAbstractIntrospector,
+    AbstractIntrospector,
     AsyncAbstractIntrospector,
 )
 from rhosocial.activerecord.backend.introspection.cache import IntrospectionCache
 from rhosocial.activerecord.backend.introspection.executor import (
-    SyncIntrospectorExecutor,
+    IntrospectorExecutor,
     AsyncIntrospectorExecutor,
 )
 from rhosocial.activerecord.backend.introspection.types import (
@@ -627,15 +627,15 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             return None
 
 
-class SyncSQLServerIntrospector(
-    SQLServerIntrospectorMixin, SyncAbstractIntrospector
+class SQLServerIntrospector(
+    SQLServerIntrospectorMixin, AbstractIntrospector
 ):
     """Synchronous introspector for SQL Server backends."""
 
     def __init__(
         self,
         backend: Any,
-        executor: SyncIntrospectorExecutor,
+        executor: IntrospectorExecutor,
         cache: Optional[IntrospectionCache] = None,
     ) -> None:
         super().__init__(backend, executor, cache)

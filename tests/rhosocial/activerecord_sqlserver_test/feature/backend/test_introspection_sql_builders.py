@@ -45,12 +45,12 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
     SQLServerXmlType,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
-    SyncSQLServerIntrospector,
-    SyncSQLServerStatusIntrospector,
+    SQLServerIntrospector,
+    SQLServerStatusIntrospector,
 )
 
 
-def make_introspector(version=(16, 0, 0)) -> SyncSQLServerIntrospector:
+def make_introspector(version=(16, 0, 0)) -> SQLServerIntrospector:
     config = SQLServerConnectionConfig(
         host="localhost",
         port=1433,
@@ -59,7 +59,7 @@ def make_introspector(version=(16, 0, 0)) -> SyncSQLServerIntrospector:
         password="",
     )
     backend = SQLServerBackend(connection_config=config, version=version)
-    introspector = SyncSQLServerIntrospector(backend, executor=object())
+    introspector = SQLServerIntrospector(backend, executor=object())
     return introspector
 
 
@@ -673,7 +673,7 @@ class TestParseBackendSpecificTypes:
         assert (prop.class_id, prop.major_id, prop.minor_id) == (1, 77, 0)
 
 
-def make_status_introspector(version=(16, 0, 0)) -> SyncSQLServerStatusIntrospector:
+def make_status_introspector(version=(16, 0, 0)) -> SQLServerStatusIntrospector:
     config = SQLServerConnectionConfig(
         host="localhost",
         port=1433,
@@ -682,7 +682,7 @@ def make_status_introspector(version=(16, 0, 0)) -> SyncSQLServerStatusIntrospec
         password="",
     )
     backend = SQLServerBackend(connection_config=config, version=version)
-    return SyncSQLServerStatusIntrospector(backend)
+    return SQLServerStatusIntrospector(backend)
 
 
 class TestStatusQueries:

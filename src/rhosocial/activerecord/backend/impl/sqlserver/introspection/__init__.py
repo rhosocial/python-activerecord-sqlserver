@@ -1,9 +1,9 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/introspection/__init__.py
 """SQL Server schema introspection."""
 
-from .introspector import SyncSQLServerIntrospector, AsyncSQLServerIntrospector
+from .introspector import SQLServerIntrospector, AsyncSQLServerIntrospector
 from .status_introspector import (
-    SyncSQLServerStatusIntrospector,
+    SQLServerStatusIntrospector,
     AsyncSQLServerStatusIntrospector,
 )
 from .types import (
@@ -14,9 +14,9 @@ from .types import (
 )
 
 __all__ = [
-    "SyncSQLServerIntrospector",
+    "SQLServerIntrospector",
     "AsyncSQLServerIntrospector",
-    "SyncSQLServerStatusIntrospector",
+    "SQLServerStatusIntrospector",
     "AsyncSQLServerStatusIntrospector",
     "SQLServerExtendedPropertyInfo",
     "SQLServerRoutineInfo",
