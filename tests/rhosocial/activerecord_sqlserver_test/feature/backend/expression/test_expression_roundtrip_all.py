@@ -109,7 +109,7 @@ from typing import Any, Dict
 
 import pytest
 
-from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.dialect.exceptions import (ProtocolNotImplementedError, UnsupportedFeatureError)
 from rhosocial.activerecord.backend.expression.core import Column, Literal
 from rhosocial.activerecord.backend.expression.objects import (
     Database,
@@ -1030,7 +1030,18 @@ _NO_SUCH_TYPE = "does not support the generic type"
 #: fails here instead of passing quietly -- which is the whole point, given that
 #: this matrix used to swallow every one of these.
 LEGITIMATE_NON_RENDERS = {
-    # ---- bases that name an expression category, not a renderable thing ----
+        # ---- core introspection families this dialect does not answer ----
+    #  SQL Server keeps its use statistics in dynamic management views (sys.dm_db_index_usage_stats), which live in a
+    # query against the live instance rather than a catalogue the dialect can render from a schema name alone. The
+    # probes answer False pending a decision on how that dependency is expressed.
+    "rhosocial.activerecord.backend.expression.introspection.UnusedIndexesQueryStatement": (
+        ProtocolNotImplementedError, 'does not implement ',
+    ),
+    "rhosocial.activerecord.backend.expression.introspection.TableUsageStatsQueryStatement": (
+        ProtocolNotImplementedError, 'does not implement ',
+    ),
+
+# ---- bases that name an expression category, not a renderable thing ----
     # Each of these is a base class that deliberately declares no `format_method`,
     # so `to_sql()` reports that there is nothing to dispatch. They are not
     # `inspect.isabstract` -- they are concrete enough to construct -- so the
