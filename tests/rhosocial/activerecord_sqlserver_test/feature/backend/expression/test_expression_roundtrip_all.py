@@ -1030,6 +1030,20 @@ _NO_SUCH_TYPE = "does not support the generic type"
 #: fails here instead of passing quietly -- which is the whole point, given that
 #: this matrix used to swallow every one of these.
 LEGITIMATE_NON_RENDERS = {
+    # ---- core operational families this dialect does not answer ----
+    #  SQL Server's use statistics live in dynamic management views (sys.dm_db_index_usage_stats, sys.sql_expression_dependencies) that describe a live instance rather than a schema-scoped catalogue; DDL likewise has no per-object retrieval call. Pending a decision on carrying that dependency, the probes answer False.
+    "rhosocial.activerecord.backend.expression.introspection.RuntimeMetricsQueryStatement": (
+        ProtocolNotImplementedError, 'does not implement ',
+    ),
+    "rhosocial.activerecord.backend.expression.introspection.IndexUsageStatsQueryStatement": (
+        ProtocolNotImplementedError, 'does not implement ',
+    ),
+    "rhosocial.activerecord.backend.expression.introspection.ObjectDependencyQueryStatement": (
+        ProtocolNotImplementedError, 'does not implement ',
+    ),
+    "rhosocial.activerecord.backend.expression.introspection.DDLStatementQueryStatement": (
+        ProtocolNotImplementedError, 'does not implement ',
+    ),
         # ---- core introspection families this dialect does not answer ----
     #  SQL Server keeps its use statistics in dynamic management views (sys.dm_db_index_usage_stats), which live in a
     # query against the live instance rather than a catalogue the dialect can render from a schema name alone. The
