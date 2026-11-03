@@ -39,10 +39,13 @@ if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
     from rhosocial.activerecord.backend.introspection.types import IntrospectionScope
     from rhosocial.activerecord.backend.expression.introspection import (
+        ColumnDataProfileQueryStatement,
         ColumnInfoQueryStatement,
+        ColumnValueSampleQueryStatement,
         DatabaseInfoQueryStatement,
         ForeignKeyQueryStatement,
         IndexInfoQueryStatement,
+        JoinCoverageQueryStatement,
         TableListQueryStatement,
         TriggerListQueryStatement,
         ViewInfoQueryStatement,
@@ -1070,3 +1073,441 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             where=self._eq(self._col("name", "s"), self._lit(target)),
             order_by=[self._col("name", "q")],
         )
+
+    # ========== Data Profiles (row-shaped answers) ==========
+
+    def supports_column_data_profile(self) -> bool:
+        """SQL Server answers a column data profile by aggregating the rows.
+
+        SQL Server publishes statistics, and they are the reason this probe is
+        worth a paragraph rather than a sentence: ``sys.stats`` names a
+        statistics object, ``sys.stats_columns`` maps that object to one or
+        more columns, and ``sys.dm_db_stats_properties`` reports what the last
+        update of *that object* measured -- ``rows``, ``rows_sampled``,
+        ``steps``, ``modification_counter``, ``last_updated`` and
+        ``persisted_sample_percent``. The key is the object, not the column. A
+        single-column statistics object is a fair proxy for its column, but a
+        two-column one describes the pair's leading prefix, and the same column
+        can appear in several objects with different samples, so summing or
+        picking one would invent a per-column fact the catalogue does not hold.
+
+        What is missing is sharper than what is keyed oddly. There is no
+        per-column null count anywhere in the catalogue -- nullability is a
+        *declaration* in ``sys.columns``, never a measurement -- and no
+        per-column distinct count either; ``sys.dm_db_stats_histogram``
+        (2016+) reports ``range_high_key``/``equal_rows``/``distinct_range_rows``
+        per step of one object, which is a bucket summary for that object's
+        leading column, not a count of the values in a column. The one figure
+        the catalogue could contribute, ``last_updated``, would be the vintage
+        of a statistics object, not of the profile -- and this family's rule is
+        that a figure travels with the source and vintage that produced it.
+
+        So all five figures come from one place, and it is the rows: exact,
+        and paid for in time. The label is ``aggregate``, projected into each
+        row rather than stamped onto the result, so nothing here can be
+        mistaken for an estimate of somebody's last sample.
+        """
+        return True
+
+    def supports_column_value_sample(self) -> bool:
+        """SQL Server answers a value listing by aggregating with a limit.
+
+        The nearest catalogue answer is ``sys.dm_db_stats_histogram``, and it
+        answers a different question: a histogram step's ``equal_rows`` counts
+        the rows equal to that step's ``range_high_key``, so the list it could
+        produce would be bucket boundaries with estimated weights -- only for
+        the leading column of a statistics object, and only for the values
+        whose boundaries survived bucketing. A ``GROUP BY`` answers what the
+        caller asked for, exactly, at the cost of a grouped scan.
+        """
+        return True
+
+    def supports_join_coverage(self) -> bool:
+        """SQL Server answers overlap by counting distinct values on both sides.
+
+        Exact: two ``COUNT(DISTINCT ...)`` denominators and one intersection,
+        with ``NULL`` excluded on both sides because a NULL is not a value that
+        could ever join. Answering ``True`` is right because the probe asks
+        whether the engine *can* answer, not whether it can answer cheaply --
+        the cost, two scans of each column, belongs in the docstring.
+        """
+        return True
+
+    def _user_relation(self, table_name: str, target: str, alias: Optional[str] = None):
+        """A user table as a FROM source, named in *target*'s schema.
+
+        The opposite of the ``sys`` relations above: this one is whatever its
+        owner declared, and it lives in a caller-named schema, so both parts go
+        through the dialect's identifier renderer. ``target`` is never empty --
+        the formatters below fall back to :data:`DEFAULT_SCHEMA` the same way
+        every other statement in this module does.
+
+        ``alias`` is what tells the two sides of a coverage measurement apart;
+        it is quoted like every other identifier.
+        """
+        return self._relation(table_name, target, alias=alias)
+
+    def _profile_cast(self, node, type_name: str, alias: Optional[str] = None):
+        """``CAST(node AS type_name)`` for a node that is not a column.
+
+        :meth:`_cast` asks the node to cast *itself*, which only a reference
+        carrying a declared type can do; a literal, a ``CASE`` and a function
+        call are values, so the cast is built around them instead. The type is
+        parsed by the dialect's own parser, so the spelling in the statement is
+        the one this backend uses everywhere else.
+        """
+        from rhosocial.activerecord.backend.expression.core import CastExpression
+        from rhosocial.activerecord.backend.expression.types._base import DataType
+
+        dialect = self._node_dialect
+        return CastExpression(
+            dialect, node, DataType.parse_data_type_str(dialect, type_name), alias=alias
+        )
+
+    def _data_profile_label(self, text: Optional[str], alias: str):
+        """A constant label as a named select-list entry.
+
+        ``Literal`` is deliberately unaliasable -- a value has nothing to name
+        (see :class:`~...expression.core.Literal`) -- so the constant is cast
+        to text, which is the smallest node in the tree that produces a named
+        result. The cast is not there for its type: it is there so the label
+        can be called ``source``, which is what the parser reads. The width is
+        stated because SQL Server's ``CHAR`` and ``NVARCHAR`` default to length
+        1 in a ``CAST``, which would truncate the word to its first character.
+        """
+        return self._profile_cast(
+            self._lit(text, inline=True), "NVARCHAR(128)", alias
+        )
+
+    def _profile_arm(self, table_name: str, target: str, column_name: str):
+        """One column's arm of the profile, as a query node.
+
+        The seven entries are the family's contract: the column's own name, the
+        null count, the distinct count, the two endpoints, the row count the
+        parser divides by, and the provenance.
+
+        Three type decisions are written into this projection rather than left
+        to the reader. The null flag is cast to ``BIGINT`` before it is summed,
+        and the row count is ``COUNT_BIG(*)`` rather than ``COUNT(*)``, because
+        SQL Server's ``SUM`` and ``COUNT`` return ``INT``: a table with more
+        than 2,147,483,647 rows -- exactly the table worth profiling -- would
+        overflow the very counts the profile exists to report. The two
+        endpoints are cast to ``NVARCHAR(MAX)`` for a reason that belongs to
+        the union rather than to this arm, and is stated at
+        :meth:`format_column_data_profile_query_statement`.
+        """
+        from rhosocial.activerecord.backend.expression import (
+            CaseExpression,
+            CountFunction,
+        )
+
+        column = self._col(column_name)
+        null_flag = CaseExpression(
+            self._node_dialect,
+            cases=[(column.is_null(), self._lit(1, inline=True))],
+            else_result=self._lit(0, inline=True),
+        )
+        return self._query(
+            [
+                # The name is bound rather than written into the statement: it
+                # is a value, and a non-prefixed literal would be typed with
+                # the database's code page, so an identifier outside that page
+                # would arrive as question marks. A parameter is typed Unicode
+                # by the driver, and it keeps the caller's text out of the SQL.
+                self._profile_cast(
+                    self._lit(column_name), "NVARCHAR(128)", "column_name"
+                ),
+                self._fn(
+                    "SUM", self._profile_cast(null_flag, "BIGINT")
+                ).as_("null_count"),
+                CountFunction(self._node_dialect, column, distinct=True).as_(
+                    "distinct_count"
+                ),
+                self._profile_cast(
+                    self._fn("MIN", column), "NVARCHAR(MAX)", "min_value"
+                ),
+                self._profile_cast(
+                    self._fn("MAX", column), "NVARCHAR(MAX)", "max_value"
+                ),
+                self._fn("COUNT_BIG", self._row_count_wildcard()).as_("row_count"),
+                self._data_profile_label("aggregate", "source"),
+            ],
+            from_=self._user_relation(table_name, target),
+        )
+
+    def format_column_data_profile_query_statement(
+        self, expr: "ColumnDataProfileQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Format a per-column profile by aggregating the rows themselves.
+
+        The catalogue was audited and refused -- see
+        :meth:`supports_column_data_profile` for what is keyed by statistics
+        object and what is simply absent -- so every figure is counted and the
+        row says so. The ``aggregate`` label is projected *into* each row
+        rather than stamped onto the result afterwards: a consumer comparing a
+        SQL Server profile with a PostgreSQL estimate can tell the two apart
+        without knowing which engine it asked.
+
+        One arm per column, over the column list the expression carries: SQL
+        cannot pivot ``SUM(CASE WHEN col IS NULL ...)`` across columns it was
+        never told about, so an aggregating dialect genuinely needs that list
+        where a catalogue-based one does not.
+
+        The one place in this module where a set operator is written as text.
+        Every arm is a real :class:`~...expression.statements.dql.QueryStatement`
+        -- the renderer owns its projection, its identifiers and its relation
+        -- because a ``UNION ALL`` over a column list known only at run time
+        has no node to represent it: the column list is a tuple on the
+        expression, not an operand in the tree. So each arm is rendered on its
+        own, its parameters are concatenated in arm order, and the rendered
+        arms are joined by the set operator's word. Nothing else here is text.
+
+        Why the endpoints are cast to text, which is the one place this differs
+        from the MySQL-family implementation. A union resolves *one* result type
+        per column position by data-type precedence and implicitly converts the
+        other arms to it, so the ``min_value`` slot would have to hold an
+        ``int`` from one arm and a ``varchar`` from another: ``int`` wins, and
+        the text value is converted to a number, which fails. A ``decimal``
+        beside a ``datetime`` fails the same way in the other direction.
+        Nothing in the formatter knows a column's declared type, so there is no
+        per-type cast to choose; text is the one target every scalar column
+        converts to, and the endpoints arrive as the engine's default rendering
+        of the value. The figures are exact; the Python types are the union's,
+        and a ``datetime`` endpoint renders without its sub-minute part because
+        that is what SQL Server's style-free conversion produces.
+
+        ``null_count`` rather than a fraction: dividing by a row count that may
+        legitimately be zero belongs in the parser, not in a SQL expression
+        that would then have to guard against it. ``SUM`` over no rows is NULL,
+        so an empty table answers "not measured" for the fraction rather than
+        ``0.0``, which would claim a measurement nobody made.
+
+        A table holding an ``xml``, ``text``/``ntext``/``image`` or CLR-typed
+        column cannot be profiled this way at all: SQL Server refuses ``MIN``
+        and ``MAX`` on those types, and the statement fails rather than
+        answering a partial profile. That is the honest limit of an aggregate,
+        and it is stated here rather than discovered as a server error.
+
+        An empty column list answers with no rows. That case cannot arise from
+        a real table -- SQL Server requires at least one column -- but the
+        branch has to render, so it is a statement that selects no rows rather
+        than a special-case string.
+        """
+        params = expr.get_params()
+        target = params.get("schema") or DEFAULT_SCHEMA
+
+        arms = []
+        parameters: "list" = []
+        for name in expr.columns:
+            sql, arm_parameters = self._profile_arm(
+                params.get("table_name"), target, name
+            ).to_sql()
+            arms.append(sql)
+            parameters.extend(arm_parameters)
+
+        if not arms:
+            return self._query(
+                [self._data_profile_label(None, "column_name")],
+                where=self._eq(
+                    self._lit(0, inline=True), self._lit(1, inline=True)
+                ),
+            ).to_sql()
+
+        return " UNION ALL ".join(arms), tuple(parameters)
+
+    def format_column_value_sample_query_statement(
+        self, expr: "ColumnValueSampleQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Format a most-frequent-values listing with a grouped scan.
+
+        Nothing usable is precomputed -- see
+        :meth:`supports_column_value_sample` for what a histogram step does and
+        does not answer -- so this costs a ``GROUP BY`` over the column plus a
+        sort of the groups: the same order as the profile itself, which is why
+        the two are separate probes rather than one call that would make the
+        cheap half pay for the dear one.
+
+        ``ORDER BY COUNT_BIG(*) DESC`` is what makes the answer "the most
+        frequent values" rather than "the first values". ``COUNT_BIG`` rather
+        than ``COUNT`` for the same reason as the profile: the count of a
+        value's rows can pass 2,147,483,647 on a large table, and an overflow
+        there would be reported as an error rather than read as a large group.
+        Ties break by the value so two runs of the same query agree.
+
+        The cap rides the dialect's pagination clause, ``OFFSET 0 ROWS FETCH
+        NEXT n ROWS ONLY``, which is SQL Server 2012+ syntax; ``n`` is an
+        ``int`` the statement carries, so no caller text is spliced into the
+        statement.
+        """
+        params = expr.get_params()
+        target = params.get("schema") or DEFAULT_SCHEMA
+        column_name = expr.column_name
+        counts = self._fn("COUNT_BIG", self._row_count_wildcard())
+
+        return self._select(
+            [
+                self._col(column_name).as_("value"),
+                counts.as_("count"),
+            ],
+            from_=self._user_relation(expr.table_name, target),
+            group_by=[self._col(column_name)],
+            order_by=[
+                (self._fn("COUNT_BIG", self._row_count_wildcard()), "DESC"),
+                (self._col(column_name), "ASC"),
+            ],
+            limit=int(expr.limit),
+        )
+
+    def _coverage_fraction(self, column, source, other_column, other_source):
+        """One side of the overlap: the share of *column* the other side holds.
+
+        The numerator counts the *distinct* values of *column* that also occur
+        in *other_column*, as a ``COUNT(*)`` over a derived table of those
+        distinct values; the denominator counts *column*'s distinct non-NULL
+        values. Distinct on both sides is what makes the figure a coverage of
+        values rather than of rows -- a key repeated a thousand times that
+        matches once would otherwise read as well covered.
+
+        ``IS NOT NULL`` is written on both halves rather than relied upon. In
+        the numerator it is load-bearing: a DISTINCT treats a NULL as one
+        value, so counting it would credit the tested side with a match it does
+        not have. In the divisor ``COUNT(DISTINCT ...)`` skips NULLs on its
+        own, but the statement says so explicitly, because the share is of the
+        values that could join and that is the fact being measured.
+        ``NULLIF(..., 0)`` then makes a column with no value at all answer NULL
+        rather than 0, which the parser reads as "no fraction": the difference
+        between "nothing matched" and "nothing to match" survives to the caller.
+
+        The numerator is multiplied by ``1.0`` before it is divided, and that
+        is not decoration: SQL Server divides two integers with integer
+        division, so ``COUNT(*) / COUNT(DISTINCT ...)`` would answer 0 or 1 and
+        lose every fraction between them. The multiplier makes the division
+        decimal, which is exact for these counts rather than approximate.
+        """
+        from rhosocial.activerecord.backend.expression import (
+            FunctionCall,
+            InPredicate,
+            QueryStatement,
+            SelectModifier,
+            Subquery,
+            WhereClause,
+        )
+        from rhosocial.activerecord.backend.expression.functions import (
+            CountFunction,
+        )
+        from rhosocial.activerecord.backend.expression.operators import (
+            ArithmeticOperation,
+            ArithmeticOperator,
+        )
+        from rhosocial.activerecord.backend.expression.sources import (
+            DerivedTableSource,
+        )
+
+        dialect = self._node_dialect
+        # ``DISTINCT`` is a statement modifier rather than a predicate, so the
+        # overlap is built as a statement rather than through ``self._query``:
+        # a node carries every parameter it was given at construction and is
+        # never edited afterwards.
+        overlap = QueryStatement(
+            dialect,
+            select=[column],
+            from_=source,
+            where=WhereClause(
+                dialect,
+                self._and(
+                    self._is_not_null(column),
+                    InPredicate(
+                        dialect,
+                        column,
+                        Subquery(
+                            dialect,
+                            self._query(
+                                [other_column],
+                                from_=other_source,
+                                where=self._is_not_null(other_column),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            select_modifier=SelectModifier.DISTINCT,
+        )
+        covered = self._subquery(
+            [self._fn("COUNT_BIG", self._row_count_wildcard())],
+            from_=DerivedTableSource(dialect, overlap, alias="covered"),
+        )
+        total = self._subquery(
+            [
+                FunctionCall(
+                    dialect,
+                    "NULLIF",
+                    CountFunction(dialect, column, distinct=True),
+                    self._lit(0, inline=True),
+                )
+            ],
+            from_=source,
+            where=self._is_not_null(column),
+        )
+        scaled = ArithmeticOperation(
+            dialect,
+            ArithmeticOperator.MUL,
+            covered,
+            self._lit(1.0, inline=True),
+        )
+        return ArithmeticOperation(
+            dialect, ArithmeticOperator.DIV, scaled, total
+        )
+
+    def format_join_coverage_query_statement(
+        self, expr: "JoinCoverageQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Format a two-sided measurement of two columns' value domains.
+
+        Unlike every other statement in this module, this one names two user
+        tables rather than one catalogue relation: the question is a relation
+        between two objects, so both sides are carried explicitly and their
+        identifiers are the dialect's to quote (see :meth:`_user_relation`).
+        The aliases ``l`` and ``r`` are what keep the two columns apart in the
+        rendered statement, and they are quoted like every other identifier.
+
+        The row carries both fractions because neither is meaningful alone. A
+        left share of 1.0 beside a right share of 0.2 says every tested value
+        exists on the other side while most of that other domain is
+        unaccounted for; a single similarity score would average the two and
+        describe neither. A caller deciding whether a join is worth writing
+        needs to know which direction is incomplete.
+
+        Both figures are counted over *distinct* values, with NULLs excluded
+        from the numerators and the denominators alike -- see
+        :meth:`_coverage_fraction` for both rules and for the ``1.0`` that
+        keeps SQL Server from answering an integer division.
+
+        The cost is the two sides read for their distinct domains plus an
+        intersection of the two -- a double scan, and the reason the probe
+        belongs behind an explicit call rather than in any automatic pass.
+
+        Collations are not reconciled. SQL Server compares the two columns
+        under whichever collation applies to the comparison, so values the
+        database would treat as equal may be counted as distinct here, and the
+        fractions are a *lower* bound across mismatched collations -- never an
+        upper one.
+        """
+        params = expr.get_params()
+        target = params.get("schema") or DEFAULT_SCHEMA
+
+        left_source = self._user_relation(params.get("left_table"), target, "l")
+        right_source = self._user_relation(params.get("right_table"), target, "r")
+        left_column = self._col(params.get("left_column"), "l")
+        right_column = self._col(params.get("right_column"), "r")
+
+        return self._select(
+            [
+                self._coverage_fraction(
+                    left_column, left_source, right_column, right_source
+                ).as_("left_coverage"),
+                self._coverage_fraction(
+                    right_column, right_source, left_column, left_source
+                ).as_("right_coverage"),
+            ]
+        )
+

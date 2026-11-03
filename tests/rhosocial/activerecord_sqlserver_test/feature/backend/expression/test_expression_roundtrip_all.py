@@ -1030,17 +1030,12 @@ _NO_SUCH_TYPE = "does not support the generic type"
 #: fails here instead of passing quietly -- which is the whole point, given that
 #: this matrix used to swallow every one of these.
 LEGITIMATE_NON_RENDERS = {
-    # ---- core data-profile families this dialect does not answer ----
-    #  SQL Server's column statistics live in `sys.dm_db_stats_*` and `STATS_DATE`, keyed by statistics object rather than by column, and reading them means mapping stats objects back to columns. The probes answer False pending that mapping.
-    "rhosocial.activerecord.backend.expression.introspection.ColumnDataProfileQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
-    ),
-    "rhosocial.activerecord.backend.expression.introspection.ColumnValueSampleQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
-    ),
-    "rhosocial.activerecord.backend.expression.introspection.JoinCoverageQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
-    ),
+    # ---- core data-profile families -----------------------------------------
+    # The three rows that stood here are gone: this dialect now renders all of
+    # them. ``sys.stats`` keys its statistics by object rather than by column
+    # and publishes no per-column null fraction or distinct count, so every
+    # figure is aggregated from the rows and labelled ``aggregate``; see
+    # ``SQLServerIntrospectionMixin.supports_column_data_profile``.
     # ---- core operational families this dialect does not answer ----
     #  SQL Server's use statistics live in dynamic management views (sys.dm_db_index_usage_stats, sys.sql_expression_dependencies) that describe a live instance rather than a schema-scoped catalogue; DDL likewise has no per-object retrieval call. Pending a decision on carrying that dependency, the probes answer False.
     "rhosocial.activerecord.backend.expression.introspection.RuntimeMetricsQueryStatement": (
