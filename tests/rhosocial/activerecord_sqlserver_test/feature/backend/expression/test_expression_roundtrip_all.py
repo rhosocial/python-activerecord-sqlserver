@@ -1037,27 +1037,26 @@ LEGITIMATE_NON_RENDERS = {
     # figure is aggregated from the rows and labelled ``aggregate``; see
     # ``SQLServerIntrospectionMixin.supports_column_data_profile``.
     # ---- core operational families this dialect does not answer ----
-    #  SQL Server's use statistics live in dynamic management views (sys.dm_db_index_usage_stats, sys.sql_expression_dependencies) that describe a live instance rather than a schema-scoped catalogue; DDL likewise has no per-object retrieval call. Pending a decision on carrying that dependency, the probes answer False.
-    "rhosocial.activerecord.backend.expression.introspection.RuntimeMetricsQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
-    ),
-    "rhosocial.activerecord.backend.expression.introspection.IndexUsageStatsQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
-    ),
-    "rhosocial.activerecord.backend.expression.introspection.ObjectDependencyQueryStatement": (
+    #  The four rows that stood here for the unused-index, index-counter,
+    #  runtime and dependency families are gone: this dialect renders all four.
+    #  The dynamic management views describe a live instance rather than a
+    #  schema-scoped catalogue, and that dependency is carried by joining the
+    #  DMV through sys.objects and sys.schemas -- the same construct the
+    #  per-table storage read already uses -- so the schema filter the
+    #  statement needs is applied where the statement is built. The version
+    #  floor and the VIEW DATABASE STATE / VIEW SERVER STATE grants each family
+    #  needs are stated on the probes themselves.
+    #  Two families remain unanswered and keep a pin. TableUsageStats:
+    #  SQL Server's counters are per *index*, and summing them per table would
+    #  be a derived figure wearing the shape of a measured counter; inserts
+    #  and deletes are not tracked at all. DDLStatement: the engine has no
+    #  per-object DDL retrieval call -- OBJECT_DEFINITION holds a routine's
+    #  body, not a CREATE TABLE -- so answering would mean assembling a
+    #  reconstruction and labelling it native.
+    "rhosocial.activerecord.backend.expression.introspection.TableUsageStatsQueryStatement": (
         ProtocolNotImplementedError, 'does not implement ',
     ),
     "rhosocial.activerecord.backend.expression.introspection.DDLStatementQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
-    ),
-        # ---- core introspection families this dialect does not answer ----
-    #  SQL Server keeps its use statistics in dynamic management views (sys.dm_db_index_usage_stats), which live in a
-    # query against the live instance rather than a catalogue the dialect can render from a schema name alone. The
-    # probes answer False pending a decision on how that dependency is expressed.
-    "rhosocial.activerecord.backend.expression.introspection.UnusedIndexesQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
-    ),
-    "rhosocial.activerecord.backend.expression.introspection.TableUsageStatsQueryStatement": (
         ProtocolNotImplementedError, 'does not implement ',
     ),
 

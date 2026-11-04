@@ -50,6 +50,10 @@ if TYPE_CHECKING:  # pragma: no cover
         TriggerListQueryStatement,
         ViewInfoQueryStatement,
         ViewListQueryStatement,
+        UnusedIndexesQueryStatement,
+        IndexUsageStatsQueryStatement,
+        RuntimeMetricsQueryStatement,
+        ObjectDependencyQueryStatement,
     )
     from ..expression.introspection import (
         SQLServerExtendedPropertyListQueryStatement,
@@ -1074,6 +1078,364 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             order_by=[self._col("name", "q")],
         )
 
+    # ========== Operational families ==========
+
+    def supports_unused_indexes_detection(self) -> bool:
+        """SQL Server answers from ``sys.dm_db_index_usage_stats``, 2005 on.
+
+        The dynamic management views are a live-instance view rather than a
+        schema-scoped catalogue, which is the dependency this round recorded
+        as pending. It is carried: the join through ``sys.objects`` and
+        ``sys.schemas`` applies the schema filter the statement needs, the
+        way the per-table storage read already reaches
+        ``sys.dm_db_partition_stats`` -- one construct, the same shape as the
+        catalogue questions this module already asks.
+
+        The counters are *since the view was last flushed*, which is the
+        engine's own window and not a resettable one: ``DBCC
+        SQLPERF('sys.dm_os_wait_stats',CLEAR)`` clears some counters and the
+        index usage view flushes on its own schedule after a restart. An index
+        absent from the answer is absence of evidence, never proof of use, and
+        the DMV only reports the indexes it knows about.
+
+        Reading the DMV needs ``VIEW DATABASE STATE`` (or ``VIEW SERVER
+        STATE``); without it the view returns only the objects the caller
+        owns. A caller with less privilege gets a shorter list, not an error,
+        which is why the privilege is stated here rather than turned into a
+        probe: the probe can ask a version, not a grant, and a short list is
+        an answer about what the caller may see.
+        """
+        return self.version_at_least((9, 0, 0))
+
+    def supports_index_stats(self) -> bool:
+        """SQL Server answers per-index counters from the same DMV, 2005 on.
+
+        ``user_seeks``/``user_scans``/``user_lookups`` are the three read
+        shapes and their sum is what ``scans`` answers; ``user_updates`` rides
+        the row into ``extra``. There is no per-index "rows read" counter in
+        this view, so ``rows_read`` and ``rows_fetched`` stay ``None`` rather
+        than being filled with a seek or a scan count -- an operation is not a
+        row and the two must not be merged into one slot.
+
+        The privilege and the window are the ones
+        :meth:`supports_unused_indexes_detection` states, because it is the
+        same view.
+        """
+        return self.version_at_least((9, 0, 0))
+
+    def supports_table_stats(self) -> bool:
+        """SQL Server keeps no per-table usage counter, so the probe refuses.
+
+        The inquiry covered every release in the matrix (2017, 2019 and
+        2022). The engine's counters are per *index*:
+        ``sys.dm_db_index_usage_stats`` rows are keyed by object and index,
+        and summing them per table would be an aggregate wearing the shape of
+        a measured counter -- a reader asking "how many scans did this table
+        take" would receive a number no engine ever counted, and the family's
+        promise is that each figure is the engine's own.
+
+        Two of the slots the family names are not tracked at all. Sequential
+        scans are not distinguishable from indexed ones at the table level,
+        and inserts and deletes are recorded nowhere -- ``user_updates`` is
+        the only write shape the DMV carries, and it counts writes of every
+        kind. So the honest answer is that the engine does not measure this,
+        and the probe says so rather than projecting a derived figure.
+
+        The row estimate is a different source again:
+        ``sys.dm_db_partition_stats`` keeps an in-memory count whose refresh
+        is the engine's own, so it stays where it already is -- on the table
+        listing's ``row_count`` slot -- rather than being copied beside
+        counters it has nothing to do with.
+        """
+        return False
+
+    def supports_runtime_stats(self) -> bool:
+        """SQL Server answers runtime measurements from its performance counters.
+
+        ``sys.dm_os_performance_counters`` names what is actually being
+        counted on this instance -- one row per counter, grouped by the
+        object that owns it -- which makes it the honest source for a "what is
+        alive" listing: a counter not being maintained produces no row, and
+        therefore no number, rather than a zero that would read as "idle".
+        ``cntr_type`` carries the engine's own classification and rides the
+        row as ``kind``; the counter's owning object is projected as
+        ``source``, because these figures are since the view was last flushed
+        and the window is the engine's to name.
+
+        Reading it needs ``VIEW SERVER STATE``; without that grant the view
+        answers nothing, and a listing that silently loses every row there is
+        a privilege statement rather than a measurement. The probe cannot ask
+        a grant -- only a version -- so the privilege is stated here and the
+        version floor is the one the view needs.
+        """
+        return self.version_at_least((9, 0, 0))
+
+    def supports_object_dependencies(self) -> bool:
+        """SQL Server answers the object dependency graph, 2008 on.
+
+        ``sys.sql_expression_dependencies`` records, per reference, which
+        object depends on which *named* entity -- a view on a table, a
+        procedure on a table, a function used by a trigger. It is a real graph
+        and a partial one: by-name references resolve only to objects the
+        caller can see, and the view is scoped to the database, so a
+        cross-database reference names an entity rather than an object.
+
+        It does not record every other kind of coupling -- a foreign key is
+        not a row here, and an object bound through ``sp_depends``-style
+        dynamic SQL is invisible to it. A caller asking "what breaks if I drop
+        this" gets the referential half plus the resolved-name half, and the
+        docstring says which half.
+        """
+        return self.version_at_least((10, 0, 0))
+
+    def supports_ddl_extraction(self) -> bool:
+        """SQL Server will not hand back the DDL that recreates an object.
+
+        The engine has no per-object DDL retrieval call of the kind
+        PostgreSQL's ``DBMS_METADATA`` and MySQL's ``SHOW CREATE TABLE`` are.
+        ``OBJECT_DEFINITION`` and ``sys.sql_modules`` hold the *body* of a
+        routine, a view or a trigger -- text the engine stores because it
+        executes it -- and a table's columns, constraints, indexes and
+        storage are recorded as rows across ``sys.columns``,
+        ``sys.indexes``, ``sys.default_constraints`` and more. Reassembling a
+        ``CREATE TABLE`` from them is a reconstruction, and this family's rule
+        is that a reconstruction is not an answer: ``DDLStatement.native``
+        exists to say which of the two a caller is looking at, and an
+        assembly that used it would be claiming the engine said something it
+        did not.
+
+        So the probe answers ``False`` and the CLI refuses the question at the
+        capability gate rather than rendering a partial text. The four
+        operational families this round *does* answer are listed above; this
+        one stays a declared gap, and the roundtrip matrix in this repository
+        keeps its pin for ``DDLStatementQueryStatement`` with this reason.
+        """
+        return False
+
+    def _usage_stats_source(self, with_indexes: bool):
+        """The per-index DMV joined to the catalogue that names its objects.
+
+        ``sys.dm_db_index_usage_stats`` addresses everything by id --
+        ``database_id``, ``object_id``, ``index_id`` -- and carries no name
+        and no schema. The join through ``sys.objects`` and ``sys.schemas``
+        is what turns those ids into the address a caller reads, and it is
+        also where the schema filter is applied: the DMV covers every
+        database on the instance, so a caller asking about one schema must
+        not be handed every schema's indexes.
+
+        ``sys.indexes`` is joined as well when the caller reads the index's
+        *name*: the DMV has no ``index_id``-to-name mapping of its own, and
+        the heap's ``index_id`` 0 has no row there at all.
+
+        The database is *not* filtered here, and that is deliberate. The DMV
+        keeps one row per index of the connected database, and a
+        ``database_id`` filter would have to name it -- either through
+        ``DB_ID()``, whose value the statement would then depend on, or
+        through a second read. The join to ``sys.schemas`` already narrows to
+        one schema of this database, which is the narrowing the statement was
+        asked for.
+        """
+        usage = self._relation("dm_db_index_usage_stats", "sys", alias="u")
+        joined = self._join(
+            self._join(
+                usage,
+                self._relation("objects", "sys", alias="o"),
+                condition=self._eq(
+                    self._col("object_id", "u"), self._col("object_id", "o")
+                ),
+            ),
+            self._relation("schemas", "sys", alias="s"),
+            condition=self._eq(
+                self._col("schema_id", "o"), self._col("schema_id", "s")
+            ),
+        )
+        if with_indexes:
+            joined = self._join(
+                joined,
+                self._relation("indexes", "sys", alias="i"),
+                condition=self._and(
+                    self._eq(self._col("object_id", "u"), self._col("object_id", "i")),
+                    self._eq(self._col("index_id", "u"), self._col("index_id", "i")),
+                ),
+            )
+        return joined
+
+    def _read_counter_sum(self):
+        """The three read shapes added: seeks, scans and lookups.
+
+        One ``scans`` figure, because the engine's own counters are three
+        columns of the same event and the family names one slot. Adding them
+        is not a derived measurement; it is the same counter, spelled in three
+        parts, and the docstring of the family that reads it says which parts.
+        """
+        return self._add(
+            self._add(self._col("user_seeks", "u"), self._col("user_scans", "u")),
+            self._col("user_lookups", "u"),
+        )
+
+    def format_unused_indexes_query_statement(
+        self, expr: "UnusedIndexesQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Format the unused-indexes listing from the index usage DMV.
+
+        The predicates are the answer to "unused" as this engine means it:
+        ``index_id > 0`` excludes a heap's row (``index_id`` 0 is not an index
+        and never appears in ``sys.indexes``), and the sum of the three read
+        counters being zero says no query the engine counted has used it.
+
+        The name of the index is read through ``sys.indexes`` rather than
+        reconstructed from the DMV's ids, and the object and schema through
+        the join above. See :meth:`_usage_stats_source`.
+        """
+        params = expr.get_params()
+        target = params.get("schema") or DEFAULT_SCHEMA
+
+        return self._select(
+            [
+                self._col("name", "s", alias="schema_name"),
+                self._col("name", "o", alias="table_name"),
+                self._col("name", "i", alias="index_name"),
+            ],
+            from_=self._usage_stats_source(with_indexes=True),
+            where=self._and(
+                self._eq(self._col("name", "s"), self._lit(target)),
+                self._gt(self._col("index_id", "u"), self._lit(0, inline=True)),
+                self._eq(self._read_counter_sum(), self._lit(0, inline=True)),
+            ),
+            order_by=[
+                self._col("name", "s"),
+                self._col("name", "o"),
+                self._col("name", "i"),
+            ],
+        )
+
+    def format_index_usage_stats_query_statement(
+        self, expr: "IndexUsageStatsQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Format per-index counters from the same DMV.
+
+        ``scans`` is the shared slot the three read columns sum into, and
+        ``user_updates`` rides the row into ``extra`` under its own name --
+        an update is not a scan, and the two are not interchangeable. The
+        engine keeps no per-index row counter, so ``rows_read`` and
+        ``rows_fetched`` are simply not projected and stay ``None``; see
+        :meth:`supports_index_stats`.
+        """
+        params = expr.get_params()
+        target = params.get("schema") or DEFAULT_SCHEMA
+
+        return self._select(
+            [
+                self._col("name", "s", alias="schema_name"),
+                self._col("name", "o", alias="table_name"),
+                self._col("name", "i", alias="index_name"),
+                self._read_counter_sum().as_("scans"),
+                self._col("user_updates", "u", alias="writes"),
+            ],
+            from_=self._usage_stats_source(with_indexes=True),
+            where=self._and(
+                self._eq(self._col("name", "s"), self._lit(target)),
+                self._gt(self._col("index_id", "u"), self._lit(0, inline=True)),
+            ),
+            order_by=[
+                self._col("name", "s"),
+                self._col("name", "o"),
+                self._col("name", "i"),
+            ],
+        )
+
+    def format_runtime_metrics_query_statement(
+        self, expr: "RuntimeMetricsQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Format the runtime listing from the instance's performance counters.
+
+        No schema filter: the counters describe a running instance and carry
+        no schema column, so a filter here would refuse a correct query for a
+        nonsensical reason -- the same reasoning the storage slots use when
+        they leave a view's storage unmeasured.
+
+        ``cntr_value`` is the number and ``cntr_type`` the engine's
+        classification of it, projected as ``kind`` so a caller can group
+        without learning the DMV's vocabulary. ``object_name`` is the counter
+        group that owns it (``SQLServer:Buffer Manager`` and friends) and is
+        projected as ``source``; ``instance_name`` -- the per-node or per-lru
+        split that makes two rows of the same counter distinguishable -- is
+        projected under its own name and travels in ``extra``.
+        """
+        return self._select(
+            [
+                self._col("counter_name", alias="name"),
+                self._col("cntr_value", alias="value"),
+                self._col("cntr_type", alias="kind"),
+                self._col("object_name", alias="source"),
+                self._col("instance_name"),
+            ],
+            from_=self._relation("dm_os_performance_counters", "sys"),
+            order_by=[self._col("object_name"), self._col("counter_name")],
+        )
+
+    def format_object_dependency_query_statement(
+        self, expr: "ObjectDependencyQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Format the dependency graph from by-name entity references.
+
+        ``referencing_id`` is the object that depends and
+        ``referenced_entity_name`` is the entity it names, so the two sides
+        come from different columns of the same row -- which is why the join
+        is on the referencing object rather than on the referenced one: the
+        referenced thing is a *name*, not an id, and a second join would have
+        to resolve it.
+
+        ``referenced_class_desc`` says what kind of thing was named (OBJECT,
+        COLUMN, TYPE) and rides the row as ``kind``. A ``referenced_server_name``
+        or ``referenced_database_name`` other than this one means the referenc
+        leaves the database; those rows are kept and their names travel in
+        ``extra``, because dropping an object with a cross-database
+        dependant is exactly the case the graph exists to show.
+
+        """
+        params = expr.get_params()
+        target = params.get("schema") or DEFAULT_SCHEMA
+        object_name = params.get("object_name")
+
+        joined = self._join(
+            self._relation("sql_expression_dependencies", "sys", alias="d"),
+            self._relation("objects", "sys", alias="o"),
+            condition=self._eq(
+                self._col("referencing_id", "d"), self._col("object_id", "o")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("schemas", "sys", alias="s"),
+            condition=self._eq(
+                self._col("schema_id", "o"), self._col("schema_id", "s")
+            ),
+        )
+
+        conditions = [self._eq(self._col("name", "s"), self._lit(target))]
+        if object_name:
+            conditions.append(
+                self._eq(self._col("name", "o"), self._lit(object_name))
+            )
+
+        return self._select(
+            [
+                self._col("name", "s", alias="schema_name"),
+                self._col("name", "o", alias="dependent"),
+                self._col("referenced_entity_name", "d", alias="referenced"),
+                self._col("type_desc", "o", alias="dependent_type"),
+                self._col("referenced_class_desc", "d", alias="kind"),
+            ],
+            from_=joined,
+            where=self._and(*conditions),
+            order_by=[
+                self._col("name", "s"),
+                self._col("name", "o"),
+                self._col("referenced_entity_name", "d"),
+            ],
+        )
+
     # ========== Data Profiles (row-shaped answers) ==========
 
     def supports_column_data_profile(self) -> bool:
@@ -1119,8 +1481,18 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         the leading column of a statistics object, and only for the values
         whose boundaries survived bucketing. A ``GROUP BY`` answers what the
         caller asked for, exactly, at the cost of a grouped scan.
+
+        The cap rides the dialect's pagination clause, ``OFFSET 0 ROWS FETCH
+        NEXT n ROWS ONLY``, which the engine parses only from 2012 on. That
+        floor is asked of the version accessor rather than left to a runtime
+        syntax error: a server below it is refused at the capability question
+        with "cannot answer", which is a different and truer answer than a
+        query that fails to parse. Every release this repository tests
+        against (2017, 2019, 2022 and 2025) is well past it, so the gate
+        changes nothing there and keeps an older server from an execution
+        error.
         """
-        return True
+        return self.version_at_least((11, 0, 0))
 
     def supports_join_coverage(self) -> bool:
         """SQL Server answers overlap by counting distinct values on both sides.
