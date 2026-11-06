@@ -87,7 +87,7 @@ INTROSPECT_TYPES = list(_TYPE_CAPABILITIES)
 #:
 #: ``views NAME`` is a view name and ``triggers NAME`` is a *table* name: the
 #: two are not the same kind of argument, which is why this table exists.
-_NAME_RULES = {
+_NAME_RULE = {
     "tables": "forbidden",
     "views": "optional",
     "columns": "required",
@@ -349,7 +349,7 @@ def _validate_name(args) -> None:
     remember -- a branch that forgot would answer a wider question than the
     one asked and look successful.
     """
-    rule = _NAME_RULES.get(args.type)
+    rule = _NAME_RULE.get(args.type)
     if rule == "required" and not args.name:
         print(
             f"Error: Table name is required for '{args.type}' introspection",

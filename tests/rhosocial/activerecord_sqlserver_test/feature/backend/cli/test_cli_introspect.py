@@ -684,7 +684,7 @@ class TestDeclaredVocabulary:
         assert list(introspect_mod._TYPE_CAPABILITIES) == introspect_mod.INTROSPECT_TYPES
 
     def test_every_declared_type_has_a_name_rule(self):
-        assert set(introspect_mod._NAME_RULES) == set(introspect_mod.INTROSPECT_TYPES)
+        assert set(introspect_mod._NAME_RULE) == set(introspect_mod.INTROSPECT_TYPES)
 
     def test_the_removed_aggregate_is_not_readvertised(self):
         assert "table" not in introspect_mod.INTROSPECT_TYPES
