@@ -151,7 +151,10 @@ from rhosocial.activerecord.backend.expression.statements.dml import (
     MergeAction,
     MergeActionType,
 )
-from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
+from rhosocial.activerecord.backend.expression.statements.dql import (
+    QueryStatement,
+    SetOperationStatement,
+)
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.expression.types.custom import CustomType
 from rhosocial.activerecord.backend.expression.uuid import UUIDConstantExpression
@@ -297,6 +300,20 @@ def _one_column_query(dialect):
     )
 
 
+def _compound_arms(dialect):
+    """Two single-column SELECTs over two tables, no bind parameters."""
+    return [
+        QueryStatement(
+            dialect, select=[Column(dialect, "id")], from_=_table_obj(dialect)
+        ),
+        QueryStatement(
+            dialect,
+            select=[Column(dialect, "id")],
+            from_=_table_obj(dialect, "other"),
+        ),
+    ]
+
+
 def _integer_column(dialect, name="col"):
     """A column definition carrying a *dialect-bound* type.
 
@@ -373,6 +390,15 @@ def register_specials():
             op="union",
             left=QueryStatement(d, select=[Column(d, "id")]),
             right=QueryStatement(d, select=[Column(d, "id")]),
+        ),
+    )
+    # The statement half of the same pair: the word-form enum refuses the
+    # guess's bare string at construction, and SQL Server spells a compound
+    # SELECT, so a factory turns it into an instance the matrix can assert.
+    register_special_constructor(
+        "statements.dql.SetOperationStatement",
+        lambda d: SetOperationStatement(
+            d, op="union_all", parts=_compound_arms(d)
         ),
     )
 
@@ -2302,3 +2328,71 @@ class TestMatrixIntegrity:
         for fqn in sorted(ARTIFACT_GAPS):
             channel, _type, _fragment = ARTIFACT_GAPS[fqn]
             print(f"  artifact gap: {fqn} ({channel} channel)")
+
+# ---------------------------------------------------------------------------
+# The set-operation statement, rendered
+# ---------------------------------------------------------------------------
+#
+# The matrix says ``SetOperationStatement`` renders on SQL Server, which is a
+# verdict about the dialect rather than a claim about the bytes, so the bytes
+# are pinned here. SQL Server brackets its identifiers, which is the part of
+# the pinned SQL that would change if quoting were ever handed to the node
+# instead of staying in the dialect. The bind parameters are asserted
+# positionally, because an ordering bug still renders valid SQL.
+
+
+def test_set_operation_statement_renders_the_pinned_sql(sqlserver_dialect):
+    """``UNION ALL`` over two arms, with the bracketed identifiers this dialect
+    spells them with."""
+    node = SetOperationStatement(
+        sqlserver_dialect, op="union_all", parts=_compound_arms(sqlserver_dialect)
+    )
+
+    rendered, params = node.to_sql()
+
+    assert rendered == "SELECT [id] FROM [t] UNION ALL SELECT [id] FROM [other]"
+    assert params == ()
+
+
+def test_set_operation_statement_spells_the_bare_union(sqlserver_dialect):
+    """The word form alone decides the keyword, so ``union`` differs."""
+    node = SetOperationStatement(
+        sqlserver_dialect, op="union", parts=_compound_arms(sqlserver_dialect)
+    )
+
+    rendered, params = node.to_sql()
+
+    assert rendered == "SELECT [id] FROM [t] UNION SELECT [id] FROM [other]"
+    assert params == ()
+
+
+def test_set_operation_statement_parameters_concatenate_in_part_order(
+    sqlserver_dialect,
+):
+    """Each arm's parameters arrive in the order the operator joins them."""
+    dialect = sqlserver_dialect
+    parts = [
+        QueryStatement(
+            dialect,
+            select=[Column(dialect, "id"), Literal(dialect, 1)],
+            from_=_table_obj(dialect),
+            where=ComparisonPredicate(
+                dialect, "=", Column(dialect, "id"), Literal(dialect, 5)
+            ),
+        ),
+        QueryStatement(
+            dialect,
+            select=[Column(dialect, "id"), Literal(dialect, 2)],
+            from_=_table_obj(dialect, "u"),
+        ),
+    ]
+    node = SetOperationStatement(dialect, op="union_all", parts=parts)
+
+    rendered, params = node.to_sql()
+
+    assert rendered == (
+        "SELECT [id], ? FROM [t] WHERE [id] = ? "
+        "UNION ALL "
+        "SELECT [id], ? FROM [u]"
+    )
+    assert params == (1, 5, 2)
