@@ -13,6 +13,12 @@ and nowhere else, so a new type is one entry there plus one title. The sync
 and async paths differ in exactly one keyword: whether the method is
 awaited.
 
+What NAME means for a type is decided once, in ``_NAME_RULE``, and applied by
+one validator before the connection is opened. It is not decided in the
+branches: a name a type has no question for is refused with exit 2 rather
+than parsed and dropped, and a type added without a rule is a type nobody has
+decided for.
+
 The nine families the MySQL and PostgreSQL CLIs ask for are offered here
 too, each gated on the switch that answers for it. SQL Server answers seven
 of the nine from its dynamic management views; two it does not answer at all
@@ -85,6 +91,12 @@ INTROSPECT_TYPES = list(_TYPE_CAPABILITIES)
 #:
 #: ``views NAME`` is a view name and ``triggers NAME`` is a *table* name: the
 #: two are not the same kind of argument, which is why this table exists.
+#:
+#: The order is the order ``_TYPE_CAPABILITIES`` declares and the parser and
+#: ``--help`` print, and the two tables cover the same keys: a type offered
+#: without a rule is a type whose NAME decision nobody has made. One validator
+#: reads this table, before the connection is opened, and the dispatcher
+#: consumes its answer rather than re-deciding per branch.
 _NAME_RULE = {
     "tables": "forbidden",
     "views": "optional",
@@ -470,9 +482,17 @@ def handle(args):
 # ---------------------------------------------------------------------------
 
 
-def _require_name(args, kind: str) -> str:
-    """Return the object name a table-scoped type needs, or exit."""
-    if not args.name:
+def _name_of(args, kind: str) -> str:
+    """The object name a table-scoped type asks with.
+
+    ``_validate_name`` has already refused a run that omitted one: a
+    ``required`` type whose NAME is missing never reaches this function. The
+    table is read here as well only so a caller that skipped the validator
+    still meets the rule rather than sending a ``None`` the introspector would
+    answer as a wider question than the one asked -- the decision is written
+    once, in ``_NAME_RULE``, and every reader reads it.
+    """
+    if _NAME_RULE.get(kind) == "required" and not args.name:
         print(
             f"Error: Table name is required for '{kind}' introspection",
             file=sys.stderr,
@@ -488,9 +508,13 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     which type: one type, one question. The table detail that used to be
     assembled here went with the aggregate type it belonged to.
 
-    The NAME each type accepts is decided here too, because it *is* part of
-    the question: ``views NAME`` is the single-view question, not a filter over
-    the list.
+    The NAME each type accepts is *not* decided here. ``_validate_name`` reads
+    ``_NAME_RULE`` before the connection is opened -- a missing one is an
+    incomplete invocation, a name the type has no question for is refused
+    with exit 2 -- so by the time this runs a ``required`` type always has its
+    name and the branches consume ``args.name`` directly. The branches below
+    that used to carry their own "Table name is required" sentence now rely on
+    that, so there is one decision rather than one per branch.
     """
     kind = args.type
 
@@ -548,12 +572,12 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     if kind == "ddl":
         return [(
             "get_ddl_statement",
-            {"object_name": _require_name(args, kind), "schema": None},
+            {"object_name": _name_of(args, kind), "schema": None},
         )]
     if kind == "column-profiles":
         return [(
             "list_column_data_profiles",
-            {"table_name": _require_name(args, kind), "schema": None},
+            {"table_name": _name_of(args, kind), "schema": None},
         )]
     if kind == "value-samples":
         if not getattr(args, "column", None):
@@ -565,7 +589,7 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
         return [(
             "sample_column_values",
             {
-                "table_name": _require_name(args, kind),
+                "table_name": _name_of(args, kind),
                 "column_name": args.column,
                 "schema": None,
                 **_value_sample_arguments(args),
@@ -599,7 +623,7 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     method = f"list_{kind.replace('-', '_')}"
     return [(
         method,
-        {"table_name": _require_name(args, kind), "schema": None},
+        {"table_name": _name_of(args, kind), "schema": None},
     )]
 
 

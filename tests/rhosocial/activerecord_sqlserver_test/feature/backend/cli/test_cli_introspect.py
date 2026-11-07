@@ -684,7 +684,65 @@ class TestDeclaredVocabulary:
         assert list(introspect_mod._TYPE_CAPABILITIES) == introspect_mod.INTROSPECT_TYPES
 
     def test_every_declared_type_has_a_name_rule(self):
+        """A type advertised without a rule is one whose NAME decision nobody has made.
+
+        The set-level half of pinning the rule table; the contents are pinned
+        beside it, because a set nobody asserts the members of is still a set
+        whose answers can drift one at a time.
+        """
         assert set(introspect_mod._NAME_RULE) == set(introspect_mod.INTROSPECT_TYPES)
+
+    def test_the_table_says_what_each_types_name_means(self):
+        """The rule table as data, so editing one type is a visible change.
+
+        ``join-coverage`` is the entry that reads as an outlier and is not: the
+        two tables it compares are named on flags, so a positional NAME would
+        be the third name for a question that already has its two -- and a
+        name the branch drops.
+        """
+        assert introspect_mod._NAME_RULE == {
+            "tables": "forbidden",
+            "views": "optional",
+            "columns": "required",
+            "indexes": "required",
+            "foreign-keys": "required",
+            "extended-properties": "required",
+            "triggers": "optional",
+            "database": "forbidden",
+            "procedures": "forbidden",
+            "functions": "forbidden",
+            "sequences": "forbidden",
+            "schemas": "forbidden",
+            "unused-indexes": "forbidden",
+            "table-stats": "forbidden",
+            "runtime": "forbidden",
+            "index-stats": "forbidden",
+            "dependencies": "optional",
+            "ddl": "required",
+            "column-profiles": "required",
+            "value-samples": "required",
+            "join-coverage": "forbidden",
+        }
+
+    def test_the_required_types_are_the_table_scoped_ones(self):
+        """The rule table and the branches agree on which types need a NAME.
+
+        ``_steps`` consumes the name rather than re-deciding, so the set it
+        consumes one for is exactly the set the table marks ``required`` --
+        one statement, read by the validator and by the dispatcher alike.
+        """
+        required = {
+            kind for kind, rule in introspect_mod._NAME_RULE.items() if rule == "required"
+        }
+        assert required == {
+            "columns",
+            "indexes",
+            "foreign-keys",
+            "extended-properties",
+            "ddl",
+            "column-profiles",
+            "value-samples",
+        }
 
     def test_the_removed_aggregate_is_not_readvertised(self):
         assert "table" not in introspect_mod.INTROSPECT_TYPES
@@ -838,6 +896,52 @@ class TestNameGate:
             make_args(["introspect", "triggers", "users", "--database", "db"])
         )
         assert FakeIntrospector.instances[-1].calls[-1][0] == "list_triggers"
+
+    @pytest.mark.parametrize(
+        "kind",
+        sorted(
+            k for k, rule in introspect_mod._NAME_RULE.items() if rule == "forbidden"
+        ),
+    )
+    def test_every_forbidden_type_is_refused_by_the_table(self, kind, capsys):
+        """Each category driven through the one validator that reads the table.
+
+        The per-branch copies are gone, so this is the behaviour of the table
+        itself rather than of a branch that happens to remember.
+        """
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(["introspect", kind, "users", "--database", "db"])
+            )
+        assert exc.value.code == 2
+        assert f"Error: {kind} introspection takes no name" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "kind",
+        sorted(
+            k for k, rule in introspect_mod._NAME_RULE.items() if rule == "required"
+        ),
+    )
+    def test_every_required_type_is_required_by_the_table(self, kind, capsys):
+        """A missing required NAME is an incomplete invocation, exit 1 -- and
+        the question is never asked, so a ``None`` cannot reach the catalogue.
+        """
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(make_args(["introspect", kind, "--database", "db"]))
+        assert exc.value.code == 1
+        assert "Table name is required" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "kind",
+        sorted(
+            k for k, rule in introspect_mod._NAME_RULE.items() if rule == "optional"
+        ),
+    )
+    def test_every_optional_type_may_be_given_a_name_or_not(self, kind):
+        introspect_mod.handle(make_args(["introspect", kind, "--database", "db"]))
+        assert FakeIntrospector.instances[-1].calls
+        introspect_mod.handle(make_args(["introspect", kind, "users", "--database", "db"]))
+        assert FakeIntrospector.instances[-1].calls
 
 
 class TestHandleLifecycleAndConfig:
