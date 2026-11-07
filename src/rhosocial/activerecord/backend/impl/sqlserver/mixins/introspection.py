@@ -33,6 +33,8 @@ in this module.
 
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.introspection.types import ProfileSource
+
 from ..query_nodes import SQLServerNodeBuilderMixin
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -1602,7 +1604,7 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
                     self._fn("MAX", column), "NVARCHAR(MAX)", "max_value"
                 ),
                 self._fn("COUNT_BIG", self._row_count_wildcard()).as_("row_count"),
-                self._data_profile_label("aggregate", "source"),
+                self._data_profile_label(ProfileSource.AGGREGATE.value, "source"),
             ],
             from_=self._user_relation(table_name, target),
         )

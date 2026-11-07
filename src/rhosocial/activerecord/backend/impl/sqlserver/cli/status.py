@@ -12,9 +12,7 @@ from typing import Any
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
 from .connection import add_connection_args, resolve_connection_config_from_args
-from .output import create_provider, RICH_AVAILABLE
-
-OUTPUT_CHOICES = ['table', 'json', 'csv', 'tsv']
+from .output import OUTPUT_CHOICES, create_provider, RICH_AVAILABLE
 
 STATUS_TYPES = ["all", "config", "performance", "connections", "storage", "databases", "users"]
 

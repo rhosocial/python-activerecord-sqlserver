@@ -32,9 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from .connection import add_connection_args, resolve_connection_config_from_args
-from .output import create_provider
-
-OUTPUT_CHOICES = ['table', 'json', 'csv', 'tsv']
+from .output import OUTPUT_CHOICES, create_provider
 
 #: CLI type -> the dialect capability switch that answers for it.
 #:
@@ -141,20 +139,6 @@ _TYPE_OPTION_FLAGS = {
     for options in _TYPE_OPTIONS.values()
     for attribute, flag, _required in options
 }
-
-#: How many values ``value-samples`` lists when ``--limit`` is not given. The
-#: introspector's own default, restated because the parser has to say what it
-#: will send when the flag is absent.
-DEFAULT_VALUE_SAMPLE_LIMIT = 100
-
-#: Said before a data-profile listing. It goes to stderr so the machine
-#: formats stay parseable; each row carries ``source='aggregate'`` itself, and
-#: this is the sentence that keeps a reader from taking an exact full-table
-#: count for a cheap catalogue reading.
-_AGGREGATE_PROFILE_NOTE = (
-    "Note: column profiles are aggregated from the rows themselves "
-    "(source='aggregate') -- exact, and paid for with a full scan per column."
-)
 
 #: Titles for the one-result types. The table-scoped types build their title
 #: from the table name instead (see ``_title_for``).
@@ -309,7 +293,7 @@ NAME per type:
         default=None,
         help=(
             "Maximum values to list for value-samples "
-            f"(default: {DEFAULT_VALUE_SAMPLE_LIMIT})."
+            "(default: the introspector's own limit)."
         ),
     )
     parser.add_argument(
@@ -400,10 +384,17 @@ def _validate_options(args) -> None:
             sys.exit(2)
 
 
-def _value_sample_limit(args) -> int:
-    """The row limit ``value-samples`` sends, given the parsed argument."""
+def _value_sample_arguments(args) -> Dict[str, int]:
+    """The optional arguments ``value-samples`` sends, given the parsed argument.
+
+    ``limit`` is forwarded only when the caller supplied ``--limit``. When the
+    flag is absent the introspector's signature answers with its own default,
+    so a forwarder that filled in ``100`` would be a second place writing a
+    number the signature already owns -- and a place no test could keep in
+    step with it.
+    """
     limit = getattr(args, "limit", None)
-    return DEFAULT_VALUE_SAMPLE_LIMIT if limit is None else limit
+    return {} if limit is None else {"limit": limit}
 
 
 def _display_ddl(args, provider, statement) -> None:
@@ -576,8 +567,8 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
             {
                 "table_name": _require_name(args, kind),
                 "column_name": args.column,
-                "limit": _value_sample_limit(args),
                 "schema": None,
+                **_value_sample_arguments(args),
             },
         )]
     if kind == "join-coverage":
@@ -807,7 +798,11 @@ def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
             _require_found(introspector, method, kwargs, value)
             _require_measured(method, kwargs, value)
             if method == "list_column_data_profiles":
-                print(_AGGREGATE_PROFILE_NOTE, file=sys.stderr)
+                print(
+                    "Note: column profiles are aggregated from the rows themselves "
+                    "(source='aggregate') -- exact, and paid for with a full scan per column.",
+                    file=sys.stderr,
+                )
             if method == "get_ddl_statement":
                 _display_ddl(args, provider, value)
                 continue
@@ -841,7 +836,11 @@ async def _handle_introspect_async(args, backend, provider):
             await _require_found_async(introspector, method, kwargs, value)
             _require_measured(method, kwargs, value)
             if method == "list_column_data_profiles":
-                print(_AGGREGATE_PROFILE_NOTE, file=sys.stderr)
+                print(
+                    "Note: column profiles are aggregated from the rows themselves "
+                    "(source='aggregate') -- exact, and paid for with a full scan per column.",
+                    file=sys.stderr,
+                )
             if method == "get_ddl_statement":
                 _display_ddl(args, provider, value)
                 continue

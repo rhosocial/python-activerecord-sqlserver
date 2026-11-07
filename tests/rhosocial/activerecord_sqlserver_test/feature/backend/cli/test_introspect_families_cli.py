@@ -377,15 +377,17 @@ class TestTheValueSamplesBranch:
             )
         ]
 
-    def test_the_limit_is_the_introspector_default_when_omitted(self, monkeypatch):
+    def test_no_limit_is_sent_when_the_flag_is_omitted(self, monkeypatch):
         introspector = _RecordingIntrospector({"sample_column_values": []})
 
         _run_sync(
             monkeypatch, introspector, _args("value-samples", "orders", column="status")
         )
 
-        asserted_limit = introspector.calls[0][2]["limit"]
-        assert asserted_limit == introspect_cli.DEFAULT_VALUE_SAMPLE_LIMIT
+        # Absent ``--limit`` means absent from the call: the introspector's own
+        # signature answers with its own default, and the CLI does not restate
+        # it. A number here would fail the day the signature's default moved.
+        assert "limit" not in introspector.calls[0][2]
 
     def test_a_missing_column_is_an_incomplete_invocation(self, capsys):
         with pytest.raises(SystemExit) as excinfo:
