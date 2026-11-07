@@ -35,7 +35,7 @@ classifiers = [
 ]
 dependencies = [
   "pyodbc>=5.3.0",
-  "rhosocial-activerecord>=1.0.0.dev0,<2.0.0",
+  "rhosocial-activerecord>=1.0.0.dev30,<2.0.0",
 ]
 
 [project.scripts]
