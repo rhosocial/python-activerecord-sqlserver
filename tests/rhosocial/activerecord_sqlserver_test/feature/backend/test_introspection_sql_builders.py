@@ -45,12 +45,12 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
     SQLServerXmlType,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
-    SyncSQLServerIntrospector,
-    SyncSQLServerStatusIntrospector,
+    SQLServerIntrospector,
+    SQLServerStatusIntrospector,
 )
 
 
-def make_introspector(version=(16, 0, 0)) -> SyncSQLServerIntrospector:
+def make_introspector(version=(16, 0, 0)) -> SQLServerIntrospector:
     config = SQLServerConnectionConfig(
         host="localhost",
         port=1433,
@@ -59,7 +59,7 @@ def make_introspector(version=(16, 0, 0)) -> SyncSQLServerIntrospector:
         password="",
     )
     backend = SQLServerBackend(connection_config=config, version=version)
-    introspector = SyncSQLServerIntrospector(backend, executor=object())
+    introspector = SQLServerIntrospector(backend, executor=object())
     return introspector
 
 
@@ -673,7 +673,7 @@ class TestParseBackendSpecificTypes:
         assert (prop.class_id, prop.major_id, prop.minor_id) == (1, 77, 0)
 
 
-def make_status_introspector(version=(16, 0, 0)) -> SyncSQLServerStatusIntrospector:
+def make_status_introspector(version=(16, 0, 0)) -> SQLServerStatusIntrospector:
     config = SQLServerConnectionConfig(
         host="localhost",
         port=1433,
@@ -682,7 +682,7 @@ def make_status_introspector(version=(16, 0, 0)) -> SyncSQLServerStatusIntrospec
         password="",
     )
     backend = SQLServerBackend(connection_config=config, version=version)
-    return SyncSQLServerStatusIntrospector(backend)
+    return SQLServerStatusIntrospector(backend)
 
 
 class TestStatusQueries:
@@ -941,3 +941,121 @@ class TestParseColumnsDatetimePrecision:
         sdt = self._parse_one("smalldatetime", 0)
         assert sdt.data_type_full == "smalldatetime"
         assert sdt.parsed_data_type == DataType.parse_data_type_str(dialect, "smalldatetime")
+
+class TestTableStorageSlots:
+    """The per-table storage projection, and what a view answers.
+
+    `sys.dm_db_partition_stats` holds one row per partition per index; the
+    listing reads it as three scalar subqueries rather than a GROUP BY so a
+    view -- which has no partition rows -- stays on the list with every
+    storage slot `None` instead of vanishing from it.
+    """
+
+    def _listing_sql(self, **kwargs) -> str:
+        introspector = make_introspector()
+        stmt = TableListQueryStatement(introspector._backend.dialect, **kwargs)
+        return introspector._backend.dialect.format_table_list_query_statement(stmt)[0]
+
+    def test_probe_answers_true(self):
+        dialect = make_introspector()._backend.dialect
+        assert dialect.supports_table_storage_introspection() is True
+
+    def test_storage_slots_ride_the_table_listing(self):
+        sql = self._listing_sql()
+        assert sql.count("[sys].[dm_db_partition_stats]") == 3
+        assert "AS [size_bytes]" in sql
+        assert "AS [data_size_bytes]" in sql
+        assert "AS [index_size_bytes]" in sql
+
+    def test_the_split_buckets_are_the_engine_s_own_partitions(self):
+        sql = self._listing_sql()
+        # index_id 0 (a heap) or 1 (a clustered index) is the table's own storage
+        assert "[ps].[index_id] IN (0, 1)" in sql
+        # everything above 1 is a nonclustered index's
+        assert "[ps].[index_id] > 1" in sql
+        # SQL Server pages are 8 KiB with no configuration switch
+        assert "* 8192 AS [size_bytes]" in sql
+
+    def test_schema_stays_a_bind_parameter(self):
+        introspector = make_introspector()
+        stmt = TableListQueryStatement(introspector._backend.dialect, schema="sales")
+        _, params = introspector._backend.dialect.format_table_list_query_statement(stmt)
+        assert params == ("sales",)
+
+    def test_view_rows_keep_empty_storage_slots(self):
+        """A view has no partitions: the subquery answers NULL, the slots stay
+        None -- "storage this engine does not track for this object" rather
+        than zero."""
+        introspector = make_introspector()
+        rows = [
+            {"TABLE_NAME": "t", "TABLE_TYPE": "U", "size_bytes": 24576,
+             "data_size_bytes": 20480, "index_size_bytes": 4096},
+            {"TABLE_NAME": "v", "TABLE_TYPE": "V"},
+        ]
+        by_name = {t.name: t for t in introspector.parse_tables(rows, "dbo")}
+        assert by_name["t"].size_bytes == 24576
+        assert by_name["t"].data_size_bytes == 20480
+        assert by_name["t"].index_size_bytes == 4096
+        view = by_name["v"]
+        assert view.size_bytes is None
+        assert view.data_size_bytes is None
+        assert view.index_size_bytes is None
+
+class TestSequenceProjection:
+    """The own class keeps the full semantics; to_core carries the minimum."""
+
+    def test_every_common_field_projects(self):
+        from decimal import Decimal
+
+        from rhosocial.activerecord.backend.impl.sqlserver.introspection.types import (
+            SQLServerSequenceInfo,
+        )
+
+        own = SQLServerSequenceInfo(
+            name="seq_a",
+            schema="sales",
+            data_type="bigint",
+            start_value=Decimal("10"),
+            increment=Decimal("5"),
+            minimum_value=Decimal("1"),
+            maximum_value=Decimal("1000"),
+            current_value=Decimal("120"),
+            is_cycling=True,
+            cache_size=50,
+        )
+        core = own.to_core()
+        assert core.name == "seq_a"
+        assert core.schema == "sales"
+        assert core.data_type == "bigint"
+        assert core.start_value == 10
+        assert core.increment == 5
+        assert core.minimum_value == 1
+        assert core.maximum_value == 1000
+        assert core.cycle is True
+        assert core.cache_size == 50
+        assert core.last_value == 120
+
+    def test_non_integral_sequence_stays_complete_on_the_own_class(self):
+        """A sequence declared on decimal(10,2) has a non-integral increment:
+        the common minimum's integer field holds None for it, and the exact
+        Decimal stays where it is answerable -- on this class."""
+        from decimal import Decimal
+
+        from rhosocial.activerecord.backend.impl.sqlserver.introspection.types import (
+            SQLServerSequenceInfo,
+        )
+
+        own = SQLServerSequenceInfo(name="seq_p", increment=Decimal("0.5"))
+        core = own.to_core()
+        assert core.increment is None
+        assert own.increment == Decimal("0.5")
+
+    def test_unset_fields_project_as_none(self):
+        from rhosocial.activerecord.backend.impl.sqlserver.introspection.types import (
+            SQLServerSequenceInfo,
+        )
+
+        core = SQLServerSequenceInfo(name="seq_b").to_core()
+        assert core.cycle is False
+        assert core.start_value is None
+        assert core.last_value is None

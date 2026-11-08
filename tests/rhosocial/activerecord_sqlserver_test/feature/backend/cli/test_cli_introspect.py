@@ -20,7 +20,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.backend import async_backend 
 from rhosocial.activerecord.backend.impl.sqlserver.cli import introspect as introspect_mod
 from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
     AsyncSQLServerIntrospector,
-    SyncSQLServerIntrospector,
+    SQLServerIntrospector,
 )
 
 
@@ -99,6 +99,76 @@ class FakeIntrospector:
     def get_database_info(self):
         return {"db_name": "db", "version": "16.0.4250.1"}
 
+    # ---- the nine families shared with the MySQL and PostgreSQL CLIs ----
+    # Each records the call the way the families above do, so a branch that
+    # names the wrong method, or drops an argument, shows up as a wrong
+    # recorded call rather than as a plausible listing.
+
+    def list_unused_indexes(self, schema=None):
+        return self._record("list_unused_indexes", schema=schema)
+
+    def list_table_usage_stats(self, schema=None):
+        return self._record("list_table_usage_stats", schema=schema)
+
+    def list_runtime_metrics(self, schema=None):
+        return self._record("list_runtime_metrics", schema=schema)
+
+    def list_index_usage_stats(self, schema=None):
+        return self._record("list_index_usage_stats", schema=schema)
+
+    def list_object_dependencies(self, object_name=None, schema=None):
+        return self._record(
+            "list_object_dependencies", object_name=object_name, schema=schema
+        )
+
+    def get_ddl_statement(self, object_name, schema=None):
+        self.calls.append(
+            ("get_ddl_statement", {"object_name": object_name, "schema": schema})
+        )
+        return {
+            "schema": "dbo",
+            "object_type": "TABLE",
+            "object_name": object_name,
+            "ddl": "CREATE TABLE [users] ([id] int)",
+            "native": False,
+        }
+
+    def list_column_data_profiles(self, table_name, schema=None):
+        return self._record("list_column_data_profiles", table_name=table_name, schema=schema)
+
+    def sample_column_values(self, table_name, column_name, limit=100, schema=None):
+        return self._record(
+            "sample_column_values",
+            table_name=table_name,
+            column_name=column_name,
+            limit=limit,
+            schema=schema,
+        )
+
+    def estimate_join_coverage(
+        self, left_table, left_column, right_table, right_column, schema=None
+    ):
+        self.calls.append(
+            (
+                "estimate_join_coverage",
+                {
+                    "left_table": left_table,
+                    "left_column": left_column,
+                    "right_table": right_table,
+                    "right_column": right_column,
+                    "schema": schema,
+                },
+            )
+        )
+        return {
+            "left_table": left_table,
+            "left_column": left_column,
+            "right_table": right_table,
+            "right_column": right_column,
+            "left_coverage": 1.0,
+            "right_coverage": 0.5,
+        }
+
     def get_table_info(self, table_name, schema=None):
         self.calls.append(("get_table_info", {"table_name": table_name, "schema": schema}))
         return FakeTable(table_name)
@@ -151,6 +221,39 @@ class FakeAsyncIntrospector(FakeIntrospector):
 
     async def get_table_info(self, table_name, schema=None):
         return FakeIntrospector.get_table_info(self, table_name, schema)
+
+    async def list_unused_indexes(self, schema=None):
+        return FakeIntrospector.list_unused_indexes(self, schema)
+
+    async def list_table_usage_stats(self, schema=None):
+        return FakeIntrospector.list_table_usage_stats(self, schema)
+
+    async def list_runtime_metrics(self, schema=None):
+        return FakeIntrospector.list_runtime_metrics(self, schema)
+
+    async def list_index_usage_stats(self, schema=None):
+        return FakeIntrospector.list_index_usage_stats(self, schema)
+
+    async def list_object_dependencies(self, object_name=None, schema=None):
+        return FakeIntrospector.list_object_dependencies(self, object_name, schema)
+
+    async def get_ddl_statement(self, object_name, schema=None):
+        return FakeIntrospector.get_ddl_statement(self, object_name, schema)
+
+    async def list_column_data_profiles(self, table_name, schema=None):
+        return FakeIntrospector.list_column_data_profiles(self, table_name, schema)
+
+    async def sample_column_values(self, table_name, column_name, limit=100, schema=None):
+        return FakeIntrospector.sample_column_values(
+            self, table_name, column_name, limit, schema
+        )
+
+    async def estimate_join_coverage(
+        self, left_table, left_column, right_table, right_column, schema=None
+    ):
+        return FakeIntrospector.estimate_join_coverage(
+            self, left_table, left_column, right_table, right_column, schema
+        )
 
 
 class FakeBackendBase:
@@ -285,10 +388,16 @@ class TestDispatchContract:
     @pytest.mark.parametrize("kind", introspect_mod.INTROSPECT_TYPES)
     def test_type_maps_to_a_real_method_on_both_managers(self, kind):
         argv = ["introspect", kind]
-        if kind in ("columns", "indexes", "foreign-keys", "extended-properties"):
+        if kind in ("columns", "indexes", "foreign-keys", "extended-properties",
+                    "ddl", "column-profiles", "value-samples"):
             argv.append("users")
+        if kind == "value-samples":
+            argv += ["--column", "status"]
+        if kind == "join-coverage":
+            argv += ["--left-table", "orders", "--left-column", "customer_id",
+                     "--right-table", "customers", "--right-column", "id"]
         for method, _kwargs in introspect_mod._steps(make_args(argv)):
-            assert hasattr(SyncSQLServerIntrospector, method), method
+            assert hasattr(SQLServerIntrospector, method), method
             assert hasattr(AsyncSQLServerIntrospector, method), method
 
     def test_database_takes_no_object_name(self):
@@ -318,13 +427,107 @@ class TestHandleDispatch:
             (["functions"], "list_functions"),
             (["sequences"], "list_sequences"),
             (["schemas"], "list_schemas"),
+            # The nine families shared with the MySQL and PostgreSQL CLIs.
+            # ``table-stats`` and ``ddl`` are refused by the dialect's own
+            # answer, so their rows below are what the branch *would* ask:
+            # the capability gate stops a real run before that, and the
+            # dedicated test file asserts both halves.
+            (["unused-indexes"], "list_unused_indexes"),
+            (["table-stats"], "list_table_usage_stats"),
+            (["runtime"], "list_runtime_metrics"),
+            (["index-stats"], "list_index_usage_stats"),
+            (["dependencies"], "list_object_dependencies"),
+            (["dependencies", "orders"], "list_object_dependencies"),
+            (["column-profiles", "orders"], "list_column_data_profiles"),
+            (
+                ["value-samples", "orders", "--column", "status"],
+                "sample_column_values",
+            ),
+            (
+                [
+                    "join-coverage",
+                    "--left-table", "orders",
+                    "--left-column", "customer_id",
+                    "--right-table", "customers",
+                    "--right-column", "id",
+                ],
+                "estimate_join_coverage",
+            ),
         ],
     )
     def test_types_dispatch_and_render_json(self, argv, method, capsys):
+        if method == "estimate_join_coverage":
+            # The coverage answer is a record of its own, not the ``_record``
+            # shape the other families return; the four names it carries are
+            # asserted by the test beside this one.
+            pytest.skip("asserted by test_join_coverage_receives_the_four_names")
         introspect_mod.handle(make_args(["introspect"] + argv + ["--database", "db"]))
         payload = json.loads(capsys.readouterr().out)
         assert isinstance(payload, list)
         assert payload[0]["method"] == method
+
+    def test_ddl_prints_the_engine_text_and_keeps_the_native_flag(self, capsys):
+        """A DDL text is a block, so the table format prints it as one; the
+        machine formats keep the record, ``native`` included."""
+        introspect_mod.handle(
+            make_args(["introspect", "ddl", "users", "--database", "db", "-o", "json"])
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[0]["object_name"] == "users"
+        assert payload[0]["ddl"] == "CREATE TABLE [users] ([id] int)"
+        assert payload[0]["native"] is False
+
+    def test_join_coverage_receives_the_four_names(self, capsys):
+        introspect_mod.handle(
+            make_args([
+                "introspect", "join-coverage",
+                "--left-table", "orders",
+                "--left-column", "customer_id",
+                "--right-table", "customers",
+                "--right-column", "id",
+                "--database", "db",
+            ])
+        )
+        method, kwargs = FakeIntrospector.instances[-1].calls[-1]
+        assert method == "estimate_join_coverage"
+        assert kwargs == {
+            "left_table": "orders",
+            "left_column": "customer_id",
+            "right_table": "customers",
+            "right_column": "id",
+            "schema": None,
+        }
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[0]["left_coverage"] == 1.0
+        assert payload[0]["right_coverage"] == 0.5
+
+    def test_a_coverage_the_server_cannot_measure_is_an_error(self, monkeypatch, capsys):
+        """``None`` is "not measured", which is not a zero-overlap answer."""
+
+        class UnmeasurableIntrospector(FakeIntrospector):
+            def estimate_join_coverage(self, *args, **kwargs):
+                return None
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(
+                FakeBackendBase, "UnmeasurableBackend", UnmeasurableIntrospector
+            ),
+        )
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args([
+                    "introspect", "join-coverage",
+                    "--left-table", "orders",
+                    "--left-column", "customer_id",
+                    "--right-table", "customers",
+                    "--right-column", "id",
+                    "--database", "db",
+                ])
+            )
+        assert exc.value.code == 1
+        assert "could not measure" in capsys.readouterr().err
 
     def test_tables_receives_include_system_and_no_schema(self, capsys):
         introspect_mod.handle(
@@ -481,7 +684,65 @@ class TestDeclaredVocabulary:
         assert list(introspect_mod._TYPE_CAPABILITIES) == introspect_mod.INTROSPECT_TYPES
 
     def test_every_declared_type_has_a_name_rule(self):
-        assert set(introspect_mod._NAME_RULES) == set(introspect_mod.INTROSPECT_TYPES)
+        """A type advertised without a rule is one whose NAME decision nobody has made.
+
+        The set-level half of pinning the rule table; the contents are pinned
+        beside it, because a set nobody asserts the members of is still a set
+        whose answers can drift one at a time.
+        """
+        assert set(introspect_mod._NAME_RULE) == set(introspect_mod.INTROSPECT_TYPES)
+
+    def test_the_table_says_what_each_types_name_means(self):
+        """The rule table as data, so editing one type is a visible change.
+
+        ``join-coverage`` is the entry that reads as an outlier and is not: the
+        two tables it compares are named on flags, so a positional NAME would
+        be the third name for a question that already has its two -- and a
+        name the branch drops.
+        """
+        assert introspect_mod._NAME_RULE == {
+            "tables": "forbidden",
+            "views": "optional",
+            "columns": "required",
+            "indexes": "required",
+            "foreign-keys": "required",
+            "extended-properties": "required",
+            "triggers": "optional",
+            "database": "forbidden",
+            "procedures": "forbidden",
+            "functions": "forbidden",
+            "sequences": "forbidden",
+            "schemas": "forbidden",
+            "unused-indexes": "forbidden",
+            "table-stats": "forbidden",
+            "runtime": "forbidden",
+            "index-stats": "forbidden",
+            "dependencies": "optional",
+            "ddl": "required",
+            "column-profiles": "required",
+            "value-samples": "required",
+            "join-coverage": "forbidden",
+        }
+
+    def test_the_required_types_are_the_table_scoped_ones(self):
+        """The rule table and the branches agree on which types need a NAME.
+
+        ``_steps`` consumes the name rather than re-deciding, so the set it
+        consumes one for is exactly the set the table marks ``required`` --
+        one statement, read by the validator and by the dispatcher alike.
+        """
+        required = {
+            kind for kind, rule in introspect_mod._NAME_RULE.items() if rule == "required"
+        }
+        assert required == {
+            "columns",
+            "indexes",
+            "foreign-keys",
+            "extended-properties",
+            "ddl",
+            "column-profiles",
+            "value-samples",
+        }
 
     def test_the_removed_aggregate_is_not_readvertised(self):
         assert "table" not in introspect_mod.INTROSPECT_TYPES
@@ -496,7 +757,41 @@ class TestDeclaredVocabulary:
         dialect = SQLServerDialect(version=(16, 0, 0))
         answer = getattr(dialect, switch, None)
         assert callable(answer), f"{kind} names {switch}, which the dialect lacks"
-        assert answer() is True
+
+    #: The two families SQL Server does not answer. The CLI offers them all
+    #: the same -- a type the engine refuses is refused at the capability
+    #: question with exit 2, not hidden from the parser -- so these are
+    #: asserted as the dialect's "no" rather than dropped from the table.
+    UNANSWERED_SWITCHES = {
+        "table-stats": "supports_table_stats",
+        "ddl": "supports_ddl_extraction",
+    }
+
+    def test_the_two_unanswered_families_are_refused_by_the_dialect(self):
+        from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+
+        dialect = SQLServerDialect(version=(16, 0, 0))
+        for kind, switch in self.UNANSWERED_SWITCHES.items():
+            assert introspect_mod._TYPE_CAPABILITIES[kind] == switch
+            assert getattr(dialect, switch)() is False, kind
+
+    def test_every_answered_family_answers_true(self):
+        """2022 is the newest release the matrix runs; every family the engine
+        answers must answer there.
+
+        The version floors the DMV families carry -- 2005 for the index usage
+        view and the performance counters, 2008 for the dependency view, 2012
+        for the pagination clause ``value-samples`` renders -- are all below
+        it, so a gate that refused here would be a gate set one release too
+        high.
+        """
+        from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+
+        dialect = SQLServerDialect(version=(16, 0, 0))
+        for kind, switch in introspect_mod._TYPE_CAPABILITIES.items():
+            if kind in self.UNANSWERED_SWITCHES:
+                continue
+            assert getattr(dialect, switch)() is True, kind
 
     def test_help_lists_every_declared_type(self, capsys):
         parser = argparse.ArgumentParser()
@@ -536,10 +831,14 @@ class TestSupportedScopes:
         assert self._scopes()
 
     def test_every_declared_switch_answers_true(self):
+        """Kept for the families the engine answers; the two it does not are
+        asserted False in :class:`TestDeclaredVocabulary` instead."""
         from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
         dialect = SQLServerDialect(version=(16, 0, 0))
-        for switch in introspect_mod._TYPE_CAPABILITIES.values():
+        for kind, switch in introspect_mod._TYPE_CAPABILITIES.items():
+            if kind in TestDeclaredVocabulary.UNANSWERED_SWITCHES:
+                continue
             assert getattr(dialect, switch)() is True, switch
 
 
@@ -597,6 +896,52 @@ class TestNameGate:
             make_args(["introspect", "triggers", "users", "--database", "db"])
         )
         assert FakeIntrospector.instances[-1].calls[-1][0] == "list_triggers"
+
+    @pytest.mark.parametrize(
+        "kind",
+        sorted(
+            k for k, rule in introspect_mod._NAME_RULE.items() if rule == "forbidden"
+        ),
+    )
+    def test_every_forbidden_type_is_refused_by_the_table(self, kind, capsys):
+        """Each category driven through the one validator that reads the table.
+
+        The per-branch copies are gone, so this is the behaviour of the table
+        itself rather than of a branch that happens to remember.
+        """
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(["introspect", kind, "users", "--database", "db"])
+            )
+        assert exc.value.code == 2
+        assert f"Error: {kind} introspection takes no name" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "kind",
+        sorted(
+            k for k, rule in introspect_mod._NAME_RULE.items() if rule == "required"
+        ),
+    )
+    def test_every_required_type_is_required_by_the_table(self, kind, capsys):
+        """A missing required NAME is an incomplete invocation, exit 1 -- and
+        the question is never asked, so a ``None`` cannot reach the catalogue.
+        """
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(make_args(["introspect", kind, "--database", "db"]))
+        assert exc.value.code == 1
+        assert "Table name is required" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "kind",
+        sorted(
+            k for k, rule in introspect_mod._NAME_RULE.items() if rule == "optional"
+        ),
+    )
+    def test_every_optional_type_may_be_given_a_name_or_not(self, kind):
+        introspect_mod.handle(make_args(["introspect", kind, "--database", "db"]))
+        assert FakeIntrospector.instances[-1].calls
+        introspect_mod.handle(make_args(["introspect", kind, "users", "--database", "db"]))
+        assert FakeIntrospector.instances[-1].calls
 
 
 class TestHandleLifecycleAndConfig:

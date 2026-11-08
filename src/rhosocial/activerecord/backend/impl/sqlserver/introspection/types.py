@@ -21,7 +21,10 @@ sequence can be declared on any exact numeric type, and turning one into a
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    from rhosocial.activerecord.backend.introspection import SequenceInfo
 
 
 @dataclass
@@ -101,6 +104,42 @@ class SQLServerSequenceInfo:
     is_cycling: bool = False
     is_cached: bool = False
     cache_size: Optional[int] = None
+
+    def to_core(self) -> "SequenceInfo":
+        """The cross-dialect minimum this answer carries.
+
+        Core's ``SequenceInfo`` names the smallest shape every engine with
+        sequences answers, and this is the projection onto it: the fields
+        with a one-to-one reading are copied, ``current_value`` lands on
+        ``last_value`` and ``is_cycling`` on ``cycle``. A catalog value that
+        is not integral stays ``None`` here and complete on this class --
+        SQL Server permits a sequence declared on ``decimal(10,2)``, whose
+        increment cannot be an integer, and the common minimum does not
+        widen to hold one engine's non-integral sequence. ``is_cached`` and
+        the exact numeric type stay on this side too: caching is a storage
+        detail the minimum has no field for
+        (``.claude/rules/introspection.md`` section 5).
+        """
+        from rhosocial.activerecord.backend.introspection import SequenceInfo
+
+        def as_int(value: Optional[Decimal]) -> Optional[int]:
+            if value is None:
+                return None
+            integral = value.to_integral_value()
+            return int(integral) if integral == value else None
+
+        return SequenceInfo(
+            name=self.name,
+            schema=self.schema,
+            data_type=self.data_type,
+            start_value=as_int(self.start_value),
+            minimum_value=as_int(self.minimum_value),
+            maximum_value=as_int(self.maximum_value),
+            increment=as_int(self.increment),
+            cycle=self.is_cycling,
+            cache_size=self.cache_size,
+            last_value=as_int(self.current_value),
+        )
 
 
 __all__ = [

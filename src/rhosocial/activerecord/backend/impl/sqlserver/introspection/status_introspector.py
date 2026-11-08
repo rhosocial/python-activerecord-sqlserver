@@ -23,7 +23,7 @@ from rhosocial.activerecord.backend.introspection.status import (
     ConnectionInfo,
     StorageInfo,
     SessionInfo,
-    SyncAbstractStatusIntrospector,
+    AbstractStatusIntrospector,
     AsyncAbstractStatusIntrospector,
 )
 
@@ -250,7 +250,7 @@ class SQLServerStatusIntrospectorMixin(SQLServerNodeBuilderMixin):
 
 
 
-class SyncSQLServerStatusIntrospector(SQLServerStatusIntrospectorMixin, SyncAbstractStatusIntrospector):
+class SQLServerStatusIntrospector(SQLServerStatusIntrospectorMixin, AbstractStatusIntrospector):
     """Synchronous SQL Server status introspector."""
 
     def _execute_query(self, sql: str) -> List[tuple]:

@@ -109,7 +109,7 @@ from typing import Any, Dict
 
 import pytest
 
-from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from rhosocial.activerecord.backend.dialect.exceptions import (ProtocolNotImplementedError, UnsupportedFeatureError)
 from rhosocial.activerecord.backend.expression.core import Column, Literal
 from rhosocial.activerecord.backend.expression.objects import (
     Database,
@@ -151,7 +151,10 @@ from rhosocial.activerecord.backend.expression.statements.dml import (
     MergeAction,
     MergeActionType,
 )
-from rhosocial.activerecord.backend.expression.statements.dql import QueryStatement
+from rhosocial.activerecord.backend.expression.statements.dql import (
+    QueryStatement,
+    SetOperationStatement,
+)
 from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.expression.types.custom import CustomType
 from rhosocial.activerecord.backend.expression.uuid import UUIDConstantExpression
@@ -297,6 +300,20 @@ def _one_column_query(dialect):
     )
 
 
+def _compound_arms(dialect):
+    """Two single-column SELECTs over two tables, no bind parameters."""
+    return [
+        QueryStatement(
+            dialect, select=[Column(dialect, "id")], from_=_table_obj(dialect)
+        ),
+        QueryStatement(
+            dialect,
+            select=[Column(dialect, "id")],
+            from_=_table_obj(dialect, "other"),
+        ),
+    ]
+
+
 def _integer_column(dialect, name="col"):
     """A column definition carrying a *dialect-bound* type.
 
@@ -373,6 +390,15 @@ def register_specials():
             op="union",
             left=QueryStatement(d, select=[Column(d, "id")]),
             right=QueryStatement(d, select=[Column(d, "id")]),
+        ),
+    )
+    # The statement half of the same pair: the word-form enum refuses the
+    # guess's bare string at construction, and SQL Server spells a compound
+    # SELECT, so a factory turns it into an instance the matrix can assert.
+    register_special_constructor(
+        "statements.dql.SetOperationStatement",
+        lambda d: SetOperationStatement(
+            d, op="union_all", parts=_compound_arms(d)
         ),
     )
 
@@ -1030,7 +1056,37 @@ _NO_SUCH_TYPE = "does not support the generic type"
 #: fails here instead of passing quietly -- which is the whole point, given that
 #: this matrix used to swallow every one of these.
 LEGITIMATE_NON_RENDERS = {
-    # ---- bases that name an expression category, not a renderable thing ----
+    # ---- core data-profile families -----------------------------------------
+    # The three rows that stood here are gone: this dialect now renders all of
+    # them. ``sys.stats`` keys its statistics by object rather than by column
+    # and publishes no per-column null fraction or distinct count, so every
+    # figure is aggregated from the rows and labelled ``aggregate``; see
+    # ``SQLServerIntrospectionMixin.supports_column_data_profile``.
+    # ---- core operational families this dialect does not answer ----
+    #  The four rows that stood here for the unused-index, index-counter,
+    #  runtime and dependency families are gone: this dialect renders all four.
+    #  The dynamic management views describe a live instance rather than a
+    #  schema-scoped catalogue, and that dependency is carried by joining the
+    #  DMV through sys.objects and sys.schemas -- the same construct the
+    #  per-table storage read already uses -- so the schema filter the
+    #  statement needs is applied where the statement is built. The version
+    #  floor and the VIEW DATABASE STATE / VIEW SERVER STATE grants each family
+    #  needs are stated on the probes themselves.
+    #  Two families remain unanswered and keep a pin. TableUsageStats:
+    #  SQL Server's counters are per *index*, and summing them per table would
+    #  be a derived figure wearing the shape of a measured counter; inserts
+    #  and deletes are not tracked at all. DDLStatement: the engine has no
+    #  per-object DDL retrieval call -- OBJECT_DEFINITION holds a routine's
+    #  body, not a CREATE TABLE -- so answering would mean assembling a
+    #  reconstruction and labelling it native.
+    "rhosocial.activerecord.backend.expression.introspection.TableUsageStatsQueryStatement": (
+        ProtocolNotImplementedError, 'does not implement ',
+    ),
+    "rhosocial.activerecord.backend.expression.introspection.DDLStatementQueryStatement": (
+        ProtocolNotImplementedError, 'does not implement ',
+    ),
+
+# ---- bases that name an expression category, not a renderable thing ----
     # Each of these is a base class that deliberately declares no `format_method`,
     # so `to_sql()` reports that there is nothing to dispatch. They are not
     # `inspect.isabstract` -- they are concrete enough to construct -- so the
@@ -2272,3 +2328,71 @@ class TestMatrixIntegrity:
         for fqn in sorted(ARTIFACT_GAPS):
             channel, _type, _fragment = ARTIFACT_GAPS[fqn]
             print(f"  artifact gap: {fqn} ({channel} channel)")
+
+# ---------------------------------------------------------------------------
+# The set-operation statement, rendered
+# ---------------------------------------------------------------------------
+#
+# The matrix says ``SetOperationStatement`` renders on SQL Server, which is a
+# verdict about the dialect rather than a claim about the bytes, so the bytes
+# are pinned here. SQL Server brackets its identifiers, which is the part of
+# the pinned SQL that would change if quoting were ever handed to the node
+# instead of staying in the dialect. The bind parameters are asserted
+# positionally, because an ordering bug still renders valid SQL.
+
+
+def test_set_operation_statement_renders_the_pinned_sql(sqlserver_dialect):
+    """``UNION ALL`` over two arms, with the bracketed identifiers this dialect
+    spells them with."""
+    node = SetOperationStatement(
+        sqlserver_dialect, op="union_all", parts=_compound_arms(sqlserver_dialect)
+    )
+
+    rendered, params = node.to_sql()
+
+    assert rendered == "SELECT [id] FROM [t] UNION ALL SELECT [id] FROM [other]"
+    assert params == ()
+
+
+def test_set_operation_statement_spells_the_bare_union(sqlserver_dialect):
+    """The word form alone decides the keyword, so ``union`` differs."""
+    node = SetOperationStatement(
+        sqlserver_dialect, op="union", parts=_compound_arms(sqlserver_dialect)
+    )
+
+    rendered, params = node.to_sql()
+
+    assert rendered == "SELECT [id] FROM [t] UNION SELECT [id] FROM [other]"
+    assert params == ()
+
+
+def test_set_operation_statement_parameters_concatenate_in_part_order(
+    sqlserver_dialect,
+):
+    """Each arm's parameters arrive in the order the operator joins them."""
+    dialect = sqlserver_dialect
+    parts = [
+        QueryStatement(
+            dialect,
+            select=[Column(dialect, "id"), Literal(dialect, 1)],
+            from_=_table_obj(dialect),
+            where=ComparisonPredicate(
+                dialect, "=", Column(dialect, "id"), Literal(dialect, 5)
+            ),
+        ),
+        QueryStatement(
+            dialect,
+            select=[Column(dialect, "id"), Literal(dialect, 2)],
+            from_=_table_obj(dialect, "u"),
+        ),
+    ]
+    node = SetOperationStatement(dialect, op="union_all", parts=parts)
+
+    rendered, params = node.to_sql()
+
+    assert rendered == (
+        "SELECT [id], ? FROM [t] WHERE [id] = ? "
+        "UNION ALL "
+        "SELECT [id], ? FROM [u]"
+    )
+    assert params == (1, 5, 2)

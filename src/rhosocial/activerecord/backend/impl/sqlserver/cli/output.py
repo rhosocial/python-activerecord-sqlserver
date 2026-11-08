@@ -15,6 +15,23 @@ except ImportError:
     RichOutputProvider = None  # type: ignore[misc,assignment]
 
 
+#: The output formats the introspect, query and status subcommands offer.
+#:
+#: The provider factory below is what makes them available: a format listed
+#: here must map to a provider, and a provider nobody is offered is unreachable.
+#: Defining the list once, beside the factory that has to be able to produce
+#: every member, is what keeps "offered" and "producible" from drifting apart.
+OUTPUT_CHOICES = ["table", "json", "csv", "tsv"]
+
+#: The narrower set ``info`` offers.
+#:
+#: ``info`` prints one object's facts, a shape the plain-text provider lays out
+#: better than a record table; offering csv and tsv there would advertise two
+#: renderings of a single row. The name says which surface it belongs to, so
+#: the two lists are not one name answering two questions.
+INFO_OUTPUT_CHOICES = ["table", "json"]
+
+
 def create_provider(output_format: str, ascii_borders: bool = False):
     """Factory function to get the correct output provider.
 

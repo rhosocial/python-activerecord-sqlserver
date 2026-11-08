@@ -52,15 +52,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |
@@ -142,15 +142,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |
@@ -232,15 +232,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |
@@ -322,15 +322,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |
@@ -412,15 +412,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |
@@ -502,15 +502,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |
@@ -593,15 +593,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |
@@ -683,15 +683,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |
@@ -782,15 +782,15 @@ jobs:
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
 
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-
-    - name: Install activerecord and testsuite from PyPI
-      run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@fix/column-constraint-gates"
 
     - name: Create test database
       run: |

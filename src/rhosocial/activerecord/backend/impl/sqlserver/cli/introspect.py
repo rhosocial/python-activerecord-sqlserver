@@ -12,6 +12,20 @@ The mapping from a type name to an introspector method lives in ``_steps``
 and nowhere else, so a new type is one entry there plus one title. The sync
 and async paths differ in exactly one keyword: whether the method is
 awaited.
+
+What NAME means for a type is decided once, in ``_NAME_RULE``, and applied by
+one validator before the connection is opened. It is not decided in the
+branches: a name a type has no question for is refused with exit 2 rather
+than parsed and dropped, and a type added without a rule is a type nobody has
+decided for.
+
+The nine families the MySQL and PostgreSQL CLIs ask for are offered here
+too, each gated on the switch that answers for it. SQL Server answers seven
+of the nine from its dynamic management views; two it does not answer at all
+-- per-table usage counters, which it keeps per *index*, and DDL retrieval,
+which the engine has no call for -- so those probes answer ``False`` and the
+capability check refuses them with exit 2 rather than letting a rendered
+statement fail at execution.
 """
 
 import argparse
@@ -24,9 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from .connection import add_connection_args, resolve_connection_config_from_args
-from .output import create_provider
-
-OUTPUT_CHOICES = ['table', 'json', 'csv', 'tsv']
+from .output import OUTPUT_CHOICES, create_provider
 
 #: CLI type -> the dialect capability switch that answers for it.
 #:
@@ -49,6 +61,22 @@ _TYPE_CAPABILITIES = {
     "functions": "supports_function_introspection",
     "sequences": "supports_sequence_introspection",
     "schemas": "supports_schema_introspection",
+    # The nine families shared with the MySQL and PostgreSQL CLIs. Each names
+    # the probe that answers for it here, which is not automatically the same
+    # answer it gives there: the dependency graph and the runtime listing come
+    # from the DMVs, the unused-index and index-counter families from the
+    # index usage DMV, the three data families from the rows themselves, and
+    # two -- per-table usage counters and DDL retrieval -- are refused by the
+    # engine's own answer rather than by an absent CLI branch.
+    "unused-indexes": "supports_unused_indexes_detection",
+    "table-stats": "supports_table_stats",
+    "runtime": "supports_runtime_stats",
+    "index-stats": "supports_index_stats",
+    "dependencies": "supports_object_dependencies",
+    "ddl": "supports_ddl_extraction",
+    "column-profiles": "supports_column_data_profile",
+    "value-samples": "supports_column_value_sample",
+    "join-coverage": "supports_join_coverage",
 }
 
 INTROSPECT_TYPES = list(_TYPE_CAPABILITIES)
@@ -63,7 +91,13 @@ INTROSPECT_TYPES = list(_TYPE_CAPABILITIES)
 #:
 #: ``views NAME`` is a view name and ``triggers NAME`` is a *table* name: the
 #: two are not the same kind of argument, which is why this table exists.
-_NAME_RULES = {
+#:
+#: The order is the order ``_TYPE_CAPABILITIES`` declares and the parser and
+#: ``--help`` print, and the two tables cover the same keys: a type offered
+#: without a rule is a type whose NAME decision nobody has made. One validator
+#: reads this table, before the connection is opened, and the dispatcher
+#: consumes its answer rather than re-deciding per branch.
+_NAME_RULE = {
     "tables": "forbidden",
     "views": "optional",
     "columns": "required",
@@ -76,6 +110,46 @@ _NAME_RULES = {
     "functions": "forbidden",
     "sequences": "forbidden",
     "schemas": "forbidden",
+    # The nine shared families: the counters and the listings describe the
+    # database and take no name; the graph narrows to one object and answers
+    # the whole graph without one; the one-object families ask about a table.
+    "unused-indexes": "forbidden",
+    "table-stats": "forbidden",
+    "runtime": "forbidden",
+    "index-stats": "forbidden",
+    "dependencies": "optional",
+    "ddl": "required",
+    "column-profiles": "required",
+    "value-samples": "required",
+    "join-coverage": "forbidden",
+}
+
+#: Options whose meaning depends on the type, and whether they must be given.
+#:
+#: ``--column`` and ``--limit`` belong to ``value-samples``, the four join
+#: names to ``join-coverage``, and nothing else has an option beyond NAME. A
+#: flag supplied to a type that does not read it is refused rather than
+#: ignored, for the same reason a NAME nothing reads is: a silently dropped
+#: argument produces a successful run that looks like it answered a narrower
+#: question.
+_TYPE_OPTIONS = {
+    "value-samples": (
+        ("column", "--column", True),
+        ("limit", "--limit", False),
+    ),
+    "join-coverage": (
+        ("left_table", "--left-table", True),
+        ("left_column", "--left-column", True),
+        ("right_table", "--right-table", True),
+        ("right_column", "--right-column", True),
+    ),
+}
+
+#: Every option in ``_TYPE_OPTIONS``, by attribute, for the stray-flag check.
+_TYPE_OPTION_FLAGS = {
+    attribute: flag
+    for options in _TYPE_OPTIONS.values()
+    for attribute, flag, _required in options
 }
 
 #: Titles for the one-result types. The table-scoped types build their title
@@ -89,6 +163,13 @@ _RESULT_TITLES = {
     "list_sequences": "Sequences",
     "list_schemas": "Schemas",
     "get_database_info": "Database Info",
+    "list_unused_indexes": "Indexes with no recorded use",
+    "list_table_usage_stats": "Table usage counters",
+    "list_runtime_metrics": "Runtime metrics",
+    "list_index_usage_stats": "Index usage counters",
+    "list_object_dependencies": "Object dependencies",
+    "list_column_data_profiles": "Column profiles",
+    "estimate_join_coverage": "Join coverage",
 }
 
 
@@ -138,6 +219,28 @@ def create_parser(subparsers):
   # List sequences
   %(prog)s sequences --database mydb
 
+  # Operational readings: indexes with no recorded use, per-index counters,
+  # live instance counters, the dependency graph
+  %(prog)s unused-indexes --database mydb
+  %(prog)s index-stats --database mydb
+  %(prog)s runtime --database mydb
+  %(prog)s dependencies --database mydb
+  %(prog)s dependencies orders --database mydb
+
+  # Data profiles: exact counts, paid for with a full scan per column
+  %(prog)s column-profiles orders --database mydb
+  %(prog)s value-samples orders --column status --limit 20 --database mydb
+
+  # How much two columns' value domains overlap
+  %(prog)s join-coverage --left-table orders --left-column customer_id \\
+      --right-table customers --right-column id --database mydb
+
+  # The two families SQL Server does not answer are refused by capability,
+  # not hidden: table-stats and ddl exit 2 with "not supported by this
+  # server" once the version is known.
+  %(prog)s table-stats --database mydb
+  %(prog)s ddl orders --database mydb
+
   # Output as JSON
   %(prog)s tables --database mydb -o json
 
@@ -148,8 +251,10 @@ def create_parser(subparsers):
 NAME per type:
   columns, indexes, foreign-keys, extended-properties
                               a table name, required
+  ddl, column-profiles, value-samples
+                              a table name, required
   views                       a view name, optional
-  triggers                    a table name, optional
+  triggers, dependencies      optional narrowing
   everything else             no name: refused with exit 2, never ignored
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -189,27 +294,137 @@ NAME per type:
         action="store_true",
         help="Include system tables in output",
     )
+    parser.add_argument(
+        "--column",
+        default=None,
+        help="Column name for the value-samples type.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            "Maximum values to list for value-samples "
+            "(default: the introspector's own limit)."
+        ),
+    )
+    parser.add_argument(
+        "--left-table",
+        dest="left_table",
+        default=None,
+        help="Left table for the join-coverage type.",
+    )
+    parser.add_argument(
+        "--left-column",
+        dest="left_column",
+        default=None,
+        help="Left column for the join-coverage type.",
+    )
+    parser.add_argument(
+        "--right-table",
+        dest="right_table",
+        default=None,
+        help="Right table for the join-coverage type.",
+    )
+    parser.add_argument(
+        "--right-column",
+        dest="right_column",
+        default=None,
+        help="Right column for the join-coverage type.",
+    )
 
     return parser
 
 
-def _refuse_unused_name(args) -> None:
-    """Refuse a NAME the requested type cannot use, rather than ignore it.
+def _validate_name(args) -> None:
+    """Apply the NAME rule table before anything connects.
 
-    ``introspect tables users`` used to list every table and exit 0, which
-    reads as "the filter matched everything" or "the filter was applied" --
-    the most misleading shape a wrong answer can take. A name for a type that
-    answers for the database is a misuse of the argument, so it leaves with 2.
+    A *missing* name is an incomplete invocation and leaves with 1; a name
+    the type has no use for is a request this command declines and leaves with
+    2. Both are checked here, once, rather than being left to each branch to
+    remember -- a branch that forgot would answer a wider question than the
+    one asked and look successful.
     """
-    if not args.name:
+    rule = _NAME_RULE.get(args.type)
+    if rule == "required" and not args.name:
+        print(
+            f"Error: Table name is required for '{args.type}' introspection",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if rule == "forbidden" and args.name:
+        print(
+            f"Error: {args.type} introspection takes no name",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
+def _validate_options(args) -> None:
+    """Refuse a flag the type does not read, or a missing one it needs.
+
+    A missing required option is an incomplete invocation (exit 1); an option
+    the type has no use for is a request this command declines (exit 2), like
+    a NAME it cannot use. Reading the flags with ``getattr`` keeps the
+    hand-built namespaces the offline tests use working: an absent attribute
+    is "not given", not an error.
+    """
+    options = _TYPE_OPTIONS.get(args.type, ())
+    accepted = {attribute for attribute, _flag, _required in options}
+
+    missing = [
+        flag
+        for attribute, flag, required in options
+        if required and not getattr(args, attribute, None)
+    ]
+    if missing:
+        print(
+            f"Error: {', '.join(missing)} is required for "
+            f"'{args.type}' introspection",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    for attribute, flag in _TYPE_OPTION_FLAGS.items():
+        if attribute in accepted:
+            continue
+        if getattr(args, attribute, None) not in (None, ""):
+            print(
+                f"Error: '{args.type}' introspection takes no {flag}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+
+def _value_sample_arguments(args) -> Dict[str, int]:
+    """The optional arguments ``value-samples`` sends, given the parsed argument.
+
+    ``limit`` is forwarded only when the caller supplied ``--limit``. When the
+    flag is absent the introspector's signature answers with its own default,
+    so a forwarder that filled in ``100`` would be a second place writing a
+    number the signature already owns -- and a place no test could keep in
+    step with it.
+    """
+    limit = getattr(args, "limit", None)
+    return {} if limit is None else {"limit": limit}
+
+
+def _display_ddl(args, provider, statement) -> None:
+    """Show one object's DDL as the engine handed it back.
+
+    A DDL text is a block, not a field of a row: a bordered cell wraps every
+    one of its lines and reads worse than the text itself. So the terminal
+    format prints the engine's own text, and the formats a caller parses keep
+    the record -- schema, object type, object name, ``native`` and the text --
+    which is what ``native`` is for: it says the engine retrieved this rather
+    than the library assembling it.
+    """
+    record = _serialize_for_output(statement)
+    if args.output != "table":
+        provider.display_results([record], title=f"DDL of {args.name}")
         return
-    if _NAME_RULES.get(args.type) != "forbidden":
-        return
-    print(
-        f"Error: {args.type} introspection takes no name",
-        file=sys.stderr,
-    )
-    sys.exit(2)
+    print(f"-- {record.get('object_type') or 'OBJECT'} {record.get('object_name') or args.name}")
+    print(record["ddl"])
 
 
 def _require_capability(backend, kind: str) -> None:
@@ -246,9 +461,10 @@ def handle(args):
         print("Error: --database is required for introspection", file=sys.stderr)
         sys.exit(1)
 
-    # Before a connection is opened: whether a NAME belongs to the type is a
-    # question about the request, not about the server.
-    _refuse_unused_name(args)
+    # Before a connection is opened: whether a NAME or a flag belongs to the
+    # type is a question about the request, not about the server.
+    _validate_name(args)
+    _validate_options(args)
 
     config = resolve_connection_config_from_args(args)
 
@@ -266,9 +482,17 @@ def handle(args):
 # ---------------------------------------------------------------------------
 
 
-def _require_name(args, kind: str) -> str:
-    """Return the object name a table-scoped type needs, or exit."""
-    if not args.name:
+def _name_of(args, kind: str) -> str:
+    """The object name a table-scoped type asks with.
+
+    ``_validate_name`` has already refused a run that omitted one: a
+    ``required`` type whose NAME is missing never reaches this function. The
+    table is read here as well only so a caller that skipped the validator
+    still meets the rule rather than sending a ``None`` the introspector would
+    answer as a wider question than the one asked -- the decision is written
+    once, in ``_NAME_RULE``, and every reader reads it.
+    """
+    if _NAME_RULE.get(kind) == "required" and not args.name:
         print(
             f"Error: Table name is required for '{kind}' introspection",
             file=sys.stderr,
@@ -284,9 +508,13 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     which type: one type, one question. The table detail that used to be
     assembled here went with the aggregate type it belonged to.
 
-    The NAME each type accepts is decided here too, because it *is* part of
-    the question: ``views NAME`` is the single-view question, not a filter over
-    the list.
+    The NAME each type accepts is *not* decided here. ``_validate_name`` reads
+    ``_NAME_RULE`` before the connection is opened -- a missing one is an
+    incomplete invocation, a name the type has no question for is refused
+    with exit 2 -- so by the time this runs a ``required`` type always has its
+    name and the branches consume ``args.name`` directly. The branches below
+    that used to carry their own "Table name is required" sentence now rely on
+    that, so there is one decision rather than one per branch.
     """
     kind = args.type
 
@@ -324,17 +552,92 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     if kind == "schemas":
         return [("list_schemas", {})]
 
+    # ---- the nine families shared with the MySQL and PostgreSQL CLIs -----
+    # The counters and the listings answer for the whole schema, so none
+    # takes a name; the graph narrows to one object and answers the whole
+    # graph without one; the one-object families ask about a table.
+    if kind == "unused-indexes":
+        return [("list_unused_indexes", {"schema": None})]
+    if kind == "table-stats":
+        return [("list_table_usage_stats", {"schema": None})]
+    if kind == "runtime":
+        return [("list_runtime_metrics", {"schema": None})]
+    if kind == "index-stats":
+        return [("list_index_usage_stats", {"schema": None})]
+    if kind == "dependencies":
+        return [(
+            "list_object_dependencies",
+            {"object_name": args.name, "schema": None},
+        )]
+    if kind == "ddl":
+        return [(
+            "get_ddl_statement",
+            {"object_name": _name_of(args, kind), "schema": None},
+        )]
+    if kind == "column-profiles":
+        return [(
+            "list_column_data_profiles",
+            {"table_name": _name_of(args, kind), "schema": None},
+        )]
+    if kind == "value-samples":
+        if not getattr(args, "column", None):
+            print(
+                "Error: --column is required for 'value-samples' introspection",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return [(
+            "sample_column_values",
+            {
+                "table_name": _name_of(args, kind),
+                "column_name": args.column,
+                "schema": None,
+                **_value_sample_arguments(args),
+            },
+        )]
+    if kind == "join-coverage":
+        missing = [
+            flag
+            for attribute, flag, required in _TYPE_OPTIONS["join-coverage"]
+            if required and not getattr(args, attribute, None)
+        ]
+        if missing:
+            print(
+                f"Error: {', '.join(missing)} is required for "
+                "'join-coverage' introspection",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return [(
+            "estimate_join_coverage",
+            {
+                "left_table": args.left_table,
+                "left_column": args.left_column,
+                "right_table": args.right_table,
+                "right_column": args.right_column,
+                "schema": None,
+            },
+        )]
+
     # columns / indexes / foreign-keys / extended-properties
     method = f"list_{kind.replace('-', '_')}"
     return [(
         method,
-        {"table_name": _require_name(args, kind), "schema": None},
+        {"table_name": _name_of(args, kind), "schema": None},
     )]
 
 
 def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
     """The heading for one section of output."""
     if method in _RESULT_TITLES:
+        # Two of the shared families name the object in their title: the
+        # graph may be narrowed to one object, and the data families are
+        # about one table. The rest describe the database and read the same
+        # whatever the caller asked.
+        if method == "list_object_dependencies" and kwargs.get("object_name"):
+            return f"Dependencies of {kwargs['object_name']}"
+        if method == "list_column_data_profiles":
+            return f"Column profiles of {kwargs.get('table_name', '')}"
         return _RESULT_TITLES[method]
     if method == "get_view_info":
         return f"View {kwargs.get('view_name', '')}"
@@ -347,6 +650,13 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
         return f"Foreign Keys of {name}"
     if method == "list_extended_properties":
         return f"Extended Properties of {name}"
+    if method == "sample_column_values":
+        column = kwargs.get("column_name", "")
+        return f"Most frequent values of {name}.{column}"
+    if method == "estimate_join_coverage":
+        left = f"{kwargs.get('left_table', '')}.{kwargs.get('left_column', '')}"
+        right = f"{kwargs.get('right_table', '')}.{kwargs.get('right_column', '')}"
+        return f"Join coverage of {left} and {right}"
     return method
 
 
@@ -413,6 +723,34 @@ async def _require_found_async(
     ):
         return
     _report_missing(missing)
+
+
+def _require_measured(method: str, kwargs: Dict[str, Any], value: Any) -> None:
+    """Refuse a ``None`` answer that means "not measured", not zero.
+
+    Two of the shared families answer with a single object or nothing:
+    ``None`` from the DDL question says the engine will not produce a text,
+    and ``None`` from the coverage question says the overlap could not be
+    measured. Both are different answers from an empty row and from a measured
+    zero, so both leave with 1 rather than printing a row of nulls that a
+    reader would take for a measurement.
+    """
+    if value is not None:
+        return
+    if method == "get_ddl_statement":
+        print(
+            f"Error: no DDL available for '{kwargs.get('object_name', '')}'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if method == "estimate_join_coverage":
+        left = f"{kwargs.get('left_table', '')}.{kwargs.get('left_column', '')}"
+        right = f"{kwargs.get('right_table', '')}.{kwargs.get('right_column', '')}"
+        print(
+            f"Error: this server could not measure the overlap of {left} and {right}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def _value_sections(
@@ -482,6 +820,16 @@ def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
         for method, kwargs in _steps(args):
             value = getattr(introspector, method)(**kwargs)
             _require_found(introspector, method, kwargs, value)
+            _require_measured(method, kwargs, value)
+            if method == "list_column_data_profiles":
+                print(
+                    "Note: column profiles are aggregated from the rows themselves "
+                    "(source='aggregate') -- exact, and paid for with a full scan per column.",
+                    file=sys.stderr,
+                )
+            if method == "get_ddl_statement":
+                _display_ddl(args, provider, value)
+                continue
             sections.extend(_value_sections(method, kwargs, value))
         _render(provider, sections)
 
@@ -510,6 +858,16 @@ async def _handle_introspect_async(args, backend, provider):
         for method, kwargs in _steps(args):
             value = await getattr(introspector, method)(**kwargs)
             await _require_found_async(introspector, method, kwargs, value)
+            _require_measured(method, kwargs, value)
+            if method == "list_column_data_profiles":
+                print(
+                    "Note: column profiles are aggregated from the rows themselves "
+                    "(source='aggregate') -- exact, and paid for with a full scan per column.",
+                    file=sys.stderr,
+                )
+            if method == "get_ddl_statement":
+                _display_ddl(args, provider, value)
+                continue
             sections.extend(_value_sections(method, kwargs, value))
         _render(provider, sections)
 

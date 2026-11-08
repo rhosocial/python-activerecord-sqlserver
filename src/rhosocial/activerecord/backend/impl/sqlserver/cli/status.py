@@ -12,9 +12,7 @@ from typing import Any
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.errors import ConnectionError, QueryError
 from .connection import add_connection_args, resolve_connection_config_from_args
-from .output import create_provider, RICH_AVAILABLE
-
-OUTPUT_CHOICES = ['table', 'json', 'csv', 'tsv']
+from .output import OUTPUT_CHOICES, create_provider, RICH_AVAILABLE
 
 STATUS_TYPES = ["all", "config", "performance", "connections", "storage", "databases", "users"]
 
@@ -126,13 +124,13 @@ def _format_size(size_bytes: int) -> str:
 def _handle_status_sync(args, backend: SQLServerBackend, provider):
     """Handle status subcommand synchronously."""
     from rhosocial.activerecord.backend.introspection.status import StatusCategory
-    from ..introspection.status_introspector import SyncSQLServerStatusIntrospector
+    from ..introspection.status_introspector import SQLServerStatusIntrospector
 
     try:
         backend.connect()
         backend.introspect_and_adapt()
 
-        status_introspector = SyncSQLServerStatusIntrospector(backend)
+        status_introspector = SQLServerStatusIntrospector(backend)
         status_type = args.type
 
         if status_type == "all":
