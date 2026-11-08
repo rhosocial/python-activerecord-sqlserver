@@ -155,6 +155,30 @@ CreateTableStatement(
 )
 ```
 
+### Signed seconds between two instants
+
+`seconds_between(start, end)` answers `end - start` in seconds, keeping the
+sign and the fraction. SQL Server has no interval subtraction, so the backend
+counts milliseconds with `DATEDIFF_BIG` and divides by `1000.0`:
+
+```python
+from rhosocial.activerecord.backend.expression import (
+    Column,
+    seconds_between,
+)
+
+elapsed = seconds_between(dialect, Column(dialect, "started_at"),
+                          Column(dialect, "ended_at")).as_("seconds")
+# DATEDIFF_BIG(MILLISECOND, [started_at], [ended_at]) / 1000.0 AS [seconds]
+```
+
+`DATEDIFF_BIG` rather than `DATEDIFF` because a millisecond count overflows a
+32-bit `int` after about 24 days; the result is exact to a millisecond, which
+is the resolution of `DATEDIFF_BIG`, not of `datetime2`. The function arrived
+in SQL Server 2016; a server below that floor refuses the expression, and
+`supports_functions()["seconds_between"]` reports `False`. An `end` earlier
+than `start` subtracts to a negative value with no extra sign handling.
+
 ## Version Gates
 
 Gates below are the versions at which this backend's own `supports_*`

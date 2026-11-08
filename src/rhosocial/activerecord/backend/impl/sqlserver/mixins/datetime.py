@@ -2,6 +2,7 @@
 from typing import Any, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
+from .version_constants import SQL_SERVER_2016
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -88,4 +89,34 @@ class SQLServerDateTimeMixin:
         start_sql, start_params = expr.start.to_sql()
         end_sql, end_params = expr.end.to_sql()
         sql = f"DATEDIFF({expr.unit.value.upper()}, {start_sql}, {end_sql})"
+        return self.apply_alias(sql, start_params + end_params, expr)
+
+    def format_seconds_between_expression(self, expr: "Any") -> Tuple[str, tuple]:
+        """Format signed seconds as ``DATEDIFF_BIG`` milliseconds over 1000.0.
+
+        ``DATEDIFF_BIG`` counts the millisecond boundaries crossed from the
+        first instant to the second, so ``end`` before ``start`` is already a
+        negative count and no sign correction is needed. ``BIG`` rather than
+        plain ``DATEDIFF`` because a millisecond count overflows ``int`` after
+        roughly 24 days, and a span between two timestamps is routinely longer;
+        it has been available since SQL Server 2016.
+
+        Dividing by ``1000.0`` keeps the millisecond part rather than truncating
+        to whole seconds. A second is stored with sub-millisecond precision in
+        ``datetime2``, but ``DATEDIFF_BIG`` counts milliseconds, so the rendered
+        value is exact to a millisecond and the finer part is the engine's
+        rounding, not this node's.
+
+        The SQL writes ``start`` before ``end`` -- that is the argument order
+        ``DATEDIFF_BIG`` takes -- so the parameters are collected in that order.
+        """
+        if self.version < SQL_SERVER_2016:
+            raise UnsupportedFeatureError(
+                self.name,
+                "seconds_between(start, end)",
+                "DATEDIFF_BIG requires SQL Server 2016 or later.",
+            )
+        start_sql, start_params = expr.start.to_sql()
+        end_sql, end_params = expr.end.to_sql()
+        sql = f"DATEDIFF_BIG(MILLISECOND, {start_sql}, {end_sql}) / 1000.0"
         return self.apply_alias(sql, start_params + end_params, expr)

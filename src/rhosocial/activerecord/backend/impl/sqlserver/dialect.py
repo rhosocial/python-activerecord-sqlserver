@@ -525,6 +525,7 @@ class SQLServerDialect(
         "datetimeoffsetfromparts": (SQL_SERVER_2012, None),
         "timefromparts": (SQL_SERVER_2012, None),
         "datediff_big": (SQL_SERVER_2016, None),
+        "seconds_between": (SQL_SERVER_2016, None),
         "approx_count_distinct": (SQL_SERVER_2019, None),
         "json_path_exists": (SQL_SERVER_2022, None),
         "json_object": (SQL_SERVER_2022, None),
