@@ -1,8 +1,7 @@
-import inspect
-from typing import Set, Tuple
+from datetime import date
+from typing import Set
 
 import pytest
-from rhosocial.activerecord.backend.dialect import SQLDialectBase
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.dialect import protocols as dialect_protocols
 from rhosocial.activerecord.backend.expression import (
@@ -18,15 +17,6 @@ from rhosocial.activerecord.backend.expression.statements import (
     ColumnPrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.expression.types import DateType, IntegerType, VarCharType
-from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
-    SQLServerPartitionByRangeClause,
-)
-from rhosocial.activerecord.backend.dialect.mixins import (
-    DDLColumnMixin,
-    ExpressionMixin,
-    DDLTypeMixin,
-    TableMixin,
-)
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.protocols import SQLServerPartitionSupport
 from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
@@ -34,6 +24,17 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
     SQLServerPartitionSchemeExpression,
     SQLServerPartitionByRangeClause,
     SQLServerPartitionRangeDirection,
+    SQLServerPartitionFunctionSplitExpression,
+    SQLServerPartitionFunctionMergeExpression,
+    SQLServerPartitionSchemeNextUsedExpression,
+    SQLServerSwitchPartitionExpression,
+    SQLServerDropPartitionFunctionExpression,
+    SQLServerDropPartitionSchemeExpression,
+    SQLServerPartitionFunctionQueryStatement,
+    SQLServerPartitionSchemeQueryStatement,
+    SQLServerPartitionTableQueryStatement,
+    SQLServerPartitionRangeQueryStatement,
+    SQLServerPartitionBoundaryQueryStatement,
 )
 
 
@@ -272,6 +273,188 @@ class TestSQLServerCreateTableWithPartition:
         )
         with pytest.raises(UnsupportedFeatureError):
             stmt.to_sql()
+
+
+class TestSQLServerPartitionMaintenanceExpressions:
+    """SPLIT/MERGE/SWITCH/NEXT USED and the two drops."""
+
+    def test_split_range(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        expr = SQLServerPartitionFunctionSplitExpression(
+            d, "pf_sales", date(2026, 2, 1)
+        )
+        sql, params = expr.to_sql()
+        assert sql == (
+            "ALTER PARTITION FUNCTION [pf_sales] () "
+            "SPLIT RANGE ('2026-02-01')"
+        )
+        assert params == ()
+
+    def test_merge_range_accepts_a_dotted_function_name(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        expr = SQLServerPartitionFunctionMergeExpression(
+            d, "dbo.pf_sales", date(2026, 2, 1)
+        )
+        sql, _ = expr.to_sql()
+        assert sql == (
+            "ALTER PARTITION FUNCTION [dbo].[pf_sales] () "
+            "MERGE RANGE ('2026-02-01')"
+        )
+
+    def test_next_used(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        expr = SQLServerPartitionSchemeNextUsedExpression(
+            d, "ps_sales", "PRIMARY"
+        )
+        sql, _ = expr.to_sql()
+        assert sql == "ALTER PARTITION SCHEME [ps_sales] NEXT USED [PRIMARY]"
+
+    def test_switch_one_partition(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        expr = SQLServerSwitchPartitionExpression(
+            d, "logs", "logs_archive", source_partition=2
+        )
+        sql, params = expr.to_sql()
+        assert sql == (
+            "ALTER TABLE [logs] SWITCH PARTITION 2 TO [logs_archive]"
+        )
+        assert params == ()
+
+    def test_switch_with_schemas_on_both_tables(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        expr = SQLServerSwitchPartitionExpression(
+            d,
+            "logs",
+            "logs_archive",
+            source_partition=1,
+            schema="dbo",
+            target_schema="dbo",
+        )
+        sql, _ = expr.to_sql()
+        assert sql == (
+            "ALTER TABLE [dbo].[logs] SWITCH PARTITION 1 "
+            "TO [dbo].[logs_archive]"
+        )
+
+    def test_switch_whole_table(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        expr = SQLServerSwitchPartitionExpression(d, "logs", "logs_archive")
+        sql, _ = expr.to_sql()
+        assert sql == "ALTER TABLE [logs] SWITCH TO [logs_archive]"
+
+    def test_switch_refuses_dots_and_a_separate_schema(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        with pytest.raises(ValueError, match="must not carry dots"):
+            SQLServerSwitchPartitionExpression(
+                d, "dbo.logs", "archive", schema="dbo"
+            )
+
+    def test_switch_refuses_a_non_positive_partition(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        with pytest.raises(ValueError, match="positive integer"):
+            SQLServerSwitchPartitionExpression(
+                d, "logs", "archive", source_partition=0
+            )
+
+    def test_drops(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        assert SQLServerDropPartitionFunctionExpression(
+            d, "pf_sales"
+        ).to_sql() == ("DROP PARTITION FUNCTION [pf_sales]", ())
+        assert SQLServerDropPartitionSchemeExpression(
+            d, "ps_sales"
+        ).to_sql() == ("DROP PARTITION SCHEME [ps_sales]", ())
+
+    def test_split_and_merge_are_refused_on_old_versions(self):
+        d = SQLServerDialect(SQL_SERVER_2005)
+        with pytest.raises(UnsupportedFeatureError):
+            SQLServerPartitionFunctionSplitExpression(
+                d, "pf", date(2026, 1, 1)
+            ).to_sql()
+        with pytest.raises(UnsupportedFeatureError):
+            SQLServerPartitionFunctionMergeExpression(
+                d, "pf", date(2026, 1, 1)
+            ).to_sql()
+
+
+class TestSQLServerPartitionCatalogueQuestions:
+    """The questions maintenance asks of ``sys.partition_*``."""
+
+    def test_function_list_projects_boundaries_and_type(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        sql, params = SQLServerPartitionFunctionQueryStatement(d).to_sql()
+        assert params == ()
+        assert "FROM sys.partition_functions AS pf" in sql
+        assert "sys.partition_range_values AS prv" in sql
+        assert "boundary_value_on_right" in sql
+        assert "SQL_VARIANT_PROPERTY" in sql
+        assert "ORDER BY pf.name, prv.boundary_id" in sql
+
+    def test_function_list_takes_one_optional_name(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        sql, params = SQLServerPartitionFunctionQueryStatement(
+            d, function_name="pf_sales"
+        ).to_sql()
+        assert "WHERE pf.name = ?" in sql
+        assert params == ("pf_sales",)
+
+    def test_scheme_list_projects_destinations(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        sql, params = SQLServerPartitionSchemeQueryStatement(d).to_sql()
+        assert "sys.partition_schemes AS ps" in sql
+        assert "sys.destination_data_spaces AS dds" in sql
+        assert params == ()
+
+    def test_scheme_list_filters_by_function_and_name(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        sql, params = SQLServerPartitionSchemeQueryStatement(
+            d, scheme_name="ps_sales", function_name="pf_sales"
+        ).to_sql()
+        assert "WHERE ps.name = ? AND pf.name = ?" in sql
+        assert params == ("ps_sales", "pf_sales")
+
+    def test_table_list_resolves_the_partition_column(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        sql, params = SQLServerPartitionTableQueryStatement(
+            d, table_name="logs", schema="dbo"
+        ).to_sql()
+        assert "sys.index_columns AS ic" in sql
+        assert "partition_ordinal = 1" in sql
+        assert "WHERE s.name = ? AND t.name = ?" in sql
+        assert params == ("dbo", "logs")
+
+    def test_range_list_carries_bounds_rows_and_pages(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        sql, params = SQLServerPartitionRangeQueryStatement(
+            d, table_name="logs", schema="dbo"
+        ).to_sql()
+        assert "WITH boundary_text AS" in sql
+        assert "sys.dm_db_partition_stats AS stats" in sql
+        assert "stats.partition_number" in sql
+        assert "stats.used_page_count" in sql
+        assert "WHERE s.name = ? AND t.name = ?" in sql
+        assert params == ("dbo", "logs")
+
+    def test_boundary_question_casts_to_the_function_type(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        sql, params = SQLServerPartitionBoundaryQueryStatement(
+            d,
+            function_name="pf_sales",
+            data_type="DATE",
+            boundary_value=date(2026, 1, 1),
+        ).to_sql()
+        assert "prv.value = CAST(? AS DATE)" in sql
+        assert params == ("pf_sales", date(2026, 1, 1))
+
+    def test_boundary_question_refuses_an_unsafe_type(self):
+        d = SQLServerDialect(SQL_SERVER_2022)
+        with pytest.raises(ValueError, match="invalid partition-function data type"):
+            SQLServerPartitionBoundaryQueryStatement(
+                d,
+                function_name="pf",
+                data_type="DATE; DROP TABLE x",
+                boundary_value=date(2026, 1, 1),
+            )
 
 
 # Helper wrappers for tests
