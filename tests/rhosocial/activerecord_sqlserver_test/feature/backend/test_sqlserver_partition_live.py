@@ -68,9 +68,9 @@ def _cleanup(backend):
             pass
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def partition_backend():
-    """A backend against the first scenario, or a skip when unavailable."""
+    """A backend against the first scenario for one test, or a skip when unavailable."""
     scenarios = get_enabled_scenarios()
     if not scenarios:
         pytest.skip("No SQL Server scenarios configured")
@@ -92,9 +92,14 @@ def partition_backend():
     backend.disconnect()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def partition_fixture(partition_backend):
-    """A real function, scheme and partitioned table with four partitions."""
+    """A real function, scheme and partitioned table with four partitions.
+
+    Rebuilt for every test: the split and merge tests mutate the function, and
+    xdist is free to run those on a different worker than the tests that expect
+    the four-partition baseline.
+    """
     maintenance = SQLServerPartitionMaintenance(partition_backend)
     plan = _plan()
     report = maintenance.ensure(plan)
