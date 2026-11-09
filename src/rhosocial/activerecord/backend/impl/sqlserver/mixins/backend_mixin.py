@@ -303,10 +303,6 @@ class SQLServerBackendMixin:
             return "_CS" in collation or collation.endswith("_CS_AS")
         return False
 
-    def log(self, level: int, message: str) -> None:
-        if hasattr(self, '_logger') and self._logger:
-            self._logger.log(level, message)
-
     def get_default_adapter_suggestions(self) -> Dict[Type, Tuple[Any, Type]]:
         if hasattr(self, '_default_suggestions_cache') and self._default_suggestions_cache is not None:
             return self._default_suggestions_cache

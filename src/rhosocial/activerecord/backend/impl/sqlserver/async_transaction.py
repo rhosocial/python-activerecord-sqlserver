@@ -136,7 +136,7 @@ class AsyncSQLServerTransactionManager(AsyncTransactionManager):
         try:
             await super().commit()
         except Exception as e:
-            self.log(logging.ERROR, f"Failed to commit async transaction: {str(e)}")
+            self.log(logging.DEBUG, f"Failed to commit async transaction: {str(e)}")
             raise
 
     async def rollback(self, savepoint: Optional[str] = None) -> None:
@@ -155,7 +155,7 @@ class AsyncSQLServerTransactionManager(AsyncTransactionManager):
             try:
                 await super().rollback()
             except Exception as e:
-                self.log(logging.ERROR, f"Failed to rollback async transaction: {str(e)}")
+                self.log(logging.DEBUG, f"Failed to rollback async transaction: {str(e)}")
                 raise
 
     async def savepoint(self, name: Optional[str] = None) -> str:

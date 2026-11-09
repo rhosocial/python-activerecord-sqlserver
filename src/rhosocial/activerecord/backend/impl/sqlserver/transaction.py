@@ -144,7 +144,7 @@ class SQLServerTransactionManager(TransactionManager):
         try:
             super().commit()
         except Exception as e:
-            self.log(logging.ERROR, f"Failed to commit transaction: {str(e)}")
+            self.log(logging.DEBUG, f"Failed to commit transaction: {str(e)}")
             raise
     
     def rollback(self, savepoint: Optional[str] = None) -> None:
@@ -164,7 +164,7 @@ class SQLServerTransactionManager(TransactionManager):
             try:
                 super().rollback()
             except Exception as e:
-                self.log(logging.ERROR, f"Failed to rollback transaction: {str(e)}")
+                self.log(logging.DEBUG, f"Failed to rollback transaction: {str(e)}")
                 raise
     
     def _do_rollback(self) -> None:
