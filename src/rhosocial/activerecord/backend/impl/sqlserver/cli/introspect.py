@@ -4,7 +4,8 @@
 Every type this command offers is answered by ``backend.introspector``. The
 introspector speaks the core API -- ``list_tables``/``list_views``/
 ``list_columns``/... -- plus this backend's own ``list_schemas``,
-``list_procedures``, ``list_functions`` and ``list_sequences``; there are no
+``list_procedures``, ``list_functions``, ``list_sequences``,
+``list_partitions``, ``list_types`` and ``list_constraints``; there are no
 ``get_tables``/``get_views``/``get_columns`` methods anywhere, and asking for
 them was why this command used to fail for every type.
 
@@ -19,13 +20,19 @@ branches: a name a type has no question for is refused with exit 2 rather
 than parsed and dropped, and a type added without a rule is a type nobody has
 decided for.
 
-The nine families the MySQL and PostgreSQL CLIs ask for are offered here
-too, each gated on the switch that answers for it. SQL Server answers seven
-of the nine from its dynamic management views; two it does not answer at all
--- per-table usage counters, which it keeps per *index*, and DDL retrieval,
-which the engine has no call for -- so those probes answer ``False`` and the
-capability check refuses them with exit 2 rather than letting a rendered
-statement fail at execution.
+The nine families the MySQL and PostgreSQL CLIs ask for are considered here
+too, each gated on the switch that answers for it. SQL Server answers eight
+of the nine from its dynamic management views and the rows themselves; the
+one it does not answer at all -- per-table usage counters, which it keeps per
+*index* -- answers ``False``, and the capability check refuses it with exit 2
+rather than letting a rendered statement fail at execution.
+
+DDL extraction is not offered by this command at all. The engine has no
+per-object call of the kind ``SHOW CREATE TABLE`` is, so
+``supports_ddl_extraction()`` is permanently ``False``; advertising a type
+whose capability can never be true would promise only a refusal, so ``ddl``
+is not a CLI type. The formatter and the DDL expression stay in the backend,
+where a real implementation can reuse them.
 """
 
 import argparse
@@ -61,19 +68,23 @@ _TYPE_CAPABILITIES = {
     "functions": "supports_function_introspection",
     "sequences": "supports_sequence_introspection",
     "schemas": "supports_schema_introspection",
-    # The nine families shared with the MySQL and PostgreSQL CLIs. Each names
-    # the probe that answers for it here, which is not automatically the same
-    # answer it gives there: the dependency graph and the runtime listing come
-    # from the DMVs, the unused-index and index-counter families from the
-    # index usage DMV, the three data families from the rows themselves, and
-    # two -- per-table usage counters and DDL retrieval -- are refused by the
-    # engine's own answer rather than by an absent CLI branch.
+    "partitions": "supports_partition_metadata_introspection",
+    "types": "supports_type_introspection",
+    "constraints": "supports_constraint_introspection",
+    # The eight of the nine families shared with the MySQL and PostgreSQL
+    # CLIs that this engine answers. Each names the probe that answers for it
+    # here, which is not automatically the same answer it gives there: the
+    # dependency graph and the runtime listing come from the DMVs, the
+    # unused-index and index-counter families from the index usage DMV, and
+    # the three data families from the rows themselves. The ninth,
+    # per-table usage counters, is offered and refused by the engine's own
+    # answer; ``ddl`` is not offered at all because the capability is
+    # permanently false.
     "unused-indexes": "supports_unused_indexes_detection",
     "table-stats": "supports_table_stats",
     "runtime": "supports_runtime_stats",
     "index-stats": "supports_index_stats",
     "dependencies": "supports_object_dependencies",
-    "ddl": "supports_ddl_extraction",
     "column-profiles": "supports_column_data_profile",
     "value-samples": "supports_column_value_sample",
     "join-coverage": "supports_join_coverage",
@@ -110,15 +121,19 @@ _NAME_RULE = {
     "functions": "forbidden",
     "sequences": "forbidden",
     "schemas": "forbidden",
-    # The nine shared families: the counters and the listings describe the
-    # database and take no name; the graph narrows to one object and answers
-    # the whole graph without one; the one-object families ask about a table.
+    "partitions": "optional",
+    "types": "optional",
+    "constraints": "optional",
+    # The shared families: the counters and the listings describe the database
+    # and take no name; the graph narrows to one object and answers the whole
+    # graph without one; the one-object families ask about a table. ``ddl`` is
+    # absent because the CLI does not offer it: the capability is permanently
+    # false, so there is no NAME decision to make.
     "unused-indexes": "forbidden",
     "table-stats": "forbidden",
     "runtime": "forbidden",
     "index-stats": "forbidden",
     "dependencies": "optional",
-    "ddl": "required",
     "column-profiles": "required",
     "value-samples": "required",
     "join-coverage": "forbidden",
@@ -162,6 +177,9 @@ _RESULT_TITLES = {
     "list_functions": "User-Defined Functions",
     "list_sequences": "Sequences",
     "list_schemas": "Schemas",
+    "list_partitions": "Partitions",
+    "list_types": "User-Defined Types",
+    "list_constraints": "Constraints",
     "get_database_info": "Database Info",
     "list_unused_indexes": "Indexes with no recorded use",
     "list_table_usage_stats": "Table usage counters",
@@ -219,6 +237,18 @@ def create_parser(subparsers):
   # List sequences
   %(prog)s sequences --database mydb
 
+  # Partition functions, schemes and aligned indexes (all, or one table's)
+  %(prog)s partitions --database mydb
+  %(prog)s partitions orders --database mydb
+
+  # User-defined alias, table and CLR types (all, or one type)
+  %(prog)s types --database mydb
+  %(prog)s types order_note --database mydb
+
+  # Constraint objects, including CHECK and DEFAULT constraints
+  %(prog)s constraints --database mydb
+  %(prog)s constraints orders --database mydb
+
   # Operational readings: indexes with no recorded use, per-index counters,
   # live instance counters, the dependency graph
   %(prog)s unused-indexes --database mydb
@@ -235,11 +265,10 @@ def create_parser(subparsers):
   %(prog)s join-coverage --left-table orders --left-column customer_id \\
       --right-table customers --right-column id --database mydb
 
-  # The two families SQL Server does not answer are refused by capability,
-  # not hidden: table-stats and ddl exit 2 with "not supported by this
-  # server" once the version is known.
+  # A family SQL Server cannot answer is refused by capability, not hidden:
+  # table-stats exits 2 with "not supported by this server" once the version
+  # is known.
   %(prog)s table-stats --database mydb
-  %(prog)s ddl orders --database mydb
 
   # Output as JSON
   %(prog)s tables --database mydb -o json
@@ -249,10 +278,10 @@ def create_parser(subparsers):
   %(prog)s tables
 
 NAME per type:
-  columns, indexes, foreign-keys, extended-properties
-                              a table name, required
-  ddl, column-profiles, value-samples
-                              a table name, required
+  columns, indexes, foreign-keys, extended-properties, column-profiles,
+  value-samples               a table name, required
+  partitions, constraints    a table name, optional
+  types                      a type name, optional
   views                       a view name, optional
   triggers, dependencies      optional narrowing
   everything else             no name: refused with exit 2, never ignored
@@ -409,24 +438,6 @@ def _value_sample_arguments(args) -> Dict[str, int]:
     return {} if limit is None else {"limit": limit}
 
 
-def _display_ddl(args, provider, statement) -> None:
-    """Show one object's DDL as the engine handed it back.
-
-    A DDL text is a block, not a field of a row: a bordered cell wraps every
-    one of its lines and reads worse than the text itself. So the terminal
-    format prints the engine's own text, and the formats a caller parses keep
-    the record -- schema, object type, object name, ``native`` and the text --
-    which is what ``native`` is for: it says the engine retrieved this rather
-    than the library assembling it.
-    """
-    record = _serialize_for_output(statement)
-    if args.output != "table":
-        provider.display_results([record], title=f"DDL of {args.name}")
-        return
-    print(f"-- {record.get('object_type') or 'OBJECT'} {record.get('object_name') or args.name}")
-    print(record["ddl"])
-
-
 def _require_capability(backend, kind: str) -> None:
     """Refuse a type the connected server cannot answer.
 
@@ -551,8 +562,22 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
         return [("list_sequences", {"schema": None})]
     if kind == "schemas":
         return [("list_schemas", {})]
+    if kind == "partitions":
+        return [(
+            "list_partitions",
+            {"table_name": args.name, "schema": None},
+        )]
+    if kind == "types":
+        if args.name:
+            return [("get_type_info", {"type_name": args.name, "schema": None})]
+        return [("list_types", {"schema": None})]
+    if kind == "constraints":
+        return [(
+            "list_constraints",
+            {"table_name": args.name, "schema": None},
+        )]
 
-    # ---- the nine families shared with the MySQL and PostgreSQL CLIs -----
+    # ---- the shared families from the MySQL and PostgreSQL CLIs ----------
     # The counters and the listings answer for the whole schema, so none
     # takes a name; the graph narrows to one object and answers the whole
     # graph without one; the one-object families ask about a table.
@@ -568,11 +593,6 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
         return [(
             "list_object_dependencies",
             {"object_name": args.name, "schema": None},
-        )]
-    if kind == "ddl":
-        return [(
-            "get_ddl_statement",
-            {"object_name": _name_of(args, kind), "schema": None},
         )]
     if kind == "column-profiles":
         return [(
@@ -638,9 +658,15 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
             return f"Dependencies of {kwargs['object_name']}"
         if method == "list_column_data_profiles":
             return f"Column profiles of {kwargs.get('table_name', '')}"
+        if method == "list_partitions" and kwargs.get("table_name"):
+            return f"Partitions of {kwargs['table_name']}"
+        if method == "list_constraints" and kwargs.get("table_name"):
+            return f"Constraints of {kwargs['table_name']}"
         return _RESULT_TITLES[method]
     if method == "get_view_info":
         return f"View {kwargs.get('view_name', '')}"
+    if method == "get_type_info":
+        return f"Type {kwargs.get('type_name', '')}"
     name = kwargs.get("table_name", "")
     if method == "list_columns":
         return f"Columns of {name}"
@@ -665,6 +691,7 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
 #: answer for those ("this schema has no triggers"), not a failed lookup.
 _NAMED_TYPES: Dict[str, Tuple[str, str]] = {
     "get_view_info": ("View", "view_name"),
+    "get_type_info": ("Type", "type_name"),
     "list_extended_properties": ("Table", "table_name"),
 }
 
@@ -728,21 +755,14 @@ async def _require_found_async(
 def _require_measured(method: str, kwargs: Dict[str, Any], value: Any) -> None:
     """Refuse a ``None`` answer that means "not measured", not zero.
 
-    Two of the shared families answer with a single object or nothing:
-    ``None`` from the DDL question says the engine will not produce a text,
-    and ``None`` from the coverage question says the overlap could not be
-    measured. Both are different answers from an empty row and from a measured
-    zero, so both leave with 1 rather than printing a row of nulls that a
-    reader would take for a measurement.
+    ``join-coverage`` answers with a single object or nothing: ``None`` from
+    the coverage question says the overlap could not be measured, which is a
+    different answer from an empty row and from a measured zero. It leaves
+    with 1 rather than printing a row of nulls that a reader would take for a
+    measurement.
     """
     if value is not None:
         return
-    if method == "get_ddl_statement":
-        print(
-            f"Error: no DDL available for '{kwargs.get('object_name', '')}'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
     if method == "estimate_join_coverage":
         left = f"{kwargs.get('left_table', '')}.{kwargs.get('left_column', '')}"
         right = f"{kwargs.get('right_table', '')}.{kwargs.get('right_column', '')}"
@@ -827,9 +847,6 @@ def _handle_introspect_sync(args, backend: SQLServerBackend, provider):
                     "(source='aggregate') -- exact, and paid for with a full scan per column.",
                     file=sys.stderr,
                 )
-            if method == "get_ddl_statement":
-                _display_ddl(args, provider, value)
-                continue
             sections.extend(_value_sections(method, kwargs, value))
         _render(provider, sections)
 
@@ -865,9 +882,6 @@ async def _handle_introspect_async(args, backend, provider):
                     "(source='aggregate') -- exact, and paid for with a full scan per column.",
                     file=sys.stderr,
                 )
-            if method == "get_ddl_statement":
-                _display_ddl(args, provider, value)
-                continue
             sections.extend(_value_sections(method, kwargs, value))
         _render(provider, sections)
 

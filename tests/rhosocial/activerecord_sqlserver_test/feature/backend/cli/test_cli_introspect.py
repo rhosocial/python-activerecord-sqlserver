@@ -77,6 +77,21 @@ class FakeIntrospector:
     def list_schemas(self):
         return self._record("list_schemas")
 
+    def list_partitions(self, table_name=None, schema=None):
+        return self._record("list_partitions", table_name=table_name, schema=schema)
+
+    def list_types(self, schema=None):
+        return self._record("list_types", schema=schema)
+
+    def get_type_info(self, type_name, schema=None):
+        self.calls.append(("get_type_info", {"type_name": type_name, "schema": schema}))
+        return {"method": "get_type_info", "name": type_name}
+
+    def list_constraints(self, table_name=None, schema=None):
+        return self._record(
+            "list_constraints", table_name=table_name, schema=schema
+        )
+
     def list_extended_properties(
         self,
         major_id=None,
@@ -120,18 +135,6 @@ class FakeIntrospector:
         return self._record(
             "list_object_dependencies", object_name=object_name, schema=schema
         )
-
-    def get_ddl_statement(self, object_name, schema=None):
-        self.calls.append(
-            ("get_ddl_statement", {"object_name": object_name, "schema": schema})
-        )
-        return {
-            "schema": "dbo",
-            "object_type": "TABLE",
-            "object_name": object_name,
-            "ddl": "CREATE TABLE [users] ([id] int)",
-            "native": False,
-        }
 
     def list_column_data_profiles(self, table_name, schema=None):
         return self._record("list_column_data_profiles", table_name=table_name, schema=schema)
@@ -236,9 +239,6 @@ class FakeAsyncIntrospector(FakeIntrospector):
 
     async def list_object_dependencies(self, object_name=None, schema=None):
         return FakeIntrospector.list_object_dependencies(self, object_name, schema)
-
-    async def get_ddl_statement(self, object_name, schema=None):
-        return FakeIntrospector.get_ddl_statement(self, object_name, schema)
 
     async def list_column_data_profiles(self, table_name, schema=None):
         return FakeIntrospector.list_column_data_profiles(self, table_name, schema)
@@ -370,6 +370,18 @@ class TestParserContract:
         with pytest.raises(SystemExit):
             make_args(["introspect", "grants"])
 
+    def test_ddl_is_not_an_offered_choice(self, capsys):
+        """DDL extraction is permanently unsupported, so the type is absent.
+
+        The parser, not the capability gate, is where this is refused: an
+        invalid choice is argparse's usage error (exit 2), which is a different
+        answer from offering a type only to refuse it after connecting.
+        """
+        with pytest.raises(SystemExit) as exc:
+            make_args(["introspect", "ddl", "users"])
+        assert exc.value.code == 2
+        assert "invalid choice" in capsys.readouterr().err
+
     def test_missing_database_exits_before_backend_creation(self, capsys):
         with pytest.raises(SystemExit) as exc:
             introspect_mod.handle(make_args(["introspect", "tables"]))
@@ -389,7 +401,7 @@ class TestDispatchContract:
     def test_type_maps_to_a_real_method_on_both_managers(self, kind):
         argv = ["introspect", kind]
         if kind in ("columns", "indexes", "foreign-keys", "extended-properties",
-                    "ddl", "column-profiles", "value-samples"):
+                    "column-profiles", "value-samples"):
             argv.append("users")
         if kind == "value-samples":
             argv += ["--column", "status"]
@@ -427,11 +439,17 @@ class TestHandleDispatch:
             (["functions"], "list_functions"),
             (["sequences"], "list_sequences"),
             (["schemas"], "list_schemas"),
-            # The nine families shared with the MySQL and PostgreSQL CLIs.
-            # ``table-stats`` and ``ddl`` are refused by the dialect's own
-            # answer, so their rows below are what the branch *would* ask:
-            # the capability gate stops a real run before that, and the
-            # dedicated test file asserts both halves.
+            (["partitions"], "list_partitions"),
+            (["partitions", "orders"], "list_partitions"),
+            (["types"], "list_types"),
+            (["types", "order_note"], "get_type_info"),
+            (["constraints"], "list_constraints"),
+            (["constraints", "orders"], "list_constraints"),
+            # The shared families from the MySQL and PostgreSQL CLIs.
+            # ``table-stats`` is refused by the dialect's own answer, so its
+            # row below is what the branch *would* ask: the capability gate
+            # stops a real run before that, and the dedicated test file
+            # asserts both halves. ``ddl`` is not offered at all.
             (["unused-indexes"], "list_unused_indexes"),
             (["table-stats"], "list_table_usage_stats"),
             (["runtime"], "list_runtime_metrics"),
@@ -465,17 +483,6 @@ class TestHandleDispatch:
         payload = json.loads(capsys.readouterr().out)
         assert isinstance(payload, list)
         assert payload[0]["method"] == method
-
-    def test_ddl_prints_the_engine_text_and_keeps_the_native_flag(self, capsys):
-        """A DDL text is a block, so the table format prints it as one; the
-        machine formats keep the record, ``native`` included."""
-        introspect_mod.handle(
-            make_args(["introspect", "ddl", "users", "--database", "db", "-o", "json"])
-        )
-        payload = json.loads(capsys.readouterr().out)
-        assert payload[0]["object_name"] == "users"
-        assert payload[0]["ddl"] == "CREATE TABLE [users] ([id] int)"
-        assert payload[0]["native"] is False
 
     def test_join_coverage_receives_the_four_names(self, capsys):
         introspect_mod.handle(
@@ -713,12 +720,14 @@ class TestDeclaredVocabulary:
             "functions": "forbidden",
             "sequences": "forbidden",
             "schemas": "forbidden",
+            "partitions": "optional",
+            "types": "optional",
+            "constraints": "optional",
             "unused-indexes": "forbidden",
             "table-stats": "forbidden",
             "runtime": "forbidden",
             "index-stats": "forbidden",
             "dependencies": "optional",
-            "ddl": "required",
             "column-profiles": "required",
             "value-samples": "required",
             "join-coverage": "forbidden",
@@ -739,7 +748,6 @@ class TestDeclaredVocabulary:
             "indexes",
             "foreign-keys",
             "extended-properties",
-            "ddl",
             "column-profiles",
             "value-samples",
         }
@@ -758,22 +766,30 @@ class TestDeclaredVocabulary:
         answer = getattr(dialect, switch, None)
         assert callable(answer), f"{kind} names {switch}, which the dialect lacks"
 
-    #: The two families SQL Server does not answer. The CLI offers them all
-    #: the same -- a type the engine refuses is refused at the capability
-    #: question with exit 2, not hidden from the parser -- so these are
-    #: asserted as the dialect's "no" rather than dropped from the table.
+    #: The family SQL Server does not answer but still offers. The CLI offers
+    #: it -- a type the engine refuses is refused at the capability question
+    #: with exit 2, not hidden from the parser -- so this is asserted as the
+    #: dialect's "no" rather than dropped from the table.
     UNANSWERED_SWITCHES = {
         "table-stats": "supports_table_stats",
-        "ddl": "supports_ddl_extraction",
     }
 
-    def test_the_two_unanswered_families_are_refused_by_the_dialect(self):
+    def test_the_unanswered_family_is_refused_by_the_dialect(self):
         from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
         dialect = SQLServerDialect(version=(16, 0, 0))
         for kind, switch in self.UNANSWERED_SWITCHES.items():
             assert introspect_mod._TYPE_CAPABILITIES[kind] == switch
             assert getattr(dialect, switch)() is False, kind
+
+    def test_ddl_capability_stays_false_and_is_not_advertised(self):
+        """The backend keeps its DDL answer; the CLI simply does not offer it."""
+        from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+
+        dialect = SQLServerDialect(version=(16, 0, 0))
+        assert dialect.supports_ddl_extraction() is False
+        assert "ddl" not in introspect_mod._TYPE_CAPABILITIES
+        assert "ddl" not in introspect_mod.INTROSPECT_TYPES
 
     def test_every_answered_family_answers_true(self):
         """2022 is the newest release the matrix runs; every family the engine
@@ -840,6 +856,73 @@ class TestSupportedScopes:
             if kind in TestDeclaredVocabulary.UNANSWERED_SWITCHES:
                 continue
             assert getattr(dialect, switch)() is True, switch
+
+
+class TestCoverageFamiliesDispatch:
+    """The three coverage families reach their introspector methods.
+
+    ``partitions`` and ``constraints`` take an optional table name; ``types``
+    takes an optional type name and switches from a list to one record, the
+    same shape ``views`` uses.
+    """
+
+    def test_partitions_asks_for_the_whole_database_or_one_table(self):
+        assert introspect_mod._steps(
+            make_args(["introspect", "partitions"])
+        ) == [("list_partitions", {"table_name": None, "schema": None})]
+        assert introspect_mod._steps(
+            make_args(["introspect", "partitions", "orders"])
+        ) == [("list_partitions", {"table_name": "orders", "schema": None})]
+
+    def test_types_lists_or_describes_one_type(self):
+        assert introspect_mod._steps(
+            make_args(["introspect", "types"])
+        ) == [("list_types", {"schema": None})]
+        assert introspect_mod._steps(
+            make_args(["introspect", "types", "order_note"])
+        ) == [("get_type_info", {"type_name": "order_note", "schema": None})]
+
+    def test_constraints_asks_for_the_schema_or_one_table(self):
+        assert introspect_mod._steps(
+            make_args(["introspect", "constraints"])
+        ) == [("list_constraints", {"table_name": None, "schema": None})]
+        assert introspect_mod._steps(
+            make_args(["introspect", "constraints", "orders"])
+        ) == [("list_constraints", {"table_name": "orders", "schema": None})]
+
+    def test_a_missing_type_is_an_error_not_an_empty_record(self, monkeypatch, capsys):
+        class _NoSuchType(FakeIntrospector):
+            def get_type_info(self, type_name, schema=None):
+                self.calls.append(
+                    ("get_type_info", {"type_name": type_name, "schema": schema})
+                )
+                return None
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(FakeBackendBase, "NoSuchTypeBackend", _NoSuchType),
+        )
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(["introspect", "types", "missing", "--database", "db"])
+            )
+        assert exc.value.code == 1
+        assert "Type 'missing' not found" in capsys.readouterr().err
+
+    def test_the_three_types_name_their_switches(self):
+        assert (
+            introspect_mod._TYPE_CAPABILITIES["partitions"]
+            == "supports_partition_metadata_introspection"
+        )
+        assert (
+            introspect_mod._TYPE_CAPABILITIES["types"]
+            == "supports_type_introspection"
+        )
+        assert (
+            introspect_mod._TYPE_CAPABILITIES["constraints"]
+            == "supports_constraint_introspection"
+        )
 
 
 class TestCapabilityGate:

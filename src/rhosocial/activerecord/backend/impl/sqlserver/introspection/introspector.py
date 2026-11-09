@@ -39,20 +39,31 @@ from rhosocial.activerecord.backend.expression.types._base import DataType
 from ..mixins.introspection import DEFAULT_SCHEMA
 from ..query_nodes import SQLServerNodeBuilderMixin
 from .types import (
+    SQLServerConstraintInfo,
     SQLServerExtendedPropertyInfo,
+    SQLServerPartitionIndexInfo,
+    SQLServerPartitionInfo,
+    SQLServerPartitionSchemeInfo,
     SQLServerRoutineInfo,
     SQLServerSchemaInfo,
     SQLServerSequenceInfo,
+    SQLServerTypeInfo,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
     from ..expression.introspection import (
+        SQLServerConstraintListQueryStatement,
         SQLServerExtendedPropertyListQueryStatement,
+        SQLServerPartitionAlignedIndexListQueryStatement,
+        SQLServerPartitionBoundaryListQueryStatement,
+        SQLServerPartitionFunctionListQueryStatement,
+        SQLServerPartitionSchemeListQueryStatement,
         SQLServerPrimaryKeyQueryStatement,
         SQLServerRoutineListQueryStatement,
         SQLServerSchemaListQueryStatement,
         SQLServerSequenceListQueryStatement,
+        SQLServerTypeListQueryStatement,
     )
 
 #: ``INFORMATION_SCHEMA.COLUMNS.CHARACTER_MAXIMUM_LENGTH`` reports ``-1``
@@ -233,6 +244,71 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
 
         return SQLServerSequenceListQueryStatement(self.dialect, schema=schema)
 
+    def partition_function_list_statement(
+        self,
+    ) -> "SQLServerPartitionFunctionListQueryStatement":
+        """Return the statement that lists partition functions and parameters."""
+        from ..expression.introspection import (
+            SQLServerPartitionFunctionListQueryStatement,
+        )
+
+        return SQLServerPartitionFunctionListQueryStatement(self.dialect)
+
+    def partition_boundary_list_statement(
+        self,
+    ) -> "SQLServerPartitionBoundaryListQueryStatement":
+        """Return the statement that lists partition range boundary values."""
+        from ..expression.introspection import (
+            SQLServerPartitionBoundaryListQueryStatement,
+        )
+
+        return SQLServerPartitionBoundaryListQueryStatement(self.dialect)
+
+    def partition_scheme_list_statement(
+        self,
+    ) -> "SQLServerPartitionSchemeListQueryStatement":
+        """Return the statement that lists partition schemes and destinations."""
+        from ..expression.introspection import (
+            SQLServerPartitionSchemeListQueryStatement,
+        )
+
+        return SQLServerPartitionSchemeListQueryStatement(self.dialect)
+
+    def partition_aligned_index_list_statement(
+        self, *, table_name: Optional[str] = None, schema: Optional[str] = None
+    ) -> "SQLServerPartitionAlignedIndexListQueryStatement":
+        """Return the statement that lists indexes aligned to a scheme.
+
+        A table name narrows the answer to one table; a schema narrows it to
+        one schema, with or without a table name. With neither, every aligned
+        index in the database is listed.
+        """
+        from ..expression.introspection import (
+            SQLServerPartitionAlignedIndexListQueryStatement,
+        )
+
+        return SQLServerPartitionAlignedIndexListQueryStatement(
+            self.dialect, table_name=table_name, schema=schema
+        )
+
+    def type_list_statement(
+        self, *, schema: Optional[str] = None
+    ) -> "SQLServerTypeListQueryStatement":
+        """Return the statement that lists one schema's user-defined types."""
+        from ..expression.introspection import SQLServerTypeListQueryStatement
+
+        return SQLServerTypeListQueryStatement(self.dialect, schema=schema)
+
+    def constraint_list_statement(
+        self, *, table_name: Optional[str] = None, schema: Optional[str] = None
+    ) -> "SQLServerConstraintListQueryStatement":
+        """Return the statement that lists one schema's or table's constraints."""
+        from ..expression.introspection import SQLServerConstraintListQueryStatement
+
+        return SQLServerConstraintListQueryStatement(
+            self.dialect, table_name=table_name, schema=schema
+        )
+
     # ------------------------------------------------------------------
     # Parse methods — pure Python, no I/O
     # ------------------------------------------------------------------
@@ -389,7 +465,9 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
                 default_value=row.get("COLUMN_DEFAULT"),
                 is_primary_key=col_name in pk_set,
                 is_unique=False,
-                is_auto_increment=bool(row.get("IS_IDENTITY")),
+                # ``COLUMNPROPERTY(..., 'IsIdentity')`` answers 1/0 or NULL;
+                # ``_as_flag`` keeps a text "0" from reading as truthy.
+                is_auto_increment=bool(self._as_flag(row.get("IS_IDENTITY"))),
                 comment=row.get("column_comment"),
                 character_maximum_length=max_len,
                 numeric_precision=precision,
@@ -626,6 +704,321 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         except (InvalidOperation, ValueError):
             return None
 
+    @staticmethod
+    def _as_int(value: Any) -> Optional[int]:
+        """Read a catalogue count back as an int, ``None`` when it is absent."""
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def parse_partitions(
+        self,
+        function_rows: List[Dict[str, Any]],
+        boundary_rows: List[Dict[str, Any]],
+        scheme_rows: List[Dict[str, Any]],
+        index_rows: List[Dict[str, Any]],
+        table_name: Optional[str] = None,
+        schema: Optional[str] = None,
+    ) -> List[SQLServerPartitionInfo]:
+        """Fold four partition questions into one record per function.
+
+        SQL Server answers partitions at three levels: the function holds the
+        boundaries, the scheme maps destinations to filegroups, and an index
+        is aligned to a scheme by sharing its ``data_space_id``. The
+        statement for each level returns its own row shape, so the fold
+        happens here rather than in one SQL join whose cartesian product would
+        multiply boundaries by destinations by indexes.
+
+        When ``table_name`` or ``schema`` is given, only the functions used
+        by that table's (or schema's) aligned indexes are returned; a function
+        no index there uses is not that table's (or schema's) partition
+        function.
+        """
+        functions: Dict[int, SQLServerPartitionInfo] = {}
+        for row in function_rows:
+            function_id = int(row.get("function_id") or 0)
+            if function_id in functions:
+                continue
+            functions[function_id] = SQLServerPartitionInfo(
+                name=row.get("partition_function", ""),
+                function_id=function_id,
+                data_type=row.get("data_type"),
+                base_type=row.get("base_type"),
+                range_direction=(
+                    "RIGHT" if row.get("boundary_value_on_right") else "LEFT"
+                ),
+                fanout=int(row.get("fanout") or 0),
+            )
+
+        boundaries: Dict[int, List[Tuple[int, int, str]]] = {}
+        for row in boundary_rows:
+            function_id = int(row.get("function_id") or 0)
+            value = row.get("boundary_value")
+            if value is None:
+                continue
+            boundaries.setdefault(function_id, []).append(
+                (
+                    int(row.get("boundary_id") or 0),
+                    int(row.get("parameter_id") or 0),
+                    str(value),
+                )
+            )
+
+        schemes: Dict[int, Dict[int, Tuple[str, List[Tuple[int, str]]]]] = {}
+        for row in scheme_rows:
+            function_id = int(row.get("function_id") or 0)
+            scheme_id = int(row.get("scheme_id") or 0)
+            scheme_map = schemes.setdefault(function_id, {})
+            if scheme_id not in scheme_map:
+                scheme_map[scheme_id] = (row.get("scheme_name", ""), [])
+            filegroup = row.get("filegroup_name")
+            if filegroup:
+                scheme_map[scheme_id][1].append(
+                    (int(row.get("destination_id") or 0), filegroup)
+                )
+
+        indexes: Dict[int, Dict[Tuple[str, str, str, int], Dict[str, Any]]] = {}
+        for row in index_rows:
+            function_id = int(row.get("function_id") or 0)
+            scheme = row.get("scheme_name") or ""
+            row_schema = row.get("schema_name") or ""
+            table = row.get("table_name") or ""
+            index_id = int(row.get("index_id") or 0)
+            key = (scheme, row_schema, table, index_id)
+            entries = indexes.setdefault(function_id, {})
+            entry = entries.get(key)
+            if entry is None:
+                entry = {
+                    "schema": row_schema,
+                    "table": table,
+                    "scheme": scheme or None,
+                    "name": row.get("index_name"),
+                    "index_id": index_id,
+                    "index_type": row.get("index_type") or "",
+                    "is_unique": bool(row.get("is_unique")),
+                    "is_primary_key": bool(row.get("is_primary_key")),
+                    "columns": [],
+                    "row_count": self._as_int(row.get("row_count")),
+                    "size_bytes": self._as_int(row.get("size_bytes")),
+                }
+                entries[key] = entry
+            column = row.get("partition_column")
+            if column and column not in entry["columns"]:
+                entry["columns"].append(column)
+
+        result: List[SQLServerPartitionInfo] = []
+        for function_id, record in functions.items():
+            boundary_values = tuple(
+                value for _boundary, _parameter, value in sorted(
+                    boundaries.get(function_id, [])
+                )
+            )
+            scheme_infos = tuple(
+                SQLServerPartitionSchemeInfo(
+                    name=name,
+                    data_space_id=scheme_id,
+                    filegroups=tuple(
+                        filegroup
+                        for _destination, filegroup in sorted(filegroups)
+                    ),
+                )
+                for scheme_id, (name, filegroups) in sorted(
+                    schemes.get(function_id, {}).items()
+                )
+            )
+            index_infos = tuple(
+                SQLServerPartitionIndexInfo(
+                    schema=entry["schema"],
+                    table=entry["table"],
+                    scheme=entry["scheme"],
+                    name=entry["name"],
+                    index_id=entry["index_id"],
+                    index_type=entry["index_type"],
+                    is_unique=entry["is_unique"],
+                    is_primary_key=entry["is_primary_key"],
+                    columns=tuple(entry["columns"]),
+                    row_count=entry["row_count"],
+                    size_bytes=entry["size_bytes"],
+                )
+                for entry in sorted(
+                    indexes.get(function_id, {}).values(),
+                    key=lambda item: (
+                        item["schema"],
+                        item["table"],
+                        item["index_id"],
+                    ),
+                )
+            )
+            if (table_name is not None or schema is not None) and not index_infos:
+                continue
+            record.boundary_values = boundary_values
+            record.schemes = scheme_infos
+            record.indexes = index_infos
+            result.append(record)
+        return sorted(result, key=lambda partition: partition.name)
+
+    def parse_types(self, rows: List[Dict[str, Any]]) -> List[SQLServerTypeInfo]:
+        """Read ``sys.types`` rows into user-defined type records.
+
+        ``kind`` is derived from the catalogue flags, never from the name: a
+        table type is ``TABLE_TYPE``, a CLR type ``CLR_TYPE`` and the rest
+        ``ALIAS_TYPE``. ``column_count`` is meaningful only for a table type;
+        the subquery answers 0 for an alias type whose ``type_table_object_id``
+        is NULL, and that zero is not a count of columns the type has.
+        """
+        types: List[SQLServerTypeInfo] = []
+        for row in rows:
+            is_table_type = bool(row.get("is_table_type"))
+            is_assembly_type = bool(row.get("is_assembly_type"))
+            if is_table_type:
+                kind = "TABLE_TYPE"
+            elif is_assembly_type:
+                kind = "CLR_TYPE"
+            else:
+                kind = "ALIAS_TYPE"
+            types.append(
+                SQLServerTypeInfo(
+                    name=row.get("type_name", ""),
+                    schema=row.get("schema_name"),
+                    kind=kind,
+                    base_type=row.get("base_type"),
+                    max_length=self._as_int(row.get("max_length")),
+                    precision=self._as_int(row.get("precision")),
+                    scale=self._as_int(row.get("scale")),
+                    collation=row.get("collation"),
+                    is_nullable=bool(row.get("is_nullable")),
+                    is_user_defined=bool(row.get("is_user_defined")),
+                    is_table_type=is_table_type,
+                    is_assembly_type=is_assembly_type,
+                    column_count=(
+                        self._as_int(row.get("column_count"))
+                        if is_table_type
+                        else None
+                    ),
+                    default_object_id=int(row.get("default_object_id") or 0),
+                    rule_object_id=int(row.get("rule_object_id") or 0),
+                    comment=row.get("type_comment"),
+                )
+            )
+        return types
+
+    def parse_constraints(
+        self, rows: List[Dict[str, Any]]
+    ) -> List[SQLServerConstraintInfo]:
+        """Fold one-row-per-constraint (or per foreign-key column) rows.
+
+        A primary key, unique constraint or foreign key is one row per key
+        column; a check or default constraint is one row carrying its
+        expression. The columns and the ordinal that orders them are chosen
+        by constraint type, so a foreign key's columns never land in the
+        primary key's list merely because both catalogue views were joined.
+        """
+        records: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+        for row in rows:
+            name = row.get("constraint_name", "")
+            schema = row.get("schema_name")
+            table = row.get("table_name")
+            key = (schema or "", table or "", name)
+            record = records.get(key)
+            if record is None:
+                record = {
+                    "name": name,
+                    "schema": schema,
+                    "table": table,
+                    "constraint_type": (row.get("constraint_type") or "").strip(),
+                    "constraint_type_desc": row.get("constraint_type_desc") or "",
+                    "columns": [],
+                    "referenced_schema": None,
+                    "referenced_table": None,
+                    "referenced_columns": [],
+                    "definition": None,
+                    "is_disabled": None,
+                    "is_not_trusted": None,
+                    "delete_action": None,
+                    "update_action": None,
+                }
+                records[key] = record
+
+            constraint_type = (row.get("constraint_type") or "").strip()
+            ordinal = self._as_int(row.get("fk_ordinal"))
+            if ordinal is None:
+                ordinal = self._as_int(row.get("key_ordinal"))
+            ordinal = ordinal or 0
+
+            if constraint_type == "F":
+                column = row.get("fk_column")
+                referenced = row.get("fk_referenced_column")
+                record["referenced_schema"] = row.get("referenced_schema")
+                record["referenced_table"] = row.get("referenced_table")
+                record["delete_action"] = row.get("on_delete")
+                record["update_action"] = row.get("on_update")
+                record["is_disabled"] = self._as_flag(row.get("fk_disabled"))
+                record["is_not_trusted"] = self._as_flag(
+                    row.get("fk_not_trusted")
+                )
+            elif constraint_type in ("PK", "UQ"):
+                column = row.get("key_column")
+                referenced = None
+            elif constraint_type == "C":
+                column = row.get("check_column")
+                referenced = None
+                record["definition"] = row.get("check_definition")
+                record["is_disabled"] = self._as_flag(row.get("check_disabled"))
+                record["is_not_trusted"] = self._as_flag(
+                    row.get("check_not_trusted")
+                )
+            elif constraint_type == "D":
+                column = row.get("default_column")
+                referenced = None
+                record["definition"] = row.get("default_definition")
+            else:
+                column = None
+                referenced = None
+
+            if column and column not in [item[1] for item in record["columns"]]:
+                record["columns"].append((ordinal, column))
+            if referenced and referenced not in [
+                item[1] for item in record["referenced_columns"]
+            ]:
+                record["referenced_columns"].append((ordinal, referenced))
+
+        constraints: List[SQLServerConstraintInfo] = []
+        for record in records.values():
+            record["columns"] = tuple(
+                column for _ordinal, column in sorted(record["columns"])
+            )
+            record["referenced_columns"] = tuple(
+                column
+                for _ordinal, column in sorted(record["referenced_columns"])
+            )
+            constraints.append(SQLServerConstraintInfo(**record))
+        return sorted(
+            constraints,
+            key=lambda constraint: (
+                constraint.schema or "",
+                constraint.table or "",
+                constraint.name,
+            ),
+        )
+
+    @staticmethod
+    def _as_flag(value: Any) -> Optional[bool]:
+        """Read a catalogue bit as a tri-state, ``None`` when absent.
+
+        The driver normally hands back ``0``/``1``, but a text row -- a test
+        double or a driver conversion -- can hand back ``"0"``, and
+        ``bool("0")`` is ``True``. The string branch closes that trap before
+        it can turn an identity or trust flag on.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes")
+        return bool(value)
+
 
 class SQLServerIntrospector(
     SQLServerIntrospectorMixin, AbstractIntrospector
@@ -821,6 +1214,102 @@ class SQLServerIntrospector(
         self._cache.set(key, sequences)
         return sequences
 
+    def list_partitions(
+        self,
+        table_name: Optional[str] = None,
+        schema: Optional[str] = None,
+    ) -> List[SQLServerPartitionInfo]:
+        """List partition functions, schemes and aligned indexes.
+
+        SQL Server answers partitions at three levels and the question is
+        rendered as four statements rather than one join, because the
+        cartesian product of boundaries, destinations and indexes would
+        describe combinations that do not exist. ``table_name`` narrows the
+        answer to the functions that table is partitioned by; ``schema``
+        narrows the aligned indexes to one schema, with or without a table
+        name. With neither, every partition function in the database is
+        reported, including one no table currently uses.
+        """
+        key = self._cache.key(
+            IntrospectionScope.TABLE,
+            table_name or "*",
+            schema=schema,
+            extra="partitions",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        function_sql, function_params = self.partition_function_list_statement().to_sql()
+        function_rows = self._executor.execute(function_sql, function_params)
+        boundary_sql, boundary_params = self.partition_boundary_list_statement().to_sql()
+        boundary_rows = self._executor.execute(boundary_sql, boundary_params)
+        scheme_sql, scheme_params = self.partition_scheme_list_statement().to_sql()
+        scheme_rows = self._executor.execute(scheme_sql, scheme_params)
+        index_sql, index_params = self.partition_aligned_index_list_statement(
+            table_name=table_name, schema=schema
+        ).to_sql()
+        index_rows = self._executor.execute(index_sql, index_params)
+
+        partitions = self.parse_partitions(
+            function_rows, boundary_rows, scheme_rows, index_rows,
+            table_name, schema,
+        )
+        self._cache.set(key, partitions)
+        return partitions
+
+    def list_types(self, schema: Optional[str] = None) -> List[SQLServerTypeInfo]:
+        """List one schema's user-defined alias, table and CLR types."""
+        key = self._cache.key(
+            IntrospectionScope.SCHEMA, schema=schema, extra="types"
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self.type_list_statement(schema=schema).to_sql()
+        types = self.parse_types(self._executor.execute(sql, params))
+        self._cache.set(key, types)
+        return types
+
+    def get_type_info(
+        self, type_name: str, schema: Optional[str] = None
+    ) -> Optional[SQLServerTypeInfo]:
+        """Return one user-defined type, or ``None`` when it is not there."""
+        return next(
+            (type_ for type_ in self.list_types(schema) if type_.name == type_name),
+            None,
+        )
+
+    def list_constraints(
+        self,
+        table_name: Optional[str] = None,
+        schema: Optional[str] = None,
+    ) -> List[SQLServerConstraintInfo]:
+        """List constraint objects, for one table or one schema.
+
+        The families cover primary keys, unique constraints, foreign keys,
+        check constraints and default constraints. The first three are also
+        reachable through the index and foreign-key questions; the check and
+        default constraints are the two no other family answers.
+        """
+        key = self._cache.key(
+            IntrospectionScope.TABLE,
+            table_name or "*",
+            schema=schema,
+            extra="constraints",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self.constraint_list_statement(
+            table_name=table_name, schema=schema
+        ).to_sql()
+        constraints = self.parse_constraints(self._executor.execute(sql, params))
+        self._cache.set(key, constraints)
+        return constraints
+
 
 class AsyncSQLServerIntrospector(
     SQLServerIntrospectorMixin, AsyncAbstractIntrospector
@@ -995,4 +1484,90 @@ class AsyncSQLServerIntrospector(
         )
         self._cache.set(key, sequences)
         return sequences
+
+    async def list_partitions(
+        self,
+        table_name: Optional[str] = None,
+        schema: Optional[str] = None,
+    ) -> List[SQLServerPartitionInfo]:
+        """List partition functions, schemes and aligned indexes asynchronously.
+
+        Same question, same fold and same cache key as the synchronous
+        manager; only the four catalog reads are awaited.
+        """
+        key = self._cache.key(
+            IntrospectionScope.TABLE,
+            table_name or "*",
+            schema=schema,
+            extra="partitions",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        function_sql, function_params = self.partition_function_list_statement().to_sql()
+        function_rows = await self._executor.execute(function_sql, function_params)
+        boundary_sql, boundary_params = self.partition_boundary_list_statement().to_sql()
+        boundary_rows = await self._executor.execute(boundary_sql, boundary_params)
+        scheme_sql, scheme_params = self.partition_scheme_list_statement().to_sql()
+        scheme_rows = await self._executor.execute(scheme_sql, scheme_params)
+        index_sql, index_params = self.partition_aligned_index_list_statement(
+            table_name=table_name, schema=schema
+        ).to_sql()
+        index_rows = await self._executor.execute(index_sql, index_params)
+
+        partitions = self.parse_partitions(
+            function_rows, boundary_rows, scheme_rows, index_rows,
+            table_name, schema,
+        )
+        self._cache.set(key, partitions)
+        return partitions
+
+    async def list_types(
+        self, schema: Optional[str] = None
+    ) -> List[SQLServerTypeInfo]:
+        """List one schema's user-defined alias, table and CLR types."""
+        key = self._cache.key(
+            IntrospectionScope.SCHEMA, schema=schema, extra="types"
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self.type_list_statement(schema=schema).to_sql()
+        types = self.parse_types(await self._executor.execute(sql, params))
+        self._cache.set(key, types)
+        return types
+
+    async def get_type_info(
+        self, type_name: str, schema: Optional[str] = None
+    ) -> Optional[SQLServerTypeInfo]:
+        """Return one user-defined type asynchronously, or ``None``."""
+        types = await self.list_types(schema)
+        return next((type_ for type_ in types if type_.name == type_name), None)
+
+    async def list_constraints(
+        self,
+        table_name: Optional[str] = None,
+        schema: Optional[str] = None,
+    ) -> List[SQLServerConstraintInfo]:
+        """List constraint objects asynchronously, for one table or schema."""
+        key = self._cache.key(
+            IntrospectionScope.TABLE,
+            table_name or "*",
+            schema=schema,
+            extra="constraints",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self.constraint_list_statement(
+            table_name=table_name, schema=schema
+        ).to_sql()
+        constraints = self.parse_constraints(
+            await self._executor.execute(sql, params)
+        )
+        self._cache.set(key, constraints)
+        return constraints
 
