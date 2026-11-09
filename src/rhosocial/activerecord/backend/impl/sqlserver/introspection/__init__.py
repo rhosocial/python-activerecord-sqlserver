@@ -7,10 +7,15 @@ from .status_introspector import (
     AsyncSQLServerStatusIntrospector,
 )
 from .types import (
+    SQLServerConstraintInfo,
     SQLServerExtendedPropertyInfo,
+    SQLServerPartitionIndexInfo,
+    SQLServerPartitionInfo,
+    SQLServerPartitionSchemeInfo,
     SQLServerRoutineInfo,
     SQLServerSchemaInfo,
     SQLServerSequenceInfo,
+    SQLServerTypeInfo,
 )
 
 __all__ = [
@@ -18,8 +23,13 @@ __all__ = [
     "AsyncSQLServerIntrospector",
     "SQLServerStatusIntrospector",
     "AsyncSQLServerStatusIntrospector",
+    "SQLServerConstraintInfo",
     "SQLServerExtendedPropertyInfo",
+    "SQLServerPartitionIndexInfo",
+    "SQLServerPartitionInfo",
+    "SQLServerPartitionSchemeInfo",
     "SQLServerRoutineInfo",
     "SQLServerSchemaInfo",
     "SQLServerSequenceInfo",
+    "SQLServerTypeInfo",
 ]

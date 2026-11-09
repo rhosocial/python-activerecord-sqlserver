@@ -12,7 +12,9 @@ The contract those answers fill is core's, and this page does not restate it: th
 - **Indexes**: name, uniqueness, primary-key flag, type and column order, from `sys.indexes` and `sys.index_columns`
 - **Foreign keys**: resolved column and table names, update/delete actions
 - **Views and triggers**: definitions, updatability, firing events, `INSTEAD OF` flag
-- **This backend's own families**: schemas, extended properties, procedures, functions and sequences, plus the primary-key read
+- **This backend's own families**: schemas, extended properties, procedures,
+  functions and sequences, plus partitions, user-defined types and
+  constraints, and the primary-key read
 - **Operational answers**: unused indexes, per-index counters, instance counters and by-name dependency edges; two families refused
 - **Data answers**: per-column profiles, value listings and join coverage, all aggregated over the rows
 
@@ -41,10 +43,25 @@ Every question in the introspection contract has a probe on the dialect, and a p
 | `supports_column_data_profile()` | `True` | What each column of a table holds |
 | `supports_column_value_sample()` | `True` from 2012 | Which values occur, and how often |
 | `supports_join_coverage()` | `True` | How much two columns' domains overlap |
-| `supports_partition_info()` | `False` | Core's partition family |
+| `supports_partition_info()` | `True` from 2008 | Partition functions, schemes and aligned indexes |
 | `supports_extensions()` | `False` | Installed add-on components |
 
-Five families beyond core's shared set are this backend's own, and each is declared in the mixin that owns it: `supports_extended_property_introspection()` for the `extended-properties` family over `sys.extended_properties`, plus `supports_schema_introspection()`, `supports_procedure_introspection()`, `supports_function_introspection()` and `supports_sequence_introspection()`. `get_primary_key()` is core's method, answered from `list_indexes()`'s `is_primary` flag; the primary-key statement is also what `list_columns()` runs first, so each column's `is_primary_key` is filled. `get_supported_introspection_scopes()` returns database, table, column, index, foreign key, view, trigger and sequence — core's `SCHEMA` scope is not among them, and extended properties and routines have no scope of their own.
+Eight families are this backend's own or newly answered, and each is declared
+in the mixin that owns it: `supports_extended_property_introspection()` for the
+`extended-properties` family over `sys.extended_properties`, plus
+`supports_schema_introspection()`, `supports_procedure_introspection()`,
+`supports_function_introspection()` and `supports_sequence_introspection()`.
+The partition family also has the backend-local spelling
+`supports_partition_metadata_introspection()`, and the two new families are
+`supports_type_introspection()` -- 2008 (10.0) and up, where
+`sys.table_types` arrived -- and `supports_constraint_introspection()`.
+`get_primary_key()` is core's method, answered from `list_indexes()`'s
+`is_primary` flag; the primary-key statement is also what `list_columns()`
+runs first, so each column's `is_primary_key` is filled.
+`get_supported_introspection_scopes()` returns database, table, column, index,
+foreign key, view, trigger and sequence — core's `SCHEMA` scope is not among
+them, and extended properties, routines, partitions, types and constraints
+have no scope of their own.
 
 A `True` promises only that the query renders and the server accepts it; it says nothing about the shape of the answer or its price, and the price of every family is stated where the family is described.
 
@@ -54,7 +71,12 @@ A `True` promises only that the query renders and the server accepts it; it says
 
 `supports_unused_indexes_detection()`, `supports_index_stats()` and `supports_runtime_stats()` are the 2005 (9.0) floor: the three dynamic management views arrived there. `supports_object_dependencies()` is the 2008 (10.0) floor, where `sys.sql_expression_dependencies` arrived. `supports_column_value_sample()` is the 2012 (11.0) floor, because its cap rides `OFFSET 0 ROWS FETCH NEXT n ROWS ONLY`, which the engine parses only from that release — asking the version accessor is a truer answer than a statement that fails to parse.
 
-`supports_partition_info()` and `supports_extensions()` stay `False` by inheritance. Core's partition family has no method on this backend to oblige, and no catalogue is mapped for installable add-on components, so there is no answer behind a `True`.
+`supports_partition_info()` answers `True` from SQL Server 2008 (10.0), the
+floor the partition mixin already used for table partitioning; the family is
+answered from `sys.partition_functions`, `sys.partition_schemes` and the
+indexes aligned to a scheme. `supports_extensions()` stays `False` by
+inheritance: no catalogue is mapped for installable add-on components, so
+there is no answer behind a `True`.
 
 ## Basic Usage
 
@@ -100,6 +122,15 @@ for property_ in introspector.list_extended_properties(
 
 for routine in introspector.list_functions():
     print(routine.name, routine.type_code)
+
+for partition in introspector.list_partitions("orders"):
+    print(partition.name, partition.range_direction, partition.boundary_values)
+
+for type_ in introspector.list_types():
+    print(type_.name, type_.kind, type_.base_type)
+
+for constraint in introspector.list_constraints("orders"):
+    print(constraint.name, constraint.constraint_type, constraint.definition)
 ```
 
 `list_extended_properties()` takes either a `major_id` it already has or a `table_name` to resolve — the named form joins `sys.tables` and `sys.schemas`, so a caller needs no first round trip to turn a name into an id. Its `class_name` is checked against the `class_desc` values the engine documents (`OBJECT_OR_COLUMN`, `INDEX`, `DATABASE`, `PARAMETER` and so on), and a schema filter is refused for a class whose `major_id` lives in another id space, because "no rows" there would be a silent contradiction rather than an answer. `value` is `sql_variant` and the driver cannot fetch it, so it is cast to `NVARCHAR(4000)` in the statement.
@@ -115,6 +146,9 @@ for routine in introspector.list_functions():
 - **Indexes.** `sys.indexes` joined to `sys.index_columns` and `sys.columns`; a heap has no named index row and is excluded, so `index_id` 0 never appears as an index.
 - **Triggers.** Firing events are not a column of `sys.triggers`; they live one table over, in `sys.trigger_events`, one row per event. The join is a `LEFT JOIN`, one row per event, and the parser folds contiguous rows back into one trigger — so a trigger with no event row is still a trigger, and its definition comes from `OBJECT_DEFINITION`.
 - **Views.** `INFORMATION_SCHEMA.VIEWS` carries `VIEW_DEFINITION`, which is `NULL` for a view whose text the caller may not read — unlike `OBJECT_DEFINITION()`, which returns the text to a caller holding `VIEW DEFINITION`. Both the list and the single-view question read that one view, so they cannot disagree, and `include_system` is not consulted because the view holds no server-owned row.
+- **Partitions.** SQL Server has three levels: `sys.partition_functions` declares the range boundaries, `sys.partition_schemes` maps destinations to filegroups, and an index is aligned when its `data_space_id` is the scheme's. The family is answered with four catalogue questions -- functions, boundaries, schemes and aligned indexes -- and folded in the parser rather than one join, because a single join would multiply boundaries, destinations and indexes into combinations the database does not have. Boundary values are `sql_variant` and cast to text; the direction comes from `boundary_value_on_right`; the aligned index's row and byte counts are its own partitions in `sys.dm_db_partition_stats`, not a sum across indexes that would count a table's rows twice.
+- **Types.** `sys.types` supplies alias, table and CLR types; `sys.table_types` adds the object id whose columns a table type declares, so the count is the catalogue's rather than a guess. `TYPE_NAME(system_type_id)` names an alias type's base, and `MS_Description` under `class_desc = 'TYPE'` is the comment. System types are not listed: a model never has to map one back to a declaration.
+- **Constraints.** One `sys.objects` row per constraint, with `sys.key_constraints` (PK/UQ), `sys.foreign_keys`/`sys.foreign_key_columns` (F), `sys.check_constraints` (C) and `sys.default_constraints` (D) joined by `object_id`. The check and default constraints are the two no other family answers; the primary-key, unique and foreign-key families are also reachable through the index and foreign-key questions. Each column join is LEFT and matches only the constraint family that owns it, so a primary key does not acquire a foreign key's columns.
 
 ## Operational Families
 
@@ -260,6 +294,11 @@ python -m rhosocial.activerecord.backend.impl.sqlserver introspect tables --data
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect columns orders --database mydb
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect extended-properties orders --database mydb
 
+# Partition functions, user-defined types and constraint objects
+python -m rhosocial.activerecord.backend.impl.sqlserver introspect partitions --database mydb
+python -m rhosocial.activerecord.backend.impl.sqlserver introspect types --database mydb
+python -m rhosocial.activerecord.backend.impl.sqlserver introspect constraints orders --database mydb
+
 # Operational readings
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect unused-indexes --database mydb
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect index-stats --database mydb
@@ -291,6 +330,9 @@ python -m rhosocial.activerecord.backend.impl.sqlserver introspect table-stats -
 | `functions` | User-defined functions in `dbo` | not accepted |
 | `sequences` | Sequences in `dbo` | not accepted |
 | `schemas` | Schemas and their owners | not accepted |
+| `partitions` | Partition functions, schemes and aligned indexes | optional (table) |
+| `types` | User-defined alias, table and CLR types | optional (type) |
+| `constraints` | Constraint objects, including CHECK and DEFAULT | optional (table) |
 | `unused-indexes` | Indexes with no recorded read, from 2005 | not accepted |
 | `table-stats` | Per-table usage counters — refused on every version | not accepted |
 | `runtime` | Instance performance counters | not accepted |

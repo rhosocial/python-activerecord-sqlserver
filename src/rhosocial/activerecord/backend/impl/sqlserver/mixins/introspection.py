@@ -58,11 +58,17 @@ if TYPE_CHECKING:  # pragma: no cover
         ObjectDependencyQueryStatement,
     )
     from ..expression.introspection import (
+        SQLServerConstraintListQueryStatement,
         SQLServerExtendedPropertyListQueryStatement,
+        SQLServerPartitionAlignedIndexListQueryStatement,
+        SQLServerPartitionBoundaryListQueryStatement,
+        SQLServerPartitionFunctionListQueryStatement,
+        SQLServerPartitionSchemeListQueryStatement,
         SQLServerPrimaryKeyQueryStatement,
         SQLServerRoutineListQueryStatement,
         SQLServerSchemaListQueryStatement,
         SQLServerSequenceListQueryStatement,
+        SQLServerTypeListQueryStatement,
     )
 
 __all__ = ["DEFAULT_SCHEMA", "SQLServerIntrospectionMixin"]
@@ -195,6 +201,38 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         ``index_size_bytes`` the nonclustered ones' pages. Before this was
         declared, the listing left every slot ``None`` while the engine was
         able to answer; a caller gating on the switch now learns that.
+        """
+        return True
+
+    def supports_partition_info(self) -> bool:
+        """``sys.partition_*`` answers partition functions, schemes and indexes.
+
+        This is core's name for the family; the backend-local spelling is
+        ``supports_partition_metadata_introspection`` on the partition mixin.
+        Both answer the same engine question, so a caller may gate on either.
+        """
+        return self.version_at_least((10, 0, 0))
+
+    def supports_type_introspection(self) -> bool:
+        """``sys.types``/``sys.table_types`` answer user-defined types.
+
+        The family covers alias types, table types and CLR types; system
+        types are deliberately not listed because a model never has to map
+        one back to a declaration. The 2008 (10.0) floor is where
+        ``sys.table_types`` -- and the ``is_table_type`` flag on
+        ``sys.types`` -- arrived, so a server older than it cannot answer the
+        question this family asks.
+        """
+        return self.version_at_least((10, 0, 0))
+
+    def supports_constraint_introspection(self) -> bool:
+        """``sys.objects`` and the constraint views answer constraint objects.
+
+        A constraint is one object with one row in ``sys.objects``, and the
+        check and default constraints have no other family: the index family
+        answers primary and unique keys, the foreign-key family answers
+        foreign keys, but neither answers the two constraints that carry an
+        expression.
         """
         return True
 
@@ -1078,6 +1116,540 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
             from_=joined,
             where=self._eq(self._col("name", "s"), self._lit(target)),
             order_by=[self._col("name", "q")],
+        )
+
+    # ------------------------------------------------------------------ #
+    # Partitions, user-defined types and constraints
+    #
+    # These three families have no core statement class either. Partitions
+    # are three catalogue questions because SQL Server's model has three
+    # levels -- function, scheme and the index whose ``data_space_id`` is a
+    # scheme -- and each is rendered here rather than folded into one join
+    # that would multiply boundaries by destinations by indexes.
+    # ------------------------------------------------------------------ #
+
+    def format_partition_function_list_query_statement(
+        self, expr: "SQLServerPartitionFunctionListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``sys.partition_functions`` with its parameter type.
+
+        ``sys.partition_parameters`` carries the declared type: the
+        function view itself does not. ``TYPE_NAME`` is asked twice, once for
+        the user type and once for its system base, so an alias-typed function
+        keeps both names. The parameter rows are folded into one function
+        record by the parser.
+        """
+        joined = self._join(
+            self._relation("partition_functions", "sys", alias="pf"),
+            self._relation("partition_parameters", "sys", alias="pp"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("function_id", "pf"), self._col("function_id", "pp")
+            ),
+        )
+        return self._select(
+            [
+                self._col("name", "pf", alias="partition_function"),
+                self._col("function_id", "pf"),
+                self._col("type", "pf", alias="function_type"),
+                self._col("type_desc", "pf", alias="function_type_desc"),
+                self._col("fanout", "pf"),
+                self._col("boundary_value_on_right", "pf"),
+                self._fn(
+                    "TYPE_NAME", self._col("user_type_id", "pp"), alias="data_type"
+                ),
+                self._fn(
+                    "TYPE_NAME", self._col("system_type_id", "pp"), alias="base_type"
+                ),
+                self._col("max_length", "pp"),
+                self._col("precision", "pp"),
+                self._col("scale", "pp"),
+                self._col("collation_name", "pp", alias="collation"),
+                self._col("parameter_id", "pp"),
+            ],
+            from_=joined,
+            order_by=[
+                self._col("name", "pf"),
+                self._col("parameter_id", "pp"),
+            ],
+        )
+
+    def format_partition_boundary_list_query_statement(
+        self, expr: "SQLServerPartitionBoundaryListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``sys.partition_range_values`` with the value cast to text.
+
+        ``value`` is ``sql_variant``; pyodbc raises on that type before a
+        row reaches the parser, which is why the cast is in the statement.
+        The cast is wide enough for a boundary on a long character type and
+        the boundary id orders a function's values.
+        """
+        return self._select(
+            [
+                self._col("function_id", "prv"),
+                self._col("boundary_id", "prv"),
+                self._col("parameter_id", "prv"),
+                self._cast(
+                    self._col("value", "prv"), "NVARCHAR(4000)"
+                ).as_("boundary_value"),
+            ],
+            from_=self._relation("partition_range_values", "sys", alias="prv"),
+            order_by=[
+                self._col("function_id", "prv"),
+                self._col("boundary_id", "prv"),
+                self._col("parameter_id", "prv"),
+            ],
+        )
+
+    def format_partition_scheme_list_query_statement(
+        self, expr: "SQLServerPartitionSchemeListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``sys.partition_schemes`` with each destination's filegroup.
+
+        ``sys.partition_schemes`` inherits ``sys.data_spaces``; its
+        ``data_space_id`` is the scheme id the indexes point at.
+        ``sys.destination_data_spaces`` maps one destination to one data
+        space, and ``sys.data_spaces`` is where that space's filegroup name
+        lives. The joins are LEFT so a scheme with no destination rows is
+        still a scheme.
+        """
+        joined = self._join(
+            self._relation("partition_schemes", "sys", alias="ps"),
+            self._relation("destination_data_spaces", "sys", alias="dds"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("data_space_id", "ps"),
+                self._col("partition_scheme_id", "dds"),
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("data_spaces", "sys", alias="ds"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("data_space_id", "dds"), self._col("data_space_id", "ds")
+            ),
+        )
+        return self._select(
+            [
+                self._col("name", "ps", alias="scheme_name"),
+                self._col("data_space_id", "ps", alias="scheme_id"),
+                self._col("function_id", "ps"),
+                self._col("destination_id", "dds"),
+                self._col(
+                    "data_space_id", "dds", alias="destination_data_space_id"
+                ),
+                self._col("name", "ds", alias="filegroup_name"),
+            ],
+            from_=joined,
+            order_by=[
+                self._col("name", "ps"),
+                self._col("destination_id", "dds"),
+            ],
+        )
+
+    def format_partition_aligned_index_list_query_statement(
+        self, expr: "SQLServerPartitionAlignedIndexListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render the indexes whose ``data_space_id`` is a partition scheme.
+
+        An index is aligned when its ``data_space_id`` is the scheme's -- no
+        separate flag records it. The partitioning columns are the
+        ``sys.index_columns`` rows with a non-zero ``partition_ordinal``, and
+        the row and byte counts are this index's own partitions from
+        ``sys.dm_db_partition_stats``: measured per index rather than summed
+        across indexes, because a nonclustered index repeats the table's
+        rows and a sum would count every row twice.
+        """
+        params = expr.get_params()
+        table_name = params.get("table_name")
+        schema = params.get("schema")
+
+        joined = self._join(
+            self._join(
+                self._join(
+                    self._join(
+                        self._relation("indexes", "sys", alias="i"),
+                        self._relation("partition_schemes", "sys", alias="ps"),
+                        join_type="JOIN",
+                        condition=self._eq(
+                            self._col("data_space_id", "i"),
+                            self._col("data_space_id", "ps"),
+                        ),
+                    ),
+                    self._relation("objects", "sys", alias="o"),
+                    join_type="JOIN",
+                    condition=self._eq(
+                        self._col("object_id", "i"), self._col("object_id", "o")
+                    ),
+                ),
+                self._relation("schemas", "sys", alias="s"),
+                join_type="JOIN",
+                condition=self._eq(
+                    self._col("schema_id", "o"), self._col("schema_id", "s")
+                ),
+            ),
+            self._relation("index_columns", "sys", alias="ic"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("object_id", "i"), self._col("object_id", "ic")),
+                self._eq(self._col("index_id", "i"), self._col("index_id", "ic")),
+                self._gt(
+                    self._col("partition_ordinal", "ic"),
+                    self._lit(0, inline=True),
+                ),
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("columns", "sys", alias="c"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("object_id", "c"), self._col("object_id", "ic")),
+                self._eq(self._col("column_id", "c"), self._col("column_id", "ic")),
+            ),
+        )
+
+        stats_conditions = self._and(
+            self._eq(self._col("object_id", "st"), self._col("object_id", "i")),
+            self._eq(self._col("index_id", "st"), self._col("index_id", "i")),
+        )
+        row_count = self._subquery(
+            [self._fn("SUM", self._col("row_count", "st"))],
+            from_=self._relation("dm_db_partition_stats", "sys", alias="st"),
+            where=stats_conditions,
+            alias="row_count",
+        )
+        size_bytes = self._mul(
+            self._subquery(
+                [self._fn("SUM", self._col("used_page_count", "st"))],
+                from_=self._relation("dm_db_partition_stats", "sys", alias="st"),
+                where=stats_conditions,
+            ),
+            self._lit(8192, inline=True),
+        ).as_("size_bytes")
+
+        conditions = []
+        if table_name is not None:
+            conditions.append(
+                self._eq(
+                    self._col("name", "s"),
+                    self._lit(schema or DEFAULT_SCHEMA),
+                )
+            )
+            conditions.append(
+                self._eq(self._col("name", "o"), self._lit(table_name))
+            )
+        elif schema is not None:
+            conditions.append(self._eq(self._col("name", "s"), self._lit(schema)))
+
+        return self._select(
+            [
+                self._col("name", "ps", alias="scheme_name"),
+                self._col("function_id", "ps"),
+                self._col("name", "s", alias="schema_name"),
+                self._col("name", "o", alias="table_name"),
+                self._col("name", "i", alias="index_name"),
+                self._col("index_id", "i"),
+                self._col("type_desc", "i", alias="index_type"),
+                self._col("is_unique", "i"),
+                self._col("is_primary_key", "i"),
+                self._col("name", "c", alias="partition_column"),
+                self._col("partition_ordinal", "ic"),
+                row_count,
+                size_bytes,
+            ],
+            from_=joined,
+            where=self._and(*conditions) if conditions else None,
+            order_by=[
+                self._col("name", "ps"),
+                self._col("name", "s"),
+                self._col("name", "o"),
+                self._col("index_id", "i"),
+                self._col("partition_ordinal", "ic"),
+            ],
+        )
+
+    def format_type_list_query_statement(
+        self, expr: "SQLServerTypeListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``sys.types`` for one schema's user-defined types.
+
+        ``sys.table_types`` inherits ``sys.types`` and adds the object id
+        whose columns a table type declares, so it is a LEFT JOIN keyed on
+        the shared ``user_type_id``. ``MS_Description`` lives in
+        ``sys.extended_properties`` under ``class_desc = 'TYPE'`` and
+        ``major_id = user_type_id``; the join is LEFT so a type without a
+        description keeps its row.
+        """
+        params = expr.get_params()
+        target = params.get("schema") or DEFAULT_SCHEMA
+
+        joined = self._join(
+            self._join(
+                self._relation("types", "sys", alias="t"),
+                self._relation("schemas", "sys", alias="s"),
+                join_type="JOIN",
+                condition=self._eq(
+                    self._col("schema_id", "t"), self._col("schema_id", "s")
+                ),
+            ),
+            self._relation("table_types", "sys", alias="tt"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("user_type_id", "tt"), self._col("user_type_id", "t")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("extended_properties", "sys", alias="ep"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("class_desc", "ep"), self._lit("TYPE", inline=True)),
+                self._eq(self._col("major_id", "ep"), self._col("user_type_id", "t")),
+                self._eq(self._col("minor_id", "ep"), self._lit(0, inline=True)),
+                self._eq(
+                    self._col("name", "ep"),
+                    self._lit("MS_Description", inline=True),
+                ),
+            ),
+        )
+        return self._select(
+            [
+                self._col("name", "t", alias="type_name"),
+                self._col("name", "s", alias="schema_name"),
+                self._col("user_type_id", "t"),
+                self._col("system_type_id", "t"),
+                self._fn(
+                    "TYPE_NAME", self._col("system_type_id", "t"), alias="base_type"
+                ),
+                self._col("max_length", "t"),
+                self._col("precision", "t"),
+                self._col("scale", "t"),
+                self._col("collation_name", "t", alias="collation"),
+                self._col("is_nullable", "t"),
+                self._col("is_user_defined", "t"),
+                self._col("is_table_type", "t"),
+                self._col("is_assembly_type", "t"),
+                self._col("default_object_id", "t"),
+                self._col("rule_object_id", "t"),
+                self._col("type_table_object_id", "tt"),
+                self._subquery(
+                    [self._fn("COUNT", self._row_count_wildcard())],
+                    from_=self._relation("columns", "sys", alias="c"),
+                    where=self._eq(
+                        self._col("object_id", "c"),
+                        self._col("type_table_object_id", "tt"),
+                    ),
+                    alias="column_count",
+                ),
+                self._cast(self._col("value", "ep"), "NVARCHAR(4000)").as_(
+                    "type_comment"
+                ),
+            ],
+            from_=joined,
+            where=self._and(
+                self._eq(self._col("is_user_defined", "t"), self._lit(1, inline=True)),
+                self._eq(self._col("name", "s"), self._lit(target)),
+            ),
+            order_by=[self._col("name", "t")],
+        )
+
+    def format_constraint_list_query_statement(
+        self, expr: "SQLServerConstraintListQueryStatement"
+    ) -> Tuple[str, tuple]:
+        """Render the constraint objects of one table or one schema.
+
+        One ``sys.objects`` row per constraint, with the family's own view
+        joined by ``object_id``: ``sys.key_constraints`` for ``PK``/``UQ``,
+        ``sys.foreign_keys``/``sys.foreign_key_columns`` for ``F``,
+        ``sys.check_constraints`` for ``C`` and ``sys.default_constraints``
+        for ``D``. The column joins are LEFT and each matches only the family
+        that owns the constraint, so a primary key does not acquire a foreign
+        key's columns merely because both views are present.
+        """
+        params = expr.get_params()
+        table_name = params.get("table_name")
+        target = params.get("schema") or DEFAULT_SCHEMA
+
+        joined = self._join(
+            self._relation("objects", "sys", alias="o"),
+            self._relation("schemas", "sys", alias="s"),
+            join_type="JOIN",
+            condition=self._eq(
+                self._col("schema_id", "o"), self._col("schema_id", "s")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("tables", "sys", alias="t"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("parent_object_id", "o"), self._col("object_id", "t")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("check_constraints", "sys", alias="cc"),
+            join_type="LEFT JOIN",
+            condition=self._eq(self._col("object_id", "cc"), self._col("object_id", "o")),
+        )
+        joined = self._join(
+            joined,
+            self._relation("default_constraints", "sys", alias="dc"),
+            join_type="LEFT JOIN",
+            condition=self._eq(self._col("object_id", "dc"), self._col("object_id", "o")),
+        )
+        joined = self._join(
+            joined,
+            self._relation("foreign_keys", "sys", alias="fk"),
+            join_type="LEFT JOIN",
+            condition=self._eq(self._col("object_id", "fk"), self._col("object_id", "o")),
+        )
+        joined = self._join(
+            joined,
+            self._relation("key_constraints", "sys", alias="kc"),
+            join_type="LEFT JOIN",
+            condition=self._eq(self._col("object_id", "kc"), self._col("object_id", "o")),
+        )
+        joined = self._join(
+            joined,
+            self._relation("tables", "sys", alias="rt"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("referenced_object_id", "fk"), self._col("object_id", "rt")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("schemas", "sys", alias="rs"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("schema_id", "rt"), self._col("schema_id", "rs")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("foreign_key_columns", "sys", alias="fkc"),
+            join_type="LEFT JOIN",
+            condition=self._eq(
+                self._col("constraint_object_id", "fkc"), self._col("object_id", "o")
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("columns", "sys", alias="cf"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("object_id", "cf"), self._col("parent_object_id", "fkc")),
+                self._eq(self._col("column_id", "cf"), self._col("parent_column_id", "fkc")),
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("columns", "sys", alias="cr"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(
+                    self._col("object_id", "cr"),
+                    self._col("referenced_object_id", "fkc"),
+                ),
+                self._eq(
+                    self._col("column_id", "cr"),
+                    self._col("referenced_column_id", "fkc"),
+                ),
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("index_columns", "sys", alias="ic"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("object_id", "ic"), self._col("parent_object_id", "kc")),
+                self._eq(self._col("index_id", "ic"), self._col("unique_index_id", "kc")),
+                self._gt(self._col("key_ordinal", "ic"), self._lit(0, inline=True)),
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("columns", "sys", alias="ck"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("object_id", "ck"), self._col("object_id", "ic")),
+                self._eq(self._col("column_id", "ck"), self._col("column_id", "ic")),
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("columns", "sys", alias="cchk"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("object_id", "cchk"), self._col("parent_object_id", "cc")),
+                self._eq(self._col("column_id", "cchk"), self._col("parent_column_id", "cc")),
+            ),
+        )
+        joined = self._join(
+            joined,
+            self._relation("columns", "sys", alias="cd"),
+            join_type="LEFT JOIN",
+            condition=self._and(
+                self._eq(self._col("object_id", "cd"), self._col("parent_object_id", "dc")),
+                self._eq(self._col("column_id", "cd"), self._col("parent_column_id", "dc")),
+            ),
+        )
+
+        conditions = [
+            self._in(
+                self._col("type", "o"),
+                ("PK", "UQ", "F", "C", "D"),
+            ),
+            self._eq(self._col("is_ms_shipped", "o"), self._lit(0, inline=True)),
+            self._eq(self._col("name", "s"), self._lit(target)),
+        ]
+        if table_name is not None:
+            conditions.append(self._eq(self._col("name", "t"), self._lit(table_name)))
+
+        return self._select(
+            [
+                self._col("name", "o", alias="constraint_name"),
+                self._col("name", "s", alias="schema_name"),
+                self._col("name", "t", alias="table_name"),
+                self._col("type", "o", alias="constraint_type"),
+                self._col("type_desc", "o", alias="constraint_type_desc"),
+                self._col("constraint_column_id", "fkc", alias="fk_ordinal"),
+                self._col("name", "cf", alias="fk_column"),
+                self._col("name", "cr", alias="fk_referenced_column"),
+                self._col("name", "rt", alias="referenced_table"),
+                self._col("name", "rs", alias="referenced_schema"),
+                self._col(
+                    "delete_referential_action_desc", "fk", alias="on_delete"
+                ),
+                self._col(
+                    "update_referential_action_desc", "fk", alias="on_update"
+                ),
+                self._col("unique_index_id", "kc"),
+                self._col("key_ordinal", "ic"),
+                self._col("name", "ck", alias="key_column"),
+                self._col("parent_column_id", "cc", alias="check_column_id"),
+                self._col("definition", "cc", alias="check_definition"),
+                self._col("is_disabled", "cc", alias="check_disabled"),
+                self._col("is_not_trusted", "cc", alias="check_not_trusted"),
+                self._col("name", "cchk", alias="check_column"),
+                self._col("parent_column_id", "dc", alias="default_column_id"),
+                self._col("definition", "dc", alias="default_definition"),
+                self._col("name", "cd", alias="default_column"),
+                self._col("is_disabled", "fk", alias="fk_disabled"),
+                self._col("is_not_trusted", "fk", alias="fk_not_trusted"),
+            ],
+            from_=joined,
+            where=self._and(*conditions),
+            order_by=[
+                self._col("name", "s"),
+                self._col("name", "t"),
+                self._col("name", "o"),
+                self._col("constraint_column_id", "fkc"),
+                self._col("key_ordinal", "ic"),
+            ],
         )
 
     # ========== Operational families ==========

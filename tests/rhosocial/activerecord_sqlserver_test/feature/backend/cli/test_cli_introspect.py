@@ -77,6 +77,21 @@ class FakeIntrospector:
     def list_schemas(self):
         return self._record("list_schemas")
 
+    def list_partitions(self, table_name=None, schema=None):
+        return self._record("list_partitions", table_name=table_name, schema=schema)
+
+    def list_types(self, schema=None):
+        return self._record("list_types", schema=schema)
+
+    def get_type_info(self, type_name, schema=None):
+        self.calls.append(("get_type_info", {"type_name": type_name, "schema": schema}))
+        return {"method": "get_type_info", "name": type_name}
+
+    def list_constraints(self, table_name=None, schema=None):
+        return self._record(
+            "list_constraints", table_name=table_name, schema=schema
+        )
+
     def list_extended_properties(
         self,
         major_id=None,
@@ -427,6 +442,12 @@ class TestHandleDispatch:
             (["functions"], "list_functions"),
             (["sequences"], "list_sequences"),
             (["schemas"], "list_schemas"),
+            (["partitions"], "list_partitions"),
+            (["partitions", "orders"], "list_partitions"),
+            (["types"], "list_types"),
+            (["types", "order_note"], "get_type_info"),
+            (["constraints"], "list_constraints"),
+            (["constraints", "orders"], "list_constraints"),
             # The nine families shared with the MySQL and PostgreSQL CLIs.
             # ``table-stats`` and ``ddl`` are refused by the dialect's own
             # answer, so their rows below are what the branch *would* ask:
@@ -713,6 +734,9 @@ class TestDeclaredVocabulary:
             "functions": "forbidden",
             "sequences": "forbidden",
             "schemas": "forbidden",
+            "partitions": "optional",
+            "types": "optional",
+            "constraints": "optional",
             "unused-indexes": "forbidden",
             "table-stats": "forbidden",
             "runtime": "forbidden",
@@ -840,6 +864,73 @@ class TestSupportedScopes:
             if kind in TestDeclaredVocabulary.UNANSWERED_SWITCHES:
                 continue
             assert getattr(dialect, switch)() is True, switch
+
+
+class TestCoverageFamiliesDispatch:
+    """The three coverage families reach their introspector methods.
+
+    ``partitions`` and ``constraints`` take an optional table name; ``types``
+    takes an optional type name and switches from a list to one record, the
+    same shape ``views`` uses.
+    """
+
+    def test_partitions_asks_for_the_whole_database_or_one_table(self):
+        assert introspect_mod._steps(
+            make_args(["introspect", "partitions"])
+        ) == [("list_partitions", {"table_name": None, "schema": None})]
+        assert introspect_mod._steps(
+            make_args(["introspect", "partitions", "orders"])
+        ) == [("list_partitions", {"table_name": "orders", "schema": None})]
+
+    def test_types_lists_or_describes_one_type(self):
+        assert introspect_mod._steps(
+            make_args(["introspect", "types"])
+        ) == [("list_types", {"schema": None})]
+        assert introspect_mod._steps(
+            make_args(["introspect", "types", "order_note"])
+        ) == [("get_type_info", {"type_name": "order_note", "schema": None})]
+
+    def test_constraints_asks_for_the_schema_or_one_table(self):
+        assert introspect_mod._steps(
+            make_args(["introspect", "constraints"])
+        ) == [("list_constraints", {"table_name": None, "schema": None})]
+        assert introspect_mod._steps(
+            make_args(["introspect", "constraints", "orders"])
+        ) == [("list_constraints", {"table_name": "orders", "schema": None})]
+
+    def test_a_missing_type_is_an_error_not_an_empty_record(self, monkeypatch, capsys):
+        class _NoSuchType(FakeIntrospector):
+            def get_type_info(self, type_name, schema=None):
+                self.calls.append(
+                    ("get_type_info", {"type_name": type_name, "schema": schema})
+                )
+                return None
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(FakeBackendBase, "NoSuchTypeBackend", _NoSuchType),
+        )
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(["introspect", "types", "missing", "--database", "db"])
+            )
+        assert exc.value.code == 1
+        assert "Type 'missing' not found" in capsys.readouterr().err
+
+    def test_the_three_types_name_their_switches(self):
+        assert (
+            introspect_mod._TYPE_CAPABILITIES["partitions"]
+            == "supports_partition_metadata_introspection"
+        )
+        assert (
+            introspect_mod._TYPE_CAPABILITIES["types"]
+            == "supports_type_introspection"
+        )
+        assert (
+            introspect_mod._TYPE_CAPABILITIES["constraints"]
+            == "supports_constraint_introspection"
+        )
 
 
 class TestCapabilityGate:

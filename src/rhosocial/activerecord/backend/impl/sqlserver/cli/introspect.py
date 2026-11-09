@@ -4,7 +4,8 @@
 Every type this command offers is answered by ``backend.introspector``. The
 introspector speaks the core API -- ``list_tables``/``list_views``/
 ``list_columns``/... -- plus this backend's own ``list_schemas``,
-``list_procedures``, ``list_functions`` and ``list_sequences``; there are no
+``list_procedures``, ``list_functions``, ``list_sequences``,
+``list_partitions``, ``list_types`` and ``list_constraints``; there are no
 ``get_tables``/``get_views``/``get_columns`` methods anywhere, and asking for
 them was why this command used to fail for every type.
 
@@ -61,6 +62,9 @@ _TYPE_CAPABILITIES = {
     "functions": "supports_function_introspection",
     "sequences": "supports_sequence_introspection",
     "schemas": "supports_schema_introspection",
+    "partitions": "supports_partition_metadata_introspection",
+    "types": "supports_type_introspection",
+    "constraints": "supports_constraint_introspection",
     # The nine families shared with the MySQL and PostgreSQL CLIs. Each names
     # the probe that answers for it here, which is not automatically the same
     # answer it gives there: the dependency graph and the runtime listing come
@@ -110,6 +114,9 @@ _NAME_RULE = {
     "functions": "forbidden",
     "sequences": "forbidden",
     "schemas": "forbidden",
+    "partitions": "optional",
+    "types": "optional",
+    "constraints": "optional",
     # The nine shared families: the counters and the listings describe the
     # database and take no name; the graph narrows to one object and answers
     # the whole graph without one; the one-object families ask about a table.
@@ -162,6 +169,9 @@ _RESULT_TITLES = {
     "list_functions": "User-Defined Functions",
     "list_sequences": "Sequences",
     "list_schemas": "Schemas",
+    "list_partitions": "Partitions",
+    "list_types": "User-Defined Types",
+    "list_constraints": "Constraints",
     "get_database_info": "Database Info",
     "list_unused_indexes": "Indexes with no recorded use",
     "list_table_usage_stats": "Table usage counters",
@@ -219,6 +229,18 @@ def create_parser(subparsers):
   # List sequences
   %(prog)s sequences --database mydb
 
+  # Partition functions, schemes and aligned indexes (all, or one table's)
+  %(prog)s partitions --database mydb
+  %(prog)s partitions orders --database mydb
+
+  # User-defined alias, table and CLR types (all, or one type)
+  %(prog)s types --database mydb
+  %(prog)s types order_note --database mydb
+
+  # Constraint objects, including CHECK and DEFAULT constraints
+  %(prog)s constraints --database mydb
+  %(prog)s constraints orders --database mydb
+
   # Operational readings: indexes with no recorded use, per-index counters,
   # live instance counters, the dependency graph
   %(prog)s unused-indexes --database mydb
@@ -253,6 +275,8 @@ NAME per type:
                               a table name, required
   ddl, column-profiles, value-samples
                               a table name, required
+  partitions, constraints    a table name, optional
+  types                      a type name, optional
   views                       a view name, optional
   triggers, dependencies      optional narrowing
   everything else             no name: refused with exit 2, never ignored
@@ -551,6 +575,20 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
         return [("list_sequences", {"schema": None})]
     if kind == "schemas":
         return [("list_schemas", {})]
+    if kind == "partitions":
+        return [(
+            "list_partitions",
+            {"table_name": args.name, "schema": None},
+        )]
+    if kind == "types":
+        if args.name:
+            return [("get_type_info", {"type_name": args.name, "schema": None})]
+        return [("list_types", {"schema": None})]
+    if kind == "constraints":
+        return [(
+            "list_constraints",
+            {"table_name": args.name, "schema": None},
+        )]
 
     # ---- the nine families shared with the MySQL and PostgreSQL CLIs -----
     # The counters and the listings answer for the whole schema, so none
@@ -638,9 +676,15 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
             return f"Dependencies of {kwargs['object_name']}"
         if method == "list_column_data_profiles":
             return f"Column profiles of {kwargs.get('table_name', '')}"
+        if method == "list_partitions" and kwargs.get("table_name"):
+            return f"Partitions of {kwargs['table_name']}"
+        if method == "list_constraints" and kwargs.get("table_name"):
+            return f"Constraints of {kwargs['table_name']}"
         return _RESULT_TITLES[method]
     if method == "get_view_info":
         return f"View {kwargs.get('view_name', '')}"
+    if method == "get_type_info":
+        return f"Type {kwargs.get('type_name', '')}"
     name = kwargs.get("table_name", "")
     if method == "list_columns":
         return f"Columns of {name}"
@@ -665,6 +709,7 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
 #: answer for those ("this schema has no triggers"), not a failed lookup.
 _NAMED_TYPES: Dict[str, Tuple[str, str]] = {
     "get_view_info": ("View", "view_name"),
+    "get_type_info": ("Type", "type_name"),
     "list_extended_properties": ("Table", "table_name"),
 }
 

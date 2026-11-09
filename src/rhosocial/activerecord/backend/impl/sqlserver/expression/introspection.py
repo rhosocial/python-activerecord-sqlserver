@@ -14,7 +14,12 @@ have no core entry point and are SQL Server's own:
 * **routines** -- stored procedures and user-defined functions, which this
   engine keeps in one relation and separates by ``sys.objects.type``;
 * **sequences** -- ``sys.sequences``, whose values are ``sql_variant`` and
-  must be cast to text before the driver can fetch them.
+  must be cast to text before the driver can fetch them;
+* **partitions** -- the partition function, its range boundaries, the
+  partition scheme over it and the indexes aligned to that scheme;
+* **types** -- user-defined alias, table and CLR types in ``sys.types``;
+* **constraints** -- the constraint objects in ``sys.objects``, including the
+  check and default constraints no other family answers.
 
 Each class collects all its parameters at construction -- keyword-only, since
 the question is asked once and never edited -- and names, through
@@ -39,11 +44,17 @@ if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
 
 __all__ = [
+    "SQLServerConstraintListQueryStatement",
     "SQLServerExtendedPropertyListQueryStatement",
+    "SQLServerPartitionAlignedIndexListQueryStatement",
+    "SQLServerPartitionBoundaryListQueryStatement",
+    "SQLServerPartitionFunctionListQueryStatement",
+    "SQLServerPartitionSchemeListQueryStatement",
     "SQLServerPrimaryKeyQueryStatement",
     "SQLServerRoutineListQueryStatement",
     "SQLServerSchemaListQueryStatement",
     "SQLServerSequenceListQueryStatement",
+    "SQLServerTypeListQueryStatement",
 ]
 
 
@@ -221,3 +232,163 @@ class SQLServerSequenceListQueryStatement(IntrospectionExpression):
 
     def __repr__(self) -> str:
         return f"SQLServerSequenceListQueryStatement(schema={self.schema!r})"
+
+
+class SQLServerPartitionFunctionListQueryStatement(IntrospectionExpression):
+    """Ask for the partition functions of this database, with their parameters.
+
+    Partition functions are database-scoped, not schema-scoped, so the
+    question carries no schema. One row per parameter is the catalogue's
+    shape; SQL Server defines one parameter for a table-partitioning
+    function, and the parser folds the rows into one record per function.
+
+    Args:
+        dialect: The dialect the statement is bound to.
+    """
+
+    KIND_RESERVED = ("SQLServer",)
+
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this statement."""
+        return "format_partition_function_list_query_statement"
+
+    def __repr__(self) -> str:
+        return "SQLServerPartitionFunctionListQueryStatement()"
+
+
+class SQLServerPartitionBoundaryListQueryStatement(IntrospectionExpression):
+    """Ask for the range boundary values of every partition function.
+
+    ``sys.partition_range_values.value`` is ``sql_variant`` and the ODBC
+    driver cannot fetch it, so the dialect casts it to text in the statement
+    rather than leaving the driver to refuse the row.
+
+    Args:
+        dialect: The dialect the statement is bound to.
+    """
+
+    KIND_RESERVED = ("SQLServer",)
+
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this statement."""
+        return "format_partition_boundary_list_query_statement"
+
+    def __repr__(self) -> str:
+        return "SQLServerPartitionBoundaryListQueryStatement()"
+
+
+class SQLServerPartitionSchemeListQueryStatement(IntrospectionExpression):
+    """Ask for every partition scheme and its destination filegroups.
+
+    Args:
+        dialect: The dialect the statement is bound to.
+    """
+
+    KIND_RESERVED = ("SQLServer",)
+
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this statement."""
+        return "format_partition_scheme_list_query_statement"
+
+    def __repr__(self) -> str:
+        return "SQLServerPartitionSchemeListQueryStatement()"
+
+
+class SQLServerPartitionAlignedIndexListQueryStatement(IntrospectionExpression):
+    """Ask for the indexes whose ``data_space_id`` is a partition scheme.
+
+    An index aligned to a scheme is partitioned by that scheme's function;
+    an unaligned index of the same table lives on a filegroup instead and is
+    not an answer. A table name narrows the answer to one table's aligned
+    indexes; without it every aligned index in the database is listed.
+
+    Args:
+        dialect: The dialect the statement is bound to.
+        table_name: One table's indexes, or ``None`` for every table.
+        schema: The schema the aligned indexes are resolved in, with or
+            without ``table_name``.
+    """
+
+    KIND_RESERVED = ("SQLServer",)
+
+    def __init__(
+        self,
+        dialect: "SQLDialectBase",
+        *,
+        table_name: Optional[str] = None,
+        schema: Optional[str] = None,
+    ):
+        super().__init__(dialect, schema=schema)
+        self.table_name: Optional[str] = table_name
+
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this statement."""
+        return "format_partition_aligned_index_list_query_statement"
+
+    def __repr__(self) -> str:
+        return (
+            f"SQLServerPartitionAlignedIndexListQueryStatement("
+            f"table_name={self.table_name!r}, schema={self.schema!r})"
+        )
+
+
+class SQLServerTypeListQueryStatement(IntrospectionExpression):
+    """Ask for the user-defined types of one schema.
+
+    The question lists alias types, table types and CLR types; system types
+    are not user-defined and are not what a model has to map back.
+
+    Args:
+        dialect: The dialect the statement is bound to.
+        schema: The schema to read, or ``None`` for the default schema.
+    """
+
+    KIND_RESERVED = ("SQLServer",)
+
+    def __init__(self, dialect: "SQLDialectBase", *, schema: Optional[str] = None):
+        super().__init__(dialect, schema=schema)
+
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this statement."""
+        return "format_type_list_query_statement"
+
+    def __repr__(self) -> str:
+        return f"SQLServerTypeListQueryStatement(schema={self.schema!r})"
+
+
+class SQLServerConstraintListQueryStatement(IntrospectionExpression):
+    """Ask for the constraint objects of one schema, or one table.
+
+    Args:
+        dialect: The dialect the statement is bound to.
+        table_name: One table's constraints, or ``None`` for the schema.
+        schema: The schema to read, or ``None`` for the default schema.
+    """
+
+    KIND_RESERVED = ("SQLServer",)
+
+    def __init__(
+        self,
+        dialect: "SQLDialectBase",
+        *,
+        table_name: Optional[str] = None,
+        schema: Optional[str] = None,
+    ):
+        super().__init__(dialect, schema=schema)
+        self.table_name: Optional[str] = table_name
+
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this statement."""
+        return "format_constraint_list_query_statement"
+
+    def __repr__(self) -> str:
+        return (
+            f"SQLServerConstraintListQueryStatement("
+            f"table_name={self.table_name!r}, schema={self.schema!r})"
+        )

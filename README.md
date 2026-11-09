@@ -204,11 +204,14 @@ oldest release carry no gate and are omitted.
 - **No native arrays, and no JSON *type*.** JSON is reachable through
   functions (`JSON_VALUE`, `JSON_QUERY`) on 2016+, not through a column
   type, and `supports_json_type` gates on that.
-- **Table partitioning is not implemented.** `add_partition`,
-  `attach_partition`, `detach_partition`, `list_table_partitioning`,
-  `range_table_partitioning`, `hash_table_partitioning` and
-  `subpartitioning` are all `False` at every probed version. A model does
-  not take a `__partition__` attribute.
+- **Table partitioning is metadata-only.** Partition functions,
+  schemes and aligned indexes are introspectable through
+  `introspect partitions` / `list_partitions`, but partition *lifecycle*
+  (`add_partition`, `attach_partition`, `detach_partition`,
+  `list_table_partitioning`, `range_table_partitioning`,
+  `hash_table_partitioning`, `subpartitioning`) is not implemented: those
+  switches are all `False` at every probed version and a model does not take
+  a `__partition__` attribute.
 - Also unsupported: `alter_type`, `constraint_enforced`, `create_or_replace_view`,
   `deferrable_*`, `fetch_with_ties`, `fk_match`, `returning_alias`,
   `returning_wildcard`, `set_type`, `transaction_mode`.
