@@ -1,5 +1,5 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/cli/test_introspect_families_cli.py
-"""The nine families the MySQL and PostgreSQL CLIs ask, as this one asks them.
+"""The shared families the MySQL and PostgreSQL CLIs ask, as this one asks them.
 
 No server is needed here. What is checked is the wiring the CLI owns: that
 each type reaches its introspector method, that NAME and the type-specific
@@ -7,13 +7,15 @@ flags arrive as arguments rather than being parsed and dropped, and that a
 family the connected server refuses is refused. Whether the answer is right
 is the introspector's question, and the live tests carry it.
 
-Four of the nine are gated on the server's version because the SQL they
+Four of the eight are gated on the server's version because the SQL they
 render needs an object a release can lack -- the dynamic management views
 and the pagination clause -- so the floors are asserted on both sides: a
 server at the floor is not refused, and a server below it is refused before
-a statement is rendered rather than failing at execution. Two of the nine
-this engine does not answer at all, and those are asserted as the dialect's
-``False`` as well.
+a statement is rendered rather than failing at execution. One of the nine
+this engine does not answer at all, and that is asserted as the dialect's
+``False`` as well. The ninth, ``ddl``, is not offered by the CLI: the
+capability is permanently false, so the parser refuses it as an invalid
+choice.
 """
 
 import argparse
@@ -28,20 +30,20 @@ from rhosocial.activerecord.backend.impl.sqlserver.backend import async_backend 
 from rhosocial.activerecord.backend.introspection.types import (
     ColumnDataProfile,
     ColumnValueFrequency,
-    DDLStatement,
     JoinCoverage,
 )
 
-#: The nine families this change wires, and the switch that gates each. The
+#: The eight families this change wires, and the switch that gates each. The
 #: dialect declares them, so a run against a real server passes the gate; the
 #: refusal tests below turn the switch off to prove the gate is still read.
+#: ``ddl`` is not among them: its capability is permanently false, so the CLI
+#: does not advertise the type.
 NEW_FAMILIES = {
     "unused-indexes": "supports_unused_indexes_detection",
     "table-stats": "supports_table_stats",
     "runtime": "supports_runtime_stats",
     "index-stats": "supports_index_stats",
     "dependencies": "supports_object_dependencies",
-    "ddl": "supports_ddl_extraction",
     "column-profiles": "supports_column_data_profile",
     "value-samples": "supports_column_value_sample",
     "join-coverage": "supports_join_coverage",
@@ -127,19 +129,15 @@ def _args(type_: str, name: Optional[str] = None, **overrides) -> argparse.Names
 
 
 class _AnsweringDialect(SQLServerDialect):
-    """SQL Server's dialect with the two unanswered probes turned on.
+    """SQL Server's dialect with the one still-offered unanswered probe on.
 
     The branch tests drive the dispatch, not the engine's answer, so the
-    switches the real dialect refuses are answered here. That this is a
+    switch the real dialect refuses is answered here. That this is a
     *different* dialect from the one a run meets is the point:
-    :class:`TestTheTwoUnansweredFamilies` below asserts what the real one
-    says.
+    :class:`TestTheUnansweredFamilies` below asserts what the real one says.
     """
 
     def supports_table_stats(self) -> bool:
-        return True
-
-    def supports_ddl_extraction(self) -> bool:
         return True
 
 
@@ -254,49 +252,6 @@ class TestTheDependenciesBranch:
         assert introspector.calls == [
             ("list_object_dependencies", (), {"object_name": None, "schema": None})
         ]
-
-
-class TestTheDdlBranch:
-    """The schema object, not a name, is what a caller parses."""
-
-    def _statement(self) -> DDLStatement:
-        return DDLStatement(
-            schema="dbo",
-            object_type="PROCEDURE",
-            object_name="usp_orders",
-            ddl="CREATE PROCEDURE usp_orders AS BEGIN SET NOCOUNT ON END",
-            native=False,
-        )
-
-    def test_the_table_is_asked_for_by_name(self, monkeypatch):
-        introspector = _RecordingIntrospector({"get_ddl_statement": self._statement()})
-
-        _run_sync(monkeypatch, introspector, _args("ddl", "orders"))
-
-        assert introspector.calls == [
-            ("get_ddl_statement", (), {"object_name": "orders", "schema": None})
-        ]
-
-    def test_the_engine_text_reaches_json_with_its_native_flag(
-        self, monkeypatch, capsys
-    ):
-        introspector = _RecordingIntrospector({"get_ddl_statement": self._statement()})
-
-        _run_sync(monkeypatch, introspector, _args("ddl", "usp_orders"))
-
-        payload = json.loads(capsys.readouterr().out)
-        assert payload[0]["object_name"] == "usp_orders"
-        assert payload[0]["ddl"].startswith("CREATE PROCEDURE")
-        assert payload[0]["native"] is False
-
-    def test_no_ddl_is_an_error_not_an_empty_listing(self, monkeypatch, capsys):
-        introspector = _RecordingIntrospector({"get_ddl_statement": None})
-
-        with pytest.raises(SystemExit) as excinfo:
-            _run_sync(monkeypatch, introspector, _args("ddl", "orders"))
-
-        assert excinfo.value.code == 1
-        assert "no DDL available" in capsys.readouterr().err
 
 
 class TestTheColumnProfilesBranch:
@@ -510,7 +465,7 @@ class TestTheArgumentRules:
         assert "takes no --column" in capsys.readouterr().err
 
     def test_a_required_name_is_required_for_the_new_families(self, capsys):
-        for type_ in ("ddl", "column-profiles", "value-samples"):
+        for type_ in ("column-profiles", "value-samples"):
             with pytest.raises(SystemExit) as excinfo:
                 introspect_cli._validate_name(_args(type_))
             assert excinfo.value.code == 1
@@ -545,12 +500,6 @@ class TestTheAsyncPath:
             (
                 "dependencies",
                 "list_object_dependencies",
-                {"name": "orders"},
-                ((), {"object_name": "orders", "schema": None}),
-            ),
-            (
-                "ddl",
-                "get_ddl_statement",
                 {"name": "orders"},
                 ((), {"object_name": "orders", "schema": None}),
             ),
@@ -682,22 +631,25 @@ class TestTheVersionFloors:
                 assert getattr(dialect, switch)() is False, type_
 
 
-class TestTheTwoUnansweredFamilies:
-    """The two families this engine does not answer, on any version.
+class TestTheUnansweredFamilies:
+    """What this engine does not answer, on any version.
 
     Per-table usage counters: SQL Server's counters are per *index*, and
     summing them per table would be a derived figure wearing the shape of a
-    measured one; inserts and deletes are not tracked at all. DDL retrieval:
-    the engine has no per-object call of the kind MySQL's ``SHOW CREATE
-    TABLE`` is, so answering would mean assembling a reconstruction and
-    labelling it native. Both probes answer ``False``, the CLI refuses at the
-    capability question, and the roundtrip matrix keeps its pins for the two
-    statement classes with these reasons.
+    measured one; inserts and deletes are not tracked at all. The probe answers
+    ``False``, the CLI offers the type and refuses it at the capability
+    question, and the roundtrip matrix keeps its pin for the statement class
+    with this reason.
+
+    DDL retrieval is equally unanswered -- the engine has no per-object call
+    of the kind MySQL's ``SHOW CREATE TABLE`` is -- but it is not offered by
+    the CLI at all. A type whose capability can never be true would promise
+    only a refusal, so ``ddl`` is an invalid argparse choice instead. The
+    backend capability and expression stay, ready for a real implementation.
     """
 
     UNANSWERED = {
         "table-stats": "supports_table_stats",
-        "ddl": "supports_ddl_extraction",
     }
 
     @pytest.mark.parametrize("type_, switch", list(UNANSWERED.items()))
@@ -736,4 +688,14 @@ class TestTheTwoUnansweredFamilies:
         """
         dialect = SQLServerDialect(version=SQL_2022)
         assert dialect.supports_table_stats() is False
-        assert dialect.supports_ddl_extraction() is False
+
+    def test_ddl_is_not_advertised_by_the_parser(self):
+        """The backend's ``False`` is unchanged; the CLI no longer offers it."""
+        from rhosocial.activerecord.backend.impl.sqlserver.__main__ import parse_args
+
+        assert "ddl" not in introspect_cli._TYPE_CAPABILITIES
+        assert "ddl" not in introspect_cli._NAME_RULE
+        assert SQLServerDialect(version=SQL_2022).supports_ddl_extraction() is False
+        with pytest.raises(SystemExit) as excinfo:
+            parse_args(["introspect", "ddl", "orders", "--database", "db"])
+        assert excinfo.value.code == 2

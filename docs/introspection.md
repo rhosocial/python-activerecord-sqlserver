@@ -187,9 +187,11 @@ There is no schema filter, and that is deliberate: the counters describe a runni
 
 `action` and `referenced_type` stay `None`: this view records no referential action, and no type for the referenced entity beyond the class descriptor. It is a real graph and a partial one — a foreign key is not a row here, and an object bound through dynamic SQL is invisible to it. A reference that leaves the database is not filtered out: the row still names the entity, and its server or database qualifier is not in the projection. Naming an object narrows the answer to its dependants; omitting the name returns the whole graph for the schema.
 
-### The two refusals
+### The refusals
 
-`table-stats` and `ddl` are refused by their probes on every release, and the CLI exits **2** with "not supported by this server" without sending a statement. That is a different answer from an empty list: "this server cannot be asked" is not "the table was never read", and an assembled `CREATE TABLE` would be a statement the engine never made. The roundtrip matrix in this repository keeps an explicit pin for `DDLStatementQueryStatement` with this reason.
+`table-stats` is refused by its probe on every release, and the CLI exits **2** with "not supported by this server" without sending a statement. That is a different answer from an empty list: "this server cannot be asked" is not "the table was never read".
+
+DDL extraction is not offered by this backend's CLI at all. `supports_ddl_extraction()` is `False` on every release, so advertising the type would promise only a refusal; the capability, the DDL expression and the formatter stay in the backend, ready for a real implementation. An assembled `CREATE TABLE` would be a statement the engine never made, and the roundtrip matrix in this repository keeps an explicit pin for `DDLStatementQueryStatement` with this reason.
 
 Every family — answered or refused — is reached through the same introspector, sync and async alike:
 
@@ -274,7 +276,8 @@ Two limits decide whether an operational or data family can answer at all, and n
 | `unused-indexes`, `index-stats`, `runtime` | SQL Server 2005 (version 9.0), where the DMVs arrive | probe `False`; the CLI exits 2 without running the query |
 | `dependencies` | SQL Server 2008 (version 10.0), where `sys.sql_expression_dependencies` arrives | probe `False`; the CLI exits 2 |
 | `value-samples` | SQL Server 2012 (version 11.0), where `OFFSET ... FETCH` parses | probe `False`; the CLI exits 2 |
-| `table-stats`, `ddl` | none — no release answers them | probe `False` on every version; the CLI exits 2 |
+| `table-stats` | none — no release answers it | probe `False` on every version; the CLI exits 2 |
+| `ddl` | none — no release answers it | probe `False` on every version; not offered by the CLI |
 | every other family | none established here | — |
 
 The floors are asked of the version accessor, not left to a runtime syntax error: a server below one of them is refused at the capability question with "cannot answer", which is a different and truer answer than a query that fails to parse. Every release this repository tests against — 2017, 2019, 2022 and 2025 — is well past all three, so the gates change nothing there and keep an older server from an execution error.
@@ -310,7 +313,7 @@ python -m rhosocial.activerecord.backend.impl.sqlserver introspect column-profil
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect value-samples orders \
   --column status --limit 20 --database mydb
 
-# The two families this engine does not answer are refused after connecting, exit 2
+# table-stats is refused after connecting, exit 2; ddl is not an offered type
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect table-stats --database mydb
 ```
 
@@ -338,12 +341,13 @@ python -m rhosocial.activerecord.backend.impl.sqlserver introspect table-stats -
 | `runtime` | Instance performance counters | not accepted |
 | `index-stats` | Per-index usage counters, from 2005 | not accepted |
 | `dependencies` | By-name dependency edges, from 2008 | optional (table) |
-| `ddl` | The DDL that recreates one object — refused on every version | required (table) |
 | `column-profiles` | What each column of a table holds | required (table) |
 | `value-samples` | Most frequent values of one column | required (table), plus `--column` |
 | `join-coverage` | Overlap of two columns' value domains | not accepted; four flags required |
 
-The nine operational and data families are the set the other CLIs ask for too, and each one names the probe that answers for it here — which is not automatically the same answer it gives elsewhere. `views NAME` is a *view* name and `triggers NAME` is a *table* name: the two are not the same kind of argument, which is why the rule table names both. A name the type cannot use is refused (exit 2) rather than ignored; a missing required name or flag is an incomplete invocation (exit 1); a flag the type does not read is refused (exit 2). A `views` name or an `extended-properties` name that answers nothing is reported as "not found" (exit 1), and for extended properties the table is first checked against the catalogue, because a table with no `MS_Description` and a table that is not there both answer with no rows. `ddl` and `join-coverage` answering `None` — "the engine will not produce a text", "the overlap could not be measured" — also leave with 1 rather than printing a row of nulls a reader would take for a measurement.
+The operational and data families are the set the other CLIs ask for too, and each one names the probe that answers for it here — which is not automatically the same answer it gives elsewhere. `views NAME` is a *view* name and `triggers NAME` is a *table* name: the two are not the same kind of argument, which is why the rule table names both. A name the type cannot use is refused (exit 2) rather than ignored; a missing required name or flag is an incomplete invocation (exit 1); a flag the type does not read is refused (exit 2). A `views` name or an `extended-properties` name that answers nothing is reported as "not found" (exit 1), and for extended properties the table is first checked against the catalogue, because a table with no `MS_Description` and a table that is not there both answer with no rows. `join-coverage` answering `None` — "the overlap could not be measured" — also leaves with 1 rather than printing a row of nulls a reader would take for a measurement.
+
+`ddl` is absent from the table on purpose: `supports_ddl_extraction()` is permanently `False`, so the parser rejects it as an invalid choice (exit 2). The no-result rule for DDL retrieval remains the backend's concern, not the CLI's.
 
 `--limit` is forwarded to `sample_column_values()` only when it is given; without it the introspector's own default answers (`VALUE_SAMPLE_LIMIT`, 100), so the number is not written in two places. `--include-system` changes the table listing; the view listing reads `INFORMATION_SCHEMA.VIEWS`, which holds no server-owned row, so the flag has nothing to add there. `column-profiles` writes one note to stderr saying the profiles are aggregated from the rows themselves and paid for with a full scan per column, so a caller piping JSON to a consumer still sees where the numbers came from.
 
