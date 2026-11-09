@@ -179,6 +179,20 @@ in SQL Server 2016; a server below that floor refuses the expression, and
 `supports_functions()["seconds_between"]` reports `False`. An `end` earlier
 than `start` subtracts to a negative value with no extra sign handling.
 
+### Partitioned tables
+
+SQL Server partitioning is a partition function plus a partition scheme plus a
+table built `ON <scheme>(<column>)` -- not a `PARTITION BY` clause. The DDL
+expressions cover `CREATE PARTITION FUNCTION` / `SCHEME`, `SPLIT RANGE`,
+`MERGE RANGE`, `SWITCH`, `NEXT USED` and the two drops, and the maintenance
+executor provides `ensure`, `list`, `retention_boundaries`, `drop_or_merge`,
+`drop_before` and `validate` with sync and async forms. There is no
+subpartitioning, and a partition is removed by merging its boundary, never by
+dropping it.
+
+See [Table partitioning](docs/partition.md) for the model, examples and the
+maintenance contract.
+
 ## Version Gates
 
 Gates below are the versions at which this backend's own `supports_*`
@@ -204,14 +218,18 @@ oldest release carry no gate and are omitted.
 - **No native arrays, and no JSON *type*.** JSON is reachable through
   functions (`JSON_VALUE`, `JSON_QUERY`) on 2016+, not through a column
   type, and `supports_json_type` gates on that.
-- **Table partitioning is metadata-only.** Partition functions,
-  schemes and aligned indexes are introspectable through
-  `introspect partitions` / `list_partitions`, but partition *lifecycle*
-  (`add_partition`, `attach_partition`, `detach_partition`,
-  `list_table_partitioning`, `range_table_partitioning`,
-  `hash_table_partitioning`, `subpartitioning`) is not implemented: those
-  switches are all `False` at every probed version and a model does not take
-  a `__partition__` attribute.
+- **No generic partition verbs.** Table partitioning exists through
+  partition functions and schemes (`supports_table_partitioning`,
+  `supports_partition_function`, `supports_partition_scheme`,
+  `supports_split_partition`, `supports_merge_partition` and
+  `supports_switch_partition` are `True` on 2008+), but the generic
+  `add_partition`, `drop_partition`, `attach_partition`, `detach_partition`,
+  `truncate_partition` and `reorganize_partition` switches stay `False`:
+  SQL Server spells those operations differently or not at all.
+  `supports_subpartitioning()` is `False` at every version -- SQL Server has
+  no subpartitions. A model does not take a `__partition__` attribute;
+  partition state is managed by the backend helper in
+  [docs/partition.md](docs/partition.md).
 - Also unsupported: `alter_type`, `constraint_enforced`, `create_or_replace_view`,
   `deferrable_*`, `fetch_with_ties`, `fk_match`, `returning_alias`,
   `returning_wildcard`, `set_type`, `transaction_mode`.
@@ -237,7 +255,9 @@ PYTHONPATH=tests .venv3.14-ubuntu26.04/bin/pytest \
 
 [Database introspection](docs/introspection.md) states what this backend
 answers, where each answer comes from, and the version floors that decide
-whether it can be asked at all.
+whether it can be asked at all. [Table partitioning](docs/partition.md)
+describes SQL Server's function/scheme model, the DDL expressions and the
+maintenance helper.
 
 Backend notes live in [.claude/architecture.md](.claude/architecture.md) and
 [.claude/testing.md](.claude/testing.md); core library documentation is at
