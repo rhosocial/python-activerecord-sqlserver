@@ -8,7 +8,6 @@ falling back to --version flag when no connection is available.
 import argparse
 import inspect
 import json
-import logging
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -52,8 +51,9 @@ from rhosocial.activerecord.backend.impl.sqlserver.protocols import (
 
 from .connection import add_connection_args, add_version_arg, resolve_connection_config_from_args
 from .output import INFO_OUTPUT_CHOICES, create_provider, RICH_AVAILABLE
+from rhosocial.activerecord.logging.defaults import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 DIALECT_SPECIFIC_GROUPS = {"SQL Server Native"}
 

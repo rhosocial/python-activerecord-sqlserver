@@ -13,6 +13,13 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 from rhosocial.activerecord.backend.base import AsyncStorageBackend
+from rhosocial.activerecord.backend.base.execution_logging import (
+    log_batch_start,
+    log_batch_summary,
+    log_execution_error,
+    log_execution_start,
+    log_execution_summary,
+)
 from rhosocial.activerecord.backend.base.operations import AsyncSQLOperationsMixin
 from rhosocial.activerecord.backend.base.transaction_management import AsyncTransactionManagementMixin
 from rhosocial.activerecord.backend.errors import (
@@ -23,7 +30,9 @@ from rhosocial.activerecord.backend.errors import (
     OperationalError,
     QueryError,
 )
+from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
 from rhosocial.activerecord.backend.result import QueryResult
+from rhosocial.activerecord.logging.redaction import unwrap_sensitive
 from rhosocial.activerecord.backend.introspection.backend_mixin import IntrospectorBackendMixin
 from ..config import SQLServerConnectionConfig
 from ..dialect import SQLServerDialect
@@ -70,7 +79,12 @@ class AsyncSQLServerBackend(
         >>> print(result.data)
         >>> await backend.disconnect()
     """
-    
+
+    # ``AsyncSQLServerBackend`` would otherwise be named
+    # ``rhosocial.activerecord.backend.asyncsqlserver``; share the sync name so
+    # both halves of the backend emit to one library logger.
+    _logger_name = "rhosocial.activerecord.backend.sqlserver"
+
     CONNECTION_ERROR_CODES = {
         53, 64, 232, 233, 18456, 4060, 40197, 40501, 40613, 11001,
     }
@@ -227,7 +241,7 @@ class AsyncSQLServerBackend(
             await self.introspect_and_adapt()
             
         except Exception as e:
-            self.log(logging.ERROR, f"Failed to connect to SQL Server: {str(e)}")
+            self.log(logging.DEBUG, f"Failed to connect to SQL Server: {str(e)}")
             raise ConnectionError(f"Failed to connect to SQL Server: {str(e)}") from e
     
     async def disconnect(self) -> None:
@@ -366,10 +380,11 @@ class AsyncSQLServerBackend(
     async def _execute_statement(
         self, sql: str, params: Optional[Tuple], options, start_time: Optional[float] = None
     ) -> QueryResult:
-        from rhosocial.activerecord.backend.options import StatementType
-
+        """Execute one statement without re-entering the backend overrides."""
         sql_upper = sql.strip().upper()
-        
+        params = unwrap_sensitive(params)
+        log_execution_start(self, sql, params, options)
+
         if not self._connection:
             await self.connect()
         
@@ -438,10 +453,9 @@ class AsyncSQLServerBackend(
                 duration = time.perf_counter() - start_time
                 
                 await self._handle_auto_commit_if_needed()
-                
-                self.log(
-                    logging.DEBUG,
-                    f"Query executed in {duration:.3f}s, affected {cursor.rowcount} rows"
+
+                log_execution_summary(
+                    self, options.stmt_type, sql, cursor, data, duration, options
                 )
                 
                 result = self._build_query_result(cursor, data, duration)
@@ -454,43 +468,55 @@ class AsyncSQLServerBackend(
                 return result
                 
         except Exception as e:
-            self.log(logging.ERROR, f"Error executing query: {str(e)}")
+            log_execution_error(self, e, options)
             await self._handle_error(e)
     
-    async def execute_many(self, sql: str, params_list: List[Tuple]) -> QueryResult:
+    async def execute_many(
+        self,
+        sql: str,
+        params_list: List[Tuple],
+        *,
+        options: Optional[ExecutionOptions] = None,
+    ) -> Optional[QueryResult]:
         """Execute the same SQL statement multiple times asynchronously.
-        
+
         Args:
             sql: SQL statement to execute
             params_list: List of parameter tuples
-        
+            options: ExecutionOptions carrying the logging context
+
         Returns:
             QueryResult with affected_rows populated
         """
+        if options is None:
+            options = ExecutionOptions(stmt_type=StatementType.DML)
+        params_list = [unwrap_sensitive(params) for params in params_list]
+        log_batch_start(self, sql, params_list, options)
+
         if not self._connection:
             await self.connect()
 
         start_time = time.perf_counter()
 
         try:
-            if not params_list:
-                self.log(logging.DEBUG, "Empty parameter list, returning zero affected rows")
-                return QueryResult(affected_rows=0, data=None, duration=0.0)
-
             async with await self._get_cursor() as cursor:
+                if not params_list:
+                    duration = time.perf_counter() - start_time
+                    log_batch_summary(self, sql, params_list, 0, duration, options)
+                    return QueryResult(affected_rows=0, data=None, duration=duration)
+
                 await cursor.executemany(sql, params_list)
-                
+
                 duration = time.perf_counter() - start_time
                 affected_rows = cursor.rowcount
-                
+
+                log_batch_summary(self, sql, params_list, affected_rows, duration, options)
                 await self._handle_auto_commit_if_needed()
-                
-                self.log(logging.INFO, f"Batch operation completed, affected {affected_rows} rows")
-                
+
                 return QueryResult(affected_rows=affected_rows, data=None, duration=duration)
-                
+
         except Exception as e:
-            self.log(logging.ERROR, f"Error in batch operation: {str(e)}")
+            log_execution_error(self, e, options)
             await self._handle_error(e)
     
     async def get_server_version(self) -> Tuple[int, int, int]:
@@ -556,7 +582,7 @@ class AsyncSQLServerBackend(
                     await self.connect()
                     return True
                 except Exception as connect_error:
-                    self.log(logging.ERROR, f"Reconnect failed: {str(connect_error)}")
+                    self.log(logging.WARNING, f"Reconnect failed: {str(connect_error)}")
                     return False
             return False
     
@@ -580,7 +606,7 @@ class AsyncSQLServerBackend(
         Args:
             sql_script: SQL script with GO separators
         """
-        self.log(logging.INFO, "Executing SQL script (async)")
+        self.log(logging.DEBUG, "Executing SQL script (async)")
         start_time = time.perf_counter()
         
         if not self._connection:
@@ -600,7 +626,7 @@ class AsyncSQLServerBackend(
             self.log(logging.INFO, f"SQL script executed successfully, duration={duration:.3f}s")
             
         except Exception as e:
-            self.log(logging.ERROR, f"Error executing SQL script: {str(e)}")
+            self.log(logging.DEBUG, f"Error executing SQL script: {str(e)}")
             await self._handle_error(e)
     
     async def _handle_error(self, error: Exception) -> None:
@@ -621,23 +647,23 @@ class AsyncSQLServerBackend(
             or 'cannot insert the value null' in error_msg
         ):
             if "duplicate" in error_msg or "unique" in error_msg:
-                self.log(logging.ERROR, f"Unique constraint violation: {str(error)}")
+                self.log(logging.DEBUG, f"Unique constraint violation: {str(error)}")
                 raise IntegrityError(f"Unique constraint violation: {str(error)}")
             elif "foreign key" in error_msg or "reference" in error_msg:
-                self.log(logging.ERROR, f"Foreign key constraint violation: {str(error)}")
+                self.log(logging.DEBUG, f"Foreign key constraint violation: {str(error)}")
                 raise IntegrityError(f"Foreign key constraint violation: {str(error)}")
-            self.log(logging.ERROR, f"Integrity error: {str(error)}")
+            self.log(logging.DEBUG, f"Integrity error: {str(error)}")
             raise IntegrityError(self._normalize_integrity_message(str(error)))
         
         if 'deadlock' in error_msg or '1205' in error_msg:
-            self.log(logging.ERROR, f"Deadlock detected: {str(error)}")
+            self.log(logging.DEBUG, f"Deadlock detected: {str(error)}")
             raise DeadlockError(str(error))
         
         if 'timeout' in error_msg or 'connection' in error_msg:
-            self.log(logging.ERROR, f"Operational error: {str(error)}")
+            self.log(logging.DEBUG, f"Operational error: {str(error)}")
             raise OperationalError(str(error))
         
-        self.log(logging.ERROR, f"Database error: {str(error)}")
+        self.log(logging.DEBUG, f"Database error: {str(error)}")
         raise DatabaseError(str(error))
     
     async def _handle_auto_commit_if_needed(self) -> None:

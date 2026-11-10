@@ -16,6 +16,11 @@ import pyodbc
 from pyodbc import Error as PyODBCError, InterfaceError, DatabaseError as PyODBCDatabaseError
 
 from rhosocial.activerecord.backend.base import StorageBackend
+from rhosocial.activerecord.backend.base.execution_logging import (
+    log_batch_start,
+    log_batch_summary,
+    log_execution_error,
+)
 from rhosocial.activerecord.backend.errors import (
     ConnectionError,
     DatabaseError,
@@ -24,8 +29,9 @@ from rhosocial.activerecord.backend.errors import (
     OperationalError,
     QueryError,
 )
-from rhosocial.activerecord.backend.options import ExecutionOptions
+from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
 from rhosocial.activerecord.backend.result import QueryResult
+from rhosocial.activerecord.logging.redaction import unwrap_sensitive
 from rhosocial.activerecord.backend.introspection.backend_mixin import IntrospectorBackendMixin
 from rhosocial.activerecord.backend.explain import SyncExplainBackendMixin
 from ..config import SQLServerConnectionConfig
@@ -83,7 +89,11 @@ class SQLServerBackend(
         >>> print(result.data)
         >>> backend.disconnect()
     """
-    
+
+    # Keep the library logger name stable even though this class lives in the
+    # extension package (rhosocial.activerecord.backend.impl.sqlserver).
+    _logger_name = "rhosocial.activerecord.backend.sqlserver"
+
     CONNECTION_ERROR_CODES = {
         53,
         64,
@@ -252,7 +262,7 @@ class SQLServerBackend(
             self.introspect_and_adapt()
             
         except PyODBCError as e:
-            self.log(logging.ERROR, f"Failed to connect to SQL Server: {str(e)}")
+            self.log(logging.DEBUG, f"Failed to connect to SQL Server: {str(e)}")
             raise ConnectionError(f"Failed to connect to SQL Server: {str(e)}") from e
     
     def disconnect(self) -> None:
@@ -403,47 +413,55 @@ class SQLServerBackend(
         finally:
             cursor.noscan = previous
 
-    def execute_many(self, sql: str, params_list: List[Tuple]) -> QueryResult:
+    def execute_many(
+        self,
+        sql: str,
+        params_list: List[Tuple],
+        *,
+        options: Optional[ExecutionOptions] = None,
+    ) -> Optional[QueryResult]:
         """Execute the same SQL statement multiple times with different parameters.
-        
+
         Args:
             sql: SQL statement to execute
             params_list: List of parameter tuples
-        
+            options: ExecutionOptions carrying the logging context
+
         Returns:
             QueryResult with affected_rows populated
         """
-        if not self._connection:
-            self.connect()
-
-        cursor = None
+        if options is None:
+            options = ExecutionOptions(stmt_type=StatementType.DML)
+        params_list = [unwrap_sensitive(params) for params in params_list]
+        log_batch_start(self, sql, params_list, options)
         start_time = time.perf_counter()
 
+        cursor = None
         try:
+            if not self._connection:
+                self.connect()
+
             cursor = self._get_cursor()
 
-            self.log(logging.DEBUG, f"Executing batch operation: {sql}")
-            self.log(logging.DEBUG, f"With {len(params_list)} parameter sets")
-
             if not params_list:
-                self.log(logging.DEBUG, "Empty parameter list, returning zero affected rows")
-                return QueryResult(affected_rows=0, data=None, duration=0.0)
+                duration = time.perf_counter() - start_time
+                log_batch_summary(self, sql, params_list, 0, duration, options)
+                return QueryResult(affected_rows=0, data=None, duration=duration)
 
             cursor.executemany(sql, params_list)
-            
+
             duration = time.perf_counter() - start_time
             affected_rows = cursor.rowcount
-            
+
+            log_batch_summary(self, sql, params_list, affected_rows, duration, options)
             self._handle_auto_commit_if_needed()
-            
-            self.log(logging.INFO, f"Batch operation completed, affected {affected_rows} rows")
-            
+
             return QueryResult(affected_rows=affected_rows, data=None, duration=duration)
-            
+
         except PyODBCError as e:
-            self.log(logging.ERROR, f"Error in batch operation: {str(e)}")
+            log_execution_error(self, e, options)
             self._handle_error(e)
-            
+
         finally:
             if cursor:
                 cursor.close()
@@ -517,7 +535,7 @@ class SQLServerBackend(
                     self.connect()
                     return True
                 except Exception as connect_error:
-                    self.log(logging.ERROR, f"Reconnect failed: {str(connect_error)}")
+                    self.log(logging.WARNING, f"Reconnect failed: {str(connect_error)}")
                     return False
             return False
     
@@ -548,7 +566,7 @@ class SQLServerBackend(
         Args:
             sql_script: SQL script with GO separators
         """
-        self.log(logging.INFO, "Executing SQL script")
+        self.log(logging.DEBUG, "Executing SQL script")
         start_time = time.perf_counter()
         
         if not self._connection:
@@ -569,7 +587,7 @@ class SQLServerBackend(
             self.log(logging.INFO, f"SQL script executed successfully, duration={duration:.3f}s")
             
         except PyODBCError as e:
-            self.log(logging.ERROR, f"Error executing SQL script: {str(e)}")
+            self.log(logging.DEBUG, f"Error executing SQL script: {str(e)}")
             self._handle_error(e)
     
     def _handle_error(self, error: Exception) -> None:
@@ -590,34 +608,34 @@ class SQLServerBackend(
         
         if isinstance(error, pyodbc.IntegrityError):
             if "duplicate" in error_msg or "unique" in error_msg:
-                self.log(logging.ERROR, f"Unique constraint violation: {str(error)}")
+                self.log(logging.DEBUG, f"Unique constraint violation: {str(error)}")
                 raise IntegrityError(f"Unique constraint violation: {str(error)}")
             elif "foreign key" in error_msg or "reference" in error_msg:
-                self.log(logging.ERROR, f"Foreign key constraint violation: {str(error)}")
+                self.log(logging.DEBUG, f"Foreign key constraint violation: {str(error)}")
                 raise IntegrityError(f"Foreign key constraint violation: {str(error)}")
-            self.log(logging.ERROR, f"Integrity error: {str(error)}")
+            self.log(logging.DEBUG, f"Integrity error: {str(error)}")
             raise IntegrityError(self._normalize_integrity_message(str(error)))
         
         elif isinstance(error, pyodbc.DatabaseError):
             if hasattr(error, 'args') and len(error.args) > 0:
                 error_code = error.args[0]
                 if error_code == 1205:
-                    self.log(logging.ERROR, f"Deadlock detected: {str(error)}")
+                    self.log(logging.DEBUG, f"Deadlock detected: {str(error)}")
                     raise DeadlockError(str(error))
             
-            self.log(logging.ERROR, f"Database error: {str(error)}")
+            self.log(logging.DEBUG, f"Database error: {str(error)}")
             raise DatabaseError(str(error))
         
         elif isinstance(error, pyodbc.OperationalError):
-            self.log(logging.ERROR, f"Operational error: {str(error)}")
+            self.log(logging.DEBUG, f"Operational error: {str(error)}")
             raise OperationalError(str(error))
         
         elif isinstance(error, PyODBCError):
-            self.log(logging.ERROR, f"SQL Server error: {str(error)}")
+            self.log(logging.DEBUG, f"SQL Server error: {str(error)}")
             raise DatabaseError(str(error))
         
         else:
-            self.log(logging.ERROR, f"Unexpected error: {str(error)}")
+            self.log(logging.DEBUG, f"Unexpected error: {str(error)}")
             raise error
     
     def _handle_auto_commit_if_needed(self) -> None:
