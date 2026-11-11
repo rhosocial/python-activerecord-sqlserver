@@ -22,7 +22,11 @@ from rhosocial.activerecord.backend.base.execution_logging import (
 )
 from rhosocial.activerecord.backend.base.operations import AsyncSQLOperationsMixin
 from rhosocial.activerecord.backend.base.transaction_management import AsyncTransactionManagementMixin
-from rhosocial.activerecord.backend.errors import ConnectionError
+from rhosocial.activerecord.backend.errors import (
+    ConnectionError,
+    DatabaseError,
+    TransactionError,
+)
 from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
 from rhosocial.activerecord.backend.result import QueryResult
 from rhosocial.activerecord.logging.redaction import unwrap_sensitive
@@ -265,12 +269,51 @@ class AsyncSQLServerBackend(
         
         return await self._connection.cursor()
 
+    async def _execute_control_sql_async(self, sql: str) -> None:
+        """Run a session-control statement through the mapped error path."""
+        cursor = await self._get_cursor()
+        try:
+            await cursor.execute(sql)
+        except Exception as exc:
+            await self._handle_error(exc)
+        finally:
+            await self._close_cursor_quietly_async(cursor)
+
+    async def _close_cursor_quietly_async(self, cursor) -> None:
+        """Close an async cursor, logging rather than masking an in-flight error."""
+        try:
+            await cursor.close()
+        except Exception as exc:
+            self.log(logging.DEBUG, f"Failed to close cursor: {exc}")
+
+    async def _execute_control_sql_async_quietly(self, sql: str) -> None:
+        """Run a cleanup statement without masking the original failure."""
+        try:
+            await self._execute_control_sql_async(sql)
+        except Exception as exc:
+            self.log(logging.WARNING, f"Failed to reset session state ({sql}): {exc}")
+
+    async def _reset_identity_insert_quietly(self, table: str) -> None:
+        """Turn ``IDENTITY_INSERT`` off without replacing an in-flight failure."""
+        try:
+            await self.set_identity_insert(table, False)
+        except Exception as exc:
+            self.log(
+                logging.WARNING,
+                f"Failed to disable IDENTITY_INSERT for {table}: {exc}",
+            )
+
     async def _get_scope_identity_async(self) -> Optional[int]:
         """Get the identity value of the last INSERT via @@IDENTITY."""
         sql, params = session_identity_sql(self.dialect)
-        async with await self._get_cursor() as cursor:
+        cursor = await self._get_cursor()
+        try:
             await cursor.execute(sql, params)
             row = await cursor.fetchone()
+        except Exception as exc:
+            await self._handle_error(exc)
+        finally:
+            await self._close_cursor_quietly_async(cursor)
         if row and row[0] is not None:
             return int(row[0])
         return None
@@ -278,8 +321,7 @@ class AsyncSQLServerBackend(
     async def set_identity_insert(self, table: str, on: bool = True) -> None:
         """Enable or disable IDENTITY_INSERT for a table (async)."""
         sql, _params = self.dialect.format_set_identity_insert(table, on)
-        async with await self._get_cursor() as cursor:
-            await cursor.execute(sql)
+        await self._execute_control_sql_async(sql)
 
     async def _get_identity_columns_async(self, table_name: str) -> Set[str]:
         """Return the set of identity column names for a table (async, cached)."""
@@ -346,13 +388,11 @@ class AsyncSQLServerBackend(
         explain_split = self._split_explain_statement(sql)
         if explain_split is not None:
             set_clause, statement = explain_split
-            async with await self._get_cursor() as cursor:
-                await cursor.execute(f"SET {set_clause} ON")
+            await self._execute_control_sql_async(f"SET {set_clause} ON")
             try:
                 return await self._execute_statement(statement, params, options)
             finally:
-                async with await self._get_cursor() as cursor:
-                    await cursor.execute(f"SET {set_clause} OFF")
+                await self._execute_control_sql_async_quietly(f"SET {set_clause} OFF")
         
         return await self._execute_statement(sql, params, options)
     
@@ -413,7 +453,7 @@ class AsyncSQLServerBackend(
                         await cursor.execute(final_sql, final_params or ())
                 finally:
                     if identity_table is not None:
-                        await self.set_identity_insert(identity_table, False)
+                        await self._reset_identity_insert_quietly(identity_table)
                 
                 is_select = options.process_result_set if options.process_result_set is not None else options.stmt_type == StatementType.DQL
                 data = None
@@ -463,7 +503,10 @@ class AsyncSQLServerBackend(
                 
         except Exception as e:
             log_execution_error(self, e, options)
+            if isinstance(e, DatabaseError):
+                raise
             await self._handle_error(e)
+            raise DatabaseError(str(e)) from e
     
     async def execute_many(
         self,
@@ -511,7 +554,11 @@ class AsyncSQLServerBackend(
 
         except Exception as e:
             log_execution_error(self, e, options)
+            if isinstance(e, DatabaseError):
+                raise
             await self._handle_error(e)
+            # Same defensive fallback as the sync batch path.
+            raise DatabaseError(str(e)) from e
     
     async def get_server_version(self) -> Tuple[int, int, int]:
         """Get SQL Server server version.
@@ -611,9 +658,10 @@ class AsyncSQLServerBackend(
             
             for batch in batches:
                 batch = batch.strip()
-                if batch:
-                    async with await self._get_cursor() as cursor:
-                        await cursor.execute(batch)
+                if not batch:
+                    continue
+                async with await self._get_cursor() as cursor:
+                    await cursor.execute(batch)
             
             await self._handle_auto_commit_if_needed()
             duration = time.perf_counter() - start_time
@@ -621,7 +669,10 @@ class AsyncSQLServerBackend(
             
         except Exception as e:
             self.log(logging.DEBUG, f"Error executing SQL script: {str(e)}")
+            if isinstance(e, DatabaseError):
+                raise
             await self._handle_error(e)
+            raise DatabaseError(str(e)) from e
     
     async def _handle_error(self, error: Exception) -> None:
         """Handle SQL Server-specific errors asynchronously.
@@ -635,6 +686,10 @@ class AsyncSQLServerBackend(
         Raises:
             Appropriate backend exception
         """
+        # A framework error already carries its phase semantics; re-mapping it
+        # would replace the original type with a generic driver error.
+        if isinstance(error, DatabaseError):
+            raise error
         mapped = classify_sqlserver_error(error)
         self._log_classified_error(error, mapped)
         raise mapped from error
@@ -643,9 +698,20 @@ class AsyncSQLServerBackend(
         """Handle auto-commit for async operations."""
         if not self.in_transaction and self._connection:
             if not self.config.autocommit:
-                async with await self._get_cursor() as cursor:
-                    await cursor.execute("COMMIT")
-                self.log(logging.DEBUG, "Auto-committed operation")
+                await self._handle_auto_commit()
+
+    async def _handle_auto_commit(self) -> None:
+        """Commit outside a transaction, surfacing a failure as a transaction error."""
+        if self._connection is None or self.config.autocommit:
+            return
+        cursor = await self._get_cursor()
+        try:
+            await cursor.execute("COMMIT")
+        except Exception as exc:
+            raise TransactionError("Auto-commit failed") from exc
+        finally:
+            await self._close_cursor_quietly_async(cursor)
+        self.log(logging.DEBUG, "Auto-committed operation")
     
     def _create_introspector(self):
         """Create a SQL Server introspector."""

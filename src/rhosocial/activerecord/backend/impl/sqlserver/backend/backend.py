@@ -21,7 +21,11 @@ from rhosocial.activerecord.backend.base.execution_logging import (
     log_batch_summary,
     log_execution_error,
 )
-from rhosocial.activerecord.backend.errors import ConnectionError
+from rhosocial.activerecord.backend.errors import (
+    ConnectionError,
+    DatabaseError,
+    TransactionError,
+)
 from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
 from rhosocial.activerecord.backend.result import QueryResult
 from rhosocial.activerecord.logging.redaction import unwrap_sensitive
@@ -360,15 +364,11 @@ class SQLServerBackend(
         explain_split = self._split_explain_statement(sql)
         if explain_split is not None:
             set_clause, statement = explain_split
-            cursor = self._get_cursor()
-            cursor.execute(f"SET {set_clause} ON")
-            cursor.close()
+            self._execute_control_sql(f"SET {set_clause} ON")
             try:
                 return self._execute_with_options(statement, params, options)
             finally:
-                cursor = self._get_cursor()
-                cursor.execute(f"SET {set_clause} OFF")
-                cursor.close()
+                self._execute_control_sql_quietly(f"SET {set_clause} OFF")
 
         identity_table = self._identity_insert_info(sql, params)
         if identity_table is not None:
@@ -377,7 +377,7 @@ class SQLServerBackend(
             result = self._execute_with_options(sql, params, options)
         finally:
             if identity_table is not None:
-                self.set_identity_insert(identity_table, False)
+                self._reset_identity_insert_quietly(identity_table)
 
         if options.stmt_type == StatementType.DML and sql_upper.startswith("INSERT"):
             scope_id = self.get_scope_identity()
@@ -406,6 +406,16 @@ class SQLServerBackend(
             return super()._execute_query(cursor, sql, params)
         finally:
             cursor.noscan = previous
+
+    def _reset_identity_insert_quietly(self, table: str) -> None:
+        """Turn ``IDENTITY_INSERT`` off without replacing an in-flight failure."""
+        try:
+            self.set_identity_insert(table, False)
+        except Exception as exc:
+            self.log(
+                logging.WARNING,
+                f"Failed to disable IDENTITY_INSERT for {table}: {exc}",
+            )
 
     def execute_many(
         self,
@@ -452,13 +462,18 @@ class SQLServerBackend(
 
             return QueryResult(affected_rows=affected_rows, data=None, duration=duration)
 
-        except PyODBCError as e:
+        except Exception as e:
             log_execution_error(self, e, options)
+            if isinstance(e, DatabaseError):
+                raise
             self._handle_error(e)
+            # ``_handle_error`` must raise; keep a defensive fallback so a
+            # handler cannot turn a failure into a ``None`` result.
+            raise DatabaseError(str(e)) from e
 
         finally:
             if cursor:
-                cursor.close()
+                self._close_cursor_quietly(cursor)
     
     def get_server_version(self) -> Tuple[int, int, int]:
         """Get SQL Server server version.
@@ -571,18 +586,24 @@ class SQLServerBackend(
             
             for batch in batches:
                 batch = batch.strip()
-                if batch:
-                    cursor = self._connection.cursor()
+                if not batch:
+                    continue
+                cursor = self._connection.cursor()
+                try:
                     cursor.execute(batch)
-                    cursor.close()
+                finally:
+                    self._close_cursor_quietly(cursor)
             
             self._handle_auto_commit_if_needed()
             duration = time.perf_counter() - start_time
             self.log(logging.INFO, f"SQL script executed successfully, duration={duration:.3f}s")
             
-        except PyODBCError as e:
+        except Exception as e:
             self.log(logging.DEBUG, f"Error executing SQL script: {str(e)}")
+            if isinstance(e, DatabaseError):
+                raise
             self._handle_error(e)
+            raise DatabaseError(str(e)) from e
     
     def _handle_error(self, error: Exception) -> None:
         """Handle SQL Server-specific errors and convert to appropriate exceptions.
@@ -603,6 +624,10 @@ class SQLServerBackend(
             OperationalError: For network and timeout failures
             DatabaseError: For other database errors
         """
+        # A framework error already carries its phase semantics; re-mapping it
+        # would replace the original type with a generic driver error.
+        if isinstance(error, DatabaseError):
+            raise error
         mapped = classify_sqlserver_error(error)
         self._log_classified_error(error, mapped)
         raise mapped from error
@@ -616,8 +641,17 @@ class SQLServerBackend(
         """
         if not self.in_transaction and self._connection:
             if not self.config.autocommit:
-                self._connection.commit()
-                self.log(logging.DEBUG, "Auto-committed operation")
+                self._handle_auto_commit()
+
+    def _handle_auto_commit(self) -> None:
+        """Commit outside a transaction, surfacing a failure as a transaction error."""
+        if self._connection is None or self.config.autocommit:
+            return
+        try:
+            self._connection.commit()
+        except Exception as exc:
+            raise TransactionError("Auto-commit failed") from exc
+        self.log(logging.DEBUG, "Auto-committed operation")
     
     def _is_connection_error(self, error: Exception) -> bool:
         """Check if an error indicates a connection loss.

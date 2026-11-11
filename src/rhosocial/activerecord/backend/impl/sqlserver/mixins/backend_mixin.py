@@ -180,24 +180,53 @@ class SQLServerBackendMixin:
                 return table_name
         return None
 
+    def _execute_control_sql(self, sql: str) -> None:
+        """Execute a session-control statement through the mapped error path.
+
+        ``SET ...`` statements used to run straight against the cursor, so a
+        driver exception escaped untranslated. Routing them through
+        :meth:`_handle_error` gives them the same taxonomy as ``execute``.
+        """
+        cursor = self._get_cursor()
+        try:
+            cursor.execute(sql)
+        except Exception as exc:
+            self._handle_error(exc)
+        finally:
+            self._close_cursor_quietly(cursor)
+
+    def _execute_control_sql_quietly(self, sql: str) -> None:
+        """Execute a cleanup statement without masking the original failure."""
+        try:
+            self._execute_control_sql(sql)
+        except Exception as exc:
+            self.log(logging.WARNING, f"Failed to reset session state ({sql}): {exc}")
+
+    def _close_cursor_quietly(self, cursor) -> None:
+        """Close a cursor, logging rather than masking an in-flight error."""
+        try:
+            cursor.close()
+        except Exception as exc:
+            self.log(logging.DEBUG, f"Failed to close cursor: {exc}")
+
     def set_nocount(self, on: bool = True) -> None:
         state = "ON" if on else "OFF"
-        cursor = self._get_cursor()
-        cursor.execute(f"SET NOCOUNT {state}")
-        cursor.close()
+        self._execute_control_sql(f"SET NOCOUNT {state}")
 
     def set_identity_insert(self, table: str, on: bool = True) -> None:
         sql, _params = self.dialect.format_set_identity_insert(table, on)
-        cursor = self._get_cursor()
-        cursor.execute(sql)
-        cursor.close()
+        self._execute_control_sql(sql)
 
     def get_scope_identity(self) -> Optional[int]:
         sql, params = session_identity_sql(self.dialect)
         cursor = self._get_cursor()
-        cursor.execute(sql, params)
-        row = cursor.fetchone()
-        cursor.close()
+        try:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+        except Exception as exc:
+            self._handle_error(exc)
+        finally:
+            self._close_cursor_quietly(cursor)
         if row and row[0] is not None:
             return int(row[0])
         return None
@@ -449,6 +478,10 @@ class SQLServerBackendMixin:
             self.log(logging.DEBUG, f"Database error: {detail}")
 
     def _handle_error(self, error: Exception) -> None:
+        # A framework error already carries its phase semantics; re-mapping it
+        # would replace the original type with a generic driver error.
+        if isinstance(error, DatabaseError):
+            raise error
         mapped = classify_sqlserver_error(error)
         self._log_classified_error(error, mapped)
         raise mapped from error
