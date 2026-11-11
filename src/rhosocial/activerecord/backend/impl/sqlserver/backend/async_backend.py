@@ -6,11 +6,10 @@ This module provides async connectivity to SQL Server databases
 using aioodbc as the async driver wrapper.
 """
 
-import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncIterator, List, Optional, Set, Tuple
 
 from rhosocial.activerecord.backend.base import AsyncStorageBackend
 from rhosocial.activerecord.backend.base.execution_logging import (
@@ -20,8 +19,6 @@ from rhosocial.activerecord.backend.base.execution_logging import (
     log_execution_start,
     log_execution_summary,
 )
-from rhosocial.activerecord.backend.base.operations import AsyncSQLOperationsMixin
-from rhosocial.activerecord.backend.base.transaction_management import AsyncTransactionManagementMixin
 from rhosocial.activerecord.backend.errors import (
     ConnectionError,
     DatabaseError,
@@ -455,7 +452,11 @@ class AsyncSQLServerBackend(
                     if identity_table is not None:
                         await self._reset_identity_insert_quietly(identity_table)
                 
-                is_select = options.process_result_set if options.process_result_set is not None else options.stmt_type == StatementType.DQL
+                is_select = (
+                    options.process_result_set
+                    if options.process_result_set is not None
+                    else options.stmt_type == StatementType.DQL
+                )
                 data = None
                 if is_select and cursor.description:
                     rows = await cursor.fetchall()

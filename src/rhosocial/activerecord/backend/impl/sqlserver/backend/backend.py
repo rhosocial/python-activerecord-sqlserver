@@ -214,7 +214,9 @@ class SQLServerBackend(
                 for db_type in db_types:
                     self.adapter_registry.register(adapter, py_type, db_type, allow_override=True)
 
-        import datetime as dt, decimal, uuid
+        import datetime as dt
+        import decimal
+        import uuid
         type_map = [
             (SQLServerDateTimeAdapter(),      dt.datetime, dt.datetime),
             (SQLServerDateTimeOffsetAdapter(), dt.datetime, "datetimeoffset"),
