@@ -214,8 +214,13 @@ class DeclarationMixin:
 
 
 class SyncModel(DeclarationMixin, ActiveRecord):
-    __table_name__ = "ddl_source_sync"
-    __primary_key__ = "id"
+    @classmethod
+    def table_name(cls):
+        return "ddl_source_sync"
+
+    @classmethod
+    def primary_key(cls):
+        return "id"
 
     pk_field: PK_TYPE
     value_field: VALUE_TYPE = DEFAULT_VALUE
@@ -224,8 +229,13 @@ class SyncModel(DeclarationMixin, ActiveRecord):
 
 
 class AsyncModel(DeclarationMixin, AsyncActiveRecord):
-    __table_name__ = "ddl_source_async"
-    __primary_key__ = "id"
+    @classmethod
+    def table_name(cls):
+        return "ddl_source_async"
+
+    @classmethod
+    def primary_key(cls):
+        return "id"
 
     pk_field: PK_TYPE
     value_field: VALUE_TYPE = DEFAULT_VALUE
@@ -234,8 +244,13 @@ class AsyncModel(DeclarationMixin, AsyncActiveRecord):
 
 
 class CompositeModel(DeclarationMixin, ActiveRecord):
-    __table_name__ = "ddl_source_composite"
-    __primary_key__ = ("left_col", "right_col")
+    @classmethod
+    def table_name(cls):
+        return "ddl_source_composite"
+
+    @classmethod
+    def primary_key(cls):
+        return ("left_col", "right_col")
 
     left_field: Annotated[int, UseColumn("left_col")]
     right_field: Annotated[int, UseColumn("right_col")]
@@ -243,8 +258,13 @@ class CompositeModel(DeclarationMixin, ActiveRecord):
 
 
 class AsyncCompositeModel(DeclarationMixin, AsyncActiveRecord):
-    __table_name__ = "ddl_source_async_composite"
-    __primary_key__ = ("left_col", "right_col")
+    @classmethod
+    def table_name(cls):
+        return "ddl_source_async_composite"
+
+    @classmethod
+    def primary_key(cls):
+        return ("left_col", "right_col")
 
     left_field: Annotated[int, UseColumn("left_col")]
     right_field: Annotated[int, UseColumn("right_col")]
@@ -252,14 +272,18 @@ class AsyncCompositeModel(DeclarationMixin, AsyncActiveRecord):
 
 
 class PlainModel(ActiveRecord):
-    __table_name__ = "ddl_source_plain"
+    @classmethod
+    def table_name(cls):
+        return "ddl_source_plain"
 
     id: int
     optional: Optional[str] = None
 
 
 class AsyncPlainModel(AsyncActiveRecord):
-    __table_name__ = "ddl_source_async_plain"
+    @classmethod
+    def table_name(cls):
+        return "ddl_source_async_plain"
 
     id: int
     optional: Optional[str] = None
