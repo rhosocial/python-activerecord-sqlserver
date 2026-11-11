@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import pyodbc
-from pyodbc import Error as PyODBCError, InterfaceError, DatabaseError as PyODBCDatabaseError
+from pyodbc import Error as PyODBCError, InterfaceError
 
 from rhosocial.activerecord.backend.base import StorageBackend
 from rhosocial.activerecord.backend.base.execution_logging import (
@@ -24,10 +24,7 @@ from rhosocial.activerecord.backend.base.execution_logging import (
 from rhosocial.activerecord.backend.errors import (
     ConnectionError,
     DatabaseError,
-    DeadlockError,
-    IntegrityError,
-    OperationalError,
-    QueryError,
+    TransactionError,
 )
 from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
 from rhosocial.activerecord.backend.result import QueryResult
@@ -36,6 +33,7 @@ from rhosocial.activerecord.backend.introspection.backend_mixin import Introspec
 from rhosocial.activerecord.backend.explain import SyncExplainBackendMixin
 from ..config import SQLServerConnectionConfig
 from ..dialect import SQLServerDialect
+from ..error_mapping import classify_sqlserver_error
 from ..transaction import SQLServerTransactionManager
 from ..mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
 from ..query_nodes import health_check_sql, server_property_value_sql
@@ -216,7 +214,9 @@ class SQLServerBackend(
                 for db_type in db_types:
                     self.adapter_registry.register(adapter, py_type, db_type, allow_override=True)
 
-        import datetime as dt, decimal, uuid
+        import datetime as dt
+        import decimal
+        import uuid
         type_map = [
             (SQLServerDateTimeAdapter(),      dt.datetime, dt.datetime),
             (SQLServerDateTimeOffsetAdapter(), dt.datetime, "datetimeoffset"),
@@ -366,15 +366,11 @@ class SQLServerBackend(
         explain_split = self._split_explain_statement(sql)
         if explain_split is not None:
             set_clause, statement = explain_split
-            cursor = self._get_cursor()
-            cursor.execute(f"SET {set_clause} ON")
-            cursor.close()
+            self._execute_control_sql(f"SET {set_clause} ON")
             try:
                 return self._execute_with_options(statement, params, options)
             finally:
-                cursor = self._get_cursor()
-                cursor.execute(f"SET {set_clause} OFF")
-                cursor.close()
+                self._execute_control_sql_quietly(f"SET {set_clause} OFF")
 
         identity_table = self._identity_insert_info(sql, params)
         if identity_table is not None:
@@ -383,7 +379,7 @@ class SQLServerBackend(
             result = self._execute_with_options(sql, params, options)
         finally:
             if identity_table is not None:
-                self.set_identity_insert(identity_table, False)
+                self._reset_identity_insert_quietly(identity_table)
 
         if options.stmt_type == StatementType.DML and sql_upper.startswith("INSERT"):
             scope_id = self.get_scope_identity()
@@ -412,6 +408,16 @@ class SQLServerBackend(
             return super()._execute_query(cursor, sql, params)
         finally:
             cursor.noscan = previous
+
+    def _reset_identity_insert_quietly(self, table: str) -> None:
+        """Turn ``IDENTITY_INSERT`` off without replacing an in-flight failure."""
+        try:
+            self.set_identity_insert(table, False)
+        except Exception as exc:
+            self.log(
+                logging.WARNING,
+                f"Failed to disable IDENTITY_INSERT for {table}: {exc}",
+            )
 
     def execute_many(
         self,
@@ -458,13 +464,18 @@ class SQLServerBackend(
 
             return QueryResult(affected_rows=affected_rows, data=None, duration=duration)
 
-        except PyODBCError as e:
+        except Exception as e:
             log_execution_error(self, e, options)
+            if isinstance(e, DatabaseError):
+                raise
             self._handle_error(e)
+            # ``_handle_error`` must raise; keep a defensive fallback so a
+            # handler cannot turn a failure into a ``None`` result.
+            raise DatabaseError(str(e)) from e
 
         finally:
             if cursor:
-                cursor.close()
+                self._close_cursor_quietly(cursor)
     
     def get_server_version(self) -> Tuple[int, int, int]:
         """Get SQL Server server version.
@@ -577,66 +588,51 @@ class SQLServerBackend(
             
             for batch in batches:
                 batch = batch.strip()
-                if batch:
-                    cursor = self._connection.cursor()
+                if not batch:
+                    continue
+                cursor = self._connection.cursor()
+                try:
                     cursor.execute(batch)
-                    cursor.close()
+                finally:
+                    self._close_cursor_quietly(cursor)
             
             self._handle_auto_commit_if_needed()
             duration = time.perf_counter() - start_time
             self.log(logging.INFO, f"SQL script executed successfully, duration={duration:.3f}s")
             
-        except PyODBCError as e:
+        except Exception as e:
             self.log(logging.DEBUG, f"Error executing SQL script: {str(e)}")
+            if isinstance(e, DatabaseError):
+                raise
             self._handle_error(e)
+            raise DatabaseError(str(e)) from e
     
     def _handle_error(self, error: Exception) -> None:
         """Handle SQL Server-specific errors and convert to appropriate exceptions.
-        
-        Converts pyodbc exceptions to the appropriate backend exceptions.
-        
+
+        Recognition follows the phase 3b order: native error number first,
+        then class, then message text. The mapped error carries diagnostics
+        (driver code, backend, transient hint) before it is raised.
+
         Args:
             error: The exception to handle
-        
+
         Raises:
-            IntegrityError: For constraint violations
-            DeadlockError: For deadlock situations
-            OperationalError: For connection/timeout errors
+            IntegrityError: For unique, foreign key and NOT NULL violations
+            DeadlockError: For deadlock situations (error 1205)
+            LockError: For lock-wait timeouts (error 1222)
+            QueryError: For syntax errors and unknown objects
+            ConnectionError: For login/connect failures
+            OperationalError: For network and timeout failures
             DatabaseError: For other database errors
         """
-        error_msg = str(error).lower()
-        
-        if isinstance(error, pyodbc.IntegrityError):
-            if "duplicate" in error_msg or "unique" in error_msg:
-                self.log(logging.DEBUG, f"Unique constraint violation: {str(error)}")
-                raise IntegrityError(f"Unique constraint violation: {str(error)}")
-            elif "foreign key" in error_msg or "reference" in error_msg:
-                self.log(logging.DEBUG, f"Foreign key constraint violation: {str(error)}")
-                raise IntegrityError(f"Foreign key constraint violation: {str(error)}")
-            self.log(logging.DEBUG, f"Integrity error: {str(error)}")
-            raise IntegrityError(self._normalize_integrity_message(str(error)))
-        
-        elif isinstance(error, pyodbc.DatabaseError):
-            if hasattr(error, 'args') and len(error.args) > 0:
-                error_code = error.args[0]
-                if error_code == 1205:
-                    self.log(logging.DEBUG, f"Deadlock detected: {str(error)}")
-                    raise DeadlockError(str(error))
-            
-            self.log(logging.DEBUG, f"Database error: {str(error)}")
-            raise DatabaseError(str(error))
-        
-        elif isinstance(error, pyodbc.OperationalError):
-            self.log(logging.DEBUG, f"Operational error: {str(error)}")
-            raise OperationalError(str(error))
-        
-        elif isinstance(error, PyODBCError):
-            self.log(logging.DEBUG, f"SQL Server error: {str(error)}")
-            raise DatabaseError(str(error))
-        
-        else:
-            self.log(logging.DEBUG, f"Unexpected error: {str(error)}")
+        # A framework error already carries its phase semantics; re-mapping it
+        # would replace the original type with a generic driver error.
+        if isinstance(error, DatabaseError):
             raise error
+        mapped = classify_sqlserver_error(error)
+        self._log_classified_error(error, mapped)
+        raise mapped from error
     
     def _handle_auto_commit_if_needed(self) -> None:
         """Handle auto-commit for SQL Server.
@@ -647,8 +643,17 @@ class SQLServerBackend(
         """
         if not self.in_transaction and self._connection:
             if not self.config.autocommit:
-                self._connection.commit()
-                self.log(logging.DEBUG, "Auto-committed operation")
+                self._handle_auto_commit()
+
+    def _handle_auto_commit(self) -> None:
+        """Commit outside a transaction, surfacing a failure as a transaction error."""
+        if self._connection is None or self.config.autocommit:
+            return
+        try:
+            self._connection.commit()
+        except Exception as exc:
+            raise TransactionError("Auto-commit failed") from exc
+        self.log(logging.DEBUG, "Auto-committed operation")
     
     def _is_connection_error(self, error: Exception) -> bool:
         """Check if an error indicates a connection loss.

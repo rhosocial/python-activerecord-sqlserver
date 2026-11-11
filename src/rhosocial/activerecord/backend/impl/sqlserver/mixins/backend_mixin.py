@@ -1,7 +1,18 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/backend_mixin.py
+import logging
 import re
 from typing import Any, Dict, Optional, Set, Tuple, Type, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.errors import (
+    ConnectionError,
+    DatabaseError,
+    DeadlockError,
+    IntegrityError,
+    LockError,
+    OperationalError,
+    QueryError,
+)
+from ..error_mapping import classify_sqlserver_error, normalize_integrity_message
 from ..query_nodes import (
     identity_columns_sql,
     identity_current_sql,
@@ -169,24 +180,53 @@ class SQLServerBackendMixin:
                 return table_name
         return None
 
+    def _execute_control_sql(self, sql: str) -> None:
+        """Execute a session-control statement through the mapped error path.
+
+        ``SET ...`` statements used to run straight against the cursor, so a
+        driver exception escaped untranslated. Routing them through
+        :meth:`_handle_error` gives them the same taxonomy as ``execute``.
+        """
+        cursor = self._get_cursor()
+        try:
+            cursor.execute(sql)
+        except Exception as exc:
+            self._handle_error(exc)
+        finally:
+            self._close_cursor_quietly(cursor)
+
+    def _execute_control_sql_quietly(self, sql: str) -> None:
+        """Execute a cleanup statement without masking the original failure."""
+        try:
+            self._execute_control_sql(sql)
+        except Exception as exc:
+            self.log(logging.WARNING, f"Failed to reset session state ({sql}): {exc}")
+
+    def _close_cursor_quietly(self, cursor) -> None:
+        """Close a cursor, logging rather than masking an in-flight error."""
+        try:
+            cursor.close()
+        except Exception as exc:
+            self.log(logging.DEBUG, f"Failed to close cursor: {exc}")
+
     def set_nocount(self, on: bool = True) -> None:
         state = "ON" if on else "OFF"
-        cursor = self._get_cursor()
-        cursor.execute(f"SET NOCOUNT {state}")
-        cursor.close()
+        self._execute_control_sql(f"SET NOCOUNT {state}")
 
     def set_identity_insert(self, table: str, on: bool = True) -> None:
         sql, _params = self.dialect.format_set_identity_insert(table, on)
-        cursor = self._get_cursor()
-        cursor.execute(sql)
-        cursor.close()
+        self._execute_control_sql(sql)
 
     def get_scope_identity(self) -> Optional[int]:
         sql, params = session_identity_sql(self.dialect)
         cursor = self._get_cursor()
-        cursor.execute(sql, params)
-        row = cursor.fetchone()
-        cursor.close()
+        try:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+        except Exception as exc:
+            self._handle_error(exc)
+        finally:
+            self._close_cursor_quietly(cursor)
         if row and row[0] is not None:
             return int(row[0])
         return None
@@ -407,39 +447,41 @@ class SQLServerBackendMixin:
         NULL ... column does not allow nulls") does not contain them, so inject
         them while preserving the original detail.
         """
-        lowered = message.lower()
-        if "does not allow nulls" in lowered or "cannot insert the value null" in lowered:
-            if "cannot be null" not in lowered:
-                message = message + " - cannot be null"
-        return message
+        return normalize_integrity_message(message)
+
+    def _log_classified_error(self, error: Exception, mapped: DatabaseError) -> None:
+        """Log a translated error under the historic message family.
+
+        The execution-logging tests assert on phrases such as ``Unique
+        constraint violation`` and ``Deadlock detected``; keep those labels
+        stable while the mapping itself lives in one place.
+        """
+        message = str(mapped)
+        detail = str(error)
+        if message.startswith("Unique constraint violation"):
+            self.log(logging.DEBUG, f"Unique constraint violation: {detail}")
+        elif message.startswith("Foreign key constraint violation"):
+            self.log(logging.DEBUG, f"Foreign key constraint violation: {detail}")
+        elif isinstance(mapped, IntegrityError):
+            self.log(logging.DEBUG, f"Integrity error: {detail}")
+        elif isinstance(mapped, DeadlockError):
+            self.log(logging.DEBUG, f"Deadlock detected: {detail}")
+        elif isinstance(mapped, LockError):
+            self.log(logging.DEBUG, f"Lock timeout: {detail}")
+        elif isinstance(mapped, QueryError):
+            self.log(logging.DEBUG, f"Query error: {detail}")
+        elif isinstance(mapped, OperationalError):
+            self.log(logging.DEBUG, f"Operational error: {detail}")
+        elif isinstance(mapped, ConnectionError):
+            self.log(logging.DEBUG, f"Connection error: {detail}")
+        else:
+            self.log(logging.DEBUG, f"Database error: {detail}")
 
     def _handle_error(self, error: Exception) -> None:
-        from pyodbc import (
-            Error as PyODBCError,
-            InterfaceError,
-            DatabaseError as PyODBCDatabaseError,
-        )
-        from rhosocial.activerecord.backend.errors import (
-            ConnectionError,
-            DatabaseError,
-            DeadlockError,
-            IntegrityError,
-            OperationalError,
-        )
-
-        error_msg = str(error)
-
-        if isinstance(error, InterfaceError):
-            raise ConnectionError(error_msg) from error
-        elif isinstance(error, PyODBCDatabaseError):
-            if "deadlock" in error_msg.lower() or "1205" in error_msg:
-                raise DeadlockError(error_msg) from error
-            if "integrity" in error_msg.lower() or "547" in error_msg or "2627" in error_msg:
-                raise IntegrityError(error_msg) from error
-            raise DatabaseError(error_msg) from error
-        elif isinstance(error, PyODBCError):
-            if self._is_connection_error(error):
-                raise ConnectionError(error_msg) from error
-            raise OperationalError(error_msg) from error
-        else:
+        # A framework error already carries its phase semantics; re-mapping it
+        # would replace the original type with a generic driver error.
+        if isinstance(error, DatabaseError):
             raise error
+        mapped = classify_sqlserver_error(error)
+        self._log_classified_error(error, mapped)
+        raise mapped from error
