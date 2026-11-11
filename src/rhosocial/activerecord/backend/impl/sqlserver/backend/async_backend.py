@@ -22,20 +22,14 @@ from rhosocial.activerecord.backend.base.execution_logging import (
 )
 from rhosocial.activerecord.backend.base.operations import AsyncSQLOperationsMixin
 from rhosocial.activerecord.backend.base.transaction_management import AsyncTransactionManagementMixin
-from rhosocial.activerecord.backend.errors import (
-    ConnectionError,
-    DatabaseError,
-    DeadlockError,
-    IntegrityError,
-    OperationalError,
-    QueryError,
-)
+from rhosocial.activerecord.backend.errors import ConnectionError
 from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
 from rhosocial.activerecord.backend.result import QueryResult
 from rhosocial.activerecord.logging.redaction import unwrap_sensitive
 from rhosocial.activerecord.backend.introspection.backend_mixin import IntrospectorBackendMixin
 from ..config import SQLServerConnectionConfig
 from ..dialect import SQLServerDialect
+from ..error_mapping import classify_sqlserver_error
 from ..async_transaction import AsyncSQLServerTransactionManager
 from .backend import SQLServerUnicodeDialect
 from ..mixins import SQLServerBackendMixin
@@ -630,41 +624,20 @@ class AsyncSQLServerBackend(
             await self._handle_error(e)
     
     async def _handle_error(self, error: Exception) -> None:
-        """Handle SQL Server-specific errors.
-        
+        """Handle SQL Server-specific errors asynchronously.
+
+        Uses the same code -> class -> message recognition order as the sync
+        backend, so both halves translate a driver failure identically.
+
         Args:
             error: The exception to handle
-        
+
         Raises:
             Appropriate backend exception
         """
-        error_msg = str(error).lower()
-        
-        if (
-            'integrity' in error_msg
-            or 'constraint' in error_msg
-            or 'does not allow nulls' in error_msg
-            or 'cannot insert the value null' in error_msg
-        ):
-            if "duplicate" in error_msg or "unique" in error_msg:
-                self.log(logging.DEBUG, f"Unique constraint violation: {str(error)}")
-                raise IntegrityError(f"Unique constraint violation: {str(error)}")
-            elif "foreign key" in error_msg or "reference" in error_msg:
-                self.log(logging.DEBUG, f"Foreign key constraint violation: {str(error)}")
-                raise IntegrityError(f"Foreign key constraint violation: {str(error)}")
-            self.log(logging.DEBUG, f"Integrity error: {str(error)}")
-            raise IntegrityError(self._normalize_integrity_message(str(error)))
-        
-        if 'deadlock' in error_msg or '1205' in error_msg:
-            self.log(logging.DEBUG, f"Deadlock detected: {str(error)}")
-            raise DeadlockError(str(error))
-        
-        if 'timeout' in error_msg or 'connection' in error_msg:
-            self.log(logging.DEBUG, f"Operational error: {str(error)}")
-            raise OperationalError(str(error))
-        
-        self.log(logging.DEBUG, f"Database error: {str(error)}")
-        raise DatabaseError(str(error))
+        mapped = classify_sqlserver_error(error)
+        self._log_classified_error(error, mapped)
+        raise mapped from error
     
     async def _handle_auto_commit_if_needed(self) -> None:
         """Handle auto-commit for async operations."""

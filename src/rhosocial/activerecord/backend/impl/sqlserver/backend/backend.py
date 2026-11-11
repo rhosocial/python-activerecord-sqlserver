@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import pyodbc
-from pyodbc import Error as PyODBCError, InterfaceError, DatabaseError as PyODBCDatabaseError
+from pyodbc import Error as PyODBCError, InterfaceError
 
 from rhosocial.activerecord.backend.base import StorageBackend
 from rhosocial.activerecord.backend.base.execution_logging import (
@@ -21,14 +21,7 @@ from rhosocial.activerecord.backend.base.execution_logging import (
     log_batch_summary,
     log_execution_error,
 )
-from rhosocial.activerecord.backend.errors import (
-    ConnectionError,
-    DatabaseError,
-    DeadlockError,
-    IntegrityError,
-    OperationalError,
-    QueryError,
-)
+from rhosocial.activerecord.backend.errors import ConnectionError
 from rhosocial.activerecord.backend.options import ExecutionOptions, StatementType
 from rhosocial.activerecord.backend.result import QueryResult
 from rhosocial.activerecord.logging.redaction import unwrap_sensitive
@@ -36,6 +29,7 @@ from rhosocial.activerecord.backend.introspection.backend_mixin import Introspec
 from rhosocial.activerecord.backend.explain import SyncExplainBackendMixin
 from ..config import SQLServerConnectionConfig
 from ..dialect import SQLServerDialect
+from ..error_mapping import classify_sqlserver_error
 from ..transaction import SQLServerTransactionManager
 from ..mixins import SQLServerBackendMixin, SQLServerConcurrencyMixin
 from ..query_nodes import health_check_sql, server_property_value_sql
@@ -592,51 +586,26 @@ class SQLServerBackend(
     
     def _handle_error(self, error: Exception) -> None:
         """Handle SQL Server-specific errors and convert to appropriate exceptions.
-        
-        Converts pyodbc exceptions to the appropriate backend exceptions.
-        
+
+        Recognition follows the phase 3b order: native error number first,
+        then class, then message text. The mapped error carries diagnostics
+        (driver code, backend, transient hint) before it is raised.
+
         Args:
             error: The exception to handle
-        
+
         Raises:
-            IntegrityError: For constraint violations
-            DeadlockError: For deadlock situations
-            OperationalError: For connection/timeout errors
+            IntegrityError: For unique, foreign key and NOT NULL violations
+            DeadlockError: For deadlock situations (error 1205)
+            LockError: For lock-wait timeouts (error 1222)
+            QueryError: For syntax errors and unknown objects
+            ConnectionError: For login/connect failures
+            OperationalError: For network and timeout failures
             DatabaseError: For other database errors
         """
-        error_msg = str(error).lower()
-        
-        if isinstance(error, pyodbc.IntegrityError):
-            if "duplicate" in error_msg or "unique" in error_msg:
-                self.log(logging.DEBUG, f"Unique constraint violation: {str(error)}")
-                raise IntegrityError(f"Unique constraint violation: {str(error)}")
-            elif "foreign key" in error_msg or "reference" in error_msg:
-                self.log(logging.DEBUG, f"Foreign key constraint violation: {str(error)}")
-                raise IntegrityError(f"Foreign key constraint violation: {str(error)}")
-            self.log(logging.DEBUG, f"Integrity error: {str(error)}")
-            raise IntegrityError(self._normalize_integrity_message(str(error)))
-        
-        elif isinstance(error, pyodbc.DatabaseError):
-            if hasattr(error, 'args') and len(error.args) > 0:
-                error_code = error.args[0]
-                if error_code == 1205:
-                    self.log(logging.DEBUG, f"Deadlock detected: {str(error)}")
-                    raise DeadlockError(str(error))
-            
-            self.log(logging.DEBUG, f"Database error: {str(error)}")
-            raise DatabaseError(str(error))
-        
-        elif isinstance(error, pyodbc.OperationalError):
-            self.log(logging.DEBUG, f"Operational error: {str(error)}")
-            raise OperationalError(str(error))
-        
-        elif isinstance(error, PyODBCError):
-            self.log(logging.DEBUG, f"SQL Server error: {str(error)}")
-            raise DatabaseError(str(error))
-        
-        else:
-            self.log(logging.DEBUG, f"Unexpected error: {str(error)}")
-            raise error
+        mapped = classify_sqlserver_error(error)
+        self._log_classified_error(error, mapped)
+        raise mapped from error
     
     def _handle_auto_commit_if_needed(self) -> None:
         """Handle auto-commit for SQL Server.
