@@ -1,0 +1,213 @@
+{
+  "entries": {
+    "0278ac9b2d99f243": 2,
+    "1182e6a5168fad4d": 2,
+    "15d8c1ad5f05215a": 3,
+    "2207e5f45a158db2": 1,
+    "25138787f4f3c292": 1,
+    "26f48745c86bcb6c": 3,
+    "3a76dbbb69039561": 1,
+    "481c9c33d29a2930": 1,
+    "4a00de96e7c111a8": 1,
+    "687f736f87568fa7": 1,
+    "6881e297193f53fb": 2,
+    "9cede0bc2031de72": 1,
+    "a316d4185f6c5372": 1,
+    "adbe0ad37f3fd6c9": 1,
+    "aebaaac3f9ed8118": 1,
+    "cc38ae350540075e": 1,
+    "d55e960506f63189": 1,
+    "df7098df4eaf8eba": 1,
+    "e6738eb70915f158": 1,
+    "e775979689c0aa90": 2,
+    "ee65f2c95cb20172": 2,
+    "f0868da2f55f9884": 1,
+    "f27dd66925c1fb96": 1,
+    "fabe6126b76a1058": 1,
+    "fad924c61e4a2756": 1,
+    "fc1ce8dd882c87df": 2
+  },
+  "findings": [
+    {
+      "found": "sparse: Optional[bool]",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/expression/column.py",
+      "rule": "ED-10.2"
+    },
+    {
+      "found": "rowguidcol: Optional[bool]",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/expression/column.py",
+      "rule": "ED-10.2"
+    },
+    {
+      "found": "sparse: Optional[bool]",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/expression/column.py",
+      "rule": "ED-10.2"
+    },
+    {
+      "found": "rowguidcol: Optional[bool]",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/expression/column.py",
+      "rule": "ED-10.2"
+    },
+    {
+      "found": "slots",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/expression/objects.py",
+      "rule": "ED-KWARGS"
+    },
+    {
+      "found": "getattr(expr, \"cascade\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_type.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"restrict\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_type.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, 'definition_kind', type(expr).__name__)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_type.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, 'definition_kind', type(expr).__name__)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_type.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, 'action_kind', type(expr).__name__)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_type.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr.options, \"schemabinding\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/ddl_view.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(clause, \"with_ties\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/dql.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"partition_scheme\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/partition.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"select_into_table\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/protocol_support.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"or_alter\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"schema\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"parameters\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"body\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"returns\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"or_alter\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"schema\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"parameters\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"body\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"kind\", \"PROCEDURE\")",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"if_exists\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"schema\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/routine.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"table_name\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"table\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"timing\", \"AFTER\")",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"events\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"body\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"or_alter\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"schema\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"schema\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"if_exists\", False)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    },
+    {
+      "found": "getattr(expr, \"schema\", None)",
+      "path": "src/rhosocial/activerecord/backend/impl/sqlserver/mixins/trigger.py",
+      "rule": "ED-11.2"
+    }
+  ],
+  "format": 1
+}

@@ -9,7 +9,6 @@ from typing import Type, Tuple, Optional, List
 
 from rhosocial.activerecord.model import ActiveRecord, AsyncActiveRecord
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.connection.pool import BackendPool, AsyncBackendPool, PoolConfig
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
@@ -20,7 +19,10 @@ from .scenarios import get_scenario, get_enabled_scenarios
 
 class SyncQueryTestUser(ActiveRecord):
     """Sync test user model for query connection pool tests."""
-    __table_name__ = "test_users"
+    @classmethod
+    def table_name(cls):
+        return "test_users"
+
     id: Optional[int] = None
     name: str
     email: str
@@ -28,7 +30,10 @@ class SyncQueryTestUser(ActiveRecord):
 
 class AsyncQueryTestUser(AsyncActiveRecord):
     """Async test user model for query connection pool tests."""
-    __table_name__ = "test_users"
+    @classmethod
+    def table_name(cls):
+        return "test_users"
+
     id: Optional[int] = None
     name: str
     email: str
