@@ -7,5 +7,3 @@ discoverable by pytest in this project's test run.
 """
 
 from rhosocial.activerecord.testsuite.feature.query.range_queries.test_range_query_detailed import *  # noqa: F403
-from rhosocial.activerecord.testsuite.feature.query.range_queries.test_range_query_detailed_async import *  # noqa: F403
-

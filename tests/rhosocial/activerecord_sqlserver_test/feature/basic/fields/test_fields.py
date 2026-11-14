@@ -17,5 +17,3 @@ IMPORTANT:
 # 2. Import all test classes and functions from the generic test file.
 #    This pulls in the actual test logic that will be executed.
 from rhosocial.activerecord.testsuite.feature.basic.fields.test_fields import *  # noqa: F403
-from rhosocial.activerecord.testsuite.feature.basic.fields.test_fields_async import *  # noqa: F403
-

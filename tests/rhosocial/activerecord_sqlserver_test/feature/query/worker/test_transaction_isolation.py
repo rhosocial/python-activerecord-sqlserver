@@ -3,5 +3,3 @@ from rhosocial.activerecord.testsuite.feature.query.worker.conftest import (
     async_order_fixtures_for_worker,
 )
 from rhosocial.activerecord.testsuite.feature.query.worker.test_transaction_isolation import *
-from rhosocial.activerecord.testsuite.feature.query.worker.test_transaction_isolation_async import *  # noqa: F403
-

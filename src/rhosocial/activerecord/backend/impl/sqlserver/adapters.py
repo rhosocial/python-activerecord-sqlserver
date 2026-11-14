@@ -48,6 +48,32 @@ def _parse_sql_datetime(value: str) -> datetime:
     return result
 
 
+def _parse_sql_time(value: str) -> time:
+    """Parse a SQL Server ``TIME`` string into a Python ``time``.
+
+    The same wire format as ``datetime2`` applies: no ``T`` separator and
+    seven fractional digits (100ns precision), e.g. ``'18:36:06.0000000'``.
+    Python's ``time.fromisoformat`` only accepts three or six fractional
+    digits on Python < 3.11, so trim and pad the fraction first.
+    """
+    normalized = value.strip().replace('Z', '+00:00')
+    if 'T' in normalized:
+        normalized = normalized.partition('T')[2]
+    dot_pos = normalized.rfind('.')
+    if dot_pos != -1:
+        suffix = ''
+        frac_end = len(normalized)
+        for marker in ('+', '-'):
+            idx = normalized.find(marker, dot_pos + 1)
+            if idx != -1:
+                frac_end = idx
+                suffix = normalized[idx:]
+                break
+        frac = normalized[dot_pos + 1:frac_end][:6].ljust(6, '0')
+        normalized = f"{normalized[:dot_pos]}.{frac}{suffix}"
+    return time.fromisoformat(normalized)
+
+
 class TypeAdapter(ABC):
     """Base class for type adapters."""
     
@@ -250,7 +276,7 @@ class SQLServerTimeAdapter(TypeAdapter):
         if isinstance(value, datetime):
             return value.time()
         if isinstance(value, str):
-            return time.fromisoformat(value)
+            return _parse_sql_time(value)
         raise TypeError(f"Cannot convert {type(value)} to time")
 
 

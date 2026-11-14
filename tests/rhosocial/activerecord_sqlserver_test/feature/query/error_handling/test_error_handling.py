@@ -29,4 +29,3 @@ for _module in (_src, _src_async):
         setattr(_module, _name, pytest.mark.skip(reason=_TRAILING_SPACE_REASON)(getattr(_module, _name)))
 
 from rhosocial.activerecord.testsuite.feature.query.error_handling.test_error_handling import *  # noqa: F403, E402
-from rhosocial.activerecord.testsuite.feature.query.error_handling.test_error_handling_async import *  # noqa: F403, E402

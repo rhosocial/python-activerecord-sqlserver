@@ -1,89 +1,110 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/conftest.py
+"""Fixtures for the backend-owned tests.
+
+The backend runs these against a real server. The scenario supplies the
+connection parameters; the database name is derived from the directory that
+owns the test, so two directories never share tables.
+"""
+import os
+from typing import Any, Dict, Tuple, Type
+
 import pytest
 import pytest_asyncio
-import yaml
-import os
-from typing import Dict, Any, Tuple, Type
+
+import support.sqlserver
 
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import (
+    AsyncSQLServerBackend,
+)
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
-from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
 
-SCENARIO_MAP: Dict[str, Dict[str, Any]] = {}
+# --- Scenario Loading Logic ---
 
-
-def register_scenario(name: str, config: Dict[str, Any]):
-    SCENARIO_MAP[name] = config
+SCENARIO_MAP: Dict[str, Dict[str, Any]] = dict(support.sqlserver.SCENARIO_MAP)
 
 
-def _load_scenarios_from_config():
+def _apply_scenario_filter():
+    """Filter SCENARIO_MAP based on the active scenarios env var.
+
+    Keeps the backend-feature scenarios consistent with the scenarios active
+    for the rest of the test run.
     """
-    Load scenarios from a configuration file with the following priority:
-    1. Environment variable specified path (highest priority)
-    2. Default path tests/config/sqlserver_scenarios.yaml (lowest priority)
-    If no valid configuration file is found, terminate with an error.
-    """
-    config_path = None
-    env_config_path = os.getenv("SQLSERVER_SCENARIOS_CONFIG_PATH")
-
-    if env_config_path and os.path.exists(env_config_path):
-        print(f"Loading SQL Server scenarios from environment-specified path: {env_config_path}")
-        config_path = env_config_path
-    else:
-        default_path = os.path.join(
-            os.path.dirname(__file__),
-            "../../../../config",
-            "sqlserver_scenarios.yaml",
-        )
-        if os.path.exists(default_path):
-            config_path = default_path
-        elif env_config_path:
-            print(f"Warning: Scenario file specified in SQLSERVER_SCENARIOS_CONFIG_PATH not found: {env_config_path}")
-            return
-
-    if not config_path:
-        raise FileNotFoundError(
-            "No SQL Server scenarios configuration file found. "
-            "Either set SQLSERVER_SCENARIOS_CONFIG_PATH to a valid YAML file "
-            "or place sqlserver_scenarios.yaml in the tests/config directory."
-        )
-
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f)
-
-        if "scenarios" not in config_data:
-            raise ValueError(f"Configuration file {config_path} does not contain 'scenarios' key")
-
-        for scenario_name, config in config_data["scenarios"].items():
-            register_scenario(scenario_name, config)
-
-    except ImportError:
-        raise ImportError("PyYAML is required to load SQL Server scenario configuration files")
+    filter_str = os.getenv("SQLSERVER_ACTIVE_SCENARIOS") or os.getenv(
+        "TESTSUITE_ACTIVE_SCENARIOS"
+    )
+    if not filter_str:
+        return
+    allowed = set(s.strip() for s in filter_str.split(",") if s.strip())
+    if not allowed:
+        return
+    for name in [n for n in SCENARIO_MAP if n not in allowed]:
+        del SCENARIO_MAP[name]
 
 
-_load_scenarios_from_config()
-
-
-def get_scenario(name: str) -> Tuple[Type[SQLServerBackend], SQLServerConnectionConfig]:
-    if name not in SCENARIO_MAP:
-        if SCENARIO_MAP:
-            name = next(iter(SCENARIO_MAP))
-        else:
-            raise ValueError("No scenarios registered")
-    scenario_config = SCENARIO_MAP[name].copy()
-    # Apply the pooled database name so parallel workers never share a schema.
-    from providers.pooling import resolve_database_name
-
-    pooled_db = resolve_database_name(name)
-    if pooled_db:
-        scenario_config["database"] = pooled_db
-    config = SQLServerConnectionConfig(**scenario_config)
-    return SQLServerBackend, config
+_apply_scenario_filter()
 
 
 def get_enabled_scenarios() -> Dict[str, Any]:
     return SCENARIO_MAP
+
+
+def get_scenario_names():
+    return list(get_enabled_scenarios().keys())
+
+
+_PREPARED_DATABASES = set()
+
+
+def database_for(request) -> str:
+    """Derive the logical database the directory owning the test runs in."""
+    parts = list(request.node.path.parts)
+    try:
+        index = max(i for i, part in enumerate(parts) if part == "backend")
+    except ValueError:
+        return "test_backend"
+    names = [part for part in parts[index + 1 : -1] if part]
+    return "test_backend" + "".join("_" + name for name in names)
+
+
+def _prepare_database(scenario_name: str, database: str) -> None:
+    """Create or clear the directory's database once per scenario."""
+    key = (scenario_name, database)
+    if key in _PREPARED_DATABASES:
+        return
+    support.sqlserver.scenario(scenario_name).reset_database(database)
+    _PREPARED_DATABASES.add(key)
+
+
+def get_scenario(
+    name: str, database: str
+) -> Tuple[Type[SQLServerBackend], SQLServerConnectionConfig]:
+    if name not in SCENARIO_MAP:
+        if not SCENARIO_MAP:
+            raise ValueError("No scenarios registered")
+        name = next(iter(SCENARIO_MAP))
+    _prepare_database(name, database)
+    return SQLServerBackend, support.sqlserver.scenario(name).make_config(database)
+
+
+def pytest_collection_modifyitems(config, items):
+    """Pin an execution directory's tests to one worker.
+
+    These directories create and drop tables in the directory's own database,
+    so two workers must never run tests from the same directory at once.  The
+    construct directories never open a database, so they stay free to run in
+    parallel.
+    """
+    for item in items:
+        parts = item.path.parts
+        if "backend" not in parts or "execute" not in parts:
+            continue
+        item.add_marker(
+            pytest.mark.xdist_group("sqlserver-backend::" + str(item.path.parent))
+        )
+
+
+# --- Provider Logic ---
 
 
 class BackendFeatureProvider:
@@ -91,20 +112,22 @@ class BackendFeatureProvider:
         self._backend = None
         self._async_backend = None
 
-    def setup_backend(self, scenario_name: str):
+    def setup_backend(self, scenario_name: str, database: str):
         if self._backend:
             return self._backend
-        backend_class, config = get_scenario(scenario_name)
+        backend_class, config = get_scenario(scenario_name, database)
         self._backend = backend_class(connection_config=config)
         self._backend.connect()
+        self._backend.introspect_and_adapt()
         return self._backend
 
-    async def setup_async_backend(self, scenario_name: str):
+    async def setup_async_backend(self, scenario_name: str, database: str):
         if self._async_backend:
             return self._async_backend
-        _, config = get_scenario(scenario_name)
+        _, config = get_scenario(scenario_name, database)
         self._async_backend = AsyncSQLServerBackend(connection_config=config)
         await self._async_backend.connect()
+        await self._async_backend.introspect_and_adapt()
         return self._async_backend
 
     def cleanup(self):
@@ -118,28 +141,27 @@ class BackendFeatureProvider:
             self._async_backend = None
 
 
-def get_scenario_names():
-    return list(get_enabled_scenarios().keys())
+# --- Fixtures ---
 
 
 @pytest.fixture(scope="function", params=get_scenario_names())
 def sqlserver_backend(request):
     scenario_name = request.param
     provider = BackendFeatureProvider()
-    backend = provider.setup_backend(scenario_name)
+    backend = provider.setup_backend(scenario_name, database_for(request))
     yield backend
     provider.cleanup()
 
 
 @pytest.fixture(scope="function")
-def sqlserver_backend_single():
+def sqlserver_backend_single(request):
     """Non-parameterized fixture using the first available scenario."""
     scenario_names = get_scenario_names()
     if not scenario_names:
         pytest.skip("No SQL Server scenarios configured")
     scenario_name = scenario_names[0]
     provider = BackendFeatureProvider()
-    backend = provider.setup_backend(scenario_name)
+    backend = provider.setup_backend(scenario_name, database_for(request))
     yield backend
     provider.cleanup()
 
@@ -148,20 +170,20 @@ def sqlserver_backend_single():
 async def async_sqlserver_backend(request):
     scenario_name = request.param
     provider = BackendFeatureProvider()
-    backend = await provider.setup_async_backend(scenario_name)
+    backend = await provider.setup_async_backend(scenario_name, database_for(request))
     yield backend
     await provider.async_cleanup()
 
 
 @pytest_asyncio.fixture(scope="function")
-async def async_sqlserver_backend_single():
+async def async_sqlserver_backend_single(request):
     """Non-parameterized async fixture using the first available scenario."""
     scenario_names = get_scenario_names()
     if not scenario_names:
         pytest.skip("No SQL Server scenarios configured")
     scenario_name = scenario_names[0]
     provider = BackendFeatureProvider()
-    backend = await provider.setup_async_backend(scenario_name)
+    backend = await provider.setup_async_backend(scenario_name, database_for(request))
     yield backend
     await provider.async_cleanup()
 
@@ -170,6 +192,7 @@ async def async_sqlserver_backend_single():
 def sqlserver_dialect():
     """Fixture providing SQLServerDialect instance for testing."""
     from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+
     return SQLServerDialect(version=(16, 0, 0))
 
 

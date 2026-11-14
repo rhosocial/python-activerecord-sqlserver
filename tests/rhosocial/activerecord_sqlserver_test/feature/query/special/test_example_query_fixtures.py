@@ -7,5 +7,3 @@ discoverable by pytest in this project's test run.
 """
 
 from rhosocial.activerecord.testsuite.feature.query.special.test_example_query_fixtures import *  # noqa: F403
-from rhosocial.activerecord.testsuite.feature.query.special.test_example_query_fixtures_async import *  # noqa: F403
-

@@ -247,7 +247,7 @@ partition to absorb its neighbour.
 
 ## Live coverage
 
-`tests/.../feature/backend/test_sqlserver_partition_live.py` exercises
+`tests/.../feature/backend/execute/partition/test_partition_live.py` exercises
 `CREATE PARTITION FUNCTION` / `SCHEME`, `SPLIT RANGE`, `MERGE RANGE`, `SWITCH`
 and catalogue reads against the SQL Server 2022 image in `docker-compose.yml`.
 It skips -- rather than passes -- when no scenario is configured or the server

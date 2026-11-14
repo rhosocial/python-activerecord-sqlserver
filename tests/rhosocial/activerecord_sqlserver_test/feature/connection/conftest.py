@@ -1,26 +1,26 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/connection/conftest.py
-"""
-Pytest configuration for connection pool tests.
+"""Pytest configuration for connection pool tests.
 
-This module provides fixtures for testing connection pools with SQL Server backends.
+The pool fixtures exercise the pool itself, so their connections open on the
+directory's own database: the testsuite creates it once per directory and
+scenario, and this file declares the ``ensure_database`` / ``prepare`` /
+``teardown`` contract that pins the directory's tests to one worker per
+scenario.  Without the contract two workers could plant the shared
+``concurrent_test_*`` tables in the same database at the same time.
+
+The tables these tests need are created and dropped by the ``*_with_tables``
+fixtures, so the contract's ``prepare`` / ``teardown`` have nothing to do.
 """
 
-import os
-from typing import Dict, Any, Generator
+from typing import Generator
 
 import pytest
 import pytest_asyncio
-import yaml
-
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import AsyncSQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.connection.pool import (
-    PoolConfig,
-    BackendPool,
     AsyncBackendPool,
+    BackendPool,
+    PoolConfig,
 )
-
 
 # No event loop workaround is needed on Windows. This backend's async driver
 # (aioodbc, which drives pyodbc) runs its work in a thread pool rather than
@@ -34,183 +34,84 @@ from rhosocial.activerecord.connection.pool import (
 # postgres suite's pytest_asyncio_loop_factories hook instead, which scopes
 # the choice to the tests rather than the process.
 
-# --- Scenario Loading Logic ---
 
-SCENARIO_MAP: Dict[str, Dict[str, Any]] = {}
-
-
-def register_scenario(name: str, config: Dict[str, Any]):
-    SCENARIO_MAP[name] = config
-
-
-def _load_scenarios_from_config():
-    """Load scenarios from a configuration file."""
-    config_path = None
-    env_config_path = os.getenv("SQLSERVER_SCENARIOS_CONFIG_PATH")
-
-    if env_config_path and os.path.exists(env_config_path):
-        config_path = env_config_path
-    else:
-        default_path = os.path.join(os.path.dirname(__file__), "../../../../config", "sqlserver_scenarios.yaml")
-        if os.path.exists(default_path):
-            config_path = default_path
-        elif env_config_path:
-            print(f"Warning: Scenario file specified in SQLSERVER_SCENARIOS_CONFIG_PATH not found: {env_config_path}")
-            return
-
-    if not config_path:
-        raise FileNotFoundError(
-            "No SQLServer scenarios configuration file found. "
-            "Set SQLSERVER_SCENARIOS_CONFIG_PATH or place sqlserver_scenarios.yaml in tests/config."
-        )
-
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f)
-
-        if "scenarios" not in config_data:
-            raise ValueError(f"Configuration file {config_path} does not contain 'scenarios' key")
-
-        for scenario_name, config in config_data["scenarios"].items():
-            if config:
-                register_scenario(scenario_name, config)
-
-    except ImportError:
-        raise ImportError("PyYAML is required to load scenario configuration files")  # noqa: B904
+def _pool_config(environment, *, timeout: float, validate_on_borrow: bool) -> PoolConfig:
+    """Return the pool configuration for the directory's database."""
+    config = environment.make_config()
+    return PoolConfig(
+        min_size=1,
+        max_size=5,
+        timeout=timeout,
+        validate_on_borrow=validate_on_borrow,
+        validation_query="SELECT 1",
+        backend_factory=lambda: environment.scenario.backend_class(connection_config=config),
+    )
 
 
-_load_scenarios_from_config()
+def _async_pool_config(environment, *, timeout: float, validate_on_borrow: bool) -> PoolConfig:
+    """Return the async pool configuration for the directory's database."""
+    config = environment.make_config()
+    return PoolConfig(
+        min_size=1,
+        max_size=5,
+        timeout=timeout,
+        validate_on_borrow=validate_on_borrow,
+        validation_query="SELECT 1",
+        backend_factory=lambda: environment.scenario.async_backend_class(connection_config=config),
+    )
 
 
-def get_scenario_config(name: str) -> Dict[str, Any]:
-    if name not in SCENARIO_MAP:
-        if SCENARIO_MAP:
-            name = next(iter(SCENARIO_MAP))
-        else:
-            raise ValueError("No scenarios registered or enabled")
-    scenario_config = SCENARIO_MAP[name].copy()
-    # Apply the pooled database name so parallel workers never share a schema.
-    from providers.pooling import resolve_database_name
-
-    pooled_db = resolve_database_name(name)
-    if pooled_db:
-        scenario_config["database"] = pooled_db
-    return scenario_config
+# --- directory contract: keep this directory on one worker per scenario ---
 
 
-def get_scenario_names():
-    return list(SCENARIO_MAP.keys())
+def ensure_database(environment):
+    """Create the directory's database before the first test of this scenario."""
+    environment.reset_database()
+
+
+def prepare(environment):
+    """Nothing to prepare: the ``*_with_tables`` fixtures own their tables."""
+
+
+def teardown(environment):
+    """Nothing to drop: the ``*_with_tables`` fixtures drop their tables."""
 
 
 # --- Pool Fixtures ---
 
 
-def create_sqlserver_backend_factory(config_dict: Dict[str, Any]):
-    """Create a factory function that produces SQLServerBackend instances."""
-
-    def factory():
-        config_copy = config_dict.copy()
-        ssl_disabled = config_copy.pop("ssl_disabled", None)
-        config = SQLServerConnectionConfig(**config_copy)
-        if ssl_disabled is not None:
-            config.ssl_disabled = ssl_disabled
-        backend = SQLServerBackend(connection_config=config)
-        backend.connect()
-        return backend
-
-    return factory
-
-
-def create_async_sqlserver_backend_factory(config_dict: Dict[str, Any]):
-    """Create a factory function that produces AsyncSQLServerBackend instances."""
-
-    def factory():
-        config_copy = config_dict.copy()
-        ssl_disabled = config_copy.pop("ssl_disabled", None)
-        config = SQLServerConnectionConfig(**config_copy)
-        if ssl_disabled is not None:
-            config.ssl_disabled = ssl_disabled
-        backend = AsyncSQLServerBackend(connection_config=config)
-        # Note: connect() will be called by the pool when needed
-        return backend
-
-    return factory
-
-
-@pytest.fixture(scope="function", params=get_scenario_names())
-def sqlserver_pool(request) -> Generator[BackendPool, None, None]:
+@pytest.fixture(scope="function")
+def sqlserver_pool(environment) -> Generator[BackendPool, None, None]:
     """Create a BackendPool with SQL Server backends for testing."""
-    scenario_name = request.param
-    config_dict = get_scenario_config(scenario_name).copy()
-
-    pool_config = PoolConfig(
-        min_size=1,
-        max_size=5,
-        timeout=30.0,
-        validate_on_borrow=True,
-        validation_query="SELECT 1",
-        backend_factory=create_sqlserver_backend_factory(config_dict),
-    )
-
-    pool = BackendPool.create(pool_config)
+    pool = BackendPool.create(_pool_config(environment, timeout=30.0, validate_on_borrow=True))
     yield pool
     pool.close(timeout=5.0, force=True)
 
 
-@pytest_asyncio.fixture(scope="function", params=get_scenario_names())
-async def async_sqlserver_pool(request) -> AsyncBackendPool:
+@pytest_asyncio.fixture(scope="function")
+async def async_sqlserver_pool(environment) -> AsyncBackendPool:
     """Create an AsyncBackendPool with SQL Server backends for testing."""
-    scenario_name = request.param
-    config_dict = get_scenario_config(scenario_name).copy()
-
-    pool_config = PoolConfig(
-        min_size=1,
-        max_size=5,
-        timeout=30.0,
-        validate_on_borrow=True,
-        validation_query="SELECT 1",
-        backend_factory=create_async_sqlserver_backend_factory(config_dict),
+    pool = await AsyncBackendPool.create(
+        _async_pool_config(environment, timeout=30.0, validate_on_borrow=True)
     )
-
-    pool = await AsyncBackendPool.create(pool_config)
     yield pool
     await pool.close(timeout=5.0, force=True)
 
 
-@pytest.fixture(scope="function", params=get_scenario_names())
-def sqlserver_pool_large(request) -> Generator[BackendPool, None, None]:
+@pytest.fixture(scope="function")
+def sqlserver_pool_large(environment) -> Generator[BackendPool, None, None]:
     """Create a larger BackendPool for stress testing."""
-    scenario_name = request.param
-    config_dict = get_scenario_config(scenario_name).copy()
-
-    pool_config = PoolConfig(
-        min_size=1,
-        max_size=5,
-        timeout=60.0,
-        validate_on_borrow=False,  # Faster for stress tests
-        backend_factory=create_sqlserver_backend_factory(config_dict),
-    )
-
-    pool = BackendPool.create(pool_config)
+    pool = BackendPool.create(_pool_config(environment, timeout=60.0, validate_on_borrow=False))
     yield pool
     pool.close(timeout=5.0, force=True)
 
 
-@pytest_asyncio.fixture(scope="function", params=get_scenario_names())
-async def async_sqlserver_pool_large(request) -> AsyncBackendPool:
+@pytest_asyncio.fixture(scope="function")
+async def async_sqlserver_pool_large(environment) -> AsyncBackendPool:
     """Create a larger AsyncBackendPool for stress testing."""
-    scenario_name = request.param
-    config_dict = get_scenario_config(scenario_name).copy()
-
-    pool_config = PoolConfig(
-        min_size=1,
-        max_size=5,
-        timeout=60.0,
-        validate_on_borrow=False,
-        backend_factory=create_async_sqlserver_backend_factory(config_dict),
+    pool = await AsyncBackendPool.create(
+        _async_pool_config(environment, timeout=60.0, validate_on_borrow=False)
     )
-
-    pool = await AsyncBackendPool.create(pool_config)
     yield pool
     await pool.close(timeout=5.0, force=True)
 
@@ -250,7 +151,9 @@ def sqlserver_pool_with_tables(sqlserver_pool: BackendPool) -> Generator[Backend
 
 
 @pytest_asyncio.fixture(scope="function")
-async def async_sqlserver_pool_with_tables(async_sqlserver_pool: AsyncBackendPool) -> AsyncBackendPool:
+async def async_sqlserver_pool_with_tables(
+    async_sqlserver_pool: AsyncBackendPool,
+) -> AsyncBackendPool:
     """Create an async pool with test tables initialized."""
     async with async_sqlserver_pool.connection() as backend:
         await backend.execute("DROP TABLE IF EXISTS concurrent_test_users")

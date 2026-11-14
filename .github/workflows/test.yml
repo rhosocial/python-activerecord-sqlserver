@@ -20,7 +20,7 @@ permissions:
 jobs:
   test-py39-sqlserver2022:
     name: Run tests with Python 3.9 and SQL Server 2022
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2022-latest
@@ -54,8 +54,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |
@@ -110,7 +110,7 @@ jobs:
 
   test-py39-sqlserver2017:
     name: Run tests with Python 3.9 and SQL Server 2017
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2017-latest
@@ -144,8 +144,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |
@@ -200,7 +200,7 @@ jobs:
 
   test-py310-sqlserver2019:
     name: Run tests with Python 3.10 and SQL Server 2019
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2019-latest
@@ -234,8 +234,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |
@@ -290,7 +290,7 @@ jobs:
 
   test-py311-sqlserver2019:
     name: Run tests with Python 3.11 and SQL Server 2019
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2019-latest
@@ -324,8 +324,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |
@@ -380,7 +380,7 @@ jobs:
 
   test-py312-sqlserver2025:
     name: Run tests with Python 3.12 and SQL Server 2025
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2025-latest
@@ -414,8 +414,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |
@@ -470,7 +470,7 @@ jobs:
 
   test-py313-sqlserver2022:
     name: Run tests with Python 3.13 and SQL Server 2022
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2022-latest
@@ -504,8 +504,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |
@@ -560,7 +560,7 @@ jobs:
 
   test-py313t-sqlserver2019:
     name: Run tests with Python 3.13t (free-threaded) and SQL Server 2019
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     services:
       sqlserver:
@@ -595,8 +595,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |
@@ -651,7 +651,7 @@ jobs:
 
   test-py314-sqlserver2025:
     name: Run tests with Python 3.14 and SQL Server 2025
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2025-latest
@@ -685,8 +685,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |
@@ -750,7 +750,7 @@ jobs:
 
   test-py314t-sqlserver2022:
     name: Run tests with Python 3.14t (free-threaded) and SQL Server 2022
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2022-latest
@@ -784,8 +784,8 @@ jobs:
 
     - name: Install activerecord and testsuite from PyPI
       run: |
-        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@release/v1.0.0.dev30"  # NOSONAR
-        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@release/v1.0.0.dev17"  # NOSONAR
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
 
     - name: Install dependencies
       run: |

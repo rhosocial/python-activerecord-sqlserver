@@ -1,15 +1,12 @@
 """Benchmark fixtures for relation cache comparison.
 
-Bridges ``user_post_comment_classes`` from the testsuite's relation conftest
-so that benchmarks can reuse the same model definitions and backend setup.
+Reuses ``user_post_comment_classes`` and the relation topic's table
+declarations from the testsuite, so benchmarks run against the same models
+and schema as the feature suite.
 
 Redis benchmark support is not introduced in this release.  The related
 source snippets are kept as comments for follow-up external cache design.
 """
-
-from rhosocial.activerecord.testsuite.feature.relation.conftest import (  # noqa: F401
-    user_post_comment_classes,
-)
 
 from dataclasses import dataclass
 from typing import Any
@@ -21,6 +18,29 @@ from rhosocial.activerecord.relation.cache_backends import InMemoryCache
 
 # Not introduced in this release; keep snippets for follow-up external cache design.
 # from rhosocial.activerecord.relation.cache_backends import CacheSerializer, RedisCache
+
+from rhosocial.activerecord.testsuite.feature.relation.conftest import (  # noqa: F401
+    user_post_comment_classes,
+)
+
+from rhosocial.activerecord.testsuite.feature.relation.fixtures import tables
+
+GROUP_TABLES = ("users", "posts", "comments")
+
+
+def ensure_database(environment):
+    environment.reset_database()
+
+
+def prepare(environment):
+    for name in GROUP_TABLES:
+        environment.execute(tables.RELATION_TABLES[name](environment.dialect))
+
+
+def teardown(environment):
+    for name in reversed(GROUP_TABLES):
+        environment.execute(tables.drop_table(environment.dialect, name))
+
 
 pytestmark = [
     pytest.mark.benchmark,
