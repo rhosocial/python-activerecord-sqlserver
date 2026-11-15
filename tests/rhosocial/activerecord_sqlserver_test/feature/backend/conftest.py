@@ -91,13 +91,13 @@ def pytest_collection_modifyitems(config, items):
     """Pin an execution directory's tests to one worker.
 
     These directories create and drop tables in the directory's own database,
-    so two workers must never run tests from the same directory at once.  The
-    construct directories never open a database, so they stay free to run in
-    parallel.
+    so two workers must never run tests from the same directory at once: they
+    would reset that database under each other's feet.  The construct
+    directories never open a database, so they stay free to run in parallel.
     """
     for item in items:
         parts = item.path.parts
-        if "backend" not in parts or "execute" not in parts:
+        if "backend" not in parts or "construct" in parts:
             continue
         item.add_marker(
             pytest.mark.xdist_group("sqlserver-backend::" + str(item.path.parent))
