@@ -81,6 +81,7 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.ColumnTypeSupport,
     dialect_protocols.ConstraintSupport,
     dialect_protocols.DataTypeSupport,
+    dialect_protocols.DatabaseAssignedColumnSupport,
     dialect_protocols.DDLTypeSupport,
     dialect_protocols.ExplainSupport,
     dialect_protocols.FilterClauseSupport,

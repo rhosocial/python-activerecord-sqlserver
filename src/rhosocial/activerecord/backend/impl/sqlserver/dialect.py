@@ -1564,6 +1564,14 @@ class SQLServerDialect(
             "uuid": SQLServerUniqueIdentifierType,
         }
 
+    def supports_database_assigned_integer_column(self) -> bool:
+        """T-SQL assigns the value through ``IDENTITY(seed, increment)``.
+
+        Omitting the column on INSERT lets the engine take the next value from
+        the identity property, and the inserted value can be read back.
+        """
+        return True
+
 
 # Lazy import to avoid circular dependency (backend → dialect → mixins.types → backend)
 def _register_type_formatters():
