@@ -11,7 +11,21 @@ import uuid
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from datetime import date, datetime, time, timezone
-from typing import Any, Dict, List, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
+
+from rhosocial.activerecord.backend.adapters import (
+    BitString,
+    BitStringAdapterBase,
+    Geometry,
+    GeometryAdapterBase,
+    MacAddress,
+    MacAddressAdapterBase,
+    Multirange,
+    Range,
+    RangeAdapterBase,
+    Vector,
+    VectorAdapterBase,
+)
 
 
 def _parse_sql_datetime(value: str) -> datetime:
@@ -285,7 +299,16 @@ class SQLServerJSONAdapter(TypeAdapter):
     
     SQL Server 2016+ supports JSON functions but doesn't have
     a native JSON type. JSON data is stored as NVARCHAR(MAX).
+    
+    ``default`` / ``object_hook`` are forwarded to ``json.dumps`` / ``json.loads``
+    so callers can plug in neutral-type codecs (see
+    ``rhosocial.activerecord.backend.adapters.json_codec``) without changing the
+    default behaviour: both default to ``None``, which is plain ``json``.
     """
+    
+    def __init__(self, default=None, object_hook=None):
+        self._json_default = default
+        self._json_object_hook = object_hook
     
     @property
     def supported_types(self) -> Dict[Type, List[str]]:
@@ -299,10 +322,10 @@ class SQLServerJSONAdapter(TypeAdapter):
             return None
         
         if isinstance(value, (dict, list)):
-            return json.dumps(value)
+            return json.dumps(value, default=self._json_default)
         
         if isinstance(value, str):
-            json.loads(value)
+            json.loads(value, object_hook=self._json_object_hook)
             return value
         
         raise TypeError(f"Expected dict, list, or str, got {type(value)}")
@@ -315,7 +338,7 @@ class SQLServerJSONAdapter(TypeAdapter):
             return value
         
         if isinstance(value, str):
-            return json.loads(value)
+            return json.loads(value, object_hook=self._json_object_hook)
         
         raise TypeError(f"Cannot convert {type(value)} to dict/list")
 
@@ -450,6 +473,203 @@ class SQLServerSpatialAdapter(TypeAdapter):
             return f"POLYGON({','.join(rings)})"
         
         raise ValueError(f"Unsupported geometry type: {geom_type}")
+
+
+class SQLServerGeometryAdapter(GeometryAdapterBase):
+    """WKT-text adapter for SQL Server ``GEOMETRY`` / ``GEOGRAPHY`` columns.
+
+    The neutral :class:`~rhosocial.activerecord.backend.adapters.Geometry`
+    value is encoded as plain WKT text and decoded from WKT text (or UTF-8
+    bytes containing WKT). ``SRID`` is not part of plain WKT, so a decoded
+    geometry always has ``srid=None``.
+
+    **Binding limitation**: pyodbc cannot bind a SQL Server CLR spatial value,
+    and a ``geometry``/``geography`` column rejects a VARCHAR/NVARCHAR parameter
+    ("Implicit conversion from data type varchar to geometry is not allowed").
+    SQL Server requires the parameter to be wrapped, e.g.
+    ``geometry::STGeomFromText(?, 4326)``. An ORM placeholder alone is therefore
+    not sufficient; call :meth:`bind_expression` to build the wrapper expression
+    and bind the WKT text produced by :meth:`to_database` to it.
+    """
+
+    def __init__(self, srid: Optional[int] = None, geography: bool = False):
+        super().__init__()
+        if srid is not None and (isinstance(srid, bool) or not isinstance(srid, int)):
+            raise TypeError(f"srid must be int, got {type(srid).__name__}")
+        if srid is not None and srid < 0:
+            raise ValueError(f"srid must be non-negative, got {srid}")
+        if not isinstance(geography, bool):
+            raise TypeError(f"geography must be bool, got {type(geography).__name__}")
+        self._srid = srid if srid is not None else (4326 if geography else 0)
+        self._geography = geography
+        self.register_type(Geometry, str)
+        self.register_type(Geometry, bytes)
+
+    @property
+    def srid(self) -> int:
+        """SRID used by :meth:`bind_expression`."""
+        return self._srid
+
+    @property
+    def kind(self) -> str:
+        """SQL Server spatial type name: ``geometry`` or ``geography``."""
+        return "geography" if self._geography else "geometry"
+
+    def bind_expression(self, placeholder: str = "?") -> str:
+        """Return the SQL expression that wraps a WKT parameter.
+
+        Example: ``geometry::STGeomFromText(?, 4326)``. The WKT text from
+        :meth:`to_database` is bound to ``placeholder``.
+        """
+        return f"{self.kind}::STGeomFromText({placeholder}, {self._srid})"
+
+    def _encode(self, geometry: Geometry, target_type: Type, options: Dict = None) -> Any:
+        wkt = geometry.to_wkt()
+        if target_type is bytes:
+            return wkt.encode("utf-8")
+        return wkt
+
+    def _decode(self, value: Any, options: Dict = None) -> Geometry:
+        if isinstance(value, (bytes, bytearray)):
+            try:
+                value = bytes(value).decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError(
+                    "binary spatial values are not supported; use WKT text"
+                ) from exc
+        wkt = self._require_text(value)
+        return Geometry.from_wkt(wkt)
+
+
+class SQLServerVectorAdapter(VectorAdapterBase):
+    """JSON-text adapter for SQL Server vector columns.
+
+    SQL Server before version 2025 has no native ``VECTOR`` type, so a vector
+    is carried as JSON text in ``NVARCHAR``/``VARCHAR`` (``NVARCHAR(MAX)`` when
+    the dimension is not fixed). The adapter encodes the neutral
+    :class:`~rhosocial.activerecord.backend.adapters.Vector` as a JSON array and
+    decodes JSON text, UTF-8 bytes, or an already-decoded list/tuple. Non-finite
+    components use the neutral JSON spellings (``"NaN"``, ``"Infinity"``,
+    ``"-Infinity"``). If a deployment does provide a native vector type, this
+    text adapter is still the neutral representation; a native adapter would be
+    a separate implementation.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.register_type(Vector, str)
+        self.register_type(Vector, bytes)
+
+    def _encode(self, vector: Vector, target_type: Type, options: Dict = None) -> Any:
+        text = json.dumps(vector.to_json_value(), ensure_ascii=False)
+        if target_type is bytes:
+            return text.encode("utf-8")
+        return text
+
+    def _decode(self, value: Any, options: Dict = None) -> Vector:
+        if isinstance(value, (list, tuple)):
+            return Vector.from_json_value(value)
+        if isinstance(value, (bytes, bytearray)):
+            value = bytes(value).decode("utf-8")
+        if not isinstance(value, str):
+            raise TypeError(f"expected JSON array text or a list, got {type(value).__name__}")
+        return Vector.from_json_value(json.loads(value))
+
+
+class SQLServerBitStringAdapter(BitStringAdapterBase):
+    """Adapter for neutral bit strings carried as ``VARBINARY`` or text.
+
+    SQL Server's own ``BIT`` type is a boolean and is not a bit string; bit
+    strings are carried in ``BINARY``/``VARBINARY`` columns or in text columns
+    (``VARCHAR``/``NVARCHAR``). Raw bytes can only represent whole bytes, so a
+    bit string whose ``bit_length`` is not a multiple of 8 loses its exact
+    length in the binary representation. The text target keeps the exact
+    length: :meth:`BitString.to_bits` renders the significant bits (including
+    leading zeros), and :meth:`_decode` accepts that form unchanged.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.register_type(BitString, str)
+        self.register_type(BitString, bytes)
+
+    def _encode(self, bits: BitString, target_type: Type, options: Dict = None) -> Any:
+        if target_type is str:
+            return bits.to_bits()
+        return bits.data
+
+    def _decode(self, value: Any, options: Dict = None) -> BitString:
+        if isinstance(value, (bytes, bytearray)):
+            return BitString.from_bytes(bytes(value))
+        if isinstance(value, str):
+            return BitString.from_bits(value)
+        raise TypeError(f"expected bytes or a bit-string text, got {type(value).__name__}")
+
+
+class SQLServerRangeAdapter(RangeAdapterBase):
+    """JSON-text adapter for neutral ranges stored in text columns.
+
+    SQL Server has no range/multirange type. Ranges are stored as JSON text
+    (``NVARCHAR``/``VARCHAR``) using the neutral canonical representation from
+    :meth:`Range.to_json_value` / :meth:`Multirange.to_json_value`.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.register_type(Range, str)
+        self.register_type(Multirange, str)
+        self.register_type(Range, bytes)
+        self.register_type(Multirange, bytes)
+
+    def _encode(self, value: Any, target_type: Type, options: Dict = None) -> Any:
+        text = json.dumps(value.to_json_value(), ensure_ascii=False)
+        if target_type is bytes:
+            return text.encode("utf-8")
+        return text
+
+    def _decode(self, value: Any, target_type: Type, options: Dict = None) -> Any:
+        if isinstance(value, (bytes, bytearray)):
+            value = bytes(value).decode("utf-8")
+        if not isinstance(value, str):
+            raise TypeError(f"expected JSON text, got {type(value).__name__}")
+        payload = json.loads(value)
+        if target_type is Multirange:
+            return Multirange.from_json_value(payload)
+        if target_type is Range:
+            return Range.from_json_value(payload)
+        if isinstance(payload, list):
+            return Multirange.from_json_value(payload)
+        return Range.from_json_value(payload)
+
+
+class SQLServerMacAddressAdapter(MacAddressAdapterBase):
+    """Canonical-text adapter for MAC addresses.
+
+    SQL Server has no MAC address type; the value is stored in ``VARCHAR``/
+    ``CHAR`` as the canonical lowercase colon-separated text
+    (``01:23:45:67:89:ab``). ``BINARY``/``VARBINARY`` columns are also accepted
+    when the raw value is exactly 6 or 8 octets.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.register_type(MacAddress, str)
+        self.register_type(MacAddress, bytes)
+
+    def _encode(self, mac: MacAddress, target_type: Type, options: Dict = None) -> Any:
+        if target_type is bytes:
+            return mac.octets
+        return str(mac)
+
+    def _decode(self, value: Any, options: Dict = None) -> MacAddress:
+        if isinstance(value, bytearray):
+            value = bytes(value)
+        if isinstance(value, bytes) and len(value) not in (6, 8):
+            try:
+                value = value.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError("MAC address bytes must be 6 or 8 octets") from exc
+        return MacAddress.parse(value)
 
 
 class SQLServerHierarchyIdAdapter(TypeAdapter):

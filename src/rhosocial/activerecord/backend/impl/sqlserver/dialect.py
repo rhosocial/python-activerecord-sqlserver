@@ -316,12 +316,14 @@ class SQLServerDialect(
     SQLDialectBase,
     # Core infrastructure mixins (provide base implementations
     # that the dialect overrides as needed)
+    # SQL Server protocol contract implementations; precedes the core
+    # ExpressionMixin because it owns STRING_CONCATENATION for this dialect.
+    SQLServerProtocolSupportMixin,
     PredicateMixin,
     ExpressionMixin,
     # SQL Server-specific mixins (must precede their global counterparts
     # to ensure SQL Server methods take precedence in MRO)
     SQLServerAlterColumnModifierMixin,  # Before DDLColumnMixin to override format_*_action
-    SQLServerProtocolSupportMixin,  # SQL Server protocol contract implementations
     SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
     SQLServerIdentityColumnMixin,  # IDENTITY(seed, increment) formatter + probes
     SQLServerPivotMixin,  # PIVOT / UNPIVOT formatters (2005+)

@@ -8,6 +8,15 @@ Redis benchmark support is not introduced in this release.  The related
 source snippets are kept as comments for follow-up external cache design.
 """
 
+from rhosocial.activerecord.backend.options import ExecutionOptions
+from rhosocial.activerecord.backend.schema import StatementType
+from rhosocial.activerecord.testsuite.feature.relation.fixtures.definitions import (
+    CommentDefinition,
+    PostDefinition,
+    UserDefinition,
+)
+
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,23 +32,13 @@ from rhosocial.activerecord.testsuite.feature.relation.conftest import (  # noqa
     user_post_comment_classes,
 )
 
-from rhosocial.activerecord.testsuite.feature.relation.fixtures import tables
-
-GROUP_TABLES = ("users", "posts", "comments")
 
 
-def ensure_database(environment):
-    environment.reset_database()
 
 
-def prepare(environment):
-    for name in GROUP_TABLES:
-        environment.execute(tables.RELATION_TABLES[name](environment.dialect))
 
 
-def teardown(environment):
-    for name in reversed(GROUP_TABLES):
-        environment.execute(tables.drop_table(environment.dialect, name))
+
 
 
 pytestmark = [
@@ -176,3 +175,40 @@ def relation_benchmark_env(cache_scenario, _raw_models):
         )
     finally:
         InstanceCache.set_backend(original_backend)
+
+DDL = ExecutionOptions(stmt_type=StatementType.DDL)
+DEFINITIONS = (UserDefinition, PostDefinition, CommentDefinition)
+
+
+@pytest.fixture(scope="session")
+def database_config(backend_scenario):
+    """The scenario, its connection configuration, and the database name."""
+    name = "test_benchmark_relation"
+    return backend_scenario, backend_scenario.make_config(name), name
+
+
+@pytest.fixture(scope="session")
+def database(database_config):
+    """The benchmark directory's database, prepared once."""
+    scenario, config, name = database_config
+    scenario.reset_database(name)
+    backend = scenario.backend_class(connection_config=config)
+    backend.connect()
+    backend.introspect_and_adapt()
+    yield backend
+    backend.disconnect()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def schema(database):
+    """Create the relation tables once per module.
+
+    Benchmarks measure query cost, not per-test isolation, so the exception to
+    the per-test drop+create rule applies here.
+    """
+    fixtures = [definition(database.dialect) for definition in DEFINITIONS]
+    for fixture in fixtures:
+        database.execute(*fixture.create_table.to_sql(), options=DDL)
+    yield
+    for fixture in reversed(fixtures):
+        database.execute(*fixture.drop_table.to_sql(), options=DDL)
