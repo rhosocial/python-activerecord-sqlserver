@@ -200,12 +200,19 @@ class SQLServerTinyIntType(TinyIntType):
 
     name = "sqlserver_tinyint"
 
-    #: Signedness is not a knob here: no T-SQL spelling of ``TINYINT`` is
-    #: signed, so the field is fixed rather than exposed.  Declaring the
-    #: inherited tuple would name an argument this ``__init__`` does not take.
-    PARAMETERS = ()
-
-    def __init__(self, dialect=None, *, spelling: str = "tinyint"):
+    #: Signedness stays in ``PARAMETERS`` so ``identity()`` records it, and the
+    #: argument is accepted so the tuple names something the constructor really
+    #: takes.  It is nevertheless not a knob: ``False`` is refused rather than
+    #: quietly turned into a spelling T-SQL does not have.
+    def __init__(
+        self, dialect=None, *, unsigned: bool = True, spelling: str = "tinyint"
+    ):
+        if unsigned is not True:
+            raise ValueError(
+                "SQL Server's TINYINT is unsigned; no T-SQL spelling of it is "
+                "signed, so unsigned=False is not a declaration this backend "
+                "can make"
+            )
         super().__init__(dialect, unsigned=True, spelling=spelling)
 
 

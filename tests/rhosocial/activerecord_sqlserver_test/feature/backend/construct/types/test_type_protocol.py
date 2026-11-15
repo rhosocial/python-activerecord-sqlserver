@@ -859,12 +859,14 @@ class TestIntegerSignednessIsRefused:
     def test_the_backend_class_pins_the_flag_so_it_cannot_be_flipped(self, dialect):
         """``SQLServerTinyIntType`` owns the unsigned 8-bit column.
 
-        It pins ``unsigned=True`` in its own ``__init__``, so its formatter
-        cannot be reached with ``unsigned=False`` and has nothing to refuse —
-        which is why the gate sits on the generic concept instead.
+        It keeps ``unsigned`` in ``PARAMETERS`` -- so ``identity()`` records it
+        and a comparison against a signed concept differs -- and accepts the
+        keyword, because a declared tuple must name an argument the constructor
+        really takes. The value stays pinned: ``False`` is refused by name
+        rather than quietly rendered as a type T-SQL does not have.
         """
         assert SQLServerTinyIntType.PARAMETERS == ("unsigned",)
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError, match="is unsigned"):
             SQLServerTinyIntType(dialect, unsigned=False)
         assert dialect.format_data_type(SQLServerTinyIntType(dialect)) == (
             "TINYINT", ()
