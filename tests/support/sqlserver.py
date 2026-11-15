@@ -15,10 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
 
+import pyodbc
 import yaml
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
-
 from rhosocial.activerecord.backend.impl.sqlserver.backend import (
     AsyncSQLServerBackend,
     SQLServerBackend,
@@ -29,6 +29,15 @@ CONFIG_PATH = Path(
     os.environ.get("SQLSERVER_SCENARIOS_CONFIG_PATH")
     or Path(__file__).resolve().parents[1] / "config" / "sqlserver_scenarios.yaml"
 )
+
+# Every test backend opens and closes its own connection.  The ODBC driver's
+# connection pool then hands that closed connection to the next test with
+# whatever result sets were still pending on it, and SQL Server answers some
+# DDL with informational messages -- so the next test's first statement is
+# refused with "Connection is busy with results for another command".  The
+# test tree wants one clean physical connection per backend, so pooling is off
+# for this process.
+pyodbc.pooling = False
 
 # The scenario file describes a server, never a database: the logical name is
 # derived from the test directory.  A ``database`` key, if present, is dropped.
