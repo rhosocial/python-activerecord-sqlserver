@@ -92,22 +92,39 @@ def native_io(sqlserver_backend):
 
 @pytest.fixture
 def native_table(sqlserver_backend):
-    """Create the named native tables for one test and drop them afterwards."""
+    """Create the named native tables for one test and drop them afterwards.
+
+    The DDL runs on a second connection.  SQL Server answers some DDL with
+    informational messages, pyodbc keeps those as pending results, and the
+    next command on that connection is then refused with "Connection is busy
+    with results for another command" -- which is what a model's first
+    ``save()`` hit.  A dedicated DDL connection keeps the test's own
+    connection free of them.
+    """
     created = []
+    ddl = type(sqlserver_backend)(connection_config=sqlserver_backend.config)
+    ddl.connect()
 
     def create(*names):
         for name in names:
             if name not in NATIVE_DDL:
                 raise KeyError(f"no DDL declared for {name!r}")
-            sqlserver_backend.execute(f"DROP TABLE IF EXISTS {name}", (), options=DML)
-            sqlserver_backend.execute(NATIVE_DDL[name], (), options=DML)
+            # ``DROP TABLE IF EXISTS`` on a table that is not there also
+            # answers with a message, so the drop only happens when the table
+            # really exists.
+            exists = ddl.fetch_one("SELECT OBJECT_ID(?) AS v", (name,))["v"]
+            if exists is not None:
+                ddl.execute(f"DROP TABLE {name}", (), options=DML)
+            ddl.execute(NATIVE_DDL[name], (), options=DML)
             created.append(name)
         return names[0] if len(names) == 1 else names
 
-    yield create
-
-    for name in reversed(created):
-        sqlserver_backend.execute(f"DROP TABLE IF EXISTS {name}", (), options=DML)
+    try:
+        yield create
+    finally:
+        for name in reversed(created):
+            ddl.execute(f"DROP TABLE IF EXISTS {name}", (), options=DML)
+        ddl.disconnect()
 
 
 @pytest.fixture
