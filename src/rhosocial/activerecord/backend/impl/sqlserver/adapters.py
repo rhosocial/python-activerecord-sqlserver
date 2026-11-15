@@ -103,7 +103,7 @@ class TypeAdapter(ABC):
         pass
     
     @abstractmethod
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Any:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> Any:
         """Convert database value to Python value."""
         pass
 
@@ -139,7 +139,7 @@ class SQLServerUUIDAdapter(TypeAdapter):
         
         raise TypeError(f"Expected UUID or str, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> uuid.UUID:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> uuid.UUID:
         if value is None:
             return None
         
@@ -179,7 +179,7 @@ class SQLServerDateTimeAdapter(TypeAdapter):
         
         raise TypeError(f"Expected datetime, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> datetime:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> datetime:
         if value is None:
             return None
         
@@ -219,7 +219,7 @@ class SQLServerDateTimeOffsetAdapter(TypeAdapter):
         
         raise TypeError(f"Expected datetime, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> datetime:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> datetime:
         if value is None:
             return None
         
@@ -252,7 +252,7 @@ class SQLServerDateAdapter(TypeAdapter):
             return value
         raise TypeError(f"Expected date, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> date:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> date:
         if value is None:
             return None
         if isinstance(value, datetime):
@@ -282,7 +282,7 @@ class SQLServerTimeAdapter(TypeAdapter):
             return value.time()
         raise TypeError(f"Expected time, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> time:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> time:
         if value is None:
             return None
         if isinstance(value, time):
@@ -330,7 +330,7 @@ class SQLServerJSONAdapter(TypeAdapter):
         
         raise TypeError(f"Expected dict, list, or str, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> Union[dict, list]:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> Union[dict, list]:
         if value is None:
             return None
         
@@ -374,7 +374,7 @@ class SQLServerXMLAdapter(TypeAdapter):
         
         raise TypeError(f"Expected str, bytes, or dict, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> str:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> str:
         if value is None:
             return None
         
@@ -440,7 +440,7 @@ class SQLServerSpatialAdapter(TypeAdapter):
         
         raise TypeError(f"Expected str, bytes, or dict, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> str:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> str:
         if value is None:
             return None
         
@@ -698,7 +698,7 @@ class SQLServerHierarchyIdAdapter(TypeAdapter):
         
         raise TypeError(f"Expected str or list, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None) -> str:
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs) -> str:
         if value is None:
             return None
         
@@ -730,7 +730,7 @@ class SQLServerDecimalAdapter(TypeAdapter):
         
         raise TypeError(f"Expected Decimal, int, or float, got {type(value)}")
     
-    def from_database(self, value: Any, target_type: Type = None, options: Dict = None):
+    def from_database(self, value: Any, target_type: Type = None, options: Dict = None, **kwargs):
         from decimal import Decimal
         
         if value is None:
