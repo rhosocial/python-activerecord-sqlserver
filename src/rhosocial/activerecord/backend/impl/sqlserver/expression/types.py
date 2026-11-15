@@ -24,6 +24,7 @@ from rhosocial.activerecord.backend.expression.types import (
     VarBinaryType,
     BooleanType,
     CharType,
+    LENGTH_PARAMETERS,
     TinyIntType,
     UUIDType,
     VarCharType,
@@ -80,6 +81,15 @@ class SQLServerNVarCharMaxType(VarCharType):
 
     name = "sqlserver_nvarchar_max"
 
+    #: ``MAX`` is not a width, so this class declares no parameters.
+    #:
+    #: ``VarCharType`` inherits ``LENGTH_PARAMETERS`` because a declared
+    #: ``VARCHAR(n)`` is what its width makes it; here the inherited tuple
+    #: would name an ``__init__`` argument this class does not take, and
+    #: ``identity()`` reads the tuple. ``NVARCHAR`` and ``NVARCHAR(MAX)`` are
+    #: different declarations, and the difference is the class, not a length.
+    PARAMETERS = ()
+
     def __init__(self, dialect=None):
         super().__init__(dialect, length=None)
 
@@ -111,7 +121,10 @@ class SQLServerVarBinaryType(VarBinaryType):
         super().__init__(dialect)
         self.length = length
 
-    PARAMETERS = ("length",)
+    #: The shared object, not a copy: ``identity()`` compares the tuple, so a
+    #: literal of the same shape would silently make this declaration unequal
+    #: to its siblings.
+    PARAMETERS = LENGTH_PARAMETERS
 
 class SQLServerVarBinaryMaxType(BlobType):
     """SQL Server ``VARBINARY(MAX)`` — byte string up to 2 GB.
@@ -186,6 +199,11 @@ class SQLServerTinyIntType(TinyIntType):
     KIND_RESERVED = ("SQLServer",)
 
     name = "sqlserver_tinyint"
+
+    #: Signedness is not a knob here: no T-SQL spelling of ``TINYINT`` is
+    #: signed, so the field is fixed rather than exposed.  Declaring the
+    #: inherited tuple would name an argument this ``__init__`` does not take.
+    PARAMETERS = ()
 
     def __init__(self, dialect=None, *, spelling: str = "tinyint"):
         super().__init__(dialect, unsigned=True, spelling=spelling)
