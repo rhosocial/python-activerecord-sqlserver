@@ -78,3 +78,35 @@ def test_substitutes_are_disjoint_and_renderable(version):
         assert isinstance(klass, type) and issubclass(klass, DataType), key
         sql, _ = dialect.format_data_type(_renderable_substitute(dialect, klass))
         assert sql, f"{version}: {key} -> {klass.__name__} renders nothing"
+
+
+@pytest.mark.parametrize("version", VERSIONS)
+def test_formatter_and_probe_families_are_one_to_one(version):
+    """D10: a formatter has a probe, and an absent answer is an explicit probe.
+
+    ``supports_data_types()`` may omit a version-gated concept; that is an
+    answer only when its probe says False. A formatter with no probe at all,
+    or a supported key with no formatter, breaks the 1:1 discipline.
+    """
+    dialect = _dialect(version)
+    format_names = {
+        member[len("format_data_type_") :]
+        for member in dir(dialect)
+        if member.startswith("format_data_type_")
+    }
+    probe_names = {
+        member[len("supports_data_type_") :]
+        for member in dir(dialect)
+        if member.startswith("supports_data_type_")
+    }
+    assert format_names, "the dialect must implement a format_data_type_* family"
+    assert format_names == probe_names, (
+        f"format-only: {sorted(format_names - probe_names)}, "
+        f"probe-only: {sorted(probe_names - format_names)}"
+    )
+
+    supported = set(dialect.supports_data_types())
+    assert supported <= format_names
+    for name in sorted(format_names - supported):
+        probe = getattr(dialect, f"supports_data_type_{name}")
+        assert probe() is False, f"{name} has a formatter but no False probe explains its absence"
