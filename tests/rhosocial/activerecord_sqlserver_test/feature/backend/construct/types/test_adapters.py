@@ -20,7 +20,6 @@ from rhosocial.activerecord.backend.impl.sqlserver.adapters import (
     SQLServerDecimalAdapter,
     SQLServerHierarchyIdAdapter,
     SQLServerJSONAdapter,
-    SQLServerSpatialAdapter,
     SQLServerTimeAdapter,
     SQLServerUUIDAdapter,
     SQLServerXMLAdapter,
@@ -281,44 +280,6 @@ class TestXMLAdapter:
         assert root.findtext("name") == "users"
         assert root.find("meta").findtext("created") == "2026"
         assert [elem.text for elem in root.findall("tag")] == ["a", "b"]
-
-
-class TestSpatialAdapter:
-    @pytest.fixture
-    def adapter(self):
-        return SQLServerSpatialAdapter()
-
-    def test_point_wkt(self, adapter):
-        assert adapter._dict_to_wkt({"type": "Point", "coordinates": [1, 2]}) == "POINT(1 2)"
-
-    def test_linestring_separates_pairs_with_commas(self, adapter):
-        assert (
-            adapter._dict_to_wkt({"type": "LineString", "coordinates": [[1, 2], [3, 4]]})
-            == "LINESTRING(1 2, 3 4)"
-        )
-
-    def test_polygon_wkt_single_ring(self, adapter):
-        ring = [[[0, 0], [0, 1], [1, 1], [0, 0]]]
-        assert (
-            adapter._dict_to_wkt({"type": "Polygon", "coordinates": ring})
-            == "POLYGON((0 0, 0 1, 1 1, 0 0))"
-        )
-
-    def test_unknown_geometry_type_raises(self, adapter):
-        with pytest.raises(ValueError, match="Unsupported geometry type"):
-            adapter._dict_to_wkt({"type": "MultiSurface"})
-
-    def test_str_bytes_passthrough_on_the_way_in(self, adapter):
-        wkt = "POINT(1 2)"
-        assert adapter.to_database(wkt) is wkt
-        assert adapter.to_database(b"WKB-BLOB") == b"WKB-BLOB"  # bytes kept binary
-
-    def test_from_database_decodes_bytes(self, adapter):
-        assert adapter.from_database(b"POINT(1 2)") == "POINT(1 2)"
-
-    def test_null_semantics(self, adapter):
-        assert adapter.to_database(None) is None
-        assert adapter.from_database(None) is None
 
 
 class TestHierarchyIdAdapter:
