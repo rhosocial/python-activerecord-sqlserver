@@ -1,5 +1,5 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/construct/types/test_column_type.py
-"""SQL Server's eighteen-entry column-type table.
+"""SQL Server's twenty-four-entry column-type table.
 
 Pure dialect tests -- no server, no connection. What is asserted here is the
 *declaration*: that the dialect composes core's
@@ -29,14 +29,29 @@ from rhosocial.activerecord.backend.dialect.mixins import ColumnTypeMixin
 from rhosocial.activerecord.backend.expression.column_types import (
     ArrayColumn,
     BinaryColumn,
+    BitStringColumn,
     BooleanColumn,
     ColumnBase,
+    GeometryColumn,
     IntegerColumn,
+    IntervalColumn,
     JSONColumn,
+    MacAddressColumn,
+    MultirangeColumn,
     NumericColumn,
+    RangeColumn,
     StringColumn,
     TimestampColumn,
     UUIDColumn,
+    VectorColumn,
+)
+from rhosocial.activerecord.backend.adapters import (
+    BitString,
+    Geometry,
+    MacAddress,
+    Multirange,
+    Range,
+    Vector,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.mixins import (
@@ -99,7 +114,7 @@ class TestTableCompleteness:
         )
 
     def test_every_entry_is_answered(self, dialect):
-        """All eighteen, by name -- an omission fails here, not at lookup."""
+        """All twenty-four, by name -- an omission fails here, not at lookup."""
         missing = [e for e in COMMON_TYPES if e not in dialect.suggested_column_types()]
         assert missing == []
 
@@ -161,7 +176,7 @@ class TestBaselineCells:
             (datetime.date, TimestampColumn),
             (datetime.time, TimestampColumn),
             (datetime.datetime, TimestampColumn),
-            (datetime.timedelta, NumericColumn),
+            (datetime.timedelta, IntervalColumn),
             (uuid.UUID, UUIDColumn),
             (enum.Enum, StringColumn),
         ],
@@ -247,9 +262,25 @@ class TestSQLServerDeviations:
         table = dialect.suggested_column_types()
         assert [e for e, cls in table.items() if cls is ArrayColumn] == []
 
-    def test_timedelta_is_numeric(self, dialect):
-        """There is no interval *type*; a span exists only as ``DATEDIFF``."""
-        assert dialect.suggested_column_types()[datetime.timedelta] is NumericColumn
+    def test_timedelta_is_an_interval(self, dialect):
+        """There is no interval *type*; a span exists only as ``DATEDIFF``.
+
+        The class names the value, so the stored count of seconds does not
+        make it a number, and no numeric arithmetic is promised.
+        """
+        assert dialect.suggested_column_types()[datetime.timedelta] is IntervalColumn
+
+    def test_the_complex_families_answer_the_core_classes(self, dialect):
+        table = dialect.suggested_column_types()
+        for entry, klass in (
+            (Geometry, GeometryColumn),
+            (Vector, VectorColumn),
+            (BitString, BitStringColumn),
+            (Range, RangeColumn),
+            (Multirange, MultirangeColumn),
+            (MacAddress, MacAddressColumn),
+        ):
+            assert table[entry] is klass
 
 
 class TestColumnClassResolution:
@@ -261,8 +292,8 @@ class TestColumnClassResolution:
     def test_list_resolves_to_json_column_on_2025(self):
         assert resolve_column_class(SQLServerDialect(version=SQL_SERVER_2025), list) is JSONColumn
 
-    def test_timedelta_resolves_to_numeric_column(self, dialect):
-        assert resolve_column_class(dialect, datetime.timedelta) is NumericColumn
+    def test_timedelta_resolves_to_interval_column(self, dialect):
+        assert resolve_column_class(dialect, datetime.timedelta) is IntervalColumn
 
     def test_the_refusal_is_a_type_error(self):
         """``ColumnTypeResolutionError`` subclasses ``TypeError`` by design."""
@@ -369,7 +400,7 @@ def test_the_summary_table_reads_the_way_the_spec_writes_it():
         "date": "TimestampColumn",
         "time": "TimestampColumn",
         "datetime": "TimestampColumn",
-        "timedelta": "NumericColumn",
+        "timedelta": "IntervalColumn",
         "UUID": "UUIDColumn",
         "dict": "JSONColumn",
         "list": "JSONColumn",
@@ -377,6 +408,12 @@ def test_the_summary_table_reads_the_way_the_spec_writes_it():
         "set": "JSONColumn",
         "frozenset": "JSONColumn",
         "Enum": "StringColumn",
+        "Geometry": "GeometryColumn",
+        "Vector": "VectorColumn",
+        "BitString": "BitStringColumn",
+        "Range": "RangeColumn",
+        "Multirange": "MultirangeColumn",
+        "MacAddress": "MacAddressColumn",
     }
 
 

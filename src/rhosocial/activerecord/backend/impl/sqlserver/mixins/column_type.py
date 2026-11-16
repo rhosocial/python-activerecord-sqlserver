@@ -48,7 +48,7 @@ value was declared as, and the difference between a ``NUMERIC(18,4)`` and a
 answer :class:`NumericColumn` here, and the measured two-roundings fact is
 carried by the DataType declaration rather than dropped.
 
-The table answers all eighteen of the framework's common Python types and needs
+The table answers all twenty-four of the framework's Python types and needs
 **no version gate**: the JSON route works on 2019, 2022 and 2025 alike, and the
 three agree item for item. An entry left out would be indistinguishable from
 one nobody thought about, so every key is present; the only permitted ``None``
@@ -79,17 +79,32 @@ import enum
 import uuid
 from typing import Any, Dict, Type
 
+from rhosocial.activerecord.backend.adapters import (
+    BitString,
+    Geometry,
+    MacAddress,
+    Multirange,
+    Range,
+    Vector,
+)
 from rhosocial.activerecord.backend.dialect.mixins.column_type import ColumnTypeMixin
 from rhosocial.activerecord.backend.expression.column_types import (
     BinaryColumn,
+    BitStringColumn,
     BooleanColumn,
     ColumnBase,
+    GeometryColumn,
     IntegerColumn,
+    IntervalColumn,
     JSONColumn,
+    MacAddressColumn,
+    MultirangeColumn,
     NumericColumn,
+    RangeColumn,
     StringColumn,
     TimestampColumn,
     UUIDColumn,
+    VectorColumn,
 )
 
 #: SQL Server's complete answer for every one of the framework's common Python
@@ -156,14 +171,14 @@ SQLSERVER_COLUMN_TYPES: Dict[Any, Type[ColumnBase]] = {
     datetime.date: TimestampColumn,
     datetime.time: TimestampColumn,
     datetime.datetime: TimestampColumn,
-    # A timedelta is a number of seconds here. SQL Server has no interval
-    # *type* at all -- a span exists only as `DATEDIFF`, which is an
-    # expression -- so a stored duration has to be a count, and the value
-    # layer serialises to seconds because the driver refuses a bound
-    # `timedelta` outright (`suggested-mappings.md` §8.2 item 4). There is
-    # no `IntervalColumn` class yet, so this is the baseline every backend
-    # without an interval type gives.
-    datetime.timedelta: NumericColumn,
+    # A duration is a span, not a number, so it answers `IntervalColumn`.
+    # SQL Server has no interval *type* at all -- a span exists only as
+    # `DATEDIFF`, which is an expression -- so a stored duration has to be a
+    # count, and the value layer serialises to seconds because the driver
+    # refuses a bound `timedelta` outright (`suggested-mappings.md` §8.2
+    # item 4). The class names the value and promises no arithmetic, which is
+    # exactly what this server can keep.
+    datetime.timedelta: IntervalColumn,
     # Native `UNIQUEIDENTIFIER` (there is also a documented `char(36)`
     # convention, which is a storage choice and not a column one). Measured:
     # `=` / `IN` work, prefix `LIKE` works, `NEWID()` is available in a
@@ -218,11 +233,24 @@ SQLSERVER_COLUMN_TYPES: Dict[Any, Type[ColumnBase]] = {
     # Those are storage and value-layer facts; the operation surface --
     # equality, `IN`, `ORDER BY` -- is StringColumn's.
     enum.Enum: StringColumn,
+    # -- Complex families ------------------------------------------------
+    # Their core classes promise only the surface every column has -- alias,
+    # null tests, casting and collation -- because no distance, containment,
+    # overlap, bitwise or similarity operation is spelled the same way on
+    # every backend. Richer family operations belong to a SQL Server-named
+    # subclass in this backend's extra table. Storage is answered in the
+    # data-type suggestion module.
+    Geometry: GeometryColumn,
+    Vector: VectorColumn,
+    BitString: BitStringColumn,
+    Range: RangeColumn,
+    Multirange: MultirangeColumn,
+    MacAddress: MacAddressColumn,
 }
 
 
 class SQLServerColumnTypeMixin(ColumnTypeMixin):
-    """SQL Server's full 18-entry column-type table.
+    """SQL Server's full 24-entry column-type table.
 
     Composed into :class:`~...dialect.SQLServerDialect` **ahead of** core's
     :class:`ColumnTypeMixin`, so its :meth:`suggested_column_types` is the one
@@ -238,7 +266,7 @@ class SQLServerColumnTypeMixin(ColumnTypeMixin):
         """The column class each common Python type means on SQL Server.
 
         A fresh copy per call, so a caller mutating the answer cannot corrupt
-        what the next lookup reads. All eighteen entries are answered with a
+        what the next lookup reads. All twenty-four entries are answered with a
         class: SQL Server's storage substitutions (JSON documents in
         ``NVARCHAR(MAX)``, spans as counts, no native array) still carry the
         operations, so this table has no last-resort ``None``.
