@@ -171,6 +171,7 @@ from .mixins.constraint import SQLServerConstraintMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
 from .mixins.column_type import SQLServerColumnTypeMixin
+from .mixins.data_type_suggestions import SQLServerDataTypeSuggestionsMixin
 from .mixins.uuid import SQLServerUUIDMixin
 from .mixins.grouping import SQLServerGroupingMixin
 from .mixins.locking import SQLServerLockingMixin
@@ -342,6 +343,10 @@ class SQLServerDialect(
     # Before DDLColumnMixin: the backend block below comes later, so
     # supports_fk_match answered for the core. Same value by coincidence.
     SQLServerConstraintMixin,
+    # Before DDLTypeMixin, which inherits DataTypeMixin's answer -- a
+    # NotImplementedError. A table placed after the class it stands in for
+    # never wins, so the backend's 24-key answer sits ahead of the core mixin.
+    SQLServerDataTypeSuggestionsMixin,
     DDLColumnMixin,
     DDLTypeMixin,
     UserDefinedTypeMixin,
@@ -1483,10 +1488,10 @@ class SQLServerDialect(
         return f"OPTION ({', '.join(clause.hints)})", ()
 
     # ------------------------------------------------------------------
-    # DataType protocol — suggestions
+    # DataType protocol — substitutions
     # ------------------------------------------------------------------
 
-    def suggested_data_types(self) -> Dict[str, type]:
+    def substitute_data_types(self) -> Dict[str, type]:
         """Concepts SQL Server cannot spell, and what it stores instead (D9).
 
         Returns a mapping ``{<generic name>: DataType class}`` for every core

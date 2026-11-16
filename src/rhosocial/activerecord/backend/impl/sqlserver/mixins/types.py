@@ -1006,8 +1006,8 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         JSON arrives in SQL Server 2016 as text in an ordinary column, and
         ``OPENJSON`` / ``JSON_VALUE`` / ``ISJSON`` are functions over that
         text, not a storage type.  So the concept is rendered as the text
-        column that actually holds it, which is also why ``suggested_data_types``
-        names this class for ``jsonb`` and ``array``.
+        column that actually holds it, which is also why
+        ``substitute_data_types`` names this class for ``jsonb`` and ``array``.
         """
         return "NVARCHAR(MAX)", ()
 

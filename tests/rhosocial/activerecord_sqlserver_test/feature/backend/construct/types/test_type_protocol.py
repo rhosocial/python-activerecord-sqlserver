@@ -4,7 +4,7 @@
 Covers:
 - format/supports 1:1 correspondence
 - supports_data_types() includes sqlserver_* + core entries, on a cold import
-- suggested_data_types() returns classes, keys disjoint from supported, and
+- substitute_data_types() returns classes, keys disjoint from supported, and
   every suggested class is a type this dialect really renders (D9)
 - spelling gates: the default spelling always renders, an unknown one is
   refused and named
@@ -208,26 +208,26 @@ class TestSupportsDataTypes:
 
 
 class TestSuggestedDataTypes:
-    """suggested_data_types() returns classes, keys disjoint from supported."""
+    """substitute_data_types() returns classes, keys disjoint from supported."""
 
     @pytest.fixture
     def dialect(self):
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_returns_dict(self, dialect):
-        result = dialect.suggested_data_types()
+        result = dialect.substitute_data_types()
         assert isinstance(result, dict)
 
     def test_values_are_type_classes(self, dialect):
-        suggested = dialect.suggested_data_types()
+        suggested = dialect.substitute_data_types()
         for name, cls in suggested.items():
             assert isinstance(cls, type) and issubclass(cls, DataType), (
-                f"suggested_data_types()[{name!r}] = {cls!r} is not a DataType class"
+                f"substitute_data_types()[{name!r}] = {cls!r} is not a DataType class"
             )
 
     def test_keys_disjoint_from_supported(self, dialect):
         supported = set(dialect.supports_data_types().keys())
-        suggested = set(dialect.suggested_data_types().keys())
+        suggested = set(dialect.substitute_data_types().keys())
         overlap = supported & suggested
         assert not overlap, (
             f"Keys appear in both supports and suggested: {overlap}"
@@ -243,20 +243,20 @@ class TestSuggestedDataTypes:
         and that has to be a thing this backend stores.
         """
         supported = dialect.supports_data_types()
-        suggested = dialect.suggested_data_types()
+        suggested = dialect.substitute_data_types()
         for key, substitute in sorted(suggested.items()):
             assert substitute.name in supported, (
-                f"suggested_data_types()[{key!r}] is {substitute.__name__}, "
+                f"substitute_data_types()[{key!r}] is {substitute.__name__}, "
                 f"whose name {substitute.name!r} this dialect does not render"
             )
 
     def test_suggests_unsupported_core_types(self, dialect):
-        suggested = dialect.suggested_data_types()
+        suggested = dialect.substitute_data_types()
         # Concepts SQL Server has no T-SQL word for.
         for name in ["uuid", "interval", "array", "enum", "jsonb", "timetz",
                       "binary", "varbinary"]:
             assert name in suggested, (
-                f"Expected suggestion for {name!r} in suggested_data_types()"
+                f"Expected suggestion for {name!r} in substitute_data_types()"
             )
 
     def test_does_not_suggest_what_it_renders(self, dialect):
@@ -265,7 +265,7 @@ class TestSuggestedDataTypes:
         Substituting text for ``xml`` or a zoneless ``DATETIME2`` for
         ``timestamptz`` would describe a backend that is not this one.
         """
-        suggested = dialect.suggested_data_types()
+        suggested = dialect.substitute_data_types()
         for name in ("xml", "timestamptz"):
             assert name not in suggested, (
                 f"{name!r} is rendered natively on SQL Server "
@@ -282,12 +282,12 @@ class TestSuggestedDataTypes:
         followed.  Pointing at ``SQLServerUniqueIdentifierType`` is the answer
         D9 asks for: a class whose own ``name`` *is* in ``supports_data_types()``.
         """
-        assert dialect.suggested_data_types()["uuid"] is SQLServerUniqueIdentifierType
+        assert dialect.substitute_data_types()["uuid"] is SQLServerUniqueIdentifierType
 
     def test_jsonb_substitute_is_json_because_sql_server_has_one_json(self, dialect):
         """``jsonb`` is PostgreSQL's binary JSON; SQL Server has no such split."""
-        assert dialect.suggested_data_types()["jsonb"] is JsonType
-        assert dialect.suggested_data_types()["array"] is JsonType
+        assert dialect.substitute_data_types()["jsonb"] is JsonType
+        assert dialect.substitute_data_types()["array"] is JsonType
 
 
 class TestSpellingGates:

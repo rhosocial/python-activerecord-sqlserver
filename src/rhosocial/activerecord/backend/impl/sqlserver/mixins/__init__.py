@@ -20,6 +20,7 @@ from .constraint import SQLServerConstraintMixin
 from .window import SQLServerWindowMixin
 from .json import SQLServerJSONMixin
 from .column_type import SQLServerColumnTypeMixin
+from .data_type_suggestions import SQLServerDataTypeSuggestionsMixin
 from .uuid import SQLServerUUIDMixin
 from .grouping import SQLServerGroupingMixin
 from .locking import SQLServerLockingMixin
@@ -67,6 +68,7 @@ __all__ = [
     "SQLServerWindowMixin",
     "SQLServerJSONMixin",
     "SQLServerColumnTypeMixin",
+    "SQLServerDataTypeSuggestionsMixin",
     "SQLServerUUIDMixin",
     "SQLServerGroupingMixin",
     "SQLServerLockingMixin",

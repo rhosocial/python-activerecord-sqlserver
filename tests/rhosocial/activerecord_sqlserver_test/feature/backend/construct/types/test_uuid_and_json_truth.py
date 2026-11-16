@@ -100,7 +100,7 @@ def test_type_name_is_namespaced_to_this_backend():
 def test_suggestion_does_not_point_at_a_type_this_dialect_renders():
     """A suggestion exists precisely for types the dialect cannot render."""
     dialect = _dialect()
-    suggestions = dialect.suggested_data_types()
+    suggestions = dialect.substitute_data_types()
     assert suggestions["uuid"] is SQLServerUniqueIdentifierType
     assert suggestions["uuid"].name != "uuid"
 
