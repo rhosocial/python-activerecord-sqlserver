@@ -35,7 +35,7 @@ from rhosocial.activerecord.backend.expression.types import (
     TimestampType,
     VarCharType as VarChar,
 )
-from rhosocial.activerecord.testsuite.fixture_types import supports_drop_if_exists
+from rhosocial.activerecord.testsuite.feature.query.fixtures.definitions import supports_drop_if_exists
 
 
 class Definition:
