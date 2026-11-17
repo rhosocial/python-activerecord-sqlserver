@@ -18,6 +18,15 @@ from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import 
     AsyncSQLServerBackend,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
+
+DECLARATION = Declaration(
+    parallel=False,
+    purpose="Backend-owned SQL Server tests using shared fixtures or pure rendering "
+    "(the construct directories).",
+    passes_means="the rendering or backend contract under test holds for the SQL Server dialect",
+    fails_means="a rendering assertion breaks, or a backend-specific contract is no longer met",
+)
 
 # --- Scenario Loading Logic ---
 
@@ -85,23 +94,6 @@ def get_scenario(
         name = next(iter(SCENARIO_MAP))
     _prepare_database(name, database)
     return SQLServerBackend, support.sqlserver.scenario(name).make_config(database)
-
-
-def pytest_collection_modifyitems(config, items):
-    """Pin an execution directory's tests to one worker.
-
-    These directories create and drop tables in the directory's own database,
-    so two workers must never run tests from the same directory at once: they
-    would reset that database under each other's feet.  The construct
-    directories never open a database, so they stay free to run in parallel.
-    """
-    for item in items:
-        parts = item.path.parts
-        if "backend" not in parts or "construct" in parts:
-            continue
-        item.add_marker(
-            pytest.mark.xdist_group("sqlserver-backend::" + str(item.path.parent))
-        )
 
 
 # --- Provider Logic ---

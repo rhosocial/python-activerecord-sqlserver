@@ -17,6 +17,14 @@ import pytest
 
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
+from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
+
+DECLARATION = Declaration(
+    parallel=True,
+    purpose="SQL Server native-type round-trips in the directory-owned database.",
+    passes_means="native values survive literal-SQL writes and adapted reads in their column family",
+    fails_means="a native type is stored or returned in the wrong form",
+)
 
 DML = ExecutionOptions(stmt_type=StatementType.DML)
 
@@ -146,14 +154,3 @@ def native_model(sqlserver_backend):
             backend.disconnect()
 
 
-def pytest_collection_modifyitems(config, items):
-    """Pin this directory to one worker.
-
-    The tests create and drop tables in the directory's own database, so two
-    workers must never run this directory at the same time (same rule as the
-    ``execute`` directories in ``feature/backend/conftest.py``).
-    """
-    for item in items:
-        parts = item.path.parts
-        if "adapters" in parts and "native" in parts:
-            item.add_marker(pytest.mark.xdist_group("sqlserver-native::" + str(item.path.parent)))
