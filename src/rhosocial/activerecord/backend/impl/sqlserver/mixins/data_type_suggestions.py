@@ -78,13 +78,19 @@ SQLSERVER_DATA_TYPE_SUGGESTIONS: Dict[Any, Optional[Any]] = {
     bool: SQLServerBitType(),
     int: IntegerType(),
     float: DoubleType(),
-    decimal.Decimal: DecimalType(),
+    # A bare DECIMAL is DECIMAL(18, 0) on SQL Server: no fractional digits, so
+    # a value like Decimal("10.99") would be rounded to 11 on the way in.  Give
+    # the suggestion a scale so a bare ``Decimal`` field round-trips its cents.
+    decimal.Decimal: DecimalType(precision=18, scale=4),
     str: SQLServerNVarCharType(length=255),
     bytes: SQLServerVarBinaryMaxType(),
     bytearray: SQLServerVarBinaryMaxType(),
     datetime.date: DateType(),
     datetime.time: TimeType(),
-    datetime.datetime: TimestampType(precision=3),
+    # DATETIME2's default precision is 7, but anything below 6 loses the
+    # microsecond part of a datetime (3 keeps only milliseconds).  Recommend 6
+    # so a bare ``datetime`` field round-trips the microsecond a caller writes.
+    datetime.datetime: TimestampType(precision=6),
     # SQL Server has no interval type; the value's text form is the carrier.
     datetime.timedelta: TextType(),
     uuid.UUID: SQLServerUniqueIdentifierType(),
