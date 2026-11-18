@@ -1363,56 +1363,13 @@ LEGITIMATE_NON_RENDERS = {
     "rhosocial.activerecord.backend.expression.types.enum_.EnumType": (
         UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
-    # The declared-result annotations: the base and every concrete member of
-    # it. Each carries only the node it annotates; the alias the core's
-    # ``format_declared_result`` reads belongs to the concrete named
-    # annotations, so the guessed instance -- a bare ``Literal`` -- has none,
-    # and the formatter fails naming it. The core formatter reading it is the
-    # moving edge of the value-literal rework (a narrowed ``Literal`` no longer
-    # carries ``alias`` at all); these rows record what the tree actually does
-    # today, one per class, because the concrete annotations are collected in
-    # their own right and an unnamed failure is a defect by this matrix's rule.
+    # --- The abstract declared-result base still cannot render. -----------
+    # The ten concrete annotations used to be pinned here because core's
+    # ``format_declared_result`` read ``expr.source.alias`` off a Literal that
+    # did not declare it. Core has since fixed that, so those classes render
+    # and their rows were retired; only the abstract base, whose instance shape
+    # the formatter still cannot read, remains.
     "rhosocial.activerecord.backend.expression.declared._Annotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.ArrayAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.BinaryAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.BooleanAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.IntegerAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.JSONAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.NumberAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.TemporalAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.TextAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.UUIDAnnotation": (
-        AttributeError,
-        "has no attribute 'alias'",
-    ),
-    "rhosocial.activerecord.backend.expression.declared.XMLAnnotation": (
         AttributeError,
         "has no attribute 'alias'",
     ),
