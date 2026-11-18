@@ -109,7 +109,11 @@ from typing import Any, Dict
 
 import pytest
 
-from rhosocial.activerecord.backend.dialect.exceptions import (ProtocolNotImplementedError, UnsupportedFeatureError)
+from rhosocial.activerecord.backend.dialect.exceptions import (
+    ProtocolNotImplementedError,
+    UnsupportedDataTypeError,
+    UnsupportedFeatureError,
+)
 from rhosocial.activerecord.backend.expression.core import Column, Literal
 from rhosocial.activerecord.backend.expression.objects import (
     Database,
@@ -1323,7 +1327,7 @@ LEGITIMATE_NON_RENDERS = {
     # DataType carries no name to dispatch, so the refusal speaks of the
     # generic type it could not resolve.
     "rhosocial.activerecord.backend.expression.types._base.DataType": (
-        TypeError,
+        UnsupportedDataTypeError,
         "does not support the generic type",
     ),
     # Core types with no SQL Server spelling (eight). SQL Server has no ARRAY,
@@ -1331,25 +1335,25 @@ LEGITIMATE_NON_RENDERS = {
     # declare a generic name the dialect does not implement. This is a
     # capability gap in this backend's type table, not a defect in the class.
     "rhosocial.activerecord.backend.expression.types.array.ArrayType": (
-        TypeError, _NO_SUCH_TYPE
+        UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
     "rhosocial.activerecord.backend.expression.types.binary.BinaryType": (
-        TypeError, _NO_SUCH_TYPE
+        UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
     "rhosocial.activerecord.backend.expression.types.binary.VarBinaryType": (
-        TypeError, _NO_SUCH_TYPE
+        UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
     "rhosocial.activerecord.backend.expression.types.datetime_.IntervalType": (
-        TypeError, _NO_SUCH_TYPE
+        UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
     "rhosocial.activerecord.backend.expression.types.datetime_.TimeTzType": (
-        TypeError, _NO_SUCH_TYPE
+        UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
     "rhosocial.activerecord.backend.expression.types.json_.JsonBType": (
-        TypeError, _NO_SUCH_TYPE
+        UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
     "rhosocial.activerecord.backend.expression.types.uuid_.UUIDType": (
-        TypeError, _NO_SUCH_TYPE
+        UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
     # ENUM (nine, and the ninth is this one's reason to exist): the class
     # constructs now that its keyword-only ``values`` gets a list from the
@@ -1357,7 +1361,7 @@ LEGITIMATE_NON_RENDERS = {
     # SQL Server has no ENUM generic, and the dialect says so while
     # suggesting the VARCHAR it actually uses.
     "rhosocial.activerecord.backend.expression.types.enum_.EnumType": (
-        TypeError, _NO_SUCH_TYPE
+        UnsupportedDataTypeError, _NO_SUCH_TYPE
     ),
     # The declared-result annotations: the base and every concrete member of
     # it. Each carries only the node it annotates; the alias the core's
