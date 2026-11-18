@@ -7,6 +7,7 @@ and schema as the feature suite.
 Redis benchmark support is not introduced in this release.  The related
 source snippets are kept as comments for follow-up external cache design.
 """
+from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
 
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
@@ -64,7 +65,16 @@ class RelationBenchmarkContext:
 # Redis benchmark is not introduced in this release.  Keep the fixture shape as
 # comments for follow-up external cache design instead of deleting the source.
 # ---------------------------------------------------------------------------
-# @pytest.fixture(scope="session")
+# 
+
+# This directory owns a database shared by all its tests within a scenario;
+# pin them to one worker so setup/teardown never races on the same database.
+DECLARATION = Declaration(
+    parallel=True,
+    purpose="Directory-owned database shared by this test group.",
+)
+
+@pytest.fixture(scope="session")
 # def _redis_client():
 #     redis = pytest.importorskip("redis")
 #     try:

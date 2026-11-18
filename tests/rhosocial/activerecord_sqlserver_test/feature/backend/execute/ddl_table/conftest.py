@@ -1,7 +1,7 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/execute/ddl_table/conftest.py
 """No directory-specific fixtures: these tests use the backend-owned fixtures."""
-
 from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
+
 
 # This directory's tests use the directory-owned database (see the backend root
 # conftest's ``database_for``), so they run serially on one worker per scenario.

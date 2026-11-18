@@ -9,6 +9,7 @@ The files here assert on expression SQL (COLLATE construction) and own their
 throwaway raw tables inside the test module, so no topic definition is
 prepared; the database still exists because it is the directory's identity.
 """
+from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
 
 import pytest
 
@@ -20,6 +21,14 @@ DDL = ExecutionOptions(stmt_type=StatementType.DDL)
 
 DEFINITIONS = ()
 
+
+
+# This directory owns a database shared by all its tests within a scenario;
+# pin them to one worker so setup/teardown never races on the same database.
+DECLARATION = Declaration(
+    parallel=True,
+    purpose="Directory-owned database shared by this test group.",
+)
 
 @pytest.fixture(scope="session")
 def database_config(backend_scenario):

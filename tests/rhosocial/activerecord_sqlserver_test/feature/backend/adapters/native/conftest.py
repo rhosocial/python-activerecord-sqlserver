@@ -10,6 +10,7 @@ The helpers here deliberately speak literal SQL for the "foreign data" (S3)
 step: a native INSERT must not go through any adapter, which is the whole point
 of that assertion.
 """
+from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
 import re
 from pathlib import Path
 
@@ -17,7 +18,6 @@ import pytest
 
 from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
-from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
 
 DECLARATION = Declaration(
     parallel=True,

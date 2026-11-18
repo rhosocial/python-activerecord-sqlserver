@@ -13,6 +13,7 @@ The tables the ``*_with_tables`` fixtures create and drop through the pool are
 declared in ``pool_definitions.py``: a definition class takes a ``dialect``
 only, so this conftest holds no SQL of its own.
 """
+from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
 
 from typing import Generator
 
@@ -47,6 +48,15 @@ from pool_definitions import (
 
 # --- directory contract: the directory's identity for xdist grouping ---
 
+
+
+
+# This directory owns a database shared by all its tests within a scenario;
+# pin them to one worker so setup/teardown never races on the same database.
+DECLARATION = Declaration(
+    parallel=True,
+    purpose="Directory-owned database shared by this test group.",
+)
 
 @pytest.fixture(scope="session")
 def database_config(backend_scenario):
