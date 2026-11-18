@@ -45,6 +45,8 @@ class ConcurrentUser(AsyncActiveRecord):
     def table_name(cls):
         return "concurrent_users"
 
+    __primary_key__ = "id"
+
     c: ClassVar[FieldProxy] = FieldProxy()
 
     id: Optional[int] = None
@@ -59,6 +61,8 @@ class ConcurrentTask(AsyncActiveRecord):
     @classmethod
     def table_name(cls):
         return "concurrent_tasks"
+
+    __primary_key__ = "id"
 
     c: ClassVar[FieldProxy] = FieldProxy()
 
@@ -279,6 +283,8 @@ async def test_recommended_pattern_independent_backends(mysql_config):
                 def table_name(cls):
                     return "concurrent_users"
 
+                __primary_key__ = "id"
+
                 c: ClassVar[FieldProxy] = FieldProxy()
                 id: Optional[int] = None
                 username: str
@@ -372,6 +378,8 @@ async def test_transaction_isolation_with_independent_backends(mysql_config):
                 @classmethod
                 def table_name(cls):
                     return "concurrent_users"
+
+                __primary_key__ = "id"
 
                 c: ClassVar[FieldProxy] = FieldProxy()
                 id: Optional[int] = None
@@ -483,6 +491,8 @@ async def test_sequential_vs_concurrent_comparison(mysql_config):
         def table_name(cls):
             return "concurrent_users"
 
+        __primary_key__ = "id"
+
         c: ClassVar[FieldProxy] = FieldProxy()
         id: Optional[int] = None
         username: str
@@ -514,6 +524,8 @@ async def test_sequential_vs_concurrent_comparison(mysql_config):
                 @classmethod
                 def table_name(cls):
                     return "concurrent_users"
+
+                __primary_key__ = "id"
 
                 c: ClassVar[FieldProxy] = FieldProxy()
                 id: Optional[int] = None
@@ -600,6 +612,8 @@ async def test_concurrency_best_practices_documentation(mysql_config):
                 @classmethod
                 def table_name(cls):
                     return "concurrent_users"
+
+                __primary_key__ = "id"
 
                 c: ClassVar[FieldProxy] = FieldProxy()
                 id: Optional[int] = None
