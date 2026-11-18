@@ -43,7 +43,7 @@ backend.execute(sql, params)
 # Baseline table: ID, NAME
 expr = CreateTableStatement(
     dialect=dialect, table=users, columns=[
-        ColumnDefinition(dialect, "id"[0], auto_increment_parts(dialect, IntegerType(dialect))[0],
+        ColumnDefinition(dialect, "id", auto_increment_parts(dialect, IntegerType(dialect))[0],
             constraints=[
                 ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)),
             ], attributes=auto_increment_parts(dialect, IntegerType(dialect))[1]),

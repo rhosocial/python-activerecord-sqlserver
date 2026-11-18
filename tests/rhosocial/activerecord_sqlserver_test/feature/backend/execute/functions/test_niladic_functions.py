@@ -125,7 +125,7 @@ class TestNiladicDDLContext:
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
-                ColumnDefinition(dialect, 'id'[0], auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
+                ColumnDefinition(dialect, 'id', auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
                     ColumnConstraint(
                         dialect,
                         branch=ColumnPrimaryKeyConstraint(dialect),
@@ -166,7 +166,7 @@ class TestNiladicDDLContext:
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
-                ColumnDefinition(dialect, 'id'[0], auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
+                ColumnDefinition(dialect, 'id', auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
                     ColumnConstraint(
                         dialect,
                         branch=ColumnPrimaryKeyConstraint(dialect),
@@ -233,7 +233,7 @@ class TestAsyncNiladicDDLContext:
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
-                ColumnDefinition(dialect, 'id'[0], auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
+                ColumnDefinition(dialect, 'id', auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
                     ColumnConstraint(
                         dialect,
                         branch=ColumnPrimaryKeyConstraint(dialect),

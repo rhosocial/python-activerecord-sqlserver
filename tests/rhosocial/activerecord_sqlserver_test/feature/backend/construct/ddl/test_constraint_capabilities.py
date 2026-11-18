@@ -409,7 +409,7 @@ class TestColumnLevelNarrowing:
         d = _dialect()
         column = ColumnDefinition(
             d,
-            "id"[0],
+            "id",
             auto_increment_parts(d, IntegerType(d))[0],
             constraints=[
                 ColumnConstraint(
