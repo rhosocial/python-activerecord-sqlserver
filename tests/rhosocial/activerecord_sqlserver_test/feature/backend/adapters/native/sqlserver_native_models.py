@@ -7,8 +7,8 @@ with ``UseAdapter``; otherwise the model relies on the merged suggestion table,
 so the test also proves that wiring.
 
 The tables are created from ``schema/native_types.sql``; these models never
-render DDL, and ``pk_auto_generated`` is False because every primary key in
-that schema is a caller-supplied ``INT``.
+render DDL and declare no primary key, so ``pk_auto_generated()`` derives
+False from the empty key declaration.
 """
 import uuid
 from datetime import datetime
@@ -32,10 +32,6 @@ class _NativeRow(ActiveRecord):
     """Shared configuration for the one-table-per-family models."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    @classmethod
-    def pk_auto_generated(cls) -> bool:
-        return False
 
     id: Optional[int] = None
 

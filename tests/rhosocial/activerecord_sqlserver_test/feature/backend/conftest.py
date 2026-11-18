@@ -21,6 +21,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.backend.async_backend import 
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
 DECLARATION = Declaration(
+    uses_database=True,
     parallel=False,
     purpose="Backend-owned SQL Server tests using shared fixtures or pure rendering "
     "(the construct directories).",

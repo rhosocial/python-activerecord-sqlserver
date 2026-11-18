@@ -70,6 +70,8 @@ class RelationBenchmarkContext:
 # This directory owns a database shared by all its tests within a scenario;
 # pin them to one worker so setup/teardown never races on the same database.
 DECLARATION = Declaration(
+    # This scope opens a database; the plugin enforces this declaration.
+    uses_database=True,
     parallel=True,
     purpose="Directory-owned database shared by this test group.",
 )

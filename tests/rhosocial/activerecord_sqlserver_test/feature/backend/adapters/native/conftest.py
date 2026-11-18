@@ -20,6 +20,7 @@ from rhosocial.activerecord.backend.options import ExecutionOptions
 from rhosocial.activerecord.backend.schema import StatementType
 
 DECLARATION = Declaration(
+    uses_database=True,
     parallel=True,
     purpose="SQL Server native-type round-trips in the directory-owned database.",
     passes_means="native values survive literal-SQL writes and adapted reads in their column family",

@@ -1,6 +1,7 @@
 """
 Basic transaction with context manager for automatic commit/rollback.
 """
+from rhosocial.activerecord.backend.expression.statements import auto_increment_parts  # noqa: E402
 
 import os
 
@@ -44,12 +45,12 @@ create_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'txn_users'),
     columns=[
-        ColumnDefinition('id', 'INT', constraints=[
+        ColumnDefinition('id', auto_increment_parts(dialect, 'INT')[0], constraints=[
             ColumnConstraint(
                 dialect,
-                branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                branch=ColumnPrimaryKeyConstraint(dialect),
             ),
-        ]),
+        ], attributes=auto_increment_parts(dialect, 'INT')[1]),
         ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
             ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
         ]),

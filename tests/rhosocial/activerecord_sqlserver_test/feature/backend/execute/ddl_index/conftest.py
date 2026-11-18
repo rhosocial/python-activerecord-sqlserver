@@ -6,6 +6,7 @@ from rhosocial.activerecord.testsuite.pytest_plugin import Declaration
 # This directory's tests use the directory-owned database (see the backend root
 # conftest's ``database_for``), so they run serially on one worker per scenario.
 DECLARATION = Declaration(
+    uses_database=True,
     parallel=True,
     purpose=(
         "Execute tests for this directory: they create and drop objects in the "

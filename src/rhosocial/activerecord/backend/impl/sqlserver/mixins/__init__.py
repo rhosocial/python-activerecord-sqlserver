@@ -1,4 +1,5 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/__init__.py
+from .integer_auto_increment_column_suggestion import SQLServerIntegerAutoIncrementColumnSuggestionMixin
 from .types import SQLServerTypeSupportMixin
 from .concurrency import SQLServerConcurrencyMixin
 from .backend_mixin import SQLServerBackendMixin
@@ -47,6 +48,7 @@ from .trim import SQLServerTrimMixin
 from .literal import SQLServerLiteralValueMixin
 
 __all__ = [
+    'SQLServerIntegerAutoIncrementColumnSuggestionMixin',
     "SQLServerTypeSupportMixin",
     "SQLServerConcurrencyMixin",
     "SQLServerBackendMixin",

@@ -13,6 +13,7 @@ maps those to SQL Server equivalents:
 These tests verify the rendered SQL and execute it against a real database
 in both DDL DEFAULT and SELECT contexts.
 """
+from rhosocial.activerecord.backend.expression.statements import auto_increment_parts  # noqa: E402
 import pytest
 
 from rhosocial.activerecord.backend.expression import (
@@ -124,12 +125,12 @@ class TestNiladicDDLContext:
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
-                ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
+                ColumnDefinition(dialect, 'id'[0], auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
                     ColumnConstraint(
                         dialect,
-                        branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                        branch=ColumnPrimaryKeyConstraint(dialect),
                     ),
-                ]),
+                ], attributes=auto_increment_parts(dialect, IntegerType(dialect))[1]),
                 ColumnDefinition(dialect, 'ts', TimestampType(dialect), constraints=[
                     ColumnConstraint(dialect, branch=ColumnDefaultConstraint(dialect, current_timestamp(dialect))),
                 ]),
@@ -165,12 +166,12 @@ class TestNiladicDDLContext:
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
-                ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
+                ColumnDefinition(dialect, 'id'[0], auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
                     ColumnConstraint(
                         dialect,
-                        branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                        branch=ColumnPrimaryKeyConstraint(dialect),
                     ),
-                ]),
+                ], attributes=auto_increment_parts(dialect, IntegerType(dialect))[1]),
                 ColumnDefinition(dialect, 'ts', TimestampType(dialect, precision=6), constraints=[
                     ColumnConstraint(
                         dialect,
@@ -232,12 +233,12 @@ class TestAsyncNiladicDDLContext:
             dialect=dialect,
             table=Table(dialect, table_name),
             columns=[
-                ColumnDefinition(dialect, 'id', IntegerType(dialect), constraints=[
+                ColumnDefinition(dialect, 'id'[0], auto_increment_parts(dialect, IntegerType(dialect))[0], constraints=[
                     ColumnConstraint(
                         dialect,
-                        branch=ColumnPrimaryKeyConstraint(dialect, is_auto_increment=True),
+                        branch=ColumnPrimaryKeyConstraint(dialect),
                     ),
-                ]),
+                ], attributes=auto_increment_parts(dialect, IntegerType(dialect))[1]),
                 ColumnDefinition(dialect, 'ts', TimestampType(dialect), constraints=[
                     ColumnConstraint(dialect, branch=ColumnDefaultConstraint(dialect, current_timestamp(dialect))),
                 ]),

@@ -151,6 +151,7 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
+from .mixins.integer_auto_increment_column_suggestion import SQLServerIntegerAutoIncrementColumnSuggestionMixin
 from .mixins.introspection import SQLServerIntrospectionMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
@@ -256,6 +257,8 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 
 
 class SQLServerDialect(
+    # Backend suggestion first: no core mixin may shadow its answer.
+    SQLServerIntegerAutoIncrementColumnSuggestionMixin,
     # The bases below come in bundles: a backend mixin, then the core bundle
     # it stands in for. The backend's answer has to come first -- a mixin
     # placed after the class it overrides never wins -- so a new mixin goes
@@ -877,8 +880,6 @@ class SQLServerDialect(
                 constraint_parts.append(
                     "PRIMARY KEY NONCLUSTERED" if memory_optimized else "PRIMARY KEY"
                 )
-                if branch.is_auto_increment:
-                    constraint_parts.append("IDENTITY(1,1)")
             elif isinstance(branch, ColumnUniqueConstraint):
                 constraint_parts.append(
                     "UNIQUE NONCLUSTERED" if memory_optimized else "UNIQUE"
