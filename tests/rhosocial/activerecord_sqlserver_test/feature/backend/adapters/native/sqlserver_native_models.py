@@ -7,8 +7,12 @@ with ``UseAdapter``; otherwise the model relies on the merged suggestion table,
 so the test also proves that wiring.
 
 The tables are created from ``schema/native_types.sql``; these models never
-render DDL and declare no primary key, so ``pk_auto_generated()`` derives
-False from the empty key declaration.
+render DDL. Every table has a caller-supplied ``id`` INT primary key (a plain
+``INT``, not ``IDENTITY``), declared as ``__primary_key__`` so the models stay
+addressable by identity for ``find_one``/``save``. The ``id`` carries a
+``UseFieldGenerator`` that echoes the caller's value: that is core's declaration
+that the key is application-supplied, so it is never classed as a server-generated
+identity and stripped out of the INSERT.
 """
 import uuid
 from datetime import datetime
@@ -24,16 +28,23 @@ from rhosocial.activerecord.backend.impl.sqlserver.adapters import (
     SQLServerHierarchyIdAdapter,
     SQLServerXMLAdapter,
 )
-from rhosocial.activerecord.base.fields import UseAdapter
+from rhosocial.activerecord.base.fields import UseAdapter, UseFieldGenerator
 from rhosocial.activerecord.model import ActiveRecord
 
 
 class _NativeRow(ActiveRecord):
     """Shared configuration for the one-table-per-family models."""
 
+    __primary_key__ = "id"
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    id: Optional[int] = None
+    # Caller-supplied INT: the echo generator marks the key as application-assigned
+    # so core keeps it in the INSERT instead of expecting the server to fill it.
+    id: Annotated[
+        Optional[int],
+        UseFieldGenerator(before_insert=lambda self: getattr(self, self.primary_key(), None)),
+    ] = None
 
 
 class MoneyRow(_NativeRow):
