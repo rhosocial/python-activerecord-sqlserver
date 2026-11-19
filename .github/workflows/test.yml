@@ -18,6 +18,141 @@ permissions:
   contents: read
 
 jobs:
+  benchmark-sqlserver:
+    name: Run benchmarks with Python 3.14 and SQL Server 2025
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2025-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Password123!
+        ports:
+        - 1443:1433
+        options: >-
+          --name sqlserver
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123!' -Q 'SELECT 1' -N -C || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+
+    steps:
+    - name: Check out the repository
+      uses: actions/checkout@v6
+
+    - name: Set up Python 3.14
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.14"
+
+    - name: Install ODBC Driver 18 for SQL Server
+      run: |
+        curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+        curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+        sudo apt-get update
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-ddl"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-ddl"  # NOSONAR
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Create test database
+      run: |
+        python -c "
+        import pyodbc
+
+        connection_string = (
+            'DRIVER={ODBC Driver 18 for SQL Server};'
+            'SERVER=localhost,1443;'
+            'DATABASE=master;'
+            'UID=sa;'
+            'PWD=Password123!;'
+            'TrustServerCertificate=yes;'
+            'Encrypt=no;'
+        )
+
+        conn = pyodbc.connect(connection_string, autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute('CREATE DATABASE test_db')
+        print('Successfully created test_db')
+        cursor.close()
+        conn.close()
+        "
+
+    - name: Create SQL Server scenario config
+      run: |
+        cat > sqlserver_scenarios.yaml << EOF
+        scenarios:
+          sqlserver_2025:
+            host: localhost
+            port: 1443
+            database: test_db
+            username: sa
+            password: Password123!
+            driver: "ODBC Driver 18 for SQL Server"
+            encrypt: false
+            trust_server_certificate: true
+            autocommit: true
+        EOF
+        echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
+    - name: Run benchmark suite
+      run: |
+        set -o pipefail
+        export PYTHONPATH=src:tests
+        TESTSUITE_DIR=$(python - <<'PY'
+        import pathlib
+        import rhosocial.activerecord.testsuite as testsuite
+
+        print(pathlib.Path(testsuite.__file__).parent)
+        PY
+        )
+        python -m pytest \
+          -p tests.benchmark.providers \
+          --rootdir=. \
+          --confcutdir=. \
+          "$TESTSUITE_DIR/benchmark/crud/core/test_delete_async.py" \
+          "$TESTSUITE_DIR/benchmark/crud/core/test_delete.py" \
+          "$TESTSUITE_DIR/benchmark/crud/core/test_insert_async.py" \
+          "$TESTSUITE_DIR/benchmark/crud/core/test_insert.py" \
+          "$TESTSUITE_DIR/benchmark/crud/core/test_query_async.py" \
+          "$TESTSUITE_DIR/benchmark/crud/core/test_query.py" \
+          "$TESTSUITE_DIR/benchmark/crud/core/test_update_async.py" \
+          "$TESTSUITE_DIR/benchmark/crud/core/test_update.py" \
+          "$TESTSUITE_DIR/benchmark/query" \
+          "$TESTSUITE_DIR/benchmark/transaction" \
+          "$TESTSUITE_DIR/benchmark/mixin" \
+          -m benchmark \
+          --benchmark-size=small \
+          --benchmark-sort=mean \
+          --tb=short | tee -a benchmark-output.txt
+
+    - name: Write benchmark conclusion
+      if: always()
+      run: |
+        {
+          echo "## Python 3.14 / SQL Server 2025 Benchmark Conclusion"
+          echo
+          echo "- Python: 3.14"
+          echo "- SQL Server: 2025"
+          echo "- Scope: shared testsuite benchmarks (crud/query/transaction/mixin) via registered SQL Server providers"
+          echo "- Size: small"
+          echo "- Result: benchmark job fails only when benchmark execution or correctness checks fail."
+          echo
+          echo '```text'
+          grep -A 120 "benchmark:" benchmark-output.txt || cat benchmark-output.txt
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
   test-py39-sqlserver2022:
     name: Run tests with Python 3.9 and SQL Server 2022
     runs-on: ubuntu-24.04
