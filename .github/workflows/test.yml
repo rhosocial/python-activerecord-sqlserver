@@ -106,7 +106,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
 
   test-py39-sqlserver2017:
     name: Run tests with Python 3.9 and SQL Server 2017
@@ -196,7 +196,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
 
   test-py310-sqlserver2019:
     name: Run tests with Python 3.10 and SQL Server 2019
@@ -286,7 +286,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
 
   test-py311-sqlserver2019:
     name: Run tests with Python 3.11 and SQL Server 2019
@@ -376,7 +376,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
 
   test-py312-sqlserver2025:
     name: Run tests with Python 3.12 and SQL Server 2025
@@ -466,7 +466,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
 
   test-py313-sqlserver2022:
     name: Run tests with Python 3.13 and SQL Server 2022
@@ -556,7 +556,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
 
   test-py313t-sqlserver2019:
     name: Run tests with Python 3.13t (free-threaded) and SQL Server 2019
@@ -647,7 +647,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
 
   test-py314-sqlserver2025:
     name: Run tests with Python 3.14 and SQL Server 2025
@@ -737,7 +737,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  --tb=short -n 8 --dist=loadgroup --cov=src/rhosocial --cov-branch --cov-report=xml
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  --tb=short -n 8 --dist=loadgroup --cov=src/rhosocial --cov-branch --cov-report=xml tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
@@ -836,4 +836,4 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/backend tests/rhosocial/activerecord_sqlserver_test/feature/basic  -n 8 --dist=loadgroup --tb=short -x tests/rhosocial/activerecord_sqlserver_test/feature/query tests/rhosocial/activerecord_sqlserver_test/feature/cte tests/rhosocial/activerecord_sqlserver_test/feature/setop tests/rhosocial/activerecord_sqlserver_test/feature/query_integration
