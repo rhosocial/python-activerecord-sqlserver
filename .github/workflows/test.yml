@@ -737,7 +737,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ --tb=short -n 8 --dist=loadgroup --cov=src/rhosocial --cov-branch --cov-report=xml --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ --tb=short -n 8 --dist=loadgroup --cov=rhosocial.activerecord.backend.impl.sqlserver --cov-branch --cov-report=xml --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
