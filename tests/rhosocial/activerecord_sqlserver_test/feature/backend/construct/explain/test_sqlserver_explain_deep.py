@@ -21,6 +21,9 @@ connection*:
 * that ``ExplainStatement.to_sql()`` delegates to that formatter and passes
   the inner statement's parameters through unchanged.
 
+The statement being explained is always built with the expression system
+(``QueryStatement`` / ``Column`` / ``Literal`` / predicates / ``Table``), never
+from a hand-written SQL string. SQL text appears only as assertion expectations.
 All rendering assertions run against several explicit server versions so the
 output is proven version-invariant and no server probe ever happens.
 """
@@ -28,15 +31,20 @@ output is proven version-invariant and no server probe ever happens.
 from typing import Optional, Tuple
 
 import pytest
+
 from rhosocial.activerecord.backend.expression import (
-    AllColumnsWildcard,
+    Column,
+    ComparisonPredicate,
     ExplainFormat,
     ExplainOptions,
     ExplainStatement,
+    Literal,
+    LogicalPredicate,
     QueryStatement,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
-
+from rhosocial.activerecord.backend.expression.query_parts import WhereClause
+from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
     SQL_SERVER_2012,
     SQL_SERVER_2016,
@@ -60,22 +68,35 @@ def dialect(request) -> SQLServerDialect:
     return SQLServerDialect(request.param)
 
 
-class _SelectOne:
-    """Minimal inner statement so rendered SQL and params are easy to pin.
+def _build_query(dialect: SQLServerDialect) -> QueryStatement:
+    """Build the statement to EXPLAIN entirely from expression objects.
 
-    Returning fixed SQL plus a tuple of params lets us assert both the exact
-    surrounding SHOWPLAN text and that parameters are passed through untouched.
+    Two literals give the wrapper two bound parameters, so parameter
+    pass-through is observable without any hand-written SQL text.
     """
-
-    def to_sql(self) -> Tuple[str, tuple]:
-        return "SELECT 1", (42, 7)
+    return QueryStatement(
+        dialect,
+        select=[Column(dialect, "id")],
+        from_=NamedRelationRef(dialect, Table(dialect, "users")),
+        where=WhereClause(
+            dialect,
+            condition=LogicalPredicate(
+                dialect,
+                "AND",
+                ComparisonPredicate(dialect, ">", Column(dialect, "price"), Literal(dialect, 100)),
+                ComparisonPredicate(
+                    dialect, "=", Column(dialect, "name"), Literal(dialect, "alice")
+                ),
+            ),
+        ),
+    )
 
 
 def _render(
     dialect: SQLServerDialect, options: Optional[ExplainOptions], statement=None
 ) -> Tuple[str, tuple]:
     """Render an ExplainStatement through the dialect's public to_sql() path."""
-    expr = ExplainStatement(dialect, statement=statement or _SelectOne(), options=options)
+    expr = ExplainStatement(dialect, statement=statement or _build_query(dialect), options=options)
     return expr.to_sql()
 
 
@@ -121,20 +142,28 @@ class TestExplainStatementRendering:
 
     def test_no_options_defaults_to_showplan_text(self, dialect: SQLServerDialect) -> None:
         sql, _ = _render(dialect, None)
-        assert sql == "SET SHOWPLAN_TEXT ON; SELECT 1"
+        assert sql == (
+            "SET SHOWPLAN_TEXT ON; " "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?"
+        )
 
     def test_empty_options_default_to_showplan_text(self, dialect: SQLServerDialect) -> None:
         sql, _ = _render(dialect, ExplainOptions())
-        assert sql == "SET SHOWPLAN_TEXT ON; SELECT 1"
+        assert sql == (
+            "SET SHOWPLAN_TEXT ON; " "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?"
+        )
 
     def test_format_text_renders_showplan_text(self, dialect: SQLServerDialect) -> None:
         sql, _ = _render(dialect, ExplainOptions(format=ExplainFormat.TEXT))
-        assert sql == "SET SHOWPLAN_TEXT ON; SELECT 1"
+        assert sql == (
+            "SET SHOWPLAN_TEXT ON; " "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?"
+        )
 
     def test_format_xml_renders_showplan_xml_without_off(self, dialect: SQLServerDialect) -> None:
         """Estimated XML plan is a single batch; no OFF toggle is emitted."""
         sql, _ = _render(dialect, ExplainOptions(format=ExplainFormat.XML))
-        assert sql == "SET SHOWPLAN_XML ON; SELECT 1"
+        assert sql == (
+            "SET SHOWPLAN_XML ON; " "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?"
+        )
         assert "OFF" not in sql
 
     # -- actual plan (ANALYZE=True), with ON/OFF bracketing -------------------------
@@ -143,24 +172,42 @@ class TestExplainStatementRendering:
         self, dialect: SQLServerDialect
     ) -> None:
         sql, _ = _render(dialect, ExplainOptions(analyze=True))
-        assert sql == "SET STATISTICS PROFILE ON; SELECT 1; SET STATISTICS PROFILE OFF"
+        assert sql == (
+            "SET STATISTICS PROFILE ON; "
+            "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?; "
+            "SET STATISTICS PROFILE OFF"
+        )
 
     def test_analyze_text_renders_statistics_profile(self, dialect: SQLServerDialect) -> None:
         """TEXT is not the XML branch, so ANALYZE falls back to PROFILE."""
         sql, _ = _render(dialect, ExplainOptions(analyze=True, format=ExplainFormat.TEXT))
-        assert sql == "SET STATISTICS PROFILE ON; SELECT 1; SET STATISTICS PROFILE OFF"
+        assert sql == (
+            "SET STATISTICS PROFILE ON; "
+            "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?; "
+            "SET STATISTICS PROFILE OFF"
+        )
 
     def test_analyze_xml_renders_statistics_xml(self, dialect: SQLServerDialect) -> None:
         sql, _ = _render(dialect, ExplainOptions(analyze=True, format=ExplainFormat.XML))
-        assert sql == "SET STATISTICS XML ON; SELECT 1; SET STATISTICS XML OFF"
+        assert sql == (
+            "SET STATISTICS XML ON; "
+            "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?; "
+            "SET STATISTICS XML OFF"
+        )
 
     def test_unsupported_format_is_ignored_by_renderer(self, dialect: SQLServerDialect) -> None:
         """Rendering does not validate format names; callers must use the gate."""
         assert dialect.supports_explain_format("JSON") is False
         estimated, _ = _render(dialect, ExplainOptions(format=ExplainFormat.JSON))
-        assert estimated == "SET SHOWPLAN_TEXT ON; SELECT 1"
+        assert estimated == (
+            "SET SHOWPLAN_TEXT ON; " "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?"
+        )
         actual, _ = _render(dialect, ExplainOptions(analyze=True, format=ExplainFormat.JSON))
-        assert actual == "SET STATISTICS PROFILE ON; SELECT 1; SET STATISTICS PROFILE OFF"
+        assert actual == (
+            "SET STATISTICS PROFILE ON; "
+            "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?; "
+            "SET STATISTICS PROFILE OFF"
+        )
 
     # -- delegation / parameter handling --------------------------------------------
 
@@ -176,21 +223,28 @@ class TestExplainStatementRendering:
     )
     def test_inner_statement_params_pass_through(self, dialect: SQLServerDialect, options) -> None:
         _, params = _render(dialect, options)
-        assert params == (42, 7)
+        assert params == (100, "alice")
 
-    def test_real_query_statement_sql_is_embedded_verbatim(self, dialect: SQLServerDialect) -> None:
-        query = QueryStatement(
-            dialect, select=[AllColumnsWildcard(dialect)], from_=Table(dialect, "t")
-        )
-        assert query.to_sql()[0] == "SELECT * FROM [t]"
+    def test_expression_built_statement_sql_is_embedded_verbatim(
+        self, dialect: SQLServerDialect
+    ) -> None:
+        query = _build_query(dialect)
+        assert query.to_sql()[0] == ("SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?")
         sql, params = _render(dialect, ExplainOptions(format=ExplainFormat.XML), statement=query)
-        assert sql == "SET SHOWPLAN_XML ON; SELECT * FROM [t]"
-        assert params == ()
+        assert sql == (
+            "SET SHOWPLAN_XML ON; " "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?"
+        )
+        assert params == (100, "alice")
 
     def test_to_sql_delegates_to_format_explain_statement(self, dialect: SQLServerDialect) -> None:
         options = ExplainOptions(analyze=True, format=ExplainFormat.XML)
-        expr = ExplainStatement(dialect, statement=_SelectOne(), options=options)
+        expr = ExplainStatement(dialect, statement=_build_query(dialect), options=options)
         assert expr.format_method == "format_explain_statement"
         direct = dialect.format_explain_statement(expr)
         assert expr.to_sql() == direct
-        assert direct == ("SET STATISTICS XML ON; SELECT 1; SET STATISTICS XML OFF", (42, 7))
+        assert direct == (
+            "SET STATISTICS XML ON; "
+            "SELECT [id] FROM [users] WHERE [price] > ? AND [name] = ?; "
+            "SET STATISTICS XML OFF",
+            (100, "alice"),
+        )
