@@ -607,6 +607,24 @@ class SQLServerDialect(
         """Return IDENTITY(1,1) for auto-increment columns."""
         return "IDENTITY(1,1)", ()
 
+    def format_exists_predicate(self, expr: Any) -> Tuple[str, tuple]:
+        """Render a scalar ``EXISTS`` as T-SQL ``CASE WHEN ... THEN 1 ELSE 0 END``.
+
+        Core's ``exists()`` uses ``ExistsPredicate`` as an aliased scalar select
+        expression, which renders as ``SELECT EXISTS (subquery) AS ...`` on
+        dialects with a boolean type. T-SQL has no boolean scalar and rejects
+        EXISTS in a SELECT list (error 156), so the aliased (scalar) form maps to
+        the portable integer 1/0 form; ``_run_scalar`` reads it back and
+        ``bool()`` coerces it. An unaliased EXISTS stays a plain boolean
+        predicate, preserving its behaviour in WHERE/HAVING contexts.
+        """
+        subquery_sql, subquery_params = expr.subquery.to_sql()
+        negation = "NOT " if getattr(expr, "is_not", False) else ""
+        exists_clause = f"{negation}EXISTS {subquery_sql}"
+        if getattr(expr, "alias", None):
+            exists_clause = f"CASE WHEN {exists_clause} THEN 1 ELSE 0 END"
+        return self._with_predicate_alias(exists_clause, expr), subquery_params
+
     def format_array_expression(self, _expr: "ArrayOperation") -> Tuple[str, tuple]:
         """Format array expression - not supported."""
         raise UnsupportedFeatureError(self.name, "Array operations", _SUGGESTION_ARRAY_TYPES)
