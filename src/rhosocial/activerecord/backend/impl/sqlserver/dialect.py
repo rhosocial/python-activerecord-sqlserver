@@ -152,6 +152,7 @@ from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
 from .mixins.integer_auto_increment_column_suggestion import SQLServerIntegerAutoIncrementColumnSuggestionMixin
+from .mixins.partition_suggestion import SQLServerPartitionSuggestionMixin
 from .mixins.introspection import SQLServerIntrospectionMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
@@ -257,7 +258,9 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 
 
 class SQLServerDialect(
-    # Backend suggestion first: no core mixin may shadow its answer.
+    # Backend suggestions first: no core mixin may shadow their answers. Both
+    # sit ahead of every core/base mixin for the C3 reason spelled out below.
+    SQLServerPartitionSuggestionMixin,
     SQLServerIntegerAutoIncrementColumnSuggestionMixin,
     # The bases below come in bundles: a backend mixin, then the core bundle
     # it stands in for. The backend's answer has to come first -- a mixin

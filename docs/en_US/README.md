@@ -35,7 +35,7 @@
 
 5. **[DDL Operations](ddl/create_table.md)**
     * **[Creating tables](ddl/create_table.md)**: models to tables, IDENTITY, constraints and indexes
-    * **[Partitioning](ddl/partition.md)**: functions, schemes, `SPLIT`/`MERGE`/`SWITCH` and the maintenance helper
+    * **[Partitioning](ddl/partition.md)**: functions, schemes, `SPLIT`/`MERGE`/`SWITCH`, partition suggestions and introspection
     * **[Advanced objects](ddl/advanced_objects.md)**: temporal tables, SQL Graph, columnstore, memory-optimized tables and sequences
 
 6. **[Migrations](migration/README.md)**

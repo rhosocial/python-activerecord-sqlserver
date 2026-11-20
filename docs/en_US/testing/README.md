@@ -38,10 +38,10 @@ where available. Tests are organised by feature (`backend/construct`,
 
 - **Offline** suites replace catalogue reads with canned rows and assert every
   rendered statement. They need no database and are the default local check.
-- **Live** tests (for example the partition coverage under
-  `feature/backend/execute/partition/test_partition_live.py`) exercise
-  `CREATE PARTITION FUNCTION` / `SCHEME`, `SPLIT`, `MERGE`, `SWITCH` and
-  catalogue reads against the SQL Server 2022 image. A live test **skips —
+- **Live** tests (for example the catalogue coverage under
+  `feature/backend/execute/introspection/`) exercise the backend against the
+  SQL Server 2022 image. Partition behaviour is covered offline by the
+  expression, syntax-matrix and suggestion suites. A live test **skips —
   rather than passes —** when no scenario is configured or the server cannot be
   reached, so a skipped live test is not evidence that the feature works.
 

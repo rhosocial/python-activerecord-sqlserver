@@ -2,11 +2,11 @@
 """Offline matrix over SQL Server's partition syntax families.
 
 Every test is parameterised by ``partition_syntax_case`` from
-``partition_syntax_fixtures.py``. The matrix asserts the four things a family
-can be wrong about without a server: the plan's normalised count, direction
-and destinations; the rendered DDL's required and forbidden fragments; the
-explicit refusal of subpartitioning; and the maintenance executor's decisions
-against canned catalogue rows.
+``partition_syntax_fixtures.py``. The matrix asserts the things a family can be
+wrong about without a server: the plan's normalised count, direction and
+destinations; the rendered DDL's required and forbidden fragments; and the
+explicit refusal of subpartitioning. Suggestion values are covered in
+``test_partition_suggestions.py``.
 
 No connection is opened. The ``sqlserver_dialect`` fixture is the existing
 offline fixture from ``feature/backend/conftest.py``.
@@ -83,9 +83,7 @@ class TestPartitionSyntaxPlan:
                 f"{plan.next_filegroup!r}"
             )
 
-    def test_subpartitioning_is_refused(
-        self, partition_syntax_case  # noqa: F811 - pytest fixture
-    ):
+    def test_subpartitioning_is_refused(self, partition_syntax_case):  # noqa: F811 - pytest fixture
         case = partition_syntax_case
         if not case.refuse_subpartition:
             return
@@ -108,72 +106,13 @@ class TestPartitionSyntaxDDL:
         rendered = []
         for statement in case.ddl_builder(sqlserver_dialect, plan):
             sql, params = statement.to_sql()
-            assert params == (), (
-                f"{case.name}: partition DDL binds no parameters, got {params!r}"
-            )
+            assert params == (), f"{case.name}: partition DDL binds no parameters, got {params!r}"
             rendered.append(sql)
         for fragment in case.expected_fragments:
-            assert any(fragment in sql for sql in rendered), (
-                f"{case.name}: expected {fragment!r} in {rendered!r}"
-            )
+            assert any(
+                fragment in sql for sql in rendered
+            ), f"{case.name}: expected {fragment!r} in {rendered!r}"
         for fragment in case.forbidden_fragments:
-            assert all(fragment not in sql for sql in rendered), (
-                f"{case.name}: forbidden {fragment!r} appeared in {rendered!r}"
-            )
-
-
-class TestPartitionSyntaxMaintenance:
-    """Maintenance decisions run against canned catalogue rows."""
-
-    def test_planning_decisions(
-        self,
-        partition_syntax_case,  # noqa: F811 - pytest fixture
-        sqlserver_dialect: SQLServerDialect,
-    ):
-        case = partition_syntax_case
-        if case.maintenance_builder is None:
-            return
-        reports = case.maintenance_builder(sqlserver_dialect)
-        assert set(reports) == {
-            expectation.operation for expectation in case.maintenance_expectations
-        }, f"{case.name}: unexpected maintenance report keys {sorted(reports)}"
-        for expectation in case.maintenance_expectations:
-            report = reports[expectation.operation]
-            if expectation.expect_dry_run is not None:
-                assert report.dry_run is expectation.expect_dry_run, (
-                    f"{case.name}/{expectation.operation}: expected dry_run="
-                    f"{expectation.expect_dry_run}, got {report.dry_run}"
-                )
-            assert [op.action for op in report.operations] == list(
-                expectation.actions
-            ), (
-                f"{case.name}/{expectation.operation}: expected actions "
-                f"{list(expectation.actions)!r}, got "
-                f"{[op.action for op in report.operations]!r}"
-            )
-            if expectation.missing_boundaries is not None:
-                assert report.missing_boundaries == (
-                    expectation.missing_boundaries
-                ), (
-                    f"{case.name}/{expectation.operation}: expected missing "
-                    f"boundaries {expectation.missing_boundaries!r}, got "
-                    f"{report.missing_boundaries!r}"
-                )
-            if expectation.existing_boundaries is not None:
-                assert report.existing_boundaries == (
-                    expectation.existing_boundaries
-                ), (
-                    f"{case.name}/{expectation.operation}: expected existing "
-                    f"boundaries {expectation.existing_boundaries!r}, got "
-                    f"{report.existing_boundaries!r}"
-                )
-            for fragment in expectation.issue_fragments:
-                assert any(fragment in issue for issue in report.issues), (
-                    f"{case.name}/{expectation.operation}: expected an issue "
-                    f"containing {fragment!r}, got {report.issues!r}"
-                )
-            for fragment in expectation.sql_fragments:
-                assert any(fragment in op.sql for op in report.operations), (
-                    f"{case.name}/{expectation.operation}: expected "
-                    f"{fragment!r} in {[op.sql for op in report.operations]!r}"
-                )
+            assert all(
+                fragment not in sql for sql in rendered
+            ), f"{case.name}: forbidden {fragment!r} appeared in {rendered!r}"

@@ -1,17 +1,18 @@
 # docs/examples/03_introspection_and_partition.py
-"""Introspect a SQL Server database and preview partition maintenance.
+"""Introspect a SQL Server database and preview partition suggestions.
 
-All partition operations here use dry runs, so the script reads the catalogue
-but does not change schema. Run against a scratch database (see
-docs/examples/README.md).
+The example only reads the catalogue and renders the dialect's suggested
+expression chains; it executes no partition DDL. Run against a scratch
+database (see docs/examples/README.md).
 """
+
 import os
 from datetime import date
 
+from rhosocial.activerecord.backend.expression.statements import PartitionStrategy
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.backend.impl.sqlserver.partition import (
-    SQLServerPartitionMaintenance,
     SQLServerPartitionPlan,
 )
 
@@ -52,6 +53,7 @@ def show_introspection(backend: SQLServerBackend) -> None:
 
 
 def show_partition_plan(backend: SQLServerBackend) -> None:
+    dialect = backend.dialect
     plan = SQLServerPartitionPlan(
         function="pf_example_logs",
         data_type="DATE",
@@ -59,21 +61,30 @@ def show_partition_plan(backend: SQLServerBackend) -> None:
         scheme="ps_example_logs",
         all_filegroup="PRIMARY",
     )
-    maintenance = SQLServerPartitionMaintenance(backend)
-
-    # Catalogue report: functions, schemes, tables and per-partition ranges.
-    report = maintenance.list(plan, table="example_logs", schema="dbo")
-    print("Partition functions:", report.functions)
-    print("Ranges:", report.ranges)
-
-    # Checks only; never repairs.
-    report = maintenance.validate(plan, table="example_logs", schema="dbo")
-    print("Issues:", report.issues)
-
-    # Render the SPLIT statements without executing them (SQL Server DDL
-    # auto-commits, so a dry run is the safe way to review the plan).
-    report = maintenance.ensure(plan, dry_run=True)
-    print("Planned operations:", report.operations)
+    fields = plan.__dict__
+    preview = {
+        "build": dialect.suggest_partition_build(PartitionStrategy.RANGE, plan),
+        "table_drop": dialect.suggest_partition_table_drop(PartitionStrategy.RANGE, plan),
+        "add": dialect.suggest_partition_add(
+            PartitionStrategy.RANGE, {**fields, "boundary": date(2026, 3, 15)}
+        ),
+        "drop": dialect.suggest_partition_drop(
+            PartitionStrategy.RANGE, {**fields, "boundary": date(2026, 1, 1)}
+        ),
+        "retention": dialect.suggest_partition_retention(
+            PartitionStrategy.RANGE, {**fields, "cutoff": date(2026, 2, 1)}
+        ),
+    }
+    for name, suggestion in preview.items():
+        operations = suggestion.operations
+        if operations is False:
+            print(f"{name}: not supported by SQL Server")
+        elif operations is None:
+            print(f"{name}: no action needed")
+        else:
+            print(f"{name}:")
+            for operation in operations:
+                print("  ", operation.to_sql()[0])
 
 
 def main() -> None:

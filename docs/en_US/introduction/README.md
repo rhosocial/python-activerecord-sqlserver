@@ -47,7 +47,7 @@ of those contracts:
 | Connection configuration | `ConnectionConfig` base | `SQLServerConnectionConfig` (ODBC string, auth, encryption) |
 | CRUD / DDL / DML execution | backend protocol | `SQLServerBackend` / `AsyncSQLServerBackend` |
 | Introspection contract and result types | ✅ | catalogue queries against `sys.*` / `INFORMATION_SCHEMA`, capability answers |
-| Partitioning contract, plan and retention protocol | ✅ | `SQLServerPartitionPlan`, `SQLServerPartitionMaintenance`, partition expressions |
+| Partitioning contract, plan and suggestions | ✅ | `SQLServerPartitionPlan`, partition expressions, eight `suggest_partition_*` methods |
 | Transactions | `TransactionManager` | `SQLServerTransactionManager` (SNAPSHOT, savepoints) |
 
 A declarative model is written once against core's `ActiveRecord` API and then

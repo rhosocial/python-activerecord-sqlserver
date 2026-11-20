@@ -107,21 +107,24 @@ SQLServerDropPartitionFunctionExpression(dialect, "pf_logs").to_sql()
 ```
 
 `SPLIT RANGE` consumes a destination from the scheme. If the scheme has no
-filegroup marked `NEXT USED`, the server refuses the split, so the maintenance
-helper emits `NEXT USED` before each split.
+filegroup marked `NEXT USED`, the server refuses the split, so the suggested
+`add` / `split` chains emit `NEXT USED` before each `SPLIT RANGE`.
 
-## Maintenance
+## Suggestions and introspection
 
-`rhosocial.activerecord.backend.impl.sqlserver.partition` provides the plan and
-one executor with six operations. The executor is owner-agnostic: no table
-name, partition column or retention policy is embedded in it; `drop_before`
-takes the cutoff from the caller and reads the boundaries from the catalogue.
+SQL Server does not ship a partition-maintenance executor. Partition DDL is
+offered through the dialect's eight **partition-suggestion** methods, and the
+catalogue side through the engine's own **partition introspection** family.
+Together they are the single source for how this backend handles partitions.
+
+`SQLServerPartitionPlan` remains the owner-agnostic layout description: a
+function, its boundaries and direction, and an optional scheme with its
+filegroups. It carries no table name and no retention rule. A caller passes
+that plan (or a mapping with the same field names) to the dialect:
 
 ```python
-from rhosocial.activerecord.backend.impl.sqlserver.partition import (
-    SQLServerPartitionMaintenance,
-    SQLServerPartitionPlan,
-)
+from rhosocial.activerecord.backend.expression.statements import PartitionStrategy
+from rhosocial.activerecord.backend.impl.sqlserver.partition import SQLServerPartitionPlan
 
 plan = SQLServerPartitionPlan(
     function="pf_logs",
@@ -131,104 +134,65 @@ plan = SQLServerPartitionPlan(
     all_filegroup="PRIMARY",
 )
 
-maintenance = SQLServerPartitionMaintenance(backend)
-
-# Idempotent: creates the function and scheme when absent, splits only the
-# boundaries the server does not already hold.
-report = maintenance.ensure(plan)
-
-# Catalogue report: functions, schemes, tables, per-partition ranges.
-report = maintenance.list(plan, table="logs", schema="dbo")
-
-# Checks only; never repairs. The issues tuple says what is wrong.
-report = maintenance.validate(plan, table="logs", schema="dbo")
-
-# SQL Server has no DROP PARTITION: merge the boundaries away.
-report = maintenance.drop_or_merge(plan, [date(2026, 1, 1)], dry_run=True)
-
-# Retention: compute the boundaries at or before a cutoff, then merge them.
-boundaries = maintenance.retention_boundaries(plan, date(2026, 2, 1))
-report = maintenance.drop_before(plan, date(2026, 2, 1), dry_run=True)
+build = dialect.suggest_partition_build(PartitionStrategy.RANGE, plan)
+add = dialect.suggest_partition_add(
+    PartitionStrategy.RANGE, {**plan.__dict__, "boundary": date(2026, 3, 15)}
+)
+drop = dialect.suggest_partition_drop(
+    PartitionStrategy.RANGE, {**plan.__dict__, "boundary": date(2026, 1, 1)}
+)
+retention = dialect.suggest_partition_retention(
+    PartitionStrategy.RANGE, {**plan.__dict__, "cutoff": date(2026, 2, 1)}
+)
 ```
 
-### `ensure(plan, dry_run=False)`
+Each suggestion is a frozen value whose `operations` is one of three things:
+a tuple of real SQL Server expression nodes the dialect can render and the
+caller can execute in order, `False` when SQL Server has no such mechanism for
+the strategy/plan, or `None` when nothing needs doing. The eight methods cover
+`build`, `table_drop`, `table_alter`, `add`, `drop`, `split`, `merge` and
+`retention`.
 
-- Function absent: creates it with the plan's full boundary list, then the
-  scheme when one was named.
-- Function present: splits only missing boundaries, in ascending order. The
-  server decides whether a boundary exists (the value is cast to the
-  function's type), so date/time and decimal spellings cannot produce a false
-  "missing".
-- Scheme absent: creates it. With explicit `filegroups`, the function must
-  already have the plan's partition count; otherwise use `all_filegroup`.
-- Direction or data-type mismatch: raises `ValueError`. Repairing that in
-  place means dropping the function, and dropping a function used by a table
-  is not something a maintenance call should do silently.
+What the answers mean in SQL Server terms:
 
-`dry_run=True` returns the statements without executing them.
+- **`build`** returns the three-tier chain: `CREATE PARTITION FUNCTION`, then
+  `CREATE PARTITION SCHEME` when the plan names one, then a `PARTITION BY`
+  clause `ON <scheme> (<keys>)` when the plan supplies `keys`.
+- **`table_drop`** returns `DROP PARTITION SCHEME` followed by
+  `DROP PARTITION FUNCTION`, in dependency order. Dropping the function while
+  a scheme maps it is refused by the server.
+- **`table_alter`** is always `False`: there is no in-place way to change a
+  partitioned table's scheme. Doing so moves every row and is the caller's
+  decision.
+- **`add`** and **`split`** return `NEXT USED` (when a scheme is present)
+  followed by `ALTER PARTITION FUNCTION ... SPLIT RANGE`. Splitting moves rows.
+- **`drop`** and **`merge`** return `ALTER PARTITION FUNCTION ... MERGE RANGE`:
+  SQL Server has **no** `DROP PARTITION`. Merging removes one boundary and
+  folds its rows into the partition on the left, so it is data-affecting.
+- **`retention`** returns one `MERGE RANGE` per boundary at or before the
+  plan's `cutoff`. SQL Server's boundary is the upper bound of the partition to
+  its left in both RANGE directions, so `<= cutoff` means the partition ends on
+  or before the cutoff. No candidate means `None`; a non-RANGE strategy or a
+  missing cutoff means `False`.
 
-### `list(plan=None, *, table=None, schema=None)`
+The capability probes on the dialect gate every mutating chain, so a dialect
+that withdraws a feature answers `False` rather than emitting SQL the server
+would reject.
 
-Reads `sys.partition_functions`, `sys.partition_schemes`,
-`sys.destination_data_spaces`, `sys.tables`, `sys.indexes`,
-`sys.index_columns` and `sys.partitions`. The report carries:
+The catalogue side is answered by introspection:
 
-- `functions` / `schemes` / `tables` with filegroups, type, direction and
-  partition count;
-- `ranges` for the requested table: partition number, low/high boundary
-  text, row count and data bytes;
-- `partitions`: the same rows as the core `PartitionInfo` contract (`name`
-  is `<table>_<number>`, `parent` is the table, `level` is 1, `bound` joins
-  low/high and `extras` carries the scheme, function and partition number);
-- `missing_boundaries` and `existing_boundaries`, when a plan was given;
-- `issues`, which only report; nothing is repaired.
+```python
+if dialect.supports_partition_metadata_introspection():
+    info = backend.introspector.get_database_info()
+    for table in backend.introspector.list_tables():
+        print(table.name, table.table_type.value)
+```
 
-A real `ensure` / `drop_or_merge` run re-reads the catalogue before returning;
-a dry run keeps the pre-execution snapshot. SQL Server's DDL auto-commits, so
-the executor stops at the first `DatabaseError`, records it in `errors`, and
-leaves the statements that did run in `operations`.
-
-`sql_variant` boundary values are cast to text for display, with date/time
-values in ISO style so the report does not depend on the login language.
-
-### `drop_or_merge(plan, boundaries=None, *, dry_run=True, drop_scaffolding=False)`
-
-SQL Server cannot drop a partition. `MERGE RANGE` removes the boundary and
-folds the partition's rows into the partition on the left. `boundaries`
-names exactly which boundaries to merge -- there is no "before date" or
-retention rule here; that decision belongs to the application.
-
-`dry_run` defaults to `True` because merging moves rows. With
-`drop_scaffolding=True`, the scheme and function are dropped afterwards, but
-only when the catalogue shows no table built on the scheme. When a table uses
-it, the report says why the drop was refused.
-
-### `retention_boundaries(plan, cutoff, *, table=None, schema=None)`
-
-Reads the function's boundary values (or a table's range upper bounds when
-`table` is passed) and returns the ones at or before `cutoff`. Nothing is
-executed. SQL Server's boundary is the upper bound of the partition to its
-left in both RANGE directions, so `<= cutoff` means "the partition is wholly
-before or ends on the cutoff".
-
-### `drop_before(plan, cutoff, *, dry_run=True, drop_scaffolding=False)`
-
-Computes `retention_boundaries(plan, cutoff)` and calls `drop_or_merge` with
-them. It implements the core `PartitionRetention` protocol. A dry run only
-renders `MERGE RANGE` statements; a real run re-reads the catalogue afterwards
-and reports what is left.
-
-### `validate(plan, *, table=None, schema=None)`
-
-Reports, without changing anything:
-
-- a missing function or scheme;
-- a direction, data type or boundary-count mismatch;
-- a scheme mapped to another function;
-- a scheme whose destination count does not match the partition count;
-- a table on another scheme/function, or with missing partition numbers.
-
-The report's `issues` tuple is the whole result; there is no automatic fix.
+`SQLServerPartitionSchemeInfo` and the other introspection records describe
+the server's current partition functions, schemes and tables; see
+[Database Introspection](../introspection.md) for the full probe table. The
+caller decides which partitions are old, which table to act on, and whether to
+execute a suggested chain -- no retention policy is embedded in the backend.
 
 ## Boundaries and ranges
 
@@ -245,11 +209,12 @@ A plan sorts its boundaries and refuses duplicates. Removing a boundary with
 `MERGE RANGE` does not change the other boundaries; it only widens one
 partition to absorb its neighbour.
 
-## Live coverage
+## Test coverage
 
-`tests/.../feature/backend/execute/partition/test_partition_live.py` exercises
-`CREATE PARTITION FUNCTION` / `SCHEME`, `SPLIT RANGE`, `MERGE RANGE`, `SWITCH`
-and catalogue reads against the SQL Server 2022 image in `docker-compose.yml`.
-It skips -- rather than passes -- when no scenario is configured or the server
-cannot be reached. The offline suites cover the same decisions with canned
-catalogue rows and assert every rendered statement.
+The offline suites in
+`tests/rhosocial/activerecord_sqlserver_test/feature/backend/construct/ddl/`
+cover every family without a server: `test_partition_expressions.py` asserts the
+rendered statement text, `test_partition_syntax_matrix.py` checks the plan and
+DDL matrix, and `test_partition_suggestions.py` checks the eight suggestion
+protocols and their tri-state values. The plan and introspection records are
+covered alongside them; no live partition-maintenance suite remains.

@@ -123,6 +123,6 @@ has no such clause) and answer `False`.
 
 ## Next steps
 
-- [Partitioning](partition.md) — functions, schemes and maintenance
+- [Partitioning](partition.md) — functions, schemes, suggestions and introspection
 - [Advanced objects](advanced_objects.md) — temporal tables, graph, columnstore, sequences
 - [OUTPUT and MERGE](../querying/output_and_merge.md) — returning rows from DML

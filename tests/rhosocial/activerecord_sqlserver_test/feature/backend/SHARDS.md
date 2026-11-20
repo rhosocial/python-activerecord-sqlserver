@@ -39,7 +39,6 @@ database and no shard.
 | `test_db_11` | `execute/dml_insert` | batch inserts (`execute_many`) |
 | `test_db_12` | `execute/dml_update_delete` | update/delete (no cases in this backend yet) |
 | `test_db_13` | `execute/json` | JSON expressions/functions against a server |
-| `test_db_14` | `execute/partition` | live partition DDL and maintenance |
 | `test_db_15` | `execute/introspection` | live introspector families and probes |
 | `test_db_16` | `execute/errors` | error handling against a server |
 | `test_db_17` | `execute/concurrency` | concurrency protocol and concurrent async tasks |
@@ -49,6 +48,9 @@ database and no shard.
 | `test_db_21` | `execute/fulltext_spatial` | spatial types against a server |
 | `test_db_22` | `execute/show_admin` | SHOW/admin surfaces |
 | `test_db_23` | `execute/routine_domain` | routines and domains (no cases in this backend yet) |
+
+`test_db_14` is unused: its live partition-maintenance suite was retired when
+the maintenance protocol was replaced by partition suggestions and introspection.
 
 `test_db_24` is unused: backend-unique capabilities are namespaced under
 `execute/sqlserver/` (below) instead of a catch-all directory, and their leaves
