@@ -38,26 +38,30 @@
     * **[Partitioning](ddl/partition.md)**: functions, schemes, `SPLIT`/`MERGE`/`SWITCH` and the maintenance helper
     * **[Advanced objects](ddl/advanced_objects.md)**: temporal tables, SQL Graph, columnstore, memory-optimized tables and sequences
 
-6. **[Querying](querying/output_and_merge.md)**
+6. **[Migrations](migration/README.md)**
+    * **[Migrations on SQL Server](migration/README.md)**: backend configuration, transactional DDL, version gating and CLI wiring (the system itself is in the core docs)
+    * **[Migration examples](../examples/migration/README.md)**: function-style and class-style examples using this backend
+
+7. **[Querying](querying/output_and_merge.md)**
     * **[OUTPUT and RETURNING](querying/output_and_merge.md)**: returning affected rows from DML
     * **[MERGE and pagination](querying/output_and_merge.md#merge-and-pagination)**: upsert, `OFFSET ... FETCH`, hints
 
-7. **[Transaction Support](transactions/README.md)**
+8. **[Transaction Support](transactions/README.md)**
     * **[Isolation levels](transactions/README.md#isolation-levels)**: including `SNAPSHOT`
     * **[Savepoints](transactions/README.md#savepoints)**: nested transactions via `SAVE TRANSACTION`
     * **[Deadlocks & retries](transactions/README.md#deadlocks-and-retries)**: error mapping and retry guidance
 
-8. **[Introspection](introspection/README.md)**
+9. **[Introspection](introspection/README.md)**
     * **[Database introspection](introspection/README.md)**: catalogue sources, capability answers, operational and data families, CLI types
 
-9. **[Capabilities](capabilities/README.md)**
+10. **[Capabilities](capabilities/README.md)**
     * **[Capability gates](capabilities/README.md)**: how `supports_*` switches and version floors work
     * **[Version floor reference](capabilities/README.md#version-floor-reference)**: which feature appears on which server
 
-10. **[Command Line](cli/README.md)**
+11. **[Command Line](cli/README.md)**
     * **[CLI usage](cli/README.md)**: `info`, `query`, `status` and `introspect`
 
-11. **[Testing](testing/README.md)**
+12. **[Testing](testing/README.md)**
     * **[Test configuration](testing/README.md)**: PYTHONPATH, provider registration, local SQL Server via Docker
     * **[Local scope](testing/README.md#local-test-scope)**: targeted checks only; full matrix on CI
 

@@ -28,6 +28,11 @@
 * [Partitioning](ddl/partition.md)
 * [Advanced objects](ddl/advanced_objects.md)
 
+## Migrations
+
+* [Migrations on SQL Server](migration/README.md)
+* [Migration examples](../examples/migration/README.md)
+
 ## Querying
 
 * [OUTPUT and MERGE](querying/output_and_merge.md)

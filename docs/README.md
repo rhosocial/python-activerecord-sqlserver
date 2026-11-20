@@ -13,14 +13,17 @@ migrations), see the [core library documentation](https://github.com/rhosocial/p
 | Language | Documentation |
 |----------|---------------|
 | English | [en_US/README.md](en_US/README.md) |
+| 中文 | [zh_CN/README.md](zh_CN/README.md) |
 
-> Only the English tree is maintained at present. A `zh_CN` tree may be added
-> later; until then, all links and the GitBook summary live under `en_US/`.
+> The English tree is the primary one; the `zh_CN` tree currently carries the
+> migration guide. The GitBook summary lives under `en_US/`.
 
 ## Quick links
 
 - [Documentation home / table of contents](en_US/README.md)
 - [GitBook summary](en_US/SUMMARY.md)
 - [Runnable examples](examples/README.md)
+- [Migration guide](en_US/migration/README.md) / [迁移指南（中文）](zh_CN/migration/README.md)
+- [Migration examples](examples/migration/README.md)
 - [Database introspection](en_US/introspection/README.md)
 - [Table partitioning](en_US/ddl/partition.md)

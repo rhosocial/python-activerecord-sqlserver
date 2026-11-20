@@ -32,5 +32,7 @@ python docs/examples/01_connection_and_config.py
 | [`02_declarative_model_crud.py`](02_declarative_model_crud.py) | declarative `ActiveRecord` model bound with `configure(..., SQLServerBackend)`, `create_table`, `save`, typed queries, SQL preview |
 | [`03_introspection_and_partition.py`](03_introspection_and_partition.py) | `backend.introspector` catalogue reads, capability gates, `SQLServerPartitionPlan` and `SQLServerPartitionMaintenance` |
 
-For the theory behind these scripts, see the
-[en_US documentation](../en_US/README.md).
+Migration-specific scripts live in their own folder:
+[migration examples](migration/README.md) (function-style and class-style,
+using this backend's SQL Server config). For the theory behind the general
+scripts, see the [en_US documentation](../en_US/README.md).
