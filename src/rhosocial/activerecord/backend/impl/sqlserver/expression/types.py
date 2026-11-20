@@ -24,6 +24,7 @@ from rhosocial.activerecord.backend.expression.types import (
     VarBinaryType,
     BooleanType,
     CharType,
+    LENGTH_PARAMETERS,
     TinyIntType,
     UUIDType,
     VarCharType,
@@ -80,6 +81,15 @@ class SQLServerNVarCharMaxType(VarCharType):
 
     name = "sqlserver_nvarchar_max"
 
+    #: ``MAX`` is not a width, so this class declares no parameters.
+    #:
+    #: ``VarCharType`` inherits ``LENGTH_PARAMETERS`` because a declared
+    #: ``VARCHAR(n)`` is what its width makes it; here the inherited tuple
+    #: would name an ``__init__`` argument this class does not take, and
+    #: ``identity()`` reads the tuple. ``NVARCHAR`` and ``NVARCHAR(MAX)`` are
+    #: different declarations, and the difference is the class, not a length.
+    PARAMETERS = ()
+
     def __init__(self, dialect=None):
         super().__init__(dialect, length=None)
 
@@ -111,7 +121,10 @@ class SQLServerVarBinaryType(VarBinaryType):
         super().__init__(dialect)
         self.length = length
 
-    PARAMETERS = ("length",)
+    #: The shared object, not a copy: ``identity()`` compares the tuple, so a
+    #: literal of the same shape would silently make this declaration unequal
+    #: to its siblings.
+    PARAMETERS = LENGTH_PARAMETERS
 
 class SQLServerVarBinaryMaxType(BlobType):
     """SQL Server ``VARBINARY(MAX)`` — byte string up to 2 GB.
@@ -187,7 +200,19 @@ class SQLServerTinyIntType(TinyIntType):
 
     name = "sqlserver_tinyint"
 
-    def __init__(self, dialect=None, *, spelling: str = "tinyint"):
+    #: Signedness stays in ``PARAMETERS`` so ``identity()`` records it, and the
+    #: argument is accepted so the tuple names something the constructor really
+    #: takes.  It is nevertheless not a knob: ``False`` is refused rather than
+    #: quietly turned into a spelling T-SQL does not have.
+    def __init__(
+        self, dialect=None, *, unsigned: bool = True, spelling: str = "tinyint"
+    ):
+        if unsigned is not True:
+            raise ValueError(
+                "SQL Server's TINYINT is unsigned; no T-SQL spelling of it is "
+                "signed, so unsigned=False is not a declaration this backend "
+                "can make"
+            )
         super().__init__(dialect, unsigned=True, spelling=spelling)
 
 
@@ -228,7 +253,7 @@ class SQLServerUniqueIdentifierType(UUIDType):
     It stays a class of its own because T-SQL spells the type differently, and
     the ``sqlserver_uniqueidentifier`` name keeps the dispatch keys of this
     backend's ``format_data_type_*`` family isolated from the others'.
-    ``suggested_data_types()["uuid"]`` points at it — a substitute that names a
+    ``substitute_data_types()["uuid"]`` points at it — a substitute that names a
     type this dialect really renders, which is the only kind of substitute the
     contract allows.
     """

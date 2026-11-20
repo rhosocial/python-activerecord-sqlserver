@@ -198,6 +198,12 @@ class SQLServerBackend(
             SQLServerJSONAdapter,
             SQLServerXMLAdapter,
             SQLServerDecimalAdapter,
+            SQLServerGeometryAdapter,
+            SQLServerVectorAdapter,
+            SQLServerBitStringAdapter,
+            SQLServerRangeAdapter,
+            SQLServerMacAddressAdapter,
+            SQLServerHierarchyIdAdapter,
         )
         sqlserver_adapters = [
             SQLServerUUIDAdapter(),
@@ -208,6 +214,16 @@ class SQLServerBackend(
             SQLServerJSONAdapter(),
             SQLServerXMLAdapter(),
             SQLServerDecimalAdapter(),
+            SQLServerGeometryAdapter(),
+            SQLServerVectorAdapter(),
+            SQLServerBitStringAdapter(),
+            SQLServerRangeAdapter(),
+            SQLServerMacAddressAdapter(),
+            # Registered under the ``hierarchyid`` column type only, never under
+            # a Python target: a ``str`` suggestion would put this adapter on
+            # every text field. A field opts in with
+            # ``Annotated[str, UseAdapter(SQLServerHierarchyIdAdapter(), str)]``.
+            SQLServerHierarchyIdAdapter(),
         ]
         for adapter in sqlserver_adapters:
             for py_type, db_types in adapter.supported_types.items():

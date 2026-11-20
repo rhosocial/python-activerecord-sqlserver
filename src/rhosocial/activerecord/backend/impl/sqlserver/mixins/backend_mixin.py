@@ -1,7 +1,7 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/backend_mixin.py
 import logging
 import re
-from typing import Any, Dict, Optional, Set, Tuple, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.errors import (
     ConnectionError,
@@ -22,6 +22,7 @@ from ..query_nodes import (
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
+    from rhosocial.activerecord.backend.type_adapter import SQLTypeAdapter
 
 
 _INSERT_PATTERN = re.compile(
@@ -152,17 +153,18 @@ class SQLServerBackendMixin:
         return match.group(3) or match.group(4)
 
     def _identity_insert_info(
-        self, sql: str, params: Optional[Tuple], identity_columns: Optional[Set[str]] = None
+        self, sql: str, params: Optional[Tuple] = None, identity_columns: Optional[Set[str]] = None
     ) -> Optional[str]:
         """Return the table name that needs ``SET IDENTITY_INSERT ON``, or None.
 
         Detects ``INSERT INTO [schema].[table] (col, ...) VALUES (?, ...)``
-        statements that explicitly supply a value for the table's identity
-        column. SQL Server forbids such inserts unless ``IDENTITY_INSERT`` is
-        enabled for the target table.
+        statements that explicitly supply the table's identity column.
+        SQL Server forbids such inserts unless ``IDENTITY_INSERT`` is enabled
+        for the target table.  The column list alone decides: an explicit
+        value may arrive as a placeholder or as a literal rendered into the
+        statement, and both are equally forbidden, so ``params`` is not
+        consulted.
         """
-        if not params:
-            return None
         table_name = self._insert_table_name(sql)
         if not table_name:
             return None
@@ -173,11 +175,8 @@ class SQLServerBackendMixin:
         match = _INSERT_PATTERN.match(sql)
         raw_columns = match.group(5)
         columns = [c.strip().strip("[]\"").lower() for c in raw_columns.split(",") if c.strip()]
-        if not columns or len(columns) > len(params):
-            return None
-        for col, value in zip(columns, params):
-            if col in identity_columns and value is not None:
-                return table_name
+        if any(column in identity_columns for column in columns):
+            return table_name
         return None
 
     def _execute_control_sql(self, sql: str) -> None:
@@ -344,6 +343,21 @@ class SQLServerBackendMixin:
         return False
 
     def get_default_adapter_suggestions(self) -> Dict[Type, Tuple[Any, Type]]:
+        """Provide SQL Server's type-adapter suggestions.
+
+        The framework defaults (:meth:`TypeAdaptionMixin.get_default_adapter_suggestions`)
+        are the base: SQL Server starts from the core table and merges its own
+        pairs on top, because the backend knows what pyodbc accepts better than
+        the framework does.  A pair is suggested only when this backend
+        registered an adapter for it, so the merged table never names an
+        adapter this backend does not provide.
+
+        The neutral families have no SQL Server column type of their own.  They
+        are carried as text -- WKT for geometry, a JSON array for vectors,
+        bit-string text for ``BitString``, range JSON for ``Range`` /
+        ``Multirange``, and canonical lowercase colon text for MAC addresses --
+        so each one is merged with a plain ``str`` target.
+        """
         if hasattr(self, '_default_suggestions_cache') and self._default_suggestions_cache is not None:
             return self._default_suggestions_cache
 
@@ -351,21 +365,56 @@ class SQLServerBackendMixin:
         from decimal import Decimal
         from uuid import UUID
 
-        suggestions = {}
+        from rhosocial.activerecord.backend.adapters.bitstring import BitString
+        from rhosocial.activerecord.backend.adapters.geometry import Geometry
+        from rhosocial.activerecord.backend.adapters.network import MacAddress
+        from rhosocial.activerecord.backend.adapters.range import Multirange, Range
+        from rhosocial.activerecord.backend.adapters.vector import Vector
+        from rhosocial.activerecord.backend.base.type_adaption import (
+            merge_adapter_suggestions,
+        )
+
+        base = super().get_default_adapter_suggestions()
+
         type_mappings = [
             (bool, bool), (int, int), (float, float),
             (str, str), (bytes, bytes),
             (datetime, datetime), (date, date), (time, time),
             (Decimal, Decimal), (UUID, str), (dict, str), (list, str),
+            # Neutral families carried as text on SQL Server.
+            (Geometry, str),
+            (Vector, str),
+            (BitString, str),
+            (Range, str),
+            (Multirange, str),
+            (MacAddress, str),
         ]
 
+        suggestions = merge_adapter_suggestions(base, type_mappings, self.adapter_registry)
         for py_type, db_type in type_mappings:
-            adapter = self.adapter_registry.get_adapter(py_type, db_type)
-            if adapter:
-                suggestions[py_type] = (adapter, db_type)
+            if py_type not in suggestions:
+                self.log(
+                    logging.DEBUG,
+                    f"No adapter found for ({py_type.__name__}, {db_type.__name__}). "
+                    "Suggestion will not be provided for this type.",
+                )
 
         self._default_suggestions_cache = suggestions
         return suggestions
+
+    def get_type_adapters(self) -> List["SQLTypeAdapter"]:
+        """Return the adapter instances this backend provides.
+
+        This is a plain inventory: it says which adapters exist for this backend.
+        It carries no suggestion/default/priority semantics; the caller decides.
+        """
+        registered = self.adapter_registry.get_all_adapters().values()
+        unique: Dict[Tuple[str, str], "SQLTypeAdapter"] = {}
+        for adapter in registered:
+            adapter_class = type(adapter)
+            key = (adapter_class.__module__, adapter_class.__qualname__)
+            unique.setdefault(key, adapter)
+        return [unique[key] for key in sorted(unique)]
 
     def _build_query_result(self, cursor, data, duration: float):
         from rhosocial.activerecord.backend.result import QueryResult

@@ -1,7 +1,3 @@
-# tests/rhosocial/activerecord_sqlserver_test/feature/query/test_eager_loading_caching.py
-"""
-Bridge file for eager loading caching tests from the testsuite.
-"""
-from rhosocial.activerecord.testsuite.feature.query.eager_loading.test_eager_loading_caching import *  # noqa: F401, F403
-from rhosocial.activerecord.testsuite.feature.query.eager_loading.test_eager_loading_caching_async import *  # noqa: F403
-
+# tests/rhosocial/activerecord_sqlserver_test/feature/query/eager_loading/test_eager_loading_caching.py
+"""Bridge to the shared ``query/eager_loading`` contract."""
+from rhosocial.activerecord.testsuite.feature.query.eager_loading.test_eager_loading_caching import *  # noqa: F401,F403

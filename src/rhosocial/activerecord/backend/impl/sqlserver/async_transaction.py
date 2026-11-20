@@ -216,3 +216,7 @@ class AsyncSQLServerTransactionManager(AsyncTransactionManager):
     def savepoints(self) -> List[str]:
         """Get list of current savepoints."""
         return self._savepoints.copy()
+
+    async def supports_savepoint(self) -> bool:
+        """Async counterpart of the sync capability probe."""
+        return self._backend.dialect.supports_savepoint()

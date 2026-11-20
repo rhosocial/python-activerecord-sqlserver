@@ -151,6 +151,7 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
+from .mixins.integer_auto_increment_column_suggestion import SQLServerIntegerAutoIncrementColumnSuggestionMixin
 from .mixins.introspection import SQLServerIntrospectionMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
@@ -171,6 +172,7 @@ from .mixins.constraint import SQLServerConstraintMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
 from .mixins.column_type import SQLServerColumnTypeMixin
+from .mixins.data_type_suggestions import SQLServerDataTypeSuggestionsMixin
 from .mixins.uuid import SQLServerUUIDMixin
 from .mixins.grouping import SQLServerGroupingMixin
 from .mixins.locking import SQLServerLockingMixin
@@ -255,6 +257,8 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 
 
 class SQLServerDialect(
+    # Backend suggestion first: no core mixin may shadow its answer.
+    SQLServerIntegerAutoIncrementColumnSuggestionMixin,
     # The bases below come in bundles: a backend mixin, then the core bundle
     # it stands in for. The backend's answer has to come first -- a mixin
     # placed after the class it overrides never wins -- so a new mixin goes
@@ -316,12 +320,14 @@ class SQLServerDialect(
     SQLDialectBase,
     # Core infrastructure mixins (provide base implementations
     # that the dialect overrides as needed)
+    # SQL Server protocol contract implementations; precedes the core
+    # ExpressionMixin because it owns STRING_CONCATENATION for this dialect.
+    SQLServerProtocolSupportMixin,
     PredicateMixin,
     ExpressionMixin,
     # SQL Server-specific mixins (must precede their global counterparts
     # to ensure SQL Server methods take precedence in MRO)
     SQLServerAlterColumnModifierMixin,  # Before DDLColumnMixin to override format_*_action
-    SQLServerProtocolSupportMixin,  # SQL Server protocol contract implementations
     SQLServerSequenceMixin,  # NEXT VALUE FOR formatter (2012+)
     SQLServerIdentityColumnMixin,  # IDENTITY(seed, increment) formatter + probes
     SQLServerPivotMixin,  # PIVOT / UNPIVOT formatters (2005+)
@@ -340,6 +346,10 @@ class SQLServerDialect(
     # Before DDLColumnMixin: the backend block below comes later, so
     # supports_fk_match answered for the core. Same value by coincidence.
     SQLServerConstraintMixin,
+    # Before DDLTypeMixin, which inherits DataTypeMixin's answer -- a
+    # NotImplementedError. A table placed after the class it stands in for
+    # never wins, so the backend's 24-key answer sits ahead of the core mixin.
+    SQLServerDataTypeSuggestionsMixin,
     DDLColumnMixin,
     DDLTypeMixin,
     UserDefinedTypeMixin,
@@ -596,6 +606,24 @@ class SQLServerDialect(
     def format_auto_increment(self) -> Tuple[str, tuple]:
         """Return IDENTITY(1,1) for auto-increment columns."""
         return "IDENTITY(1,1)", ()
+
+    def format_exists_predicate(self, expr: Any) -> Tuple[str, tuple]:
+        """Render a scalar ``EXISTS`` as T-SQL ``CASE WHEN ... THEN 1 ELSE 0 END``.
+
+        Core's ``exists()`` uses ``ExistsPredicate`` as an aliased scalar select
+        expression, which renders as ``SELECT EXISTS (subquery) AS ...`` on
+        dialects with a boolean type. T-SQL has no boolean scalar and rejects
+        EXISTS in a SELECT list (error 156), so the aliased (scalar) form maps to
+        the portable integer 1/0 form; ``_run_scalar`` reads it back and
+        ``bool()`` coerces it. An unaliased EXISTS stays a plain boolean
+        predicate, preserving its behaviour in WHERE/HAVING contexts.
+        """
+        subquery_sql, subquery_params = expr.subquery.to_sql()
+        negation = "NOT " if getattr(expr, "is_not", False) else ""
+        exists_clause = f"{negation}EXISTS {subquery_sql}"
+        if getattr(expr, "alias", None):
+            exists_clause = f"CASE WHEN {exists_clause} THEN 1 ELSE 0 END"
+        return self._with_predicate_alias(exists_clause, expr), subquery_params
 
     def format_array_expression(self, _expr: "ArrayOperation") -> Tuple[str, tuple]:
         """Format array expression - not supported."""
@@ -870,8 +898,6 @@ class SQLServerDialect(
                 constraint_parts.append(
                     "PRIMARY KEY NONCLUSTERED" if memory_optimized else "PRIMARY KEY"
                 )
-                if branch.is_auto_increment:
-                    constraint_parts.append("IDENTITY(1,1)")
             elif isinstance(branch, ColumnUniqueConstraint):
                 constraint_parts.append(
                     "UNIQUE NONCLUSTERED" if memory_optimized else "UNIQUE"
@@ -1481,10 +1507,10 @@ class SQLServerDialect(
         return f"OPTION ({', '.join(clause.hints)})", ()
 
     # ------------------------------------------------------------------
-    # DataType protocol — suggestions
+    # DataType protocol — substitutions
     # ------------------------------------------------------------------
 
-    def suggested_data_types(self) -> Dict[str, type]:
+    def substitute_data_types(self) -> Dict[str, type]:
         """Concepts SQL Server cannot spell, and what it stores instead (D9).
 
         Returns a mapping ``{<generic name>: DataType class}`` for every core
@@ -1561,6 +1587,14 @@ class SQLServerDialect(
             "timetz": TimeType,
             "uuid": SQLServerUniqueIdentifierType,
         }
+
+    def supports_database_assigned_integer_column(self) -> bool:
+        """T-SQL assigns the value through ``IDENTITY(seed, increment)``.
+
+        Omitting the column on INSERT lets the engine take the next value from
+        the identity property, and the inserted value can be read back.
+        """
+        return True
 
 
 # Lazy import to avoid circular dependency (backend → dialect → mixins.types → backend)

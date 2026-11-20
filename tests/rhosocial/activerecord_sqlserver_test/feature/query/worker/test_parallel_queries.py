@@ -1,7 +1,3 @@
-from rhosocial.activerecord.testsuite.feature.query.worker.conftest import (
-    order_fixtures_for_worker,
-    async_order_fixtures_for_worker,
-)
-from rhosocial.activerecord.testsuite.feature.query.worker.test_parallel_queries import *
-from rhosocial.activerecord.testsuite.feature.query.worker.test_parallel_queries_async import *  # noqa: F403
-
+# tests/rhosocial/activerecord_sqlserver_test/feature/query/worker/test_parallel_queries.py
+"""Bridge to the shared ``query/worker`` contract."""
+from rhosocial.activerecord.testsuite.feature.query.worker.test_parallel_queries import *  # noqa: F401,F403

@@ -1,11 +1,3 @@
-# tests/rhosocial/activerecord_sqlserver_test/feature/query/test_range_query_detailed.py
-"""
-Bridge file for range query detailed tests from the testsuite.
-
-This file imports the generic tests from the testsuite package and makes them
-discoverable by pytest in this project's test run.
-"""
-
-from rhosocial.activerecord.testsuite.feature.query.range_queries.test_range_query_detailed import *  # noqa: F403
-from rhosocial.activerecord.testsuite.feature.query.range_queries.test_range_query_detailed_async import *  # noqa: F403
-
+# tests/rhosocial/activerecord_sqlserver_test/feature/query/range_queries/test_range_query_detailed.py
+"""Bridge to the shared ``query/range_queries`` contract."""
+from rhosocial.activerecord.testsuite.feature.query.range_queries.test_range_query_detailed import *  # noqa: F401,F403

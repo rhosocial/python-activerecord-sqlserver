@@ -1,12 +1,18 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/dql.py
-from typing import Any, Optional, Tuple, TYPE_CHECKING
+from typing import Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .version_constants import SQL_SERVER_2012
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.query_parts import LimitOffsetClause
-    from rhosocial.activerecord.backend.expression.statements import QueryStatement
+
+from rhosocial.activerecord.backend.expression import (
+    Literal,
+    OrderByClause,
+    Subquery,
+)
+from rhosocial.activerecord.backend.expression.statements import QueryStatement
 
 
 class SQLServerDQLMixin:
@@ -80,11 +86,36 @@ class SQLServerDQLMixin:
         return " ".join(parts), ()
 
     def format_query_statement(self, expr: "QueryStatement") -> Tuple[str, tuple]:
-        sql, params = super().format_query_statement(expr)
-        if expr.limit_offset is not None and expr.order_by is None:
-            lo_sql = expr.limit_offset.to_sql()[0]
-            if lo_sql and lo_sql in sql:
-                sql = sql.replace(lo_sql, f"ORDER BY (SELECT NULL) {lo_sql}")
-            else:
-                sql += " ORDER BY (SELECT NULL)"
-        return sql, tuple(params)
+        """Format a complete SELECT query.
+
+        SQL Server refuses OFFSET/FETCH on a query without an ORDER BY. The
+        preamble is synthesized as an ``ORDER BY`` *expression* and rendered by
+        the generic formatter -- the produced SQL is never patched afterwards,
+        because a formatter only concatenates what the clause objects return.
+        """
+        if expr.limit_offset is None or expr.order_by is not None:
+            return super().format_query_statement(expr)
+        preamble = OrderByClause(
+            self,
+            expressions=[
+                (
+                    Subquery(
+                        self, QueryStatement(self, select=[Literal(self, None)])
+                    ),
+                    "ASC",
+                )
+            ],
+        )
+        ordered = QueryStatement(
+            self,
+            select=expr.select,
+            from_=expr.from_,
+            where=expr.where,
+            group_by_having=expr.group_by_having,
+            order_by=preamble,
+            qualify=expr.qualify,
+            limit_offset=expr.limit_offset,
+            for_update=expr.for_update,
+            select_modifier=expr.select_modifier,
+        )
+        return super().format_query_statement(ordered)

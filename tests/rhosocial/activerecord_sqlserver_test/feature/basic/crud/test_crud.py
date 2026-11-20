@@ -24,5 +24,3 @@ tests against our specific (SQLite) backend.
 # from the generic testsuite file into this module's scope. `pytest` then
 # discovers and runs them as if they were defined directly in this file.
 from rhosocial.activerecord.testsuite.feature.basic.crud.test_crud import *  # noqa: F403
-from rhosocial.activerecord.testsuite.feature.basic.crud.test_crud_async import *  # noqa: F403
-

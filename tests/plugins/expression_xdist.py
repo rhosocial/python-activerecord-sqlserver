@@ -18,11 +18,11 @@ The plugin is deliberately narrow in what it touches:
   installation is not this plugin's business, and the run proceeds serially the
   way it always has.
 * **Scope**: only when every non-option argument names a path inside the
-  expression area (``feature/backend/expression``) is ``-n auto`` appended. A
-  whole-repository run, a mixed run, or a run of any other directory keeps the
-  serial default; the live scenario tests have their own parallel runner
-  (``--scenario-parallel``) and are not dragged into a worker pool they did not
-  ask for.
+  expression area (``feature/backend/construct/expression``) is ``-n auto``
+  appended. A whole-repository run, a mixed run, or a run of any other
+  directory keeps the serial default; the live scenario tests have their own
+  parallel runner (``--scenario-parallel``) and are not dragged into a worker
+  pool they did not ask for.
 * **Choice respected**: an explicit ``-n`` / ``--numprocesses`` is never
   overridden. An explicit ``--dist`` is never overridden either, except that
   ``loadscope`` and ``loadfile`` are refused outright (§12: they bind whole
@@ -45,6 +45,7 @@ _EXPRESSION_AREA = os.path.join(
     "activerecord_sqlserver_test",
     "feature",
     "backend",
+    "construct",
     "expression",
 )
 
