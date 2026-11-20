@@ -100,7 +100,7 @@ Models and field proxies are declared once against the core `ActiveRecord` API; 
 
 For the full picture, start with the [core library documentation](https://github.com/rhosocial/python-activerecord/blob/main/docs/en_US/README.md).
 
-**SQL Server highlights.** `OUTPUT` for returning affected rows, `FOR SYSTEM_TIME` for temporal tables, SQL Graph, memory-optimized and columnstore tables, and version-gated features. See [Database introspection](docs/introspection.md) and [Table partitioning](docs/partition.md) for the SQL Server-specific details.
+**SQL Server highlights.** `OUTPUT` for returning affected rows, `FOR SYSTEM_TIME` for temporal tables, SQL Graph, memory-optimized and columnstore tables, and version-gated features. See [Database introspection](docs/en_US/introspection/README.md) and [Table partitioning](docs/en_US/ddl/partition.md) for the SQL Server-specific details.
 
 ## Backend Support & Progress
 
@@ -122,9 +122,11 @@ We welcome contributions! Please see [CONTRIBUTING.md](https://github.com/rhosoc
 
 ### Documentation
 
+* **[Backend documentation home](docs/en_US/README.md)** — full table of contents for this backend's docs
 * **[Core library documentation](https://github.com/rhosocial/python-activerecord/blob/main/docs/en_US/README.md)** — the full documentation table of contents
-* **[Database introspection](docs/introspection.md)** — what this backend answers, where each answer comes from, and the version floors that decide whether it can be asked
-* **[Table partitioning](docs/partition.md)** — SQL Server's function/scheme model, DDL expressions and the maintenance helper
+* **[Database introspection](docs/en_US/introspection/README.md)** — what this backend answers, where each answer comes from, and the version floors that decide whether it can be asked
+* **[Table partitioning](docs/en_US/ddl/partition.md)** — SQL Server's function/scheme model, DDL expressions and the maintenance helper
+* **[Runnable examples](docs/examples/README.md)** — connection, DDL and introspection scripts using this backend's classes
 * **[Backend architecture notes](.claude/architecture.md)** and **[testing notes](.claude/testing.md)** — backend-specific design and test setup
 
 ---
