@@ -1,6 +1,4 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/__init__.py
-from .integer_auto_increment_column_suggestion import SQLServerIntegerAutoIncrementColumnSuggestionMixin
-from .partition_suggestion import SQLServerPartitionSuggestionMixin
 from .types import SQLServerTypeSupportMixin
 from .concurrency import SQLServerConcurrencyMixin
 from .backend_mixin import SQLServerBackendMixin
@@ -22,7 +20,6 @@ from .constraint import SQLServerConstraintMixin
 from .window import SQLServerWindowMixin
 from .json import SQLServerJSONMixin
 from .column_type import SQLServerColumnTypeMixin
-from .data_type_suggestions import SQLServerDataTypeSuggestionsMixin
 from .uuid import SQLServerUUIDMixin
 from .grouping import SQLServerGroupingMixin
 from .locking import SQLServerLockingMixin
@@ -49,8 +46,6 @@ from .trim import SQLServerTrimMixin
 from .literal import SQLServerLiteralValueMixin
 
 __all__ = [
-    'SQLServerIntegerAutoIncrementColumnSuggestionMixin',
-    "SQLServerPartitionSuggestionMixin",
     "SQLServerTypeSupportMixin",
     "SQLServerConcurrencyMixin",
     "SQLServerBackendMixin",
@@ -72,7 +67,6 @@ __all__ = [
     "SQLServerWindowMixin",
     "SQLServerJSONMixin",
     "SQLServerColumnTypeMixin",
-    "SQLServerDataTypeSuggestionsMixin",
     "SQLServerUUIDMixin",
     "SQLServerGroupingMixin",
     "SQLServerLockingMixin",

@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/mixins/data_type_suggestions.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/suggestion/data_types.py
 """SQL Server's **suggested data types**: what a bare field is declared as here.
 
 The DDL half of the type answer; :mod:`.column_type` is the operation half. A
@@ -39,6 +39,7 @@ and taking the table away from the caller is not an answer.
 Each call returns a **fresh dict** whose values are this module's read-only
 templates; the derivation binds a dialect on a copy of the single entry it uses.
 """
+
 from __future__ import annotations
 
 import datetime

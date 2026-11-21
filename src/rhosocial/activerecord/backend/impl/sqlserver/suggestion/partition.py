@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/mixins/partition_suggestion.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/suggestion/partition.py
 """SQLServerPartitionSuggestionMixin -- real answers for the 8 partition suggestions.
 
 The eight ``suggest_partition_*`` methods turn a caller-supplied ``plan`` into
@@ -43,8 +43,8 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, List, Optional, Sequence, TYPE_CHECKING
 
-from ....expression import (
-    Column,
+from ....expression import Column
+from ....suggestion import (
     PartitionAddSuggestion,
     PartitionBuildSuggestion,
     PartitionDropSuggestion,

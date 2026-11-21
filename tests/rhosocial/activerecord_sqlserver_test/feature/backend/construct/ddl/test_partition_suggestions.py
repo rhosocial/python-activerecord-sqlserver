@@ -27,7 +27,7 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     PartitionTableAlterSuggestionSupport,
     PartitionTableDropSuggestionSupport,
 )
-from rhosocial.activerecord.backend.expression import (
+from rhosocial.activerecord.backend.suggestion import (
     PartitionAddSuggestion,
     PartitionBuildSuggestion,
     PartitionDropSuggestion,
@@ -269,7 +269,7 @@ def test_suggestion_mixin_imports_with_maintenance_blocked(monkeypatch):
     for suffix in ("partition.maintenance", "partition.report"):
         name = f"rhosocial.activerecord.backend.impl.sqlserver.{suffix}"
         monkeypatch.setitem(sys.modules, name, None)
-    module_name = "rhosocial.activerecord.backend.impl.sqlserver.mixins.partition_suggestion"
+    module_name = "rhosocial.activerecord.backend.impl.sqlserver.suggestion.partition"
     monkeypatch.delitem(sys.modules, module_name, raising=False)
     module = importlib.import_module(module_name)
 

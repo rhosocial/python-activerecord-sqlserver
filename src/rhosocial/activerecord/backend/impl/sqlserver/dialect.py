@@ -151,8 +151,8 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
-from .mixins.integer_auto_increment_column_suggestion import SQLServerIntegerAutoIncrementColumnSuggestionMixin
-from .mixins.partition_suggestion import SQLServerPartitionSuggestionMixin
+from .suggestion.integer_auto_increment import SQLServerIntegerAutoIncrementColumnSuggestionMixin
+from .suggestion.partition import SQLServerPartitionSuggestionMixin
 from .mixins.introspection import SQLServerIntrospectionMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
@@ -173,7 +173,7 @@ from .mixins.constraint import SQLServerConstraintMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
 from .mixins.column_type import SQLServerColumnTypeMixin
-from .mixins.data_type_suggestions import SQLServerDataTypeSuggestionsMixin
+from .suggestion.data_types import SQLServerDataTypeSuggestionsMixin
 from .mixins.uuid import SQLServerUUIDMixin
 from .mixins.grouping import SQLServerGroupingMixin
 from .mixins.locking import SQLServerLockingMixin
