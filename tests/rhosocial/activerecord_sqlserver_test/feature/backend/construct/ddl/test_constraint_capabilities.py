@@ -39,7 +39,7 @@ spell at all were already driven through the two-spelling pair walk in
 ``test_clause_pair_guard.py``; duplicating the assertions would
 let the two files disagree.
 """
-from rhosocial.activerecord.backend.expression.statements import auto_increment_parts  # noqa: E402
+from rhosocial.activerecord.backend.suggestion import IntegerAutoIncrementSuggestionRenderer  # noqa: E402
 
 import pytest
 
@@ -410,13 +410,13 @@ class TestColumnLevelNarrowing:
         column = ColumnDefinition(
             d,
             "id",
-            auto_increment_parts(d, IntegerType(d))[0],
+            IntegerAutoIncrementSuggestionRenderer().parts(d, IntegerType(d))[0],
             constraints=[
                 ColumnConstraint(
                     d, branch=ColumnPrimaryKeyConstraint(d)
                 )
             ],
-         attributes=auto_increment_parts(d, IntegerType(d))[1])
+         attributes=IntegerAutoIncrementSuggestionRenderer().parts(d, IntegerType(d))[1])
         sql, params = column.to_sql()
         assert sql == "[id] INT PRIMARY KEY IDENTITY(1, 1)"
         assert params == ()

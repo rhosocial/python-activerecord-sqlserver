@@ -1,7 +1,7 @@
 """
 Create a table with primary key, IDENTITY, and constraints.
 """
-from rhosocial.activerecord.backend.expression.statements import auto_increment_parts  # noqa: E402
+from rhosocial.activerecord.backend.suggestion import IntegerAutoIncrementSuggestionRenderer  # noqa: E402
 
 import os
 
@@ -46,11 +46,11 @@ from rhosocial.activerecord.backend.expression.statements.ddl_table import (
 columns = [
     ColumnDefinition(
         name='id',
-        data_type=auto_increment_parts(dialect, 'INT')[0],
+        data_type=IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[0],
         constraints=[
             ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)),
         ],
-     attributes=auto_increment_parts(dialect, 'INT')[1]),
+     attributes=IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[1]),
     ColumnDefinition(
         name='name',
         data_type='NVARCHAR(100)',

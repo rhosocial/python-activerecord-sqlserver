@@ -1,7 +1,7 @@
 """
 Create an index on an existing table.
 """
-from rhosocial.activerecord.backend.expression.statements import auto_increment_parts  # noqa: E402
+from rhosocial.activerecord.backend.suggestion import IntegerAutoIncrementSuggestionRenderer  # noqa: E402
 
 import os
 
@@ -44,12 +44,12 @@ create_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'users'),
     columns=[
-        ColumnDefinition('id', auto_increment_parts(dialect, 'INT')[0], constraints=[
+        ColumnDefinition('id', IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[0], constraints=[
             ColumnConstraint(
                 dialect,
                 branch=ColumnPrimaryKeyConstraint(dialect),
             ),
-        ], attributes=auto_increment_parts(dialect, 'INT')[1]),
+        ], attributes=IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[1]),
         ColumnDefinition('email', 'NVARCHAR(200)', constraints=[
             ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
         ]),

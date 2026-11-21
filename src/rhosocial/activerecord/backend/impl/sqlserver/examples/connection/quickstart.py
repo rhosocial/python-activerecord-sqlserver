@@ -7,7 +7,7 @@ This example demonstrates:
 3. How to execute expression-based queries
 4. How to access query results and handle transactions
 """
-from rhosocial.activerecord.backend.expression.statements import auto_increment_parts  # noqa: E402
+from rhosocial.activerecord.backend.suggestion import IntegerAutoIncrementSuggestionRenderer  # noqa: E402
 
 import os
 
@@ -71,14 +71,14 @@ users_table = CreateTableStatement(
     columns=[
         ColumnDefinition(
             'id',
-            auto_increment_parts(dialect, 'INT')[0],
+            IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[0],
             constraints=[
                 ColumnConstraint(
                     dialect,
                     branch=ColumnPrimaryKeyConstraint(dialect),
                 ),
             ],
-         attributes=auto_increment_parts(dialect, 'INT')[1]),
+         attributes=IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[1]),
         ColumnDefinition(
             'name',
             'NVARCHAR(100)',
@@ -96,14 +96,14 @@ logs_table = CreateTableStatement(
     columns=[
         ColumnDefinition(
             'id',
-            auto_increment_parts(dialect, 'INT')[0],
+            IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[0],
             constraints=[
                 ColumnConstraint(
                     dialect,
                     branch=ColumnPrimaryKeyConstraint(dialect),
                 ),
             ],
-         attributes=auto_increment_parts(dialect, 'INT')[1]),
+         attributes=IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[1]),
         ColumnDefinition(
             'message',
             'NVARCHAR(255)',
