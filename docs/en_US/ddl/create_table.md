@@ -20,7 +20,7 @@ from rhosocial.activerecord.backend.expression import (
     DropTableStatement,
 )
 from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements import auto_increment_parts
+from rhosocial.activerecord.backend.suggestion import IntegerAutoIncrementSuggestionRenderer
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnNotNullConstraint,
     ColumnPrimaryKeyConstraint,
@@ -40,7 +40,7 @@ backend = SQLServerBackend(connection_config=config)
 backend.connect()
 dialect = backend.dialect
 
-id_type, id_attrs = auto_increment_parts(dialect, "INT")
+id_type, id_attrs = IntegerAutoIncrementSuggestionRenderer().parts(dialect, "INT")
 
 columns = [
     ColumnDefinition(
@@ -89,7 +89,7 @@ CREATE INDEX [idx_users_email] ON [users] ([email]);
 
 ## IDENTITY and generated keys
 
-`auto_increment_parts(dialect, "INT")` returns the pair `(type, attributes)`:
+`IntegerAutoIncrementSuggestionRenderer().parts(dialect, "INT")` returns the pair `(type, attributes)`:
 the base integer type and the `IDENTITY(1,1)` column attribute. This split
 mirrors how SQL Server models identity — it is a column property, not a type.
 A model using `IntegerPKMixin` goes through the same path automatically.
