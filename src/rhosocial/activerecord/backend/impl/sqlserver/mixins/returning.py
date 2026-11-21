@@ -34,7 +34,20 @@ class SQLServerReturningMixin:
         """SQL Server supports ``OUTPUT ... INTO``."""
         return True
 
-    def format_returning_clause(self, clause: "ReturningClause", default_table: str = "INSERTED") -> Tuple[str, tuple]:
+    def format_returning_clause(self, expr: "ReturningClause") -> Tuple[str, tuple]:
+        """Render a ReturningClause node as a SQL Server OUTPUT clause.
+
+        The virtual-table prefix defaults to ``INSERTED``; a clause that needs
+        ``DELETED`` carries it in ``dialect_options["default_table"]``. Callers
+        that need to choose the prefix explicitly use
+        ``render_returning_clause``.
+        """
+        options = getattr(expr, "dialect_options", None) or {}
+        return self.render_returning_clause(expr, options.get("default_table", "INSERTED"))
+
+    def render_returning_clause(
+        self, clause: "ReturningClause", default_table: str = "INSERTED"
+    ) -> Tuple[str, tuple]:
         """
         Format RETURNING as OUTPUT clause for SQL Server.
 

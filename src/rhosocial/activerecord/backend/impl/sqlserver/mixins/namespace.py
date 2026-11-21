@@ -17,7 +17,7 @@ built inside a formatter:
 ``<kind>Object.to_sql()``
     Bracketed: ``[catalog].[schema].[name]``. The ordinary identifier form,
     reached through the per-kind formatter.
-``format_object_id_name``
+``render_object_id_name``
     Bare: ``catalog.schema.name``. ``OBJECT_ID()`` takes a string literal
     naming an object, not a T-SQL identifier, and SQL Server does not strip
     brackets from it -- ``OBJECT_ID(N'[dbo].[t]', N'U')`` is NULL. This is the
@@ -35,7 +35,7 @@ identifier is capped at 128 characters whatever level it sits at.
 
 Core offers no third operation, and the ``OBJECT_ID`` call site needs one:
 join the name *without* quoting each level. That gap is why
-:attr:`object_id_separator` and :meth:`format_unquoted_qualified_name` exist
+:attr:`object_id_separator` and :meth:`render_unquoted_qualified_name` exist
 here rather than in core. The reasoning is recorded at both.
 
 The helpers that build objects from a flat name live here too, because several
@@ -284,7 +284,7 @@ class SQLServerNamespaceMixin(NamespaceMixin):
     #
     # Core, before ``separator`` existed, spelled a qualified name with a period
     # hard-coded in the middle of one method that also did all the checking.
-    # ``format_object_id_name`` could not use that method, because it needs a
+    # ``render_object_id_name`` could not use that method, because it needs a
     # name with no brackets, and it worked around the exclusion by joining the
     # slots itself: ``".".join(...)``, bypassing the rendering *and* the
     # checks. That is a policy leak with a live failure mode -- if the join were
@@ -312,7 +312,7 @@ class SQLServerNamespaceMixin(NamespaceMixin):
     # ``validate_namespace`` runs first, so an object carrying a level SQL
     # Server cannot express is refused rather than quietly spelled without it.
 
-    def format_unquoted_qualified_name(self, obj: SchemaObject) -> str:
+    def render_unquoted_qualified_name(self, expr: SchemaObject) -> str:
         """*obj*'s qualified name as bare text, with no level quoted.
 
         The third operation, and the one ``OBJECT_ID`` needs: the same levels
@@ -327,10 +327,10 @@ class SQLServerNamespaceMixin(NamespaceMixin):
             The bare name, e.g. ``"dbo.t"`` or ``"sales.dbo.t"``. ``params`` is
             absent because this is text, not SQL.
         """
-        parts = [part for part in (obj.catalog_name, obj.schema_name, obj.name) if part]
+        parts = [part for part in (expr.catalog_name, expr.schema_name, expr.name) if part]
         return self.object_id_separator.join(parts)
 
-    def format_object_id_name(self, obj: SchemaObject) -> str:
+    def render_object_id_name(self, expr: SchemaObject) -> str:
         """The ``OBJECT_ID()`` argument naming ``obj``: ``catalog.schema.name``.
 
         ``OBJECT_ID`` does not take an identifier. It takes a string literal
@@ -341,15 +341,15 @@ class SQLServerNamespaceMixin(NamespaceMixin):
         only place in the backend that does so.
 
         It does not build the text itself: the spelling is
-        :meth:`format_unquoted_qualified_name`, and the checks are core's
+        :meth:`render_unquoted_qualified_name`, and the checks are core's
         :meth:`~.NamespaceMixin.validate_namespace`. Both used to be bypassed
         here, which is what made a regression in either invisible.
 
         The ``OBJECT_ID`` caller is responsible for escaping the result as an
         SQL string literal; this method produces the name, not the literal.
         """
-        self.validate_namespace(obj)
-        return self.format_unquoted_qualified_name(obj)
+        self.validate_namespace(expr)
+        return self.render_unquoted_qualified_name(expr)
 
 
 __all__ = ["SQLServerNamespaceMixin"]

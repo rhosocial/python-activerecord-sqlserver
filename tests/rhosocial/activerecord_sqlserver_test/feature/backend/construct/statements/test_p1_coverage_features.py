@@ -193,28 +193,28 @@ class TestTablesampleAndSelectInto:
         assert dialect.supports_select_into() is True
 
     def test_tablesample_rows(self, dialect):
-        sql, params = dialect.format_tablesample_clause(10)
+        sql, params = dialect.render_tablesample_clause(10)
         assert sql == "TABLESAMPLE (10 ROWS)"
         assert params == ()
 
     def test_tablesample_rows_repeatable(self, dialect):
-        sql, params = dialect.format_tablesample_clause(10, repeatable=42)
+        sql, params = dialect.render_tablesample_clause(10, repeatable=42)
         assert sql == "TABLESAMPLE (10 ROWS) REPEATABLE (42)"
         assert params == ()
 
     def test_tablesample_percent(self, dialect):
-        sql, params = dialect.format_tablesample_clause(25, percentage=True)
+        sql, params = dialect.render_tablesample_clause(25, percentage=True)
         assert sql == "TABLESAMPLE (25 PERCENT)"
         assert params == ()
 
     def test_tablesample_percent_repeatable(self, dialect):
-        sql, params = dialect.format_tablesample_clause(25, percentage=True, repeatable=7)
+        sql, params = dialect.render_tablesample_clause(25, percentage=True, repeatable=7)
         assert sql == "TABLESAMPLE (25 PERCENT) REPEATABLE (7)"
         assert params == ()
 
     def test_tablesample_appended_to_query_sql(self, dialect):
         query_sql = _make_query(dialect).to_sql()[0]
-        ts_sql, _ = dialect.format_tablesample_clause(10, repeatable=42)
+        ts_sql, _ = dialect.render_tablesample_clause(10, repeatable=42)
         combined = f"{query_sql} {ts_sql}"
         assert combined == "SELECT [a], [b] FROM [t] TABLESAMPLE (10 ROWS) REPEATABLE (42)"
 

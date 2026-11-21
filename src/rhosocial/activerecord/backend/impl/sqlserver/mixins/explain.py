@@ -16,7 +16,7 @@ class SQLServerExplainMixin:
         """Check if specific EXPLAIN format is supported."""
         return format_type.upper() in ["XML", "TEXT"]
 
-    def format_explain_statement(self, explain_expr: "ExplainStatement") -> Tuple[str, tuple]:
+    def format_explain_statement(self, expr: "ExplainStatement") -> Tuple[str, tuple]:
         """
         Format EXPLAIN for SQL Server.
 
@@ -25,8 +25,8 @@ class SQLServerExplainMixin:
         - SET STATISTICS PROFILE ON (actual plan with statistics)
         - SET STATISTICS XML ON (actual plan in XML)
         """
-        statement_sql, statement_params = explain_expr.statement.to_sql()
-        options = explain_expr.options
+        statement_sql, statement_params = expr.statement.to_sql()
+        options = expr.options
 
         if options is None:
             return f"SET SHOWPLAN_TEXT ON; {statement_sql}", statement_params

@@ -170,7 +170,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
     # --- SQL Server-specific type formatters (dispatch key = type name) ---
 
-    def format_data_type_sqlserver_nvarchar(self, data_type: "SQLServerNVarCharType") -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_nvarchar(self, expr: "SQLServerNVarCharType") -> Tuple[str, tuple]:
         """``NVARCHAR(n)``, with ``n`` bounded as T-SQL documents it.
 
         ``n`` counts byte-pairs here, not bytes, which is why the documented
@@ -185,10 +185,10 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         because the fallback here and the declaration there are the same number
         and neither may drift from the other.
         """
-        self._check_length("NVARCHAR", data_type.length)
-        return (f"NVARCHAR({data_type.length})" if data_type.length is not None else "NVARCHAR(255)"), ()
+        self._check_length("NVARCHAR", expr.length)
+        return (f"NVARCHAR({expr.length})" if expr.length is not None else "NVARCHAR(255)"), ()
 
-    def format_data_type_sqlserver_nchar(self, data_type: "SQLServerNCharType") -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_nchar(self, expr: "SQLServerNCharType") -> Tuple[str, tuple]:
         """``NCHAR(n)``, with ``n`` bounded as T-SQL documents it.
 
         Same 4000 ceiling as :meth:`format_data_type_sqlserver_nvarchar` and the
@@ -199,13 +199,13 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         ``NCHAR`` reports ``max_length = 2`` bytes on SQL Server 2022 and 2025,
         which is one byte-pair; see :meth:`type_parameter_defaults`.
         """
-        self._check_length("NCHAR", data_type.length)
-        return (f"NCHAR({data_type.length})" if data_type.length is not None else "NCHAR(1)"), ()
+        self._check_length("NCHAR", expr.length)
+        return (f"NCHAR({expr.length})" if expr.length is not None else "NCHAR(1)"), ()
 
-    def format_data_type_sqlserver_nvarchar_max(self, data_type) -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_nvarchar_max(self, expr) -> Tuple[str, tuple]:
         return "NVARCHAR(MAX)", ()
 
-    def format_data_type_sqlserver_varbinary(self, data_type: "SQLServerVarBinaryType") -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_varbinary(self, expr: "SQLServerVarBinaryType") -> Tuple[str, tuple]:
         """``VARBINARY(n)``, with ``n`` bounded as T-SQL documents it.
 
         T-SQL documents ``varbinary(n)`` as "n can be a value from 1 through
@@ -217,15 +217,15 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_check_length`.  ``VARBINARY(MAX)`` is the unbounded spelling and
         is a class of its own.
         """
-        self._check_length("VARBINARY", data_type.length)
-        if data_type.length is not None:
-            return f"VARBINARY({data_type.length})", ()
+        self._check_length("VARBINARY", expr.length)
+        if expr.length is not None:
+            return f"VARBINARY({expr.length})", ()
         return "VARBINARY(255)", ()
 
-    def format_data_type_sqlserver_varbinary_max(self, data_type) -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_varbinary_max(self, expr) -> Tuple[str, tuple]:
         return "VARBINARY(MAX)", ()
 
-    def format_data_type_sqlserver_xml(self, data_type: "SQLServerXmlType") -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_xml(self, expr: "SQLServerXmlType") -> Tuple[str, tuple]:
         """SQL Server's own ``xml`` spelling.
 
         SQL Server has a native ``xml`` type, so the XML concept is *rendered*
@@ -234,7 +234,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         """
         return "XML", ()
 
-    def format_data_type_sqlserver_tinyint(self, data_type) -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_tinyint(self, expr) -> Tuple[str, tuple]:
         """SQL Server ``TINYINT``, unsigned, for either spelling.
 
         No ``UNSIGNED`` modifier is emitted: T-SQL's ``TINYINT`` *is* unsigned
@@ -250,10 +250,10 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_refuse_unsigned_tinyint`, which is where a caller who writes
         ``TinyIntType(unsigned=True)`` is sent here by name.
         """
-        self.check_spelling(data_type, TinyIntType)
+        self.check_spelling(expr, TinyIntType)
         return "TINYINT", ()
 
-    def format_data_type_sqlserver_bit(self, data_type) -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_bit(self, expr) -> Tuple[str, tuple]:
         """SQL Server ``BIT`` — the boolean, not a bit string.
 
         Unlike MySQL's and PostgreSQL's ``BIT(n)``, T-SQL's ``BIT`` takes no
@@ -261,11 +261,11 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         """
         return "BIT", ()
 
-    def format_data_type_sqlserver_image(self, data_type) -> Tuple[str, tuple]:
+    def format_data_type_sqlserver_image(self, expr) -> Tuple[str, tuple]:
         return "IMAGE", ()
 
     def format_data_type_sqlserver_uniqueidentifier(
-        self, data_type: "SQLServerUniqueIdentifierType"
+        self, expr: "SQLServerUniqueIdentifierType"
     ) -> Tuple[str, tuple]:
         return "UNIQUEIDENTIFIER", ()
 
@@ -522,7 +522,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
             ),
         )
 
-    def format_data_type_integer(self, data_type: IntegerType) -> Tuple[str, tuple]:
+    def format_data_type_integer(self, expr: IntegerType) -> Tuple[str, tuple]:
         """``INT`` for both spellings.
 
         T-SQL accepts ``INT`` and ``INTEGER`` interchangeably for the same
@@ -536,31 +536,31 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_refuse_unsigned_integer`, which is also where the reason for
         the refusal is written down.
         """
-        self.check_spelling(data_type, IntegerType)
-        self._refuse_unsigned_integer(data_type, "INT")
+        self.check_spelling(expr, IntegerType)
+        self._refuse_unsigned_integer(expr, "INT")
         return "INT", ()
 
-    def format_data_type_bigint(self, data_type: BigIntType) -> Tuple[str, tuple]:
+    def format_data_type_bigint(self, expr: BigIntType) -> Tuple[str, tuple]:
         """``BIGINT`` for both spellings; T-SQL has no ``INT8`` of its own but
         both name the same signed 64-bit integer, so neither is refused.
 
         ``unsigned`` is refused rather than ignored; see
         :meth:`_refuse_unsigned_integer`."""
-        self.check_spelling(data_type, BigIntType)
-        self._refuse_unsigned_integer(data_type, "BIGINT")
+        self.check_spelling(expr, BigIntType)
+        self._refuse_unsigned_integer(expr, "BIGINT")
         return "BIGINT", ()
 
-    def format_data_type_smallint(self, data_type: SmallIntType) -> Tuple[str, tuple]:
+    def format_data_type_smallint(self, expr: SmallIntType) -> Tuple[str, tuple]:
         """``SMALLINT`` for both spellings, for the same reason as
         :meth:`format_data_type_bigint`.
 
         ``unsigned`` is refused rather than ignored; see
         :meth:`_refuse_unsigned_integer`."""
-        self.check_spelling(data_type, SmallIntType)
-        self._refuse_unsigned_integer(data_type, "SMALLINT")
+        self.check_spelling(expr, SmallIntType)
+        self._refuse_unsigned_integer(expr, "SMALLINT")
         return "SMALLINT", ()
 
-    def format_data_type_tinyint(self, data_type: TinyIntType) -> Tuple[str, tuple]:
+    def format_data_type_tinyint(self, expr: TinyIntType) -> Tuple[str, tuple]:
         """``TINYINT`` for both spellings.
 
         This is the concept class; the unsigned 8-bit backend class is
@@ -576,11 +576,11 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         declares it; see :meth:`_refuse_unsigned_tinyint`, which is where that
         reasoning is written down and where the class to use instead is named.
         """
-        self.check_spelling(data_type, TinyIntType)
-        self._refuse_unsigned_tinyint(data_type)
+        self.check_spelling(expr, TinyIntType)
+        self._refuse_unsigned_tinyint(expr)
         return "TINYINT", ()
 
-    def format_data_type_float(self, data_type: FloatType) -> Tuple[str, tuple]:
+    def format_data_type_float(self, expr: FloatType) -> Tuple[str, tuple]:
         """``FLOAT(p)`` for a declared precision, bare ``FLOAT`` for none.
 
         ``unsigned`` is refused rather than ignored; see
@@ -589,17 +589,17 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         same way whether or not it also named a precision, and the precision's own
         ``ValueError`` is untouched for a signed declaration.
         """
-        self._refuse_unsigned_numeric(data_type, "FLOAT")
-        if data_type.precision is not None:
-            if not (1 <= data_type.precision <= 53):
+        self._refuse_unsigned_numeric(expr, "FLOAT")
+        if expr.precision is not None:
+            if not (1 <= expr.precision <= 53):
                 raise ValueError(
                     f"SQL Server FLOAT precision must be 1-53, "
-                    f"got {data_type.precision}"
+                    f"got {expr.precision}"
                 )
-            return f"FLOAT({data_type.precision})", ()
+            return f"FLOAT({expr.precision})", ()
         return "FLOAT", ()
 
-    def format_data_type_real(self, data_type: RealType) -> Tuple[str, tuple]:
+    def format_data_type_real(self, expr: RealType) -> Tuple[str, tuple]:
         """``REAL``, and ``unsigned`` refused rather than ignored; see
         :meth:`_refuse_unsigned_numeric`.
 
@@ -623,10 +623,10 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         field layout, and T-SQL's ``<column_definition>`` has no type-modifier
         position after the type name in which ``UNSIGNED`` could go.
         """
-        self._refuse_unsigned_numeric(data_type, "REAL")
+        self._refuse_unsigned_numeric(expr, "REAL")
         return "REAL", ()
 
-    def format_data_type_double(self, data_type: DoubleType) -> Tuple[str, tuple]:
+    def format_data_type_double(self, expr: DoubleType) -> Tuple[str, tuple]:
         """``FLOAT(53)`` for both spellings.
 
         T-SQL has no ``DOUBLE``: 8-byte floating point *is* ``FLOAT(53)``, the
@@ -642,8 +642,8 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         both sides -- so there is no unsigned double-precision column on this
         server for the request to have become.
         """
-        self.check_spelling(data_type, DoubleType)
-        self._refuse_unsigned_numeric(data_type, "DOUBLE PRECISION")
+        self.check_spelling(expr, DoubleType)
+        self._refuse_unsigned_numeric(expr, "DOUBLE PRECISION")
         return "FLOAT(53)", ()
 
     def _check_decimal_scale_sign(self, data_type: DecimalType) -> None:
@@ -764,7 +764,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
             f"maximum allowed for any data type (8000)' error)"
         )
 
-    def format_data_type_decimal(self, data_type: DecimalType) -> Tuple[str, tuple]:
+    def format_data_type_decimal(self, expr: DecimalType) -> Tuple[str, tuple]:
         """``DECIMAL`` for all three spellings, and the two ways a scale or a
         precision can be wrong on this grammar.
 
@@ -830,13 +830,13 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         this backend would have had to judge. Every check below is untouched and
         still fires for a signed declaration.
         """
-        self._refuse_unsigned_numeric(data_type, "DECIMAL")
-        self.check_spelling(data_type, DecimalType)
-        self._check_decimal_scale_sign(data_type)
-        if data_type.scale is not None and data_type.precision is None:
+        self._refuse_unsigned_numeric(expr, "DECIMAL")
+        self.check_spelling(expr, DecimalType)
+        self._check_decimal_scale_sign(expr)
+        if expr.scale is not None and expr.precision is None:
             raise UnsupportedFeatureError(
                 self.name,
-                f"a DECIMAL(p,s) column declared with scale={data_type.scale} "
+                f"a DECIMAL(p,s) column declared with scale={expr.scale} "
                 f"and no precision (T-SQL's grammar is decimal[(p[,s])]: the "
                 f"scale is inside the precision's brackets and, in the "
                 f"reference's words, 'can only be specified if precision is "
@@ -845,37 +845,37 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
                 f"where one could go)",
                 suggestion=(
                     f"Declare the precision as well: DECIMAL(p,s) renders "
-                    f"DECIMAL(p, {data_type.scale}), and T-SQL requires 0 <= s "
+                    f"DECIMAL(p, {expr.scale}), and T-SQL requires 0 <= s "
                     f"<= p with a maximum precision of 38.  A bare DECIMAL is "
                     f"DECIMAL(18, 0) - a default precision of 18 and a default "
                     f"scale of 0 - so it is not the column a bare scale asked "
                     f"for, and DECIMAL(p) alone would mean scale 0."
                 ),
             )
-        if data_type.precision is not None:
-            if not (1 <= data_type.precision <= 38):
+        if expr.precision is not None:
+            if not (1 <= expr.precision <= 38):
                 raise ValueError(
                     f"SQL Server DECIMAL precision must be 1-38, "
-                    f"got {data_type.precision}"
+                    f"got {expr.precision}"
                 )
-        if data_type.scale is not None:
-            if data_type.precision is not None and data_type.scale > data_type.precision:
+        if expr.scale is not None:
+            if expr.precision is not None and expr.scale > expr.precision:
                 raise ValueError(
-                    f"SQL Server DECIMAL scale ({data_type.scale}) "
-                    f"must not exceed precision ({data_type.precision})"
+                    f"SQL Server DECIMAL scale ({expr.scale}) "
+                    f"must not exceed precision ({expr.precision})"
                 )
-        if data_type.precision is not None and data_type.scale is not None:
-            return f"DECIMAL({data_type.precision}, {data_type.scale})", ()
-        if data_type.precision is not None:
-            return f"DECIMAL({data_type.precision})", ()
+        if expr.precision is not None and expr.scale is not None:
+            return f"DECIMAL({expr.precision}, {expr.scale})", ()
+        if expr.precision is not None:
+            return f"DECIMAL({expr.precision})", ()
         return "DECIMAL", ()
 
-    def format_data_type_boolean(self, data_type: BooleanType) -> Tuple[str, tuple]:
+    def format_data_type_boolean(self, expr: BooleanType) -> Tuple[str, tuple]:
         """``BIT`` for both spellings — T-SQL's own name for the boolean."""
-        self.check_spelling(data_type, BooleanType)
+        self.check_spelling(expr, BooleanType)
         return "BIT", ()
 
-    def format_data_type_varchar(self, data_type: VarCharType) -> Tuple[str, tuple]:
+    def format_data_type_varchar(self, expr: VarCharType) -> Tuple[str, tuple]:
         """``VARCHAR(n)`` for both spellings.
 
         T-SQL writes neither ``CHARACTER VARYING`` nor ``CHARACTER``: the long
@@ -894,14 +894,14 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         backend checks the intersection of that page's two statements about the
         lower bound rather than picking one of them.
         """
-        self.check_spelling(data_type, VarCharType)
-        self._check_length("VARCHAR", data_type.length)
-        length = data_type.length
+        self.check_spelling(expr, VarCharType)
+        self._check_length("VARCHAR", expr.length)
+        length = expr.length
         if length is None:
             length = self.type_parameter_defaults()["varchar"]["length"]
         return f"VARCHAR({length})", ()
 
-    def format_data_type_char(self, data_type: CharType) -> Tuple[str, tuple]:
+    def format_data_type_char(self, expr: CharType) -> Tuple[str, tuple]:
         """``CHAR(n)`` for both spellings, defaulting to ``CHAR(1)``.
 
         Fixed length: a shorter value is space-padded to ``n`` rather than
@@ -915,14 +915,14 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         A declared length is range-checked exactly as :meth:`format_data_type_varchar`
         range-checks a ``VARCHAR`` one; see :meth:`_check_length`.
         """
-        self.check_spelling(data_type, CharType)
-        self._check_length("CHAR", data_type.length)
-        length = data_type.length
+        self.check_spelling(expr, CharType)
+        self._check_length("CHAR", expr.length)
+        length = expr.length
         if length is None:
             length = self.type_parameter_defaults()["char"]["length"]
         return f"CHAR({length})", ()
 
-    def format_data_type_text(self, data_type: TextType) -> Tuple[str, tuple]:
+    def format_data_type_text(self, expr: TextType) -> Tuple[str, tuple]:
         """``NVARCHAR(MAX)`` for both spellings.
 
         Unbounded text is spelled ``NVARCHAR(MAX)`` on SQL Server, not ``TEXT``:
@@ -931,10 +931,10 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         enums and byte strings here, and ``clob`` names the same unbounded
         concept, so it is accepted rather than refused.
         """
-        self.check_spelling(data_type, TextType)
+        self.check_spelling(expr, TextType)
         return "NVARCHAR(MAX)", ()
 
-    def format_data_type_datetime(self, data_type: DateTimeType) -> Tuple[str, tuple]:
+    def format_data_type_datetime(self, expr: DateTimeType) -> Tuple[str, tuple]:
         """``DATETIME2`` — T-SQL's own word for a datetime without an offset.
 
         The deprecated ``DATETIME`` and ``SMALLDATETIME`` are its ancestors, not
@@ -942,29 +942,29 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         why they are separate parser branches rather than spellings of this
         concept.
         """
-        if data_type.precision is not None:
-            if not (0 <= data_type.precision <= 7):
+        if expr.precision is not None:
+            if not (0 <= expr.precision <= 7):
                 raise ValueError(
                     f"SQL Server DATETIME2 fractional seconds precision "
-                    f"must be 0-7, got {data_type.precision}"
+                    f"must be 0-7, got {expr.precision}"
                 )
-            return f"DATETIME2({data_type.precision})", ()
+            return f"DATETIME2({expr.precision})", ()
         return "DATETIME2", ()
 
-    def format_data_type_date(self, data_type: DateType) -> Tuple[str, tuple]:
+    def format_data_type_date(self, expr: DateType) -> Tuple[str, tuple]:
         return "DATE", ()
 
-    def format_data_type_time(self, data_type: TimeType) -> Tuple[str, tuple]:
-        if data_type.precision is not None:
-            if not (0 <= data_type.precision <= 7):
+    def format_data_type_time(self, expr: TimeType) -> Tuple[str, tuple]:
+        if expr.precision is not None:
+            if not (0 <= expr.precision <= 7):
                 raise ValueError(
                     f"SQL Server TIME fractional seconds precision "
-                    f"must be 0-7, got {data_type.precision}"
+                    f"must be 0-7, got {expr.precision}"
                 )
-            return f"TIME({data_type.precision})", ()
+            return f"TIME({expr.precision})", ()
         return "TIME", ()
 
-    def format_data_type_timestamp(self, data_type: TimestampType) -> Tuple[str, tuple]:
+    def format_data_type_timestamp(self, expr: TimestampType) -> Tuple[str, tuple]:
         """``DATETIME2`` — SQL Server renders this concept as its own datetime.
 
         Worth stating because it is the opposite of what the spelling suggests:
@@ -973,16 +973,16 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         ZONE`` must not be confused with either of them.  The timezone-aware
         concept is :meth:`format_data_type_timestamptz`.
         """
-        if data_type.precision is not None:
-            if not (0 <= data_type.precision <= 7):
+        if expr.precision is not None:
+            if not (0 <= expr.precision <= 7):
                 raise ValueError(
                     f"SQL Server DATETIME2 fractional seconds precision "
-                    f"must be 0-7, got {data_type.precision}"
+                    f"must be 0-7, got {expr.precision}"
                 )
-            return f"DATETIME2({data_type.precision})", ()
+            return f"DATETIME2({expr.precision})", ()
         return "DATETIME2", ()
 
-    def format_data_type_timestamptz(self, data_type: TimestampTzType) -> Tuple[str, tuple]:
+    def format_data_type_timestamptz(self, expr: TimestampTzType) -> Tuple[str, tuple]:
         """``DATETIMEOFFSET`` — SQL Server's timezone-aware datetime.
 
         The concept is rendered, not substituted, because T-SQL really has the
@@ -991,16 +991,16 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         does not keep is the zone *identifier* — there is no time-zone name in
         the type, so a column that needs one has to carry it separately.
         """
-        if data_type.precision is not None:
-            if not (0 <= data_type.precision <= 7):
+        if expr.precision is not None:
+            if not (0 <= expr.precision <= 7):
                 raise ValueError(
                     f"SQL Server DATETIMEOFFSET fractional seconds precision "
-                    f"must be 0-7, got {data_type.precision}"
+                    f"must be 0-7, got {expr.precision}"
                 )
-            return f"DATETIMEOFFSET({data_type.precision})", ()
+            return f"DATETIMEOFFSET({expr.precision})", ()
         return "DATETIMEOFFSET", ()
 
-    def format_data_type_json(self, data_type: JsonType) -> Tuple[str, tuple]:
+    def format_data_type_json(self, expr: JsonType) -> Tuple[str, tuple]:
         """``NVARCHAR(MAX)`` — SQL Server has no JSON *type*.
 
         JSON arrives in SQL Server 2016 as text in an ordinary column, and
@@ -1011,7 +1011,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         """
         return "NVARCHAR(MAX)", ()
 
-    def format_data_type_xml(self, data_type: XmlType) -> Tuple[str, tuple]:
+    def format_data_type_xml(self, expr: XmlType) -> Tuple[str, tuple]:
         """``XML`` — SQL Server has a native ``xml`` type.
 
         Unlike ``json``, this concept is not text here: the storage is a binary
@@ -1022,7 +1022,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         """
         return "XML", ()
 
-    def format_data_type_blob(self, data_type: BlobType) -> Tuple[str, tuple]:
+    def format_data_type_blob(self, expr: BlobType) -> Tuple[str, tuple]:
         """``VARBINARY(MAX)`` for both spellings.
 
         T-SQL's own name for the byte-string storage; ``BYTEA`` is PostgreSQL's
@@ -1031,11 +1031,11 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         unbounded byte storage — and is what an unbounded blob is on this
         dialect.
         """
-        self.check_spelling(data_type, BlobType)
+        self.check_spelling(expr, BlobType)
         return "VARBINARY(MAX)", ()
 
-    def format_data_type_custom(self, data_type: CustomType) -> Tuple[str, tuple]:
-        return data_type.raw, ()
+    def format_data_type_custom(self, expr: CustomType) -> Tuple[str, tuple]:
+        return expr.raw, ()
 
     # ------------------------------------------------------------------
     # supports_data_type_<name> — 1:1 with format_data_type_<name>

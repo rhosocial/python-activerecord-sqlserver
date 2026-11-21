@@ -1409,7 +1409,7 @@ LEGITIMATE_NON_RENDERS = {
     # key_index, catalog_name)`` where core's takes the expression, so the core
     # expression dispatched into a signature it could not satisfy. The
     # statement/name unification renamed the backend's formatters to their own
-    # spelling (``format_create_full_text_index_statement`` and friends),
+    # spelling (``render_create_full_text_index_statement`` and friends),
     # which freed the core names: the core expressions now reach core's generic
     # formatters and render, so there is nothing left to pin here.
     #

@@ -148,7 +148,6 @@ from rhosocial.activerecord.backend.dialect.mixins import (
 )
 from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
 from .suggestion.integer_auto_increment_column_suggestion import (
@@ -209,7 +208,6 @@ from .mixins.version_constants import (
     SQL_SERVER_2005,
     SQL_SERVER_2008,
     SQL_SERVER_2012,
-    SQL_SERVER_2014,
     SQL_SERVER_2016,
     SQL_SERVER_2017,
     SQL_SERVER_2019,
@@ -220,43 +218,29 @@ from .reserved_words import SQLSERVER_RESERVED_WORDS
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
-    from rhosocial.activerecord.backend.expression.collation import CollateFunction
     from rhosocial.activerecord.backend.expression.advanced_functions import ArrayOperation, OrderedSetAggregation
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
-        LimitOffsetClause,
-        ForUpdateClause,
         QualifyClause,
     )
     from rhosocial.activerecord.backend.expression.statements import (
-        ExplainStatement,
-        CreateViewStatement,
-        DropViewStatement,
-        CreateMaterializedViewStatement,
-        ReturningClause,
-        InsertStatement,
         ColumnDefinition,
         TableConstraint,
         IndexDefinition,
         CreateTableStatement,
         CreateIndexStatement,
-        DropTableStatement,
-        CreateSchemaStatement,
-        DropSchemaStatement,
         AlterSequenceStatement,
         MergeStatement,
         TruncateStatement,
-    )
-    from rhosocial.activerecord.backend.expression.transaction import (
-        BeginTransactionStatement,
-        SetTransactionStatement,
     )
     from rhosocial.activerecord.backend.expression.statements.fulltext_match import (
         FulltextMatch,
     )
 
 
-_SUGGESTION_ARRAY_TYPES = "SQL Server does not support native array types. Consider using JSON or comma-separated values."
+_SUGGESTION_ARRAY_TYPES = (
+    "SQL Server does not support native array types. Consider using JSON or comma-separated values."
+)
 _SUGGESTION_JSON_TABLE = "SQL Server uses OPENJSON for JSON table functionality (2016+)."
 _SUGGESTION_GRAPH_MATCH = (
     "SQL Server does not support the SQL/PGQ MATCH clause. Use its own SQL Graph API "
@@ -647,23 +631,23 @@ class SQLServerDialect(
             exists_clause = f"CASE WHEN {exists_clause} THEN 1 ELSE 0 END"
         return self._with_predicate_alias(exists_clause, expr), subquery_params
 
-    def format_array_expression(self, _expr: "ArrayOperation") -> Tuple[str, tuple]:
+    def format_array_expression(self, expr: "ArrayOperation") -> Tuple[str, tuple]:
         """Format array expression - not supported."""
         raise UnsupportedFeatureError(self.name, "Array operations", _SUGGESTION_ARRAY_TYPES)
 
-    def format_json_table_expression(self, _expr: "BaseExpression") -> Tuple[str, tuple]:
+    def format_json_table_expression(self, expr: "BaseExpression") -> Tuple[str, tuple]:
         """Format JSON_TABLE - SQL Server uses OPENJSON."""
         raise UnsupportedFeatureError(self.name, "JSON_TABLE", _SUGGESTION_JSON_TABLE)
 
-    def format_match_clause(self, _clause: "MatchClause") -> Tuple[str, tuple]:
+    def format_match_clause(self, expr: "MatchClause") -> Tuple[str, tuple]:
         """Format MATCH clause - not supported."""
         raise UnsupportedFeatureError(self.name, "graph MATCH clause", _SUGGESTION_GRAPH_MATCH)
 
-    def format_ordered_set_aggregation(self, _aggregation: "OrderedSetAggregation") -> Tuple[str, tuple]:
+    def format_ordered_set_aggregation(self, expr: "OrderedSetAggregation") -> Tuple[str, tuple]:
         """Format ordered-set aggregation - not supported."""
         raise UnsupportedFeatureError(self.name, "ordered-set aggregate functions", _SUGGESTION_ORDERED_SET_AGG)
 
-    def format_qualify_clause(self, _clause: "QualifyClause") -> Tuple[str, tuple]:
+    def format_qualify_clause(self, expr: "QualifyClause") -> Tuple[str, tuple]:
         """Format QUALIFY clause - not supported."""
         raise UnsupportedFeatureError(self.name, "QUALIFY clause", _SUGGESTION_QUALIFY)
 
@@ -762,8 +746,8 @@ class SQLServerDialect(
             # SQL Server has no CREATE TABLE IF NOT EXISTS syntax; the
             # idempotent form is the IF OBJECT_ID(...) IS NULL batch guard.
             # OBJECT_ID names an object rather than quoting an identifier, so
-            # this is the one unbracketed shape -- see format_object_id_name.
-            target = self.format_object_id_name(table).replace("'", "''")
+            # this is the one unbracketed shape -- see render_object_id_name.
+            target = self.render_object_id_name(table).replace("'", "''")
             if_not_exists_guard = f"IF OBJECT_ID(N'{target}', N'U') IS NULL\n"
         all_params: List[Any] = []
 
@@ -815,7 +799,7 @@ class SQLServerDialect(
         table_options = expr.table_options
         if isinstance(table_options, SQLServerCreateTableOptions) and table_options.memory_optimized:
             durability = table_options.durability or "SCHEMA_ONLY"
-            parts.append(self.format_memory_optimized_option(durability))
+            parts.append(self.render_memory_optimized_option(durability))
 
         # SQL Graph table kind (AS NODE / AS EDGE), if requested. Like the
         # edge constraints above, the field belongs to the SQL Server node.
@@ -836,7 +820,18 @@ class SQLServerDialect(
 
         return if_not_exists_guard + ' '.join(parts), tuple(all_params)
 
-    def format_column_definition(
+    def format_column_definition(self, expr: "ColumnDefinition") -> Tuple[str, tuple]:
+        """Render a ColumnDefinition node for SQL Server.
+
+        A node that needs the memory-optimized spelling carries it in
+        ``dialect_options["memory_optimized"]``; callers that need to choose
+        explicitly use ``render_column_definition``.
+        """
+        options = getattr(expr, "dialect_options", None) or {}
+        memory_optimized = bool(options.get("memory_optimized", False))
+        return self.render_column_definition(expr, memory_optimized=memory_optimized)
+
+    def render_column_definition(
         self,
         col_def: "ColumnDefinition",
         *,
@@ -960,7 +955,18 @@ class SQLServerDialect(
 
         return ' '.join(parts), tuple(params)
 
-    def format_table_constraint(
+    def format_table_constraint(self, expr: "TableConstraint") -> Tuple[str, tuple]:
+        """Render a TableConstraint node for SQL Server.
+
+        A node that needs the memory-optimized spelling carries it in
+        ``dialect_options["memory_optimized"]``; callers that need to choose
+        explicitly use ``render_table_constraint``.
+        """
+        options = getattr(expr, "dialect_options", None) or {}
+        memory_optimized = bool(options.get("memory_optimized", False))
+        return self.render_table_constraint(expr, memory_optimized=memory_optimized)
+
+    def render_table_constraint(
         self,
         t_const: "TableConstraint",
         *,
@@ -1038,15 +1044,15 @@ class SQLServerDialect(
 
         return super().format_table_constraint(t_const)
 
-    def format_inline_index(self, idx_def: "IndexDefinition") -> Tuple[str, tuple]:
+    def format_inline_index(self, expr: "IndexDefinition") -> Tuple[str, tuple]:
         """Format an inline index definition for SQL Server."""
         from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
         for option, value in (
-            ("if_not_exists", idx_def.if_not_exists),
-            ("tablespace", idx_def.tablespace),
-            ("include_columns", idx_def.include_columns),
-            ("partial_condition", idx_def.partial_condition),
+            ("if_not_exists", expr.if_not_exists),
+            ("tablespace", expr.tablespace),
+            ("include_columns", expr.include_columns),
+            ("partial_condition", expr.partial_condition),
         ):
             if value:
                 raise UnsupportedFeatureError(
@@ -1056,14 +1062,14 @@ class SQLServerDialect(
                 )
         parts = []
 
-        if idx_def.unique:
+        if expr.unique:
             parts.append("UNIQUE")
 
         parts.append("INDEX")
-        parts.append(self.qualified_object_name(Index, idx_def.name))
+        parts.append(self.qualified_object_name(Index, expr.name))
 
         col_parts = []
-        for col in idx_def.columns:
+        for col in expr.columns:
             if isinstance(col, ToSQLProtocol):
                 col_sql, col_params = col.to_sql()
                 col_parts.append(col_sql)
@@ -1071,13 +1077,13 @@ class SQLServerDialect(
                 col_parts.append(self.format_identifier(str(col)))
         cols_str = ', '.join(col_parts)
 
-        if getattr(idx_def, "hash_index", False):
+        if getattr(expr, "hash_index", False):
             self.check_feature_support(
                 "supports_memory_optimized_tables",
                 "NONCLUSTERED HASH index",
                 "requires SQL Server 2014+ (memory-optimized tables).",
             )
-            bucket_count = getattr(idx_def, "bucket_count", None)
+            bucket_count = getattr(expr, "bucket_count", None)
             if bucket_count is None:
                 raise ValueError("bucket_count is required for a NONCLUSTERED HASH index")
             parts.append(f"NONCLUSTERED HASH ({cols_str}) WITH (BUCKET_COUNT = {bucket_count})")
@@ -1440,7 +1446,7 @@ class SQLServerDialect(
 
         if output_columns and self.supports_merge_output():
             action_type = "$action" if output_action else None
-            output_sql, output_params = self.format_merge_output_clause(
+            output_sql, output_params = self.render_merge_output_clause(
                 list(output_columns), action_type=action_type
             )
             parts.append(output_sql)
@@ -1504,7 +1510,7 @@ class SQLServerDialect(
 
         return sql, ()
 
-    def format_top_n_clause(self, n: int, percentage: bool = False) -> Tuple[str, tuple]:
+    def render_top_n_clause(self, n: int, percentage: bool = False) -> Tuple[str, tuple]:
         """Format TOP n clause for SQL Server.
 
         SELECT TOP n / SELECT TOP n PERCENT
@@ -1514,7 +1520,7 @@ class SQLServerDialect(
             return f"TOP {n} PERCENT", ()
         return f"TOP {n}", ()
 
-    def format_query_option_clause(self, clause: "bases.BaseExpression") -> Tuple[str, tuple]:
+    def format_query_option_clause(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
         """Format an OPTION query hint clause.
 
         SQL Server exposes optimizer hints through the query-level OPTION
@@ -1526,7 +1532,7 @@ class SQLServerDialect(
         ``expression.option_hint`` factories such as ``recompile_hint``,
         ``maxdop_hint``, and ``optimize_for_hint``).
         """
-        return f"OPTION ({', '.join(clause.hints)})", ()
+        return f"OPTION ({', '.join(expr.hints)})", ()
 
     # ------------------------------------------------------------------
     # DataType protocol — substitutions

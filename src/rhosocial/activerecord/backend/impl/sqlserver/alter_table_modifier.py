@@ -59,35 +59,35 @@ class SQLServerAlterColumnModifierMixin:
         """
         return True
 
-    def format_add_column_action(self, action: Any) -> Tuple[str, tuple]:
-        if getattr(action, "if_not_exists", None) is True:
+    def format_add_column_action(self, expr: Any) -> Tuple[str, tuple]:
+        if getattr(expr, "if_not_exists", None) is True:
             raise UnsupportedFeatureError(
                 self.name,
                 "ADD COLUMN IF NOT EXISTS",
                 suggestion="SQL Server does not support ADD COLUMN IF NOT EXISTS. "
                            "Pre-check sys.columns / information_schema.COLUMNS.",
             )
-        column_sql, column_params = self.format_column_definition(action.column)
+        column_sql, column_params = self.format_column_definition(expr.column)
         # SQL Server ALTER TABLE ... ADD takes the column without a COLUMN literal.
         return f"ADD {column_sql}", column_params
 
-    def format_drop_column_action(self, action: Any) -> Tuple[str, tuple]:
-        name = self.format_identifier(action.column_name)
-        if getattr(action, "if_exists", None) is True:
+    def format_drop_column_action(self, expr: Any) -> Tuple[str, tuple]:
+        name = self.format_identifier(expr.column_name)
+        if getattr(expr, "if_exists", None) is True:
             return f"DROP COLUMN IF EXISTS {name}", ()
         return f"DROP COLUMN {name}", ()
 
-    def format_drop_table_constraint_action(self, action: Any) -> Tuple[str, tuple]:
-        name = self.format_identifier(action.constraint_name)
-        if getattr(action, "if_exists", None) is True:
+    def format_drop_table_constraint_action(self, expr: Any) -> Tuple[str, tuple]:
+        name = self.format_identifier(expr.constraint_name)
+        if getattr(expr, "if_exists", None) is True:
             result = f"DROP CONSTRAINT IF EXISTS {name}"
         else:
             result = f"DROP CONSTRAINT {name}"
-        if getattr(action, "cascade", None):
+        if getattr(expr, "cascade", None):
             result += " CASCADE"
         return result, ()
 
-    def format_alter_column_action(self, action: Any) -> Tuple[str, tuple]:
+    def format_alter_column_action(self, expr: Any) -> Tuple[str, tuple]:
         """Dispatch an ALTER COLUMN action to a SQL Server-specific formatter.
 
         SQL Server re-specifies the full column rather than applying the
@@ -101,15 +101,15 @@ class SQLServerAlterColumnModifierMixin:
           ``format_add_masked_action``.
         - ``DROP MASKED`` renders ``format_drop_masked_action``.
         """
-        operation = action.operation
+        operation = expr.operation
         op_str = operation.value if hasattr(operation, "value") else str(operation)
 
-        if op_str == "ADD MASKED" or getattr(action, "masked_function", None) is not None:
-            return self.format_add_masked_action(action)
-        if op_str == "DROP MASKED" or getattr(action, "drop_masked", False):
-            return self.format_drop_masked_action(action)
-        if op_str == "SET DATA TYPE" or getattr(action, "data_type", None) is not None:
-            return self.format_alter_column_type_action(action)
+        if op_str == "ADD MASKED" or getattr(expr, "masked_function", None) is not None:
+            return self.format_add_masked_action(expr)
+        if op_str == "DROP MASKED" or getattr(expr, "drop_masked", False):
+            return self.format_drop_masked_action(expr)
+        if op_str == "SET DATA TYPE" or getattr(expr, "data_type", None) is not None:
+            return self.format_alter_column_type_action(expr)
 
         raise UnsupportedFeatureError(
             self.name,
@@ -119,7 +119,7 @@ class SQLServerAlterColumnModifierMixin:
             "NULL/NOT NULL, COLLATE, SPARSE, or MASKED.",
         )
 
-    def format_alter_column_type_action(self, action: Any) -> Tuple[str, tuple]:
+    def format_alter_column_type_action(self, expr: Any) -> Tuple[str, tuple]:
         """Format a T-SQL ALTER COLUMN type change.
 
         SQL Syntax:
@@ -130,7 +130,7 @@ class SQLServerAlterColumnModifierMixin:
         action's ``new_value``. ``not_null``, ``collate``, and ``sparse``
         are typed fields on ``SQLServerAlterColumn``.
         """
-        data_type = getattr(action, "data_type", None) or action.new_value
+        data_type = getattr(expr, "data_type", None) or expr.new_value
         if data_type is None:
             raise ValueError("data type is required for ALTER COLUMN")
 
@@ -139,20 +139,20 @@ class SQLServerAlterColumnModifierMixin:
         type_sql, _ = DataType.as_type(self, data_type).to_sql()
         parts = [
             "ALTER COLUMN",
-            self.format_identifier(action.column_name),
+            self.format_identifier(expr.column_name),
             type_sql,
         ]
 
-        collate = getattr(action, "collate", None)
+        collate = getattr(expr, "collate", None)
         if collate:
             parts.append(f"COLLATE {collate}")
 
-        not_null = getattr(action, "not_null", False)
-        nullable = getattr(action, "nullable", False)
+        not_null = getattr(expr, "not_null", False)
+        nullable = getattr(expr, "nullable", False)
         if not_null or nullable:
             parts.append("NOT NULL" if not_null else "NULL")
 
-        if getattr(action, "sparse", False):
+        if getattr(expr, "sparse", False):
             if self.version < _SQL_SERVER_SPARSE_COLUMN_VERSION:  # type: ignore[attr-defined]
                 raise UnsupportedFeatureError(
                     self.name,
@@ -163,7 +163,7 @@ class SQLServerAlterColumnModifierMixin:
 
         return " ".join(parts), ()
 
-    def format_add_masked_action(self, action: Any) -> Tuple[str, tuple]:
+    def format_add_masked_action(self, expr: Any) -> Tuple[str, tuple]:
         """Format ALTER COLUMN ... ADD MASKED (dynamic data masking, 2016+).
 
         SQL Syntax:
@@ -179,18 +179,18 @@ class SQLServerAlterColumnModifierMixin:
                 suggestion="requires SQL Server 2016+.",
             )
 
-        function = getattr(action, "masked_function", None) or action.new_value
+        function = getattr(expr, "masked_function", None) or expr.new_value
         if function is None:
             raise ValueError("masked_function is required for ADD MASKED")
 
         escaped = str(function).replace("'", "''")
         return (
-            f"ALTER COLUMN {self.format_identifier(action.column_name)} "
+            f"ALTER COLUMN {self.format_identifier(expr.column_name)} "
             f"ADD MASKED WITH (FUNCTION = '{escaped}')",
             (),
         )
 
-    def format_drop_masked_action(self, action: Any) -> Tuple[str, tuple]:
+    def format_drop_masked_action(self, expr: Any) -> Tuple[str, tuple]:
         """Format ALTER COLUMN ... DROP MASKED (dynamic data masking, 2016+).
 
         SQL Syntax:
@@ -204,6 +204,6 @@ class SQLServerAlterColumnModifierMixin:
             )
 
         return (
-            f"ALTER COLUMN {self.format_identifier(action.column_name)} DROP MASKED",
+            f"ALTER COLUMN {self.format_identifier(expr.column_name)} DROP MASKED",
             (),
         )

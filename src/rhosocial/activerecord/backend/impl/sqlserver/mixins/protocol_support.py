@@ -30,7 +30,7 @@ class SQLServerProtocolSupportMixin:
         """SQL Server supports the OUTPUT clause."""
         return True
 
-    def format_output_clause(
+    def render_output_clause(
         self, columns: List[str], clause_type: str = "inserted"
     ) -> Tuple[str, tuple]:
         """Format an OUTPUT clause delegating to format_returning_clause.
@@ -48,7 +48,7 @@ class SQLServerProtocolSupportMixin:
         default_table = clause_type.upper()
         expressions = [Column(self, col) for col in columns]
         clause = ReturningClause(self, expressions)
-        return self.format_returning_clause(clause, default_table=default_table)
+        return self.render_returning_clause(clause, default_table)
 
     def supports_offset_fetch(self) -> bool:
         """OFFSET FETCH pagination requires SQL Server 2012+."""
@@ -62,7 +62,7 @@ class SQLServerProtocolSupportMixin:
         """FULLTEXT catalogs require SQL Server 2005+."""
         return self.version_at_least((9, 0, 0))
 
-    def format_create_full_text_catalog_statement(
+    def render_create_full_text_catalog_statement(
         self, catalog_name: str, as_default: bool = False
     ) -> Tuple[str, tuple]:
         """Format CREATE FULLTEXT CATALOG statement (2005+).
@@ -88,7 +88,7 @@ class SQLServerProtocolSupportMixin:
             sql += " AS DEFAULT"
         return sql, ()
 
-    def format_drop_full_text_catalog_statement(self, catalog_name: str) -> Tuple[str, tuple]:
+    def format_drop_full_text_catalog_statement(self, expr: str) -> Tuple[str, tuple]:
         """Format DROP FULLTEXT CATALOG statement (2005+).
 
         SQL Syntax:
@@ -99,9 +99,9 @@ class SQLServerProtocolSupportMixin:
             "FULLTEXT catalogs",
             "requires SQL Server 2005+.",
         )
-        return f"DROP FULLTEXT CATALOG {self.format_identifier(catalog_name)}", ()
+        return f"DROP FULLTEXT CATALOG {self.format_identifier(expr)}", ()
 
-    def format_create_full_text_index_statement(
+    def render_create_full_text_index_statement(
         self,
         table: str,
         columns: List[str],
@@ -134,7 +134,7 @@ class SQLServerProtocolSupportMixin:
         )
         return sql, ()
 
-    def format_drop_full_text_index_statement(self, table: str) -> Tuple[str, tuple]:
+    def format_drop_full_text_index_statement(self, expr: str) -> Tuple[str, tuple]:
         """Format DROP FULLTEXT INDEX statement (2005+).
 
         SQL Syntax:
@@ -146,23 +146,23 @@ class SQLServerProtocolSupportMixin:
             "requires SQL Server 2005+.",
         )
         return (
-            f"DROP FULLTEXT INDEX ON {self.qualified_object_name(Table, table)}",
+            f"DROP FULLTEXT INDEX ON {self.qualified_object_name(Table, expr)}",
             (),
         )
 
-    def format_contains_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
+    def render_contains_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a CONTAINS predicate delegating to format_fulltext_match."""
         from rhosocial.activerecord.backend.expression.statements.fulltext_match import FulltextMatch
         expr = FulltextMatch(self, [column], search_string)
         return self.format_fulltext_match(expr)
 
-    def format_freetext_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
+    def render_freetext_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a FREETEXT predicate."""
         from ..expression.functions import SQLServerFreetextPredicate
 
         return SQLServerFreetextPredicate(self, column, search_string).to_sql()
 
-    def format_containstable_function(
+    def render_containstable_function(
         self, table: str, column: str, search_string: str, top_n: Optional[int] = None
     ) -> Tuple[str, tuple]:
         """Format a CONTAINSTABLE full-text table function."""
@@ -180,11 +180,11 @@ class SQLServerProtocolSupportMixin:
         """READPAST hint requires SQL Server 2019+."""
         return self.version_at_least((15, 0, 0))
 
-    def format_table_hint_locking(self, hint_type: str) -> Tuple[str, tuple]:
+    def format_table_hint_locking(self, expr: str) -> Tuple[str, tuple]:
         """Format a locking table hint delegating to SQLServerTableHintClause."""
         from ..expression.locking import SQLServerTableHint, SQLServerTableHintClause
 
-        hint_type = hint_type.upper()
+        hint_type = expr.upper()
         hints = [SQLServerTableHint("UPDLOCK"), SQLServerTableHint("ROWLOCK")]
         if "READPAST" in hint_type and self.supports_readpast():
             hints.append(SQLServerTableHint("READPAST"))
@@ -199,13 +199,13 @@ class SQLServerProtocolSupportMixin:
         """TRY_CONVERT requires SQL Server 2012+."""
         return self.version_at_least((11, 0, 0))
 
-    def format_try_cast_expression(self, expr_sql: str, target_type: str) -> Tuple[str, tuple]:
+    def render_try_cast_expression(self, expr_sql: str, target_type: str) -> Tuple[str, tuple]:
         """Format TRY_CAST(expr AS type)."""
         from ..expression.functions import SQLServerTryCastExpression
 
         return SQLServerTryCastExpression(self, expr_sql, target_type).to_sql()
 
-    def format_try_convert_expression(
+    def render_try_convert_expression(
         self, expr_sql: str, target_type: str, style: Optional[int] = None
     ) -> Tuple[str, tuple]:
         """Format TRY_CONVERT(type, expr[, style])."""
@@ -217,12 +217,12 @@ class SQLServerProtocolSupportMixin:
         """SQL Server supports WITH (...) table hints."""
         return True
 
-    def format_table_hint(self, hints: List[str]) -> Tuple[str, tuple]:
+    def format_table_hint(self, expr: List[str]) -> Tuple[str, tuple]:
         """Format a WITH (hint1, hint2, ...) table hint clause."""
         from ..expression.locking import SQLServerTableHint, SQLServerTableHintClause
 
         clause = SQLServerTableHintClause(
-            self, [SQLServerTableHint(hint) for hint in hints]
+            self, [SQLServerTableHint(hint) for hint in expr]
         )
         return clause.to_sql()
 
@@ -234,7 +234,7 @@ class SQLServerProtocolSupportMixin:
         """SQL Server supports TABLESAMPLE since 2005."""
         return self.version_at_least((9, 0, 0))
 
-    def format_tablesample_clause(
+    def render_tablesample_clause(
         self,
         sample: int,
         percentage: bool = False,
@@ -304,7 +304,7 @@ class SQLServerProtocolSupportMixin:
         modifier = f" {expr.select_modifier.value}" if expr.select_modifier else ""
         return f"SELECT{modifier} " + ", ".join(select_parts)
 
-    def format_openjson_expression(
+    def render_openjson_expression(
         self,
         json_doc: str,
         path: Optional[str] = None,
@@ -325,7 +325,7 @@ class SQLServerProtocolSupportMixin:
         """Temporal table system-versioning requires SQL Server 2016+."""
         return self.version_at_least((13, 0, 0))
 
-    def format_temporal_period_definition(self, start_column: str, end_column: str) -> Tuple[str, tuple]:
+    def render_temporal_period_definition(self, start_column: str, end_column: str) -> Tuple[str, tuple]:
         """Format PERIOD FOR SYSTEM_TIME (start, end)."""
         from ..expression.temporal import SQLServerTemporalPeriodDefinition
 
@@ -349,7 +349,7 @@ class SQLServerProtocolSupportMixin:
         """SQL Server MERGE supports the WITH (HOLDLOCK) table hint (2008+)."""
         return True
 
-    def format_merge_output_clause(
+    def render_merge_output_clause(
         self, columns: List[str], action_type: Optional[str] = None
     ) -> Tuple[str, tuple]:
         """Format a MERGE OUTPUT clause.
@@ -373,7 +373,7 @@ class SQLServerProtocolSupportMixin:
         """SQL Server supports SET IDENTITY_INSERT."""
         return True
 
-    def format_set_identity_insert(self, table: str, on: bool) -> Tuple[str, tuple]:
+    def render_set_identity_insert(self, table: str, on: bool) -> Tuple[str, tuple]:
         """Format SET IDENTITY_INSERT table {ON|OFF}."""
         state = "ON" if on else "OFF"
         name_sql = self.qualified_object_name(Table, table)
@@ -566,7 +566,7 @@ class SQLServerProtocolSupportMixin:
         sql = f"ISJSON({expr.json_val})"
         return self._with_alias(sql, expr.alias), ()
 
-    def format_json_search(
+    def render_json_search(
         self, json_doc: str, search_str: str, path: Optional[str] = None, all_: bool = False
     ) -> Tuple[str, tuple]:
         """Format JSON_SEARCH - not supported by SQL Server."""

@@ -47,28 +47,28 @@ class TestPaginationOffsetFetch:
 
     @pytest.mark.parametrize("version", [(11, 0, 0), (13, 0, 0), (15, 0, 0), (16, 0, 0)])
     def test_offset_fetch_snapshot(self, version):
-        sql, params = SQLServerDialect(version).format_limit_offset(10, 5)
+        sql, params = SQLServerDialect(version).render_limit_offset(10, 5)
         assert sql == "OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY"
         assert params == ()
 
     @pytest.mark.parametrize("version", [(11, 0, 0), (13, 0, 0), (15, 0, 0), (16, 0, 0)])
     def test_limit_only_defaults_offset_to_zero(self, version):
-        sql, _ = SQLServerDialect(version).format_limit_offset(limit=7)
+        sql, _ = SQLServerDialect(version).render_limit_offset(limit=7)
         assert sql == "OFFSET 0 ROWS FETCH NEXT 7 ROWS ONLY"
 
     @pytest.mark.parametrize("version", [(11, 0, 0), (13, 0, 0), (15, 0, 0), (16, 0, 0)])
     def test_offset_only_has_no_fetch(self, version):
-        sql, _ = SQLServerDialect(version).format_limit_offset(offset=9)
+        sql, _ = SQLServerDialect(version).render_limit_offset(offset=9)
         assert sql == "OFFSET 9 ROWS"
         assert "FETCH" not in sql
 
     @pytest.mark.parametrize("version", [(11, 0, 0), (13, 0, 0), (15, 0, 0), (16, 0, 0)])
     def test_both_none_renders_nothing(self, version):
-        assert SQLServerDialect(version).format_limit_offset() == ("", ())
+        assert SQLServerDialect(version).render_limit_offset() == ("", ())
 
     def test_pre_2012_raises_with_row_number_suggestion(self):
         with pytest.raises(UnsupportedFeatureError) as exc:
-            SQLServerDialect((10, 0, 0)).format_limit_offset(10, 5)
+            SQLServerDialect((10, 0, 0)).render_limit_offset(10, 5)
         assert "ROW_NUMBER()" in str(exc.value.suggestion)
 
     def test_clause_variant_pre_2012_raises(self):
@@ -338,7 +338,11 @@ class TestRenderingSnapshots:
                 )
             ],
             when_not_matched=[
-                MergeAction(dialect=d, action_type=MergeActionType.INSERT, assignments={"id": Column(d, "id", "source")})
+                MergeAction(
+                    dialect=d,
+                    action_type=MergeActionType.INSERT,
+                    assignments={"id": Column(d, "id", "source")},
+                )
             ],
             output=["inserted.id"],
             output_action=True,
@@ -408,8 +412,8 @@ class TestRenderingSnapshots:
 
     def test_top_n_clause_variants(self):
         d = SQLServerDialect((16, 0, 0))
-        assert d.format_top_n_clause(10) == ("TOP 10", ())
-        assert d.format_top_n_clause(5, percentage=True) == ("TOP 5 PERCENT", ())
+        assert d.render_top_n_clause(10) == ("TOP 10", ())
+        assert d.render_top_n_clause(5, percentage=True) == ("TOP 5 PERCENT", ())
 
     def test_lateral_renders_as_apply(self):
         from rhosocial.activerecord.backend.expression.core import Literal, Subquery

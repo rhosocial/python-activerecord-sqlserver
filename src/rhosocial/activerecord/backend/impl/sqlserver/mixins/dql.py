@@ -26,7 +26,7 @@ class SQLServerDQLMixin:
         """SQL Server does not support explicit NULLS FIRST/LAST ordering."""
         return False
 
-    def format_limit_offset(
+    def render_limit_offset(
         self,
         limit: Optional[int] = None,
         offset: Optional[int] = None
@@ -57,15 +57,15 @@ class SQLServerDQLMixin:
 
         return " ".join(sql_parts), ()
 
-    def format_limit_offset_clause(self, clause: "LimitOffsetClause") -> Tuple[str, tuple]:
+    def format_limit_offset_clause(self, expr: "LimitOffsetClause") -> Tuple[str, tuple]:
         """Format LIMIT/OFFSET clause for SQL Server using OFFSET FETCH syntax."""
-        if clause.with_ties:
+        if expr.with_ties:
             raise UnsupportedFeatureError(
                 self.name, "FETCH NEXT ... ROWS WITH TIES",
                 "SQL Server supports WITH TIES only with TOP, not OFFSET FETCH."
             )
 
-        if clause.limit is None and clause.offset is None:
+        if expr.limit is None and expr.offset is None:
             return "", ()
 
         if self.version < SQL_SERVER_2012:
@@ -77,11 +77,11 @@ class SQLServerDQLMixin:
 
         parts = []
 
-        offset_val = clause.offset if clause.offset is not None else 0
+        offset_val = expr.offset if expr.offset is not None else 0
         parts.append(f"OFFSET {offset_val} ROWS")
 
-        if clause.limit is not None:
-            parts.append(f"FETCH NEXT {clause.limit} ROWS ONLY")
+        if expr.limit is not None:
+            parts.append(f"FETCH NEXT {expr.limit} ROWS ONLY")
 
         return " ".join(parts), ()
 

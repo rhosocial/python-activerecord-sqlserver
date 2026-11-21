@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple, Type, Union, TYPE_CHECKING
+from typing import Any, List, Optional, Tuple, Type as TypingType, Union, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.dialect.mixins.user_defined_type import UserDefinedTypeMixin
@@ -54,21 +54,23 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         _version: Optional[Tuple[int, int, int]]
         deployment_target: str
 
-        def format_column_definition(
+        def format_column_definition(self, expr: ColumnDefinition) -> Tuple[str, tuple]: ...
+
+        def format_table_constraint(self, expr: TableConstraint) -> Tuple[str, tuple]: ...
+
+        def render_column_definition(
             self,
             column: ColumnDefinition,
             *,
             memory_optimized: bool = False,
-        ) -> Tuple[str, tuple]:
-            ...
+        ) -> Tuple[str, tuple]: ...
 
-        def format_table_constraint(
+        def render_table_constraint(
             self,
             constraint: TableConstraint,
             *,
             memory_optimized: bool = False,
-        ) -> Tuple[str, tuple]:
-            ...
+        ) -> Tuple[str, tuple]: ...
 
         def supports_memory_optimized_tables(self) -> bool:
             ...
@@ -117,7 +119,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
     def supports_drop_type(self) -> bool:
         return self.supports_type_objects()
 
-    def _definition_is_supported(self, definition_type: Type[TypeDefinition]) -> bool:
+    def _definition_is_supported(self, definition_type: TypingType[TypeDefinition]) -> bool:
         try:
             if issubclass(definition_type, SQLServerAliasTypeDefinition):
                 return self.supports_type_objects()
@@ -129,7 +131,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             return False
         return False
 
-    def supported_type_definitions(self) -> Tuple[Type[TypeDefinition], ...]:
+    def supported_type_definitions(self) -> Tuple[TypingType[TypeDefinition], ...]:
         return tuple(
             definition
             for definition in self._SQLSERVER_TYPE_DEFINITIONS
@@ -138,7 +140,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
 
     def supports_type_definition(
         self,
-        definition_type: Type[TypeDefinition],
+        definition_type: TypingType[TypeDefinition],
     ) -> bool:
         try:
             return any(
@@ -150,7 +152,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
 
     def supports_type_alter_action(
         self,
-        action_type: Type[TypeAlterAction],
+        action_type: TypingType[TypeAlterAction],
     ) -> bool:
         return False
 
@@ -294,7 +296,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                     self.name,
                     f"TYPE table column constraint {type(branch).__name__}",
                 )
-        return self.format_column_definition(
+        return self.render_column_definition(
             column,
             memory_optimized=memory_optimized,
         )
@@ -376,7 +378,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
                 self.name,
                 "TYPE table constraint option validation",
             )
-        sql, params = self.format_table_constraint(
+        sql, params = self.render_table_constraint(
             constraint,
             memory_optimized=memory_optimized,
         )

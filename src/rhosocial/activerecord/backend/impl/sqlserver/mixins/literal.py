@@ -51,7 +51,7 @@ class SQLServerLiteralValueMixin:
     literal-construction protocol live.
     """
 
-    def format_literal(self, value: Any) -> str:
+    def format_literal(self, expr: Any) -> str:
         """Render *value* as inline SQL text, SQL Server's spelling where it has one.
 
         Args:
@@ -67,13 +67,13 @@ class SQLServerLiteralValueMixin:
         """
         # bool first: it is an int subclass, so the numeric branch would
         # otherwise claim it.
-        if isinstance(value, bool):
-            return "1" if value else "0"
-        if isinstance(value, (bytes, bytearray)):
-            return f"0x{bytes(value).hex().upper()}"
-        if isinstance(value, uuid.UUID):
-            return self.format_literal(str(value))
-        return super().format_literal(value)
+        if isinstance(expr, bool):
+            return "1" if expr else "0"
+        if isinstance(expr, (bytes, bytearray)):
+            return f"0x{bytes(expr).hex().upper()}"
+        if isinstance(expr, uuid.UUID):
+            return self.format_literal(str(expr))
+        return super().format_literal(expr)
 
 
 __all__ = ["SQLServerLiteralValueMixin"]

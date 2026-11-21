@@ -283,7 +283,7 @@ class SQLServerConstraintMixin:
 
     def format_column_constraint(
         self,
-        constraint: "ColumnConstraint",
+        expr: "ColumnConstraint",
     ) -> Tuple[str, tuple]:
         """Refuse the SQL-standard traits on a column constraint, by name.
 
@@ -303,19 +303,19 @@ class SQLServerConstraintMixin:
         <name>`` prefix and the branch body are core's to render.
         """
         self._refuse_constraint_traits(
-            constraint,
-            deferrable=constraint.deferrable,
-            not_deferrable=constraint.not_deferrable,
-            initially_deferred=constraint.initially_deferred,
-            initially_immediate=constraint.initially_immediate,
-            enforced=constraint.enforced,
-            not_enforced=constraint.not_enforced,
+            expr,
+            deferrable=expr.deferrable,
+            not_deferrable=expr.not_deferrable,
+            initially_deferred=expr.initially_deferred,
+            initially_immediate=expr.initially_immediate,
+            enforced=expr.enforced,
+            not_enforced=expr.not_enforced,
         )
-        return super().format_column_constraint(constraint)
+        return super().format_column_constraint(expr)
 
     def format_column_fk_constraint(
         self,
-        constraint: "ColumnForeignKeyConstraint",
+        expr: "ColumnForeignKeyConstraint",
     ) -> Tuple[str, tuple]:
         """Refuse the column-level ``REFERENCES`` clause.
 

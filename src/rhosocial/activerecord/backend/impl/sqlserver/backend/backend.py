@@ -51,11 +51,11 @@ class SQLServerUnicodeDialect(SQLServerDialect):
     unit tests keep observing ``VARCHAR``.
     """
 
-    def format_data_type_varchar(self, data_type):
-        return (f"NVARCHAR({data_type.length})" if data_type.length is not None else "NVARCHAR(255)"), ()
+    def format_data_type_varchar(self, expr: Any) -> Tuple[str, tuple]:
+        return (f"NVARCHAR({expr.length})" if expr.length is not None else "NVARCHAR(255)"), ()
 
-    def format_data_type_char(self, data_type):
-        return (f"NCHAR({data_type.length})" if data_type.length is not None else "NCHAR(1)"), ()
+    def format_data_type_char(self, expr: Any) -> Tuple[str, tuple]:
+        return (f"NCHAR({expr.length})" if expr.length is not None else "NCHAR(1)"), ()
 
 
 class SQLServerBackend(
