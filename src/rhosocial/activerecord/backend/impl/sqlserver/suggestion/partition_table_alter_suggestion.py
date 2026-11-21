@@ -14,7 +14,7 @@ from ....suggestion import PartitionTableAlterSuggestion
 from ._common import SQLServerPartitionSuggestionBase
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ....expression.statements import PartitionStrategy
+    from ....expression.statements import PartitionByClause
 
 __all__ = ["SQLServerPartitionTableAlterSuggestionMixin"]
 
@@ -24,7 +24,7 @@ class SQLServerPartitionTableAlterSuggestionMixin(SQLServerPartitionSuggestionBa
 
     def suggest_partition_table_alter(
         self,
-        strategy: "PartitionStrategy",
+        strategy: "PartitionByClause",
         plan: object,
     ) -> PartitionTableAlterSuggestion:
         """SQL Server has no in-place ALTER of a partitioned table's scheme.

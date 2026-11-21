@@ -15,7 +15,7 @@ from ..expression.partition import SQLServerPartitionFunctionMergeExpression
 from ._common import SQLServerPartitionSuggestionBase, _is_range
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ....expression.statements import PartitionStrategy
+    from ....expression.statements import PartitionByClause
 
 __all__ = ["SQLServerPartitionMergeSuggestionMixin"]
 
@@ -25,7 +25,7 @@ class SQLServerPartitionMergeSuggestionMixin(SQLServerPartitionSuggestionBase):
 
     def suggest_partition_merge(
         self,
-        strategy: "PartitionStrategy",
+        strategy: "PartitionByClause",
         plan: object,
     ) -> PartitionMergeSuggestion:
         """Suggest MERGE RANGE (a data-affecting operation)."""

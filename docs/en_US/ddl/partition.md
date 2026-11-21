@@ -123,7 +123,8 @@ filegroups. It carries no table name and no retention rule. A caller passes
 that plan (or a mapping with the same field names) to the dialect:
 
 ```python
-from rhosocial.activerecord.backend.expression.statements import PartitionStrategy
+from rhosocial.activerecord.backend.expression import Column
+from rhosocial.activerecord.backend.expression.statements import PartitionByRangeClause
 from rhosocial.activerecord.backend.impl.sqlserver.partition import SQLServerPartitionPlan
 
 plan = SQLServerPartitionPlan(
@@ -134,15 +135,18 @@ plan = SQLServerPartitionPlan(
     all_filegroup="PRIMARY",
 )
 
-build = dialect.suggest_partition_build(PartitionStrategy.RANGE, plan)
+# The strategy is an expression clause carrying the RANGE word and its keys.
+strategy = PartitionByRangeClause(dialect, [Column(dialect, "created_at")])
+
+build = dialect.suggest_partition_build(strategy, plan)
 add = dialect.suggest_partition_add(
-    PartitionStrategy.RANGE, {**plan.__dict__, "boundary": date(2026, 3, 15)}
+    strategy, {**plan.__dict__, "boundary": date(2026, 3, 15)}
 )
 drop = dialect.suggest_partition_drop(
-    PartitionStrategy.RANGE, {**plan.__dict__, "boundary": date(2026, 1, 1)}
+    strategy, {**plan.__dict__, "boundary": date(2026, 1, 1)}
 )
 retention = dialect.suggest_partition_retention(
-    PartitionStrategy.RANGE, {**plan.__dict__, "cutoff": date(2026, 2, 1)}
+    strategy, {**plan.__dict__, "cutoff": date(2026, 2, 1)}
 )
 ```
 

@@ -45,8 +45,17 @@ def _get(plan: Any, name: str, default: Any = None) -> Any:
 
 
 def _word(strategy: Any) -> str:
-    """Normalise a strategy member or its spelling to an upper-case word."""
-    value = getattr(strategy, "value", strategy)
+    """Normalise a strategy clause, member or spelling to an upper-case word.
+
+    A strategy now arrives as a ``PartitionByClause`` node whose fixed word is
+    carried in ``.word``/``.method``. The enum and plain-string spellings are
+    still read so callers using the previous form keep working.
+    """
+    value = getattr(strategy, "word", None)
+    if value is None:
+        value = getattr(strategy, "method", None)
+    if value is None:
+        value = getattr(strategy, "value", strategy)
     return str(value).strip().upper()
 
 

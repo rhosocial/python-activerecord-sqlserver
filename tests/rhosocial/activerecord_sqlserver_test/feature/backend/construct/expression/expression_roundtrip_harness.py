@@ -820,10 +820,11 @@ def _partition_clause(dialect):
     from rhosocial.activerecord.backend.expression.core import Column
     from rhosocial.activerecord.backend.expression.statements.ddl_partition import (
         PartitionClause,
-        PartitionStrategy,
     )
 
-    return PartitionClause(dialect, method=PartitionStrategy.RANGE, keys=[Column(dialect, "created_at")])
+    # The generic clause still takes the RANGE *word*; the dedicated strategy
+    # nodes (PartitionByRangeClause and friends) carry it as a fixed class word.
+    return PartitionClause(dialect, method="RANGE", keys=[Column(dialect, "created_at")])
 
 
 def _on_conflict(dialect):

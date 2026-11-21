@@ -15,12 +15,20 @@ Run from the repository root:
 
 from datetime import date
 
-from rhosocial.activerecord.backend.expression.statements import PartitionStrategy
+from rhosocial.activerecord.backend.expression import Column
+from rhosocial.activerecord.backend.expression.statements import (
+    PartitionByListClause,
+    PartitionByRangeClause,
+)
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
 # A modern server: the (10, 0, 0) partitioning gate is open. See script 02 and
 # the README for what a (9, 0, 0) dialect does instead.
 DIALECT = SQLServerDialect((16, 0, 0))
+
+# A strategy is now a clause expression rather than an enum member.
+RANGE = PartitionByRangeClause(DIALECT, [Column(DIALECT, "created_at")])
+LIST = PartitionByListClause(DIALECT, [Column(DIALECT, "created_at")])
 
 
 def render(suggestion):
@@ -45,7 +53,7 @@ def scenario_function_and_scheme():
         "scheme": "ps_logs",
         "all_filegroup": "PRIMARY",
     }
-    render(DIALECT.suggest_partition_build(PartitionStrategy.RANGE, plan))
+    render(DIALECT.suggest_partition_build(RANGE, plan))
 
 
 def scenario_with_partition_key():
@@ -59,7 +67,7 @@ def scenario_with_partition_key():
         "all_filegroup": "PRIMARY",
         "keys": ["created_at"],
     }
-    render(DIALECT.suggest_partition_build(PartitionStrategy.RANGE, plan))
+    render(DIALECT.suggest_partition_build(RANGE, plan))
 
 
 def scenario_range_left_with_filegroups():
@@ -73,7 +81,7 @@ def scenario_range_left_with_filegroups():
         "scheme": "ps_amount",
         "filegroups": ("FG_A", "FG_B", "FG_C"),
     }
-    render(DIALECT.suggest_partition_build(PartitionStrategy.RANGE, plan))
+    render(DIALECT.suggest_partition_build(RANGE, plan))
 
 
 def scenario_declines():
@@ -87,9 +95,9 @@ def scenario_declines():
         "all_filegroup": "PRIMARY",
     }
     print("  -- LIST strategy:")
-    render(DIALECT.suggest_partition_build(PartitionStrategy.LIST, plan))
+    render(DIALECT.suggest_partition_build(LIST, plan))
     print("  -- empty plan:")
-    render(DIALECT.suggest_partition_build(PartitionStrategy.RANGE, {}))
+    render(DIALECT.suggest_partition_build(RANGE, {}))
 
 
 def main():

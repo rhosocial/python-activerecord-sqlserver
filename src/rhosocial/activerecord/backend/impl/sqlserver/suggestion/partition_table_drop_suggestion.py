@@ -19,7 +19,7 @@ from ..expression.partition import (
 from ._common import SQLServerPartitionSuggestionBase, _is_range
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ....expression.statements import PartitionStrategy
+    from ....expression.statements import PartitionByClause
 
 __all__ = ["SQLServerPartitionTableDropSuggestionMixin"]
 
@@ -29,7 +29,7 @@ class SQLServerPartitionTableDropSuggestionMixin(SQLServerPartitionSuggestionBas
 
     def suggest_partition_table_drop(
         self,
-        strategy: "PartitionStrategy",
+        strategy: "PartitionByClause",
         plan: object,
     ) -> PartitionTableDropSuggestion:
         """Suggest dropping the scaffolding: scheme first, then function.

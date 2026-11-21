@@ -11,8 +11,8 @@ from rhosocial.activerecord.backend.expression import (
 )
 from rhosocial.activerecord.backend.expression.objects import Table
 from rhosocial.activerecord.backend.expression.statements import (
-    PartitionClause,
-    PartitionStrategy,
+    PartitionByHashClause,
+    PartitionByRangeClause,
     ColumnConstraint,
     ColumnPrimaryKeyConstraint,
 )
@@ -97,7 +97,7 @@ class TestPartitionCapabilities:
 
 
 class TestPartitionClause:
-    """Tests format_partition_clause for core PartitionClause."""
+    """Tests format_partition_clause for strategy clause expressions."""
 
     def test_format_partition_clause_with_scheme(self):
         d = SQLServerDialect(SQL_SERVER_2022)
@@ -118,7 +118,7 @@ class TestPartitionClause:
     def test_format_partition_clause_without_scheme(self):
         d = SQLServerDialect(SQL_SERVER_2022)
         col = Column(d, "id")
-        partition = PartitionClause(d, PartitionStrategy.RANGE, [col])
+        partition = PartitionByRangeClause(d, [col])
         sql, params = d.format_partition_clause(partition)
         # Falls back to placeholder
         assert "partition_scheme_name" in sql
@@ -126,14 +126,14 @@ class TestPartitionClause:
     def test_format_partition_clause_unsupported_method(self):
         d = SQLServerDialect(SQL_SERVER_2022)
         col = Column(d, "id")
-        partition = PartitionClause(d, PartitionStrategy.HASH, [col])
+        partition = PartitionByHashClause(d, [col])
         with pytest.raises(UnsupportedFeatureError):
             d.format_partition_clause(partition)
 
     def test_format_partition_clause_on_old_version(self):
         d = SQLServerDialect(SQL_SERVER_2005)
         col = Column(d, "id")
-        partition = PartitionClause(d, PartitionStrategy.RANGE, [col])
+        partition = PartitionByRangeClause(d, [col])
         with pytest.raises(UnsupportedFeatureError):
             d.format_partition_clause(partition)
 

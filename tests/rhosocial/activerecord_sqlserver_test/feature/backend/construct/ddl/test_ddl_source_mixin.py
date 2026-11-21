@@ -23,8 +23,7 @@ from rhosocial.activerecord.backend.expression.statements import (
     TablePrimaryKeyConstraint,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_partition import (
-    PartitionClause,
-    PartitionStrategy,
+    PartitionByRangeClause,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     TableCheckConstraint,
@@ -168,11 +167,7 @@ TABLE_OPTIONS = SQLServerCreateTableOptions(
 )
 STORAGE_OPTIONS = StorageOptionsExpression(None, {"fillfactor": 80})
 PARTITION_KEY = Column(None, "id")
-TABLE_PARTITION = PartitionClause(
-    None,
-    PartitionStrategy.RANGE,
-    [PARTITION_KEY],
-)
+TABLE_PARTITION = PartitionByRangeClause(None, [PARTITION_KEY])
 INHERITED_TABLES = ["parent_a", "parent_b"]
 TABLE_SPACE = "ts_data"
 BATCH_METHODS = (
@@ -415,7 +410,7 @@ def test_table_declarations_are_returned_unchanged(model):
     assert model.table_options().durability == "SCHEMA_AND_DATA"
     assert model.table_storage_options() is STORAGE_OPTIONS
     assert model.table_partition() is TABLE_PARTITION
-    assert model.table_partition().method == PartitionStrategy.RANGE.value
+    assert model.table_partition().method == "RANGE"
     assert model.table_partition().keys[0] is PARTITION_KEY
     assert model.table_inherits() is INHERITED_TABLES
     assert model.table_inherits() == ["parent_a", "parent_b"]

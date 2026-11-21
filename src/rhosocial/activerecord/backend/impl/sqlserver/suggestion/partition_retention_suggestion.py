@@ -16,7 +16,7 @@ from ..expression.partition import SQLServerPartitionFunctionMergeExpression
 from ._common import SQLServerPartitionSuggestionBase, _coerce_boundary, _get, _is_range
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ....expression.statements import PartitionStrategy
+    from ....expression.statements import PartitionByClause
 
 __all__ = ["SQLServerPartitionRetentionSuggestionMixin"]
 
@@ -26,7 +26,7 @@ class SQLServerPartitionRetentionSuggestionMixin(SQLServerPartitionSuggestionBas
 
     def suggest_partition_retention(
         self,
-        strategy: "PartitionStrategy",
+        strategy: "PartitionByClause",
         plan: object,
     ) -> PartitionRetentionSuggestion:
         """Suggest one MERGE RANGE per boundary at or before the cutoff.

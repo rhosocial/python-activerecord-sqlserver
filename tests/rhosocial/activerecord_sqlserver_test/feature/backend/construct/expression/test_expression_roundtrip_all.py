@@ -620,6 +620,21 @@ def register_specials():
             d, keys=[Column(d, "id")], partition_scheme="ps"
         )
 
+    def core_partition_by_range(d):
+        from rhosocial.activerecord.backend.expression.statements import PartitionByRangeClause
+
+        return PartitionByRangeClause(d, [Column(d, "id")])
+
+    def core_partition_by_list(d):
+        from rhosocial.activerecord.backend.expression.statements import PartitionByListClause
+
+        return PartitionByListClause(d, [Column(d, "id")])
+
+    def core_partition_by_hash(d):
+        from rhosocial.activerecord.backend.expression.statements import PartitionByHashClause
+
+        return PartitionByHashClause(d, [Column(d, "id")])
+
     def partition_function(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
             SQLServerPartitionFunctionExpression,
@@ -869,6 +884,18 @@ def register_specials():
     )
     register_special_constructor(
         "partition.SQLServerPartitionByRangeClause", partition_range
+    )
+    # Core's dedicated strategy clauses: the strategy word rides on the class,
+    # so the generic introspective guess cannot supply it. Give them real keys
+    # and round-trip them rather than pinning them as unconstructible.
+    register_special_constructor(
+        "statements.ddl_partition.PartitionByRangeClause", core_partition_by_range
+    )
+    register_special_constructor(
+        "statements.ddl_partition.PartitionByListClause", core_partition_by_list
+    )
+    register_special_constructor(
+        "statements.ddl_partition.PartitionByHashClause", core_partition_by_hash
     )
     register_special_constructor(
         "partition.SQLServerPartitionFunctionExpression", partition_function
@@ -1652,6 +1679,12 @@ UNMODELLED_FORMATTERS = {
     "REPEAT (SQL Server spells it REPLICATE)": ("format_repeat_expression",),
     "the TableSource root (every concrete row source overrides its formatter; "
     "the root carries nothing but an alias and is never rendered)": ("format_table_source",),
+    "inline partition definitions (SQL Server declares partitions with a "
+    "PARTITION FUNCTION and SCHEME, not inline VALUES definitions; a definition's "
+    "storage options and subpartitions therefore have no dialect formatter)": (
+        "format_partition_definition_options",
+        "format_subpartition_definition",
+    ),
 }
 
 

@@ -16,7 +16,7 @@ from ..expression.partition import SQLServerPartitionFunctionMergeExpression
 from ._common import SQLServerPartitionSuggestionBase, _is_range
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ....expression.statements import PartitionStrategy
+    from ....expression.statements import PartitionByClause
 
 __all__ = ["SQLServerPartitionDropSuggestionMixin"]
 
@@ -26,7 +26,7 @@ class SQLServerPartitionDropSuggestionMixin(SQLServerPartitionSuggestionBase):
 
     def suggest_partition_drop(
         self,
-        strategy: "PartitionStrategy",
+        strategy: "PartitionByClause",
         plan: object,
     ) -> PartitionDropSuggestion:
         """Suggest MERGE RANGE: SQL Server has no DROP PARTITION."""

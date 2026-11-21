@@ -37,7 +37,12 @@ from rhosocial.activerecord.backend.suggestion import (
     PartitionTableAlterSuggestion,
     PartitionTableDropSuggestion,
 )
-from rhosocial.activerecord.backend.expression.statements import PartitionStrategy
+from rhosocial.activerecord.backend.expression import Column
+from rhosocial.activerecord.backend.expression.statements import (
+    PartitionByHashClause,
+    PartitionByListClause,
+    PartitionByRangeClause,
+)
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
     SQLServerDropPartitionFunctionExpression,
@@ -90,6 +95,16 @@ def _sql(operations):
     return " ".join(expr.to_sql()[0] for expr in operations)
 
 
+def _strategy(dialect, word="RANGE"):
+    """The strategy clause a suggestion takes, for one partitioning word."""
+    keys = [Column(dialect, "created_at")]
+    return {
+        "RANGE": PartitionByRangeClause,
+        "LIST": PartitionByListClause,
+        "HASH": PartitionByHashClause,
+    }[word](dialect, keys)
+
+
 def test_dialect_satisfies_all_eight_protocols(dialect):
     for _name, protocol, _dataclass in PROTOCOLS:
         assert isinstance(dialect, protocol)
@@ -97,7 +112,7 @@ def test_dialect_satisfies_all_eight_protocols(dialect):
 
 def test_suggestion_values_are_frozen_dataclasses(dialect):
     for name, _protocol, cls in PROTOCOLS:
-        suggestion = getattr(dialect, f"suggest_partition_{name}")(PartitionStrategy.RANGE, None)
+        suggestion = getattr(dialect, f"suggest_partition_{name}")(_strategy(dialect), None)
         assert isinstance(suggestion, cls)
         assert dataclasses.is_dataclass(suggestion)
         with pytest.raises(dataclasses.FrozenInstanceError):
@@ -106,7 +121,7 @@ def test_suggestion_values_are_frozen_dataclasses(dialect):
 
 def test_build_returns_three_tier_chain(dialect):
     plan = _plan()
-    suggestion = dialect.suggest_partition_build(PartitionStrategy.RANGE, plan)
+    suggestion = dialect.suggest_partition_build(_strategy(dialect), plan)
     assert len(suggestion.operations) == 2
     assert isinstance(suggestion.operations[0], SQLServerPartitionFunctionExpression)
     assert isinstance(suggestion.operations[1], SQLServerPartitionSchemeExpression)
@@ -115,7 +130,7 @@ def test_build_returns_three_tier_chain(dialect):
     assert "CREATE PARTITION SCHEME [ps_logs] AS PARTITION [pf_logs] ALL TO ([PRIMARY])" in sql
 
     with_keys = dialect.suggest_partition_build(
-        PartitionStrategy.RANGE,
+        _strategy(dialect),
         {**plan.__dict__, "keys": ["created_at"]},
     )
     assert len(with_keys.operations) == 3
@@ -123,81 +138,81 @@ def test_build_returns_three_tier_chain(dialect):
     assert "ON [ps_logs] ([created_at])" in _sql(with_keys.operations)
 
     left = dialect.suggest_partition_build(
-        PartitionStrategy.RANGE,
+        _strategy(dialect),
         {"function": "pf", "data_type": "INT", "boundaries": (1, 2), "range_direction": "LEFT"},
     )
     assert "AS RANGE LEFT FOR VALUES (1, 2)" in _sql(left.operations)
 
 
 def test_build_declines_unsupported_strategies_and_incomplete_plans(dialect):
-    for strategy in (PartitionStrategy.LIST, PartitionStrategy.HASH, "SPATIAL"):
+    for strategy in (_strategy(dialect, "LIST"), _strategy(dialect, "HASH"), "SPATIAL"):
         assert dialect.suggest_partition_build(strategy, _plan()).operations is False
-    assert dialect.suggest_partition_build(PartitionStrategy.RANGE, {}).operations is False
+    assert dialect.suggest_partition_build(_strategy(dialect), {}).operations is False
     assert (
         dialect.suggest_partition_build(
-            PartitionStrategy.RANGE, {"function": "pf", "data_type": "DATE", "boundaries": ()}
+            _strategy(dialect), {"function": "pf", "data_type": "DATE", "boundaries": ()}
         ).operations
         is False
     )
 
 
 def test_table_drop_drops_scheme_then_function(dialect):
-    suggestion = dialect.suggest_partition_table_drop(PartitionStrategy.RANGE, _plan())
+    suggestion = dialect.suggest_partition_table_drop(_strategy(dialect), _plan())
     assert isinstance(suggestion.operations[0], SQLServerDropPartitionSchemeExpression)
     assert isinstance(suggestion.operations[1], SQLServerDropPartitionFunctionExpression)
     sql = _sql(suggestion.operations)
     assert sql == "DROP PARTITION SCHEME [ps_logs] DROP PARTITION FUNCTION [pf_logs]"
     assert "DROP TABLE" not in sql
-    assert dialect.suggest_partition_table_drop(PartitionStrategy.RANGE, {}).operations is False
+    assert dialect.suggest_partition_table_drop(_strategy(dialect), {}).operations is False
 
 
 def test_table_alter_has_no_in_place_mechanism(dialect):
-    for strategy in PartitionStrategy:
+    for strategy in (
+        _strategy(dialect),
+        _strategy(dialect, "LIST"),
+        _strategy(dialect, "HASH"),
+    ):
         assert dialect.suggest_partition_table_alter(strategy, _plan()).operations is False
 
 
 def test_add_is_next_used_then_split_range(dialect):
     plan = {**_plan().__dict__, "boundary": date(2026, 3, 1)}
-    suggestion = dialect.suggest_partition_add(PartitionStrategy.RANGE, plan)
+    suggestion = dialect.suggest_partition_add(_strategy(dialect), plan)
     assert isinstance(suggestion.operations[0], SQLServerPartitionSchemeNextUsedExpression)
     assert isinstance(suggestion.operations[1], SQLServerPartitionFunctionSplitExpression)
     sql = _sql(suggestion.operations)
     assert "ALTER PARTITION SCHEME [ps_logs] NEXT USED [PRIMARY]" in sql
     assert "ALTER PARTITION FUNCTION [pf_logs] () SPLIT RANGE ('2026-03-01')" in sql
     assert "ADD PARTITION" not in sql
-    assert dialect.suggest_partition_add(PartitionStrategy.HASH, plan).operations is False
-    assert dialect.suggest_partition_add(PartitionStrategy.RANGE, {}).operations is False
+    assert dialect.suggest_partition_add(_strategy(dialect, "HASH"), plan).operations is False
+    assert dialect.suggest_partition_add(_strategy(dialect), {}).operations is False
 
 
 def test_drop_is_merge_range_not_drop_partition(dialect):
-    suggestion = dialect.suggest_partition_drop(PartitionStrategy.RANGE, _plan())
+    suggestion = dialect.suggest_partition_drop(_strategy(dialect), _plan())
     assert isinstance(suggestion.operations[0], SQLServerPartitionFunctionMergeExpression)
     sql = _sql(suggestion.operations)
     assert "ALTER PARTITION FUNCTION [pf_logs] () MERGE RANGE ('2026-01-01')" in sql
     assert "DROP PARTITION" not in sql
-    assert (
-        dialect.suggest_partition_drop(PartitionStrategy.RANGE, {"function": "pf"}).operations
-        is None
-    )
-    assert dialect.suggest_partition_drop(PartitionStrategy.LIST, _plan()).operations is False
+    assert dialect.suggest_partition_drop(_strategy(dialect), {"function": "pf"}).operations is None
+    assert dialect.suggest_partition_drop(_strategy(dialect, "LIST"), _plan()).operations is False
 
 
 def test_split_is_next_used_then_split_range(dialect):
     plan = {**_plan().__dict__, "boundary": date(2026, 1, 15)}
-    suggestion = dialect.suggest_partition_split(PartitionStrategy.RANGE, plan)
+    suggestion = dialect.suggest_partition_split(_strategy(dialect), plan)
     assert isinstance(suggestion.operations[0], SQLServerPartitionSchemeNextUsedExpression)
     assert isinstance(suggestion.operations[1], SQLServerPartitionFunctionSplitExpression)
     assert "SPLIT RANGE ('2026-01-15')" in _sql(suggestion.operations)
-    assert dialect.suggest_partition_split(PartitionStrategy.HASH, plan).operations is False
+    assert dialect.suggest_partition_split(_strategy(dialect, "HASH"), plan).operations is False
 
 
 def test_merge_is_merge_range(dialect):
-    suggestion = dialect.suggest_partition_merge(PartitionStrategy.RANGE, _plan())
+    suggestion = dialect.suggest_partition_merge(_strategy(dialect), _plan())
     assert isinstance(suggestion.operations[0], SQLServerPartitionFunctionMergeExpression)
     assert "MERGE RANGE ('2026-01-01')" in _sql(suggestion.operations)
     assert (
-        dialect.suggest_partition_merge(PartitionStrategy.RANGE, {"function": "pf"}).operations
-        is False
+        dialect.suggest_partition_merge(_strategy(dialect), {"function": "pf"}).operations is False
     )
 
 
@@ -208,7 +223,7 @@ def test_retention_merges_boundaries_at_or_before_cutoff(dialect):
         "boundaries": (date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)),
         "cutoff": date(2026, 2, 1),
     }
-    suggestion = dialect.suggest_partition_retention(PartitionStrategy.RANGE, plan)
+    suggestion = dialect.suggest_partition_retention(_strategy(dialect), plan)
     assert len(suggestion.operations) == 2
     assert all(
         isinstance(operation, SQLServerPartitionFunctionMergeExpression)
@@ -221,21 +236,21 @@ def test_retention_merges_boundaries_at_or_before_cutoff(dialect):
     assert "DROP PARTITION" not in sql
 
     nothing = dialect.suggest_partition_retention(
-        PartitionStrategy.RANGE, {**plan, "cutoff": date(2025, 12, 31)}
+        _strategy(dialect), {**plan, "cutoff": date(2025, 12, 31)}
     )
     assert nothing.operations is None
     assert (
         dialect.suggest_partition_retention(
-            PartitionStrategy.RANGE, {k: v for k, v in plan.items() if k != "cutoff"}
+            _strategy(dialect), {k: v for k, v in plan.items() if k != "cutoff"}
         ).operations
         is False
     )
-    assert dialect.suggest_partition_retention(PartitionStrategy.LIST, plan).operations is False
+    assert dialect.suggest_partition_retention(_strategy(dialect, "LIST"), plan).operations is False
 
 
 def test_retention_handles_numeric_and_datetime_boundaries(dialect):
     numeric = dialect.suggest_partition_retention(
-        PartitionStrategy.RANGE,
+        _strategy(dialect),
         {
             "function": "pf_amount",
             "data_type": "DECIMAL(10, 2)",
@@ -246,7 +261,7 @@ def test_retention_handles_numeric_and_datetime_boundaries(dialect):
     assert len(numeric.operations) == 2
 
     stamp = dialect.suggest_partition_retention(
-        PartitionStrategy.RANGE,
+        _strategy(dialect),
         {
             "function": "pf_events",
             "data_type": "DATETIME2",
@@ -261,7 +276,7 @@ def test_retention_handles_numeric_and_datetime_boundaries(dialect):
 def test_old_version_declines_mutating_chains():
     old = SQLServerDialect((9, 0, 0))
     for name in ("add", "drop", "split", "merge", "retention"):
-        suggestion = getattr(old, f"suggest_partition_{name}")(PartitionStrategy.RANGE, _plan())
+        suggestion = getattr(old, f"suggest_partition_{name}")(_strategy(old), _plan())
         assert suggestion.operations is False
 
 
@@ -287,6 +302,6 @@ def test_suggestion_mixin_imports_with_maintenance_blocked(monkeypatch):
         module = importlib.import_module(full_name)
         mixin = getattr(module, mixin_name)
         method = getattr(mixin, f"suggest_partition_{name}")
-        suggestion = method(dialect, PartitionStrategy.RANGE, plan)
+        suggestion = method(dialect, _strategy(dialect), plan)
         assert isinstance(suggestion, cls)
         assert dataclasses.is_dataclass(suggestion)

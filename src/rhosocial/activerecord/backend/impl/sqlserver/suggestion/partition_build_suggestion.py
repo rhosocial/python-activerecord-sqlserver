@@ -21,7 +21,7 @@ from ..expression.partition import (
 from ._common import SQLServerPartitionSuggestionBase, _get, _is_range
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ....expression.statements import PartitionStrategy
+    from ....expression.statements import PartitionByClause
 
 __all__ = ["SQLServerPartitionBuildSuggestionMixin"]
 
@@ -31,7 +31,7 @@ class SQLServerPartitionBuildSuggestionMixin(SQLServerPartitionSuggestionBase):
 
     def suggest_partition_build(
         self,
-        strategy: "PartitionStrategy",
+        strategy: "PartitionByClause",
         plan: object,
     ) -> PartitionBuildSuggestion:
         """Suggest the function -> scheme -> ON chain for CREATE TABLE time."""

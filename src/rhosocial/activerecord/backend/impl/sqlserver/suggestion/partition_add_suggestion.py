@@ -16,7 +16,7 @@ from ..expression.partition import SQLServerPartitionFunctionSplitExpression
 from ._common import SQLServerPartitionSuggestionBase, _is_range
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ....expression.statements import PartitionStrategy
+    from ....expression.statements import PartitionByClause
 
 __all__ = ["SQLServerPartitionAddSuggestionMixin"]
 
@@ -26,7 +26,7 @@ class SQLServerPartitionAddSuggestionMixin(SQLServerPartitionSuggestionBase):
 
     def suggest_partition_add(
         self,
-        strategy: "PartitionStrategy",
+        strategy: "PartitionByClause",
         plan: object,
     ) -> PartitionAddSuggestion:
         """Suggest NEXT USED + SPLIT RANGE: SQL Server's way to add a partition."""

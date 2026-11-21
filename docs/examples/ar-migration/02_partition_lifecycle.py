@@ -16,10 +16,14 @@ Run from the repository root:
 from datetime import date, datetime
 from decimal import Decimal
 
-from rhosocial.activerecord.backend.expression.statements import PartitionStrategy
+from rhosocial.activerecord.backend.expression import Column
+from rhosocial.activerecord.backend.expression.statements import PartitionByRangeClause
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
 DIALECT = SQLServerDialect((16, 0, 0))
+
+# A strategy is now a clause expression rather than an enum member.
+RANGE = PartitionByRangeClause(DIALECT, [Column(DIALECT, "created_at")])
 
 
 def render(suggestion):
@@ -51,28 +55,28 @@ def scenario_add():
     """ADD a new boundary: NEXT USED on the scheme, then SPLIT RANGE (moves rows)."""
     print("== 1. ADD a boundary = NEXT USED + SPLIT RANGE (data-affecting) ==")
     plan = base_plan(boundary=date(2026, 3, 1))
-    render(DIALECT.suggest_partition_add(PartitionStrategy.RANGE, plan))
+    render(DIALECT.suggest_partition_add(RANGE, plan))
 
 
 def scenario_split():
     """SPLIT an existing populated range at a mid-point: rows move to a new partition."""
     print("== 2. SPLIT an existing range = NEXT USED + SPLIT RANGE (data-affecting) ==")
     plan = base_plan(boundary=date(2026, 1, 15))
-    render(DIALECT.suggest_partition_split(PartitionStrategy.RANGE, plan))
+    render(DIALECT.suggest_partition_split(RANGE, plan))
 
 
 def scenario_drop():
     """DROP a partition: MERGE RANGE, never DROP PARTITION (rows move out)."""
     print("== 3. DROP a partition = MERGE RANGE, not DROP PARTITION (data-affecting) ==")
     # With no explicit ``boundary``, DROP acts on the oldest boundary.
-    render(DIALECT.suggest_partition_drop(PartitionStrategy.RANGE, base_plan()))
+    render(DIALECT.suggest_partition_drop(RANGE, base_plan()))
 
 
 def scenario_merge():
     """MERGE with an explicit boundary: the boundary itself is removed."""
     print("== 4. MERGE an explicit boundary = MERGE RANGE (data-affecting) ==")
     plan = base_plan(boundary=date(2026, 1, 1))
-    render(DIALECT.suggest_partition_merge(PartitionStrategy.RANGE, plan))
+    render(DIALECT.suggest_partition_merge(RANGE, plan))
 
 
 def scenario_retention():
@@ -82,7 +86,7 @@ def scenario_retention():
         boundaries=(date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)),
         cutoff=date(2026, 2, 1),
     )
-    render(DIALECT.suggest_partition_retention(PartitionStrategy.RANGE, plan))
+    render(DIALECT.suggest_partition_retention(RANGE, plan))
 
     print("  -- numeric boundaries, cutoff given as text:")
     numeric = {
@@ -91,7 +95,7 @@ def scenario_retention():
         "boundaries": (Decimal("10.5"), Decimal("20.5"), Decimal("30.5")),
         "cutoff": "20.5",
     }
-    render(DIALECT.suggest_partition_retention(PartitionStrategy.RANGE, numeric))
+    render(DIALECT.suggest_partition_retention(RANGE, numeric))
 
     print("  -- DATETIME2 boundaries:")
     stamps = {
@@ -100,16 +104,16 @@ def scenario_retention():
         "boundaries": (datetime(2026, 1, 1), datetime(2026, 3, 1)),
         "cutoff": datetime(2026, 2, 1),
     }
-    render(DIALECT.suggest_partition_retention(PartitionStrategy.RANGE, stamps))
+    render(DIALECT.suggest_partition_retention(RANGE, stamps))
 
 
 def scenario_scaffolding():
     """Scaffolding teardown has a fixed order; in-place ALTER has no chain."""
     print("== 6. TABLE DROP = drop scheme, then function (no DROP TABLE) ==")
-    render(DIALECT.suggest_partition_table_drop(PartitionStrategy.RANGE, base_plan()))
+    render(DIALECT.suggest_partition_table_drop(RANGE, base_plan()))
 
     print("== 7. TABLE ALTER = False (no in-place mechanism) ==")
-    render(DIALECT.suggest_partition_table_alter(PartitionStrategy.RANGE, base_plan()))
+    render(DIALECT.suggest_partition_table_alter(RANGE, base_plan()))
 
 
 def scenario_version_gate():
@@ -118,7 +122,7 @@ def scenario_version_gate():
     old = SQLServerDialect((9, 0, 0))
     plan = base_plan(boundary=date(2026, 3, 1), cutoff=date(2026, 2, 1))
     for name in ("build", "add", "drop", "split", "merge", "retention", "table_drop"):
-        suggestion = getattr(old, f"suggest_partition_{name}")(PartitionStrategy.RANGE, plan)
+        suggestion = getattr(old, f"suggest_partition_{name}")(RANGE, plan)
         print(f"  {name}: operations is {suggestion.operations}")
 
 

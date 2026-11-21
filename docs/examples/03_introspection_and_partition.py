@@ -9,7 +9,8 @@ database (see docs/examples/README.md).
 import os
 from datetime import date
 
-from rhosocial.activerecord.backend.expression.statements import PartitionStrategy
+from rhosocial.activerecord.backend.expression import Column
+from rhosocial.activerecord.backend.expression.statements import PartitionByRangeClause
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 from rhosocial.activerecord.backend.impl.sqlserver.partition import (
@@ -62,17 +63,14 @@ def show_partition_plan(backend: SQLServerBackend) -> None:
         all_filegroup="PRIMARY",
     )
     fields = plan.__dict__
+    strategy = PartitionByRangeClause(dialect, [Column(dialect, "created_at")])
     preview = {
-        "build": dialect.suggest_partition_build(PartitionStrategy.RANGE, plan),
-        "table_drop": dialect.suggest_partition_table_drop(PartitionStrategy.RANGE, plan),
-        "add": dialect.suggest_partition_add(
-            PartitionStrategy.RANGE, {**fields, "boundary": date(2026, 3, 15)}
-        ),
-        "drop": dialect.suggest_partition_drop(
-            PartitionStrategy.RANGE, {**fields, "boundary": date(2026, 1, 1)}
-        ),
+        "build": dialect.suggest_partition_build(strategy, plan),
+        "table_drop": dialect.suggest_partition_table_drop(strategy, plan),
+        "add": dialect.suggest_partition_add(strategy, {**fields, "boundary": date(2026, 3, 15)}),
+        "drop": dialect.suggest_partition_drop(strategy, {**fields, "boundary": date(2026, 1, 1)}),
         "retention": dialect.suggest_partition_retention(
-            PartitionStrategy.RANGE, {**fields, "cutoff": date(2026, 2, 1)}
+            strategy, {**fields, "cutoff": date(2026, 2, 1)}
         ),
     }
     for name, suggestion in preview.items():

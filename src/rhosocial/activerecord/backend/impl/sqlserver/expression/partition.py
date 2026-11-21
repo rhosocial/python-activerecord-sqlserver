@@ -19,7 +19,7 @@ from typing import Any, Optional, Sequence, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
 from rhosocial.activerecord.backend.expression.introspection import IntrospectionExpression
-from rhosocial.activerecord.backend.expression.statements import PartitionClause, PartitionStrategy
+from rhosocial.activerecord.backend.expression.statements import PartitionClause
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -99,7 +99,9 @@ class SQLServerPartitionByRangeClause(PartitionClause):
     """
     KIND_RESERVED = ("SQLServer",)
 
-    strategy_type = PartitionStrategy
+    #: This backend only ever declares RANGE partitioning; the word lives on
+    #: the clause itself rather than in the core strategy enum.
+    WORD = "RANGE"
 
     def __init__(
         self,
@@ -111,7 +113,7 @@ class SQLServerPartitionByRangeClause(PartitionClause):
     ):
         super().__init__(
             dialect,
-            PartitionStrategy.RANGE,
+            self.WORD,
             keys,
         )
         self.partition_scheme = partition_scheme
