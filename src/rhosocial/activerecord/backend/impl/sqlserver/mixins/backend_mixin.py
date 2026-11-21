@@ -213,7 +213,7 @@ class SQLServerBackendMixin:
         self._execute_control_sql(f"SET NOCOUNT {state}")
 
     def set_identity_insert(self, table: str, on: bool = True) -> None:
-        sql, _params = self.dialect.format_set_identity_insert(table, on)
+        sql, _params = self.dialect.render_set_identity_insert(table, on)
         self._execute_control_sql(sql)
 
     def get_scope_identity(self) -> Optional[int]:

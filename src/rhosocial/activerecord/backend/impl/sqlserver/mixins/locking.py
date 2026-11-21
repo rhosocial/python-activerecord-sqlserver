@@ -18,7 +18,7 @@ class SQLServerLockingMixin:
         """SQL Server 2019+ supports READPAST with UPDLOCK."""
         return self.version_at_least(SQL_SERVER_2019)
 
-    def format_for_update_clause(self, clause: "ForUpdateClause") -> Tuple[str, tuple]:
+    def format_for_update_clause(self, expr: "ForUpdateClause") -> Tuple[str, tuple]:
         """Format FOR UPDATE for SQL Server using table hints.
 
         SQL Server does not support FOR UPDATE syntax. Instead, locking
@@ -27,19 +27,19 @@ class SQLServerLockingMixin:
         from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
         from rhosocial.activerecord.backend.expression import LockStrength
 
-        if clause.strength != LockStrength.UPDATE:
+        if expr.strength != LockStrength.UPDATE:
             # The phrase, not the artifact word: a refusal names what SQL would
             # have said, and the artifact word is a serialization detail that
             # means nothing to whoever reads the error.
             raise UnsupportedFeatureError(
-                self.name, f"{clause.strength.phrase} (unsupported lock strength)"
+                self.name, f"{expr.strength.phrase} (unsupported lock strength)"
             )
 
         all_params: list = []
 
         sql_parts = ["WITH (UPDLOCK, ROWLOCK)"]
 
-        if clause.skip_locked and self.supports_for_update_skip_locked():
+        if expr.skip_locked and self.supports_for_update_skip_locked():
             sql_parts[0] = "WITH (UPDLOCK, ROWLOCK, READPAST)"
 
         return " ".join(sql_parts), tuple(all_params)

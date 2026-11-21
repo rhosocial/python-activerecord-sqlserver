@@ -49,23 +49,23 @@ class SQLServerGraphSupport(Protocol):
         """Format the ``AS NODE`` / ``AS EDGE`` table kind fragment."""
         ...  # pragma: no cover
 
-    def format_sqlserver_edge_constraint(self, constraint: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_edge_constraint(self, expr: Any) -> Tuple[str, tuple]:
         """Format a ``CONNECTION (from TO to)`` edge constraint."""
         ...  # pragma: no cover
 
-    def format_sqlserver_graph_node_ref(self, ref: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_graph_node_ref(self, expr: Any) -> Tuple[str, tuple]:
         """Format a node reference in a pattern (optionally ``LAST_NODE(...)``)."""
         ...  # pragma: no cover
 
-    def format_sqlserver_graph_edge_ref(self, ref: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_graph_edge_ref(self, expr: Any) -> Tuple[str, tuple]:
         """Format an edge reference in a pattern (``-(edge)->`` / ``<-(edge)-``)."""
         ...  # pragma: no cover
 
-    def format_sqlserver_graph_pattern(self, pattern: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_graph_pattern(self, expr: Any) -> Tuple[str, tuple]:
         """Format a graph search pattern (ASCII-art node/edge chain)."""
         ...  # pragma: no cover
 
-    def format_sqlserver_match_predicate(self, predicate: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_match_predicate(self, expr: Any) -> Tuple[str, tuple]:
         """Format a ``MATCH (<pattern>)`` predicate."""
         ...  # pragma: no cover
 
@@ -73,11 +73,11 @@ class SQLServerGraphSupport(Protocol):
         """Format a ``SHORTEST_PATH (<pattern>{1,n})`` expression."""
         ...  # pragma: no cover
 
-    def format_sqlserver_graph_path_aggregate(self, aggregate: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_graph_path_aggregate(self, expr: Any) -> Tuple[str, tuple]:
         """Format a path aggregate (``<agg>(...) WITHIN GROUP (GRAPH PATH)``)."""
         ...  # pragma: no cover
 
-    def format_sqlserver_for_path_table(self, table: Any) -> Tuple[str, tuple]:
+    def format_sqlserver_for_path_table(self, expr: Any) -> Tuple[str, tuple]:
         """Format a ``<table> FOR PATH [AS alias]`` FROM item."""
         ...  # pragma: no cover
 

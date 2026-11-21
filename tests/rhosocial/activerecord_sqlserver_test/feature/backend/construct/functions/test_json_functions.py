@@ -234,21 +234,21 @@ class TestJSONFunctionProtocol:
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_json_search('data', 'John', all_=False)
+            dialect.render_json_search('data', 'John', all_=False)
 
     def test_format_json_search_all(self):
         """Test JSON_SEARCH with 'all' mode is not supported."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_json_search('data', 'John', all_=True)
+            dialect.render_json_search('data', 'John', all_=True)
 
     def test_format_json_search_with_path(self):
         """Test JSON_SEARCH with path is not supported."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
 
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_json_search('data', 'John', path='$.users', all_=True)
+            dialect.render_json_search('data', 'John', path='$.users', all_=True)
 
 
 class TestAsyncJSONFunctionProtocol:

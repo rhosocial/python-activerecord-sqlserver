@@ -154,7 +154,7 @@ class SQLServerDMLMixin:
         parts = ["DELETE FROM", table_sql]
 
         if expr.returning:
-            returning_sql, returning_params = self.format_returning_clause(expr.returning, default_table="DELETED")
+            returning_sql, returning_params = self.render_returning_clause(expr.returning, "DELETED")
             parts.append(returning_sql)
             all_params.extend(returning_params)
 

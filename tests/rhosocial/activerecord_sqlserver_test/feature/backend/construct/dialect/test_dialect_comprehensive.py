@@ -60,12 +60,12 @@ class TestDialectPagination:
         assert "FETCH NEXT 20 ROWS ONLY" in sql
 
     def test_limit_offset_no_limit(self, dialect):
-        sql, params = dialect.format_limit_offset(limit=None, offset=5)
+        sql, params = dialect.render_limit_offset(limit=None, offset=5)
         assert "OFFSET 5 ROWS" in sql
         assert "FETCH" not in sql
 
     def test_limit_offset_none(self, dialect):
-        sql, params = dialect.format_limit_offset()
+        sql, params = dialect.render_limit_offset()
         assert sql == ""
         assert params == ()
 
@@ -73,7 +73,7 @@ class TestDialectPagination:
         old = SQLServerDialect((10, 0, 0))
         from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
         with pytest.raises(UnsupportedFeatureError):
-            old.format_limit_offset(limit=10, offset=0)
+            old.render_limit_offset(limit=10, offset=0)
 
 
 class TestDialectDML:
@@ -156,7 +156,6 @@ class TestDialectDML:
         from rhosocial.activerecord.backend.expression import (
             InsertStatement,
             ValuesSource,
-            Column,
         )
         from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.core import Literal
@@ -513,7 +512,6 @@ class TestDialectMerge:
         )
         from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
-        from rhosocial.activerecord.backend.expression.core import Literal
 
         merge = MergeStatement(
             dialect=dialect,
@@ -581,12 +579,12 @@ class TestDialectTop:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_top_n(self, dialect):
-        result, params = dialect.format_top_n_clause(10)
+        result, params = dialect.render_top_n_clause(10)
         assert result == "TOP 10"
         assert params == ()
 
     def test_top_n_percent(self, dialect):
-        result, params = dialect.format_top_n_clause(50, percentage=True)
+        result, params = dialect.render_top_n_clause(50, percentage=True)
         assert result == "TOP 50 PERCENT"
         assert params == ()
 

@@ -331,7 +331,7 @@ class AsyncSQLServerBackend(
 
     async def set_identity_insert(self, table: str, on: bool = True) -> None:
         """Enable or disable IDENTITY_INSERT for a table (async)."""
-        sql, _params = self.dialect.format_set_identity_insert(table, on)
+        sql, _params = self.dialect.render_set_identity_insert(table, on)
         await self._execute_control_sql_async(sql)
 
     async def _get_identity_columns_async(self, table_name: str) -> Set[str]:

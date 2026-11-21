@@ -78,7 +78,7 @@ class SQLServerGraphMixin:
         return f"AS {expr.kind.value}", ()
 
     def format_sqlserver_edge_constraint(
-        self, constraint: "SQLServerEdgeConstraint"
+        self, expr: "SQLServerEdgeConstraint"
     ) -> Tuple[str, tuple]:
         """Format a ``[CONSTRAINT name] CONNECTION (<from> TO <to>)`` edge constraint."""
         if not self.supports_edge_constraints():
@@ -88,13 +88,13 @@ class SQLServerGraphMixin:
                 "Edge constraints require SQL Server 2019 or later.",
             )
         parts = []
-        if constraint.name:
-            parts.append(f"CONSTRAINT {self.format_identifier(constraint.name)}")
+        if expr.name:
+            parts.append(f"CONSTRAINT {self.format_identifier(expr.name)}")
         # The two endpoints are graph *node* tables, so they are rendered as
         # NodeTable objects: same three slots, same one rendering path, and the
         # kind now says what they are.
-        from_table = self.qualified_object_name(NodeTable, constraint.from_table)
-        to_table = self.qualified_object_name(NodeTable, constraint.to_table)
+        from_table = self.qualified_object_name(NodeTable, expr.from_table)
+        to_table = self.qualified_object_name(NodeTable, expr.to_table)
         parts.append(f"CONNECTION ({from_table} TO {to_table})")
         return " ".join(parts), ()
 
@@ -103,7 +103,7 @@ class SQLServerGraphMixin:
     # region query formatting
 
     def format_sqlserver_graph_node_ref(
-        self, ref: "SQLServerGraphNodeRef"
+        self, expr: "SQLServerGraphNodeRef"
     ) -> Tuple[str, tuple]:
         """Format a node reference (optionally ``LAST_NODE(...)``)."""
         if not self.supports_sql_graph():
@@ -111,8 +111,8 @@ class SQLServerGraphMixin:
                 self.name, "SQL Graph MATCH pattern",
                 "SQL Graph requires SQL Server 2017 or later.",
             )
-        name = self.format_identifier(ref.alias or ref.table)
-        if ref.last_node:
+        name = self.format_identifier(expr.alias or expr.table)
+        if expr.last_node:
             if not self.supports_shortest_path():
                 raise UnsupportedFeatureError(
                     self.name, "LAST_NODE",
@@ -122,7 +122,7 @@ class SQLServerGraphMixin:
         return name, ()
 
     def format_sqlserver_graph_edge_ref(
-        self, ref: "SQLServerGraphEdgeRef"
+        self, expr: "SQLServerGraphEdgeRef"
     ) -> Tuple[str, tuple]:
         """Format an edge reference (``-(edge)->`` / ``<-(edge)-``)."""
         if not self.supports_sql_graph():
@@ -132,13 +132,13 @@ class SQLServerGraphMixin:
             )
         from ..expression.graph import SQLServerGraphDirection
 
-        edge = self.format_identifier(ref.edge)
-        if ref.direction == SQLServerGraphDirection.LEFT:
+        edge = self.format_identifier(expr.edge)
+        if expr.direction == SQLServerGraphDirection.LEFT:
             return f"<-({edge})-", ()
         return f"-({edge})->", ()
 
     def format_sqlserver_graph_pattern(
-        self, pattern: "SQLServerGraphPattern"
+        self, expr: "SQLServerGraphPattern"
     ) -> Tuple[str, tuple]:
         """Format a single path pattern (ASCII-art node/edge chain)."""
         if not self.supports_sql_graph():
@@ -147,10 +147,10 @@ class SQLServerGraphMixin:
                 "SQL Graph requires SQL Server 2017 or later.",
             )
         parts, params = [], []
-        start_sql, start_params = pattern.start.to_sql()
+        start_sql, start_params = expr.start.to_sql()
         parts.append(start_sql)
         params.extend(start_params)
-        for edge_ref, node_ref in pattern.segments:
+        for edge_ref, node_ref in expr.segments:
             edge_sql, edge_params = edge_ref.to_sql()
             node_sql, node_params = node_ref.to_sql()
             parts.append(edge_sql)
@@ -160,7 +160,7 @@ class SQLServerGraphMixin:
         return "".join(parts), tuple(params)
 
     def format_sqlserver_match_predicate(
-        self, predicate: "SQLServerMatchPredicate"
+        self, expr: "SQLServerMatchPredicate"
     ) -> Tuple[str, tuple]:
         """Format a ``MATCH (<pattern>...)`` predicate."""
         if not self.supports_sql_graph():
@@ -168,9 +168,9 @@ class SQLServerGraphMixin:
                 self.name, "SQL Graph MATCH predicate",
                 "SQL Graph requires SQL Server 2017 or later.",
             )
-        separator = " AND " if predicate.combinator == "AND" else ", "
+        separator = " AND " if expr.combinator == "AND" else ", "
         parts, params = [], []
-        for pattern in predicate.patterns:
+        for pattern in expr.patterns:
             sql, pattern_params = pattern.to_sql()
             parts.append(sql)
             params.extend(pattern_params)
@@ -204,7 +204,7 @@ class SQLServerGraphMixin:
         return f"SHORTEST_PATH({separator.join(parts)})", tuple(params)
 
     def format_sqlserver_graph_path_aggregate(
-        self, aggregate: "SQLServerGraphPathAggregate"
+        self, expr: "SQLServerGraphPathAggregate"
     ) -> Tuple[str, tuple]:
         """Format a ``<agg>(<expr>[, <sep>]) WITHIN GROUP (GRAPH PATH)`` aggregate."""
         if not self.supports_graph_path_aggregates():
@@ -212,17 +212,17 @@ class SQLServerGraphMixin:
                 self.name, "path aggregate",
                 "Path aggregates require SQL Server 2019 or later.",
             )
-        expr_sql, params = aggregate.expression.to_sql()
+        expr_sql, params = expr.expression.to_sql()
         args = [expr_sql]
-        if aggregate.separator is not None:
-            args.append(self.format_literal(aggregate.separator))
-        sql = f"{aggregate.function.upper()}({', '.join(args)}) WITHIN GROUP (GRAPH PATH)"
-        if aggregate.alias:
-            sql += f" AS {self.format_identifier(aggregate.alias)}"
+        if expr.separator is not None:
+            args.append(self.format_literal(expr.separator))
+        sql = f"{expr.function.upper()}({', '.join(args)}) WITHIN GROUP (GRAPH PATH)"
+        if expr.alias:
+            sql += f" AS {self.format_identifier(expr.alias)}"
         return sql, tuple(params)
 
     def format_sqlserver_for_path_table(
-        self, table: "SQLServerForPathTable"
+        self, expr: "SQLServerForPathTable"
     ) -> Tuple[str, tuple]:
         """Format a ``<table> FOR PATH [AS <alias>]`` FROM item.
 
@@ -237,13 +237,13 @@ class SQLServerGraphMixin:
             )
         table_object = self.schema_object(
             Table,
-            table.table,
-            catalog_name=table.catalog_name,
-            schema_name=table.schema_name,
+            expr.table,
+            catalog_name=expr.catalog_name,
+            schema_name=expr.schema_name,
         )
         sql = f"{table_object.to_sql()[0]} FOR PATH"
-        if table.alias:
-            sql += f" AS {self.format_identifier(table.alias)}"
+        if expr.alias:
+            sql += f" AS {self.format_identifier(expr.alias)}"
         return sql, ()
 
     # endregion

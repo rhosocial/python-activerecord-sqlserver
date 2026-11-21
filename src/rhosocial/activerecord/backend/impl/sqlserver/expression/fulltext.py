@@ -53,7 +53,7 @@ class SQLServerCreateFullTextCatalogStatement(BaseExpression):
             raise ValueError("catalog_name is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.format_create_full_text_catalog_statement(
+        sql, params = self.dialect.render_create_full_text_catalog_statement(
             self.catalog_name, as_default=self.is_default
         )
         return sql, params
@@ -132,7 +132,7 @@ class SQLServerCreateFullTextIndexStatement(BaseExpression):
             raise ValueError("catalog_name is required")
 
     def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.format_create_full_text_index_statement(
+        sql, params = self.dialect.render_create_full_text_index_statement(
             self.table,
             self.columns,
             self.key_index,

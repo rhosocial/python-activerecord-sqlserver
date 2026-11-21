@@ -29,7 +29,7 @@ class SQLServerMemoryOptimizedMixin:
         """Memory-optimized tables require SQL Server 2014+."""
         return self.version_at_least(_SQL_SERVER_MEMORY_OPTIMIZED_VERSION)  # type: ignore[attr-defined]
 
-    def format_memory_optimized_option(self, durability: str = "SCHEMA_ONLY") -> str:
+    def render_memory_optimized_option(self, expr: str = "SCHEMA_ONLY") -> str:
         """Format the In-Memory OLTP table option clause (2014+).
 
         SQL Syntax:
@@ -50,14 +50,14 @@ class SQLServerMemoryOptimizedMixin:
             "memory-optimized tables",
             "requires SQL Server 2014+ (In-Memory OLTP).",
         )
-        durability = durability.upper()
+        durability = expr.upper()
         if durability not in _DURABILITY_OPTIONS:
             raise ValueError(
                 f"durability must be one of {_DURABILITY_OPTIONS}, got {durability!r}"
             )
         return f"WITH (MEMORY_OPTIMIZED = ON, DURABILITY = {durability})"
 
-    def format_hash_index_definition(
+    def render_hash_index_definition(
         self,
         columns: Sequence[str],
         bucket_count: int,

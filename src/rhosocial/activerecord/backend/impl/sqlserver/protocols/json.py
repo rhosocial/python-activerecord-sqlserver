@@ -6,7 +6,7 @@ from rhosocial.activerecord.backend.dialect.protocols import JSONSupport
 
 @runtime_checkable
 class SQLServerJSONSupport(JSONSupport, Protocol):
-    def format_openjson_expression(
+    def render_openjson_expression(
         self,
         json_doc: str,
         path: Optional[str] = None,

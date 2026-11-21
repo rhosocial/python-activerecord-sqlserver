@@ -260,14 +260,14 @@ class TestMergeOutputAndHoldlock:
         )
 
     def test_merge_output_clause(self, dialect):
-        sql, params = dialect.format_merge_output_clause(
+        sql, params = dialect.render_merge_output_clause(
             ["inserted.*", "deleted.*"]
         )
         assert sql == "OUTPUT inserted.*, deleted.*"
         assert params == ()
 
     def test_merge_output_clause_with_action(self, dialect):
-        sql, params = dialect.format_merge_output_clause(
+        sql, params = dialect.render_merge_output_clause(
             ["inserted.*", "deleted.*"], action_type="$action"
         )
         assert sql == "OUTPUT $action, inserted.*, deleted.*"
@@ -319,12 +319,12 @@ class TestDelegatedFormatters:
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_format_output_clause(self, dialect):
-        sql, params = dialect.format_output_clause(["id", "name"])
+        sql, params = dialect.render_output_clause(["id", "name"])
         assert sql == "OUTPUT INSERTED.[id], INSERTED.[name]"
         assert params == ()
 
     def test_format_output_clause_deleted(self, dialect):
-        sql, _ = dialect.format_output_clause(["id"], clause_type="deleted")
+        sql, _ = dialect.render_output_clause(["id"], clause_type="deleted")
         assert sql == "OUTPUT DELETED.[id]"
 
     def test_supports_output_clause(self, dialect):
@@ -357,12 +357,12 @@ class TestDelegatedFormatters:
         assert params == ()
 
     def test_format_containstable_function(self, dialect):
-        sql, params = dialect.format_containstable_function("docs", "body", "term")
+        sql, params = dialect.render_containstable_function("docs", "body", "term")
         assert sql == "CONTAINSTABLE([docs], [body], 'term')"
         assert params == ()
 
     def test_format_containstable_function_top_n(self, dialect):
-        sql, _ = dialect.format_containstable_function("docs", "body", "term", top_n=10)
+        sql, _ = dialect.render_containstable_function("docs", "body", "term", top_n=10)
         assert sql == "CONTAINSTABLE([docs], [body], 'term', 10)"
 
     def test_supports_fulltext_catalog(self, dialect):
@@ -485,7 +485,7 @@ class TestDelegatedFormatters:
         ],
     )
     def test_dialect_format_temporal_period_definition(self, dialect, start, end, expected):
-        sql, params = dialect.format_temporal_period_definition(start, end)
+        sql, params = dialect.render_temporal_period_definition(start, end)
         assert isinstance(sql, str)
         assert sql == expected
         assert params == ()
@@ -498,12 +498,12 @@ class TestDelegatedFormatters:
         assert dialect.supports_identity_insert() is True
 
     def test_format_set_identity_insert_on(self, dialect):
-        assert dialect.format_set_identity_insert("orders", True) == (
+        assert dialect.render_set_identity_insert("orders", True) == (
             "SET IDENTITY_INSERT [orders] ON", ()
         )
 
     def test_format_set_identity_insert_off(self, dialect):
-        assert dialect.format_set_identity_insert("orders", False) == (
+        assert dialect.render_set_identity_insert("orders", False) == (
             "SET IDENTITY_INSERT [orders] OFF", ()
         )
 

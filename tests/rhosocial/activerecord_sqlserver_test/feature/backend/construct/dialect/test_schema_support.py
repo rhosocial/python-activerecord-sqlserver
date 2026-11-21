@@ -73,7 +73,7 @@ class TestSchemaCapability:
         table = Table(d, "users", catalog_name="app", schema_name="dbo")
 
         bracketed = d.format_qualified_name(table)[0]
-        bare = d.format_object_id_name(table)
+        bare = d.render_object_id_name(table)
 
         assert bracketed == "[app].[dbo].[users]"
         assert bare == "app.dbo.users"
@@ -108,7 +108,7 @@ class TestSchemaCapability:
     def test_object_id_name_still_validates_the_namespace(self):
         """The bare spelling must not bypass the namespace checks.
 
-        ``format_object_id_name`` used to join the object's slots itself, which meant
+        ``render_object_id_name`` used to join the object's slots itself, which meant
         it skipped ``validate_namespace`` entirely: a name SQL Server could not store
         produced a bare string instead of an error. The check now runs first, so the
         third operation is a different spelling of the same name rather than a
@@ -117,7 +117,7 @@ class TestSchemaCapability:
         d = self._dialect()
         over_long = Table(d, "users", schema_name="s" * 129)
         try:
-            d.format_object_id_name(over_long)
+            d.render_object_id_name(over_long)
         except ValueError as error:
             assert "128 characters" in str(error)
         else:

@@ -112,43 +112,43 @@ class TestMemoryOptimizedTables:
         assert SQLServerDialect(SQL_SERVER_2012).supports_memory_optimized_tables() is False
 
     def test_format_memory_optimized_option_schema_only(self, dialect):
-        assert dialect.format_memory_optimized_option() == (
+        assert dialect.render_memory_optimized_option() == (
             "WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_ONLY)"
         )
 
     def test_format_memory_optimized_option_schema_and_data(self, dialect):
-        assert dialect.format_memory_optimized_option("SCHEMA_AND_DATA") == (
+        assert dialect.render_memory_optimized_option("SCHEMA_AND_DATA") == (
             "WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_AND_DATA)"
         )
 
     def test_format_memory_optimized_option_case_insensitive(self, dialect):
-        assert dialect.format_memory_optimized_option("schema_only") == (
+        assert dialect.render_memory_optimized_option("schema_only") == (
             "WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_ONLY)"
         )
 
     def test_format_memory_optimized_option_invalid_durability(self, dialect):
         with pytest.raises(ValueError):
-            dialect.format_memory_optimized_option("DURABLE")
+            dialect.render_memory_optimized_option("DURABLE")
 
     def test_memory_optimized_option_gate_below_2014(self):
         d = SQLServerDialect(SQL_SERVER_2012)
         with pytest.raises(UnsupportedFeatureError) as exc_info:
-            d.format_memory_optimized_option()
+            d.render_memory_optimized_option()
         assert exc_info.value.feature_name == "memory-optimized tables"
         assert "2014+" in exc_info.value.suggestion
 
     def test_hash_index_definition(self, dialect):
-        assert dialect.format_hash_index_definition(["id"], 100000) == (
+        assert dialect.render_hash_index_definition(["id"], 100000) == (
             "NONCLUSTERED HASH ([id]) WITH (BUCKET_COUNT = 100000)"
         )
 
     def test_hash_index_definition_named(self, dialect):
-        assert dialect.format_hash_index_definition(["id"], 100000, name="ix") == (
+        assert dialect.render_hash_index_definition(["id"], 100000, name="ix") == (
             "INDEX [ix] NONCLUSTERED HASH ([id]) WITH (BUCKET_COUNT = 100000)"
         )
 
     def test_hash_index_definition_unique(self, dialect):
-        assert dialect.format_hash_index_definition(
+        assert dialect.render_hash_index_definition(
             ["id", "name"], 20000, name="ux", unique=True
         ) == (
             "UNIQUE INDEX [ux] NONCLUSTERED HASH ([id], [name]) WITH (BUCKET_COUNT = 20000)"
@@ -156,16 +156,16 @@ class TestMemoryOptimizedTables:
 
     def test_hash_index_definition_validation(self, dialect):
         with pytest.raises(ValueError):
-            dialect.format_hash_index_definition([], 100000)
+            dialect.render_hash_index_definition([], 100000)
         with pytest.raises(ValueError):
-            dialect.format_hash_index_definition(["id"], 0)
+            dialect.render_hash_index_definition(["id"], 0)
         with pytest.raises(ValueError):
-            dialect.format_hash_index_definition(["id"], None)
+            dialect.render_hash_index_definition(["id"], None)
 
     def test_hash_index_gate_below_2014(self):
         d = SQLServerDialect(SQL_SERVER_2012)
         with pytest.raises(UnsupportedFeatureError) as exc_info:
-            d.format_hash_index_definition(["id"], 100000)
+            d.render_hash_index_definition(["id"], 100000)
         assert "NONCLUSTERED HASH index" in exc_info.value.feature_name
         assert "2014+" in exc_info.value.suggestion
 

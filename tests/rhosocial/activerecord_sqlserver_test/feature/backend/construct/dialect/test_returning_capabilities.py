@@ -40,12 +40,12 @@ class TestReturningCapabilities:
 class TestOutputFormatting:
     def test_insert_default_prefix(self, dialect):
         clause = ReturningClause(dialect, expressions=[Column(dialect, "id")])
-        sql, _ = dialect.format_returning_clause(clause, default_table="INSERTED")
+        sql, _ = dialect.render_returning_clause(clause, "INSERTED")
         assert sql == "OUTPUT INSERTED.[id]"
 
     def test_delete_default_prefix(self, dialect):
         clause = ReturningClause(dialect, expressions=[Column(dialect, "id")])
-        sql, _ = dialect.format_returning_clause(clause, default_table="DELETED")
+        sql, _ = dialect.render_returning_clause(clause, "DELETED")
         assert sql == "OUTPUT DELETED.[id]"
 
     def test_per_expression_prefix(self, dialect):
@@ -56,7 +56,7 @@ class TestOutputFormatting:
                 Column(dialect, "name", table="INSERTED"),
             ],
         )
-        sql, _ = dialect.format_returning_clause(clause, default_table="INSERTED")
+        sql, _ = dialect.render_returning_clause(clause, "INSERTED")
         assert "DELETED.[name]" in sql
         assert "INSERTED.[name]" in sql
 
