@@ -63,6 +63,12 @@ PROTOCOLS = (
 )
 
 
+def _suggestion_source(name):
+    """Locate the per-file module and mixin for one partition suggestion."""
+    title = "".join(part.capitalize() for part in name.split("_"))
+    return f"partition_{name}_suggestion", f"SQLServerPartition{title}SuggestionMixin"
+
+
 @pytest.fixture
 def dialect():
     return SQLServerDialect((16, 0, 0))
@@ -260,25 +266,27 @@ def test_old_version_declines_mutating_chains():
 
 
 def test_suggestion_mixin_imports_with_maintenance_blocked(monkeypatch):
-    """The suggestion module must not import a maintenance/report module.
+    """The per-file suggestion modules must not import a maintenance/report module.
 
-    Blocking those names in ``sys.modules`` while (re)importing the module and
-    exercising every method proves the mixin is self-contained. This holds
-    both before and after the maintenance protocol is retired.
+    Blocking those names in ``sys.modules`` while (re)importing each module and
+    exercising its method proves every mixin is self-contained. This holds both
+    before and after the maintenance protocol is retired.
     """
     for suffix in ("partition.maintenance", "partition.report"):
         name = f"rhosocial.activerecord.backend.impl.sqlserver.{suffix}"
         monkeypatch.setitem(sys.modules, name, None)
-    module_name = "rhosocial.activerecord.backend.impl.sqlserver.suggestion.partition"
-    monkeypatch.delitem(sys.modules, module_name, raising=False)
-    module = importlib.import_module(module_name)
 
-    # Call the freshly imported mixin's methods unbound on a real dialect, so
+    # Call the freshly imported mixins' methods unbound on a real dialect, so
     # the expression nodes get a valid dialect for rendering.
     dialect = SQLServerDialect((16, 0, 0))
     plan = {**_plan().__dict__, "boundary": date(2026, 3, 1), "cutoff": date(2026, 2, 1)}
     for name, _protocol, cls in PROTOCOLS:
-        method = getattr(module.SQLServerPartitionSuggestionMixin, f"suggest_partition_{name}")
+        module_name, mixin_name = _suggestion_source(name)
+        full_name = "rhosocial.activerecord.backend.impl.sqlserver.suggestion." + module_name
+        monkeypatch.delitem(sys.modules, full_name, raising=False)
+        module = importlib.import_module(full_name)
+        mixin = getattr(module, mixin_name)
+        method = getattr(mixin, f"suggest_partition_{name}")
         suggestion = method(dialect, PartitionStrategy.RANGE, plan)
         assert isinstance(suggestion, cls)
         assert dataclasses.is_dataclass(suggestion)

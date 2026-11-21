@@ -151,8 +151,17 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from .collation import validate_sqlserver_collation_name
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
-from .suggestion.integer_auto_increment import SQLServerIntegerAutoIncrementColumnSuggestionMixin
-from .suggestion.partition import SQLServerPartitionSuggestionMixin
+from .suggestion.integer_auto_increment_column_suggestion import (
+    SQLServerIntegerAutoIncrementColumnSuggestionMixin,
+)
+from .suggestion.partition_add_suggestion import SQLServerPartitionAddSuggestionMixin
+from .suggestion.partition_build_suggestion import SQLServerPartitionBuildSuggestionMixin
+from .suggestion.partition_drop_suggestion import SQLServerPartitionDropSuggestionMixin
+from .suggestion.partition_merge_suggestion import SQLServerPartitionMergeSuggestionMixin
+from .suggestion.partition_retention_suggestion import SQLServerPartitionRetentionSuggestionMixin
+from .suggestion.partition_split_suggestion import SQLServerPartitionSplitSuggestionMixin
+from .suggestion.partition_table_alter_suggestion import SQLServerPartitionTableAlterSuggestionMixin
+from .suggestion.partition_table_drop_suggestion import SQLServerPartitionTableDropSuggestionMixin
 from .mixins.introspection import SQLServerIntrospectionMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
@@ -173,7 +182,7 @@ from .mixins.constraint import SQLServerConstraintMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
 from .mixins.column_type import SQLServerColumnTypeMixin
-from .suggestion.data_types import SQLServerDataTypeSuggestionsMixin
+from .suggestion.data_type_suggestions import SQLServerDataTypeSuggestionsMixin
 from .mixins.uuid import SQLServerUUIDMixin
 from .mixins.grouping import SQLServerGroupingMixin
 from .mixins.locking import SQLServerLockingMixin
@@ -258,9 +267,19 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 
 
 class SQLServerDialect(
-    # Backend suggestions first: no core mixin may shadow their answers. Both
-    # sit ahead of every core/base mixin for the C3 reason spelled out below.
-    SQLServerPartitionSuggestionMixin,
+    # Backend suggestions first: no core mixin may shadow their answers. The
+    # eight partition mixins (one per lifecycle point, each sharing the plan
+    # readers in SQLServerPartitionSuggestionBase) and the auto-increment and
+    # data-type answers all sit ahead of every core/base mixin for the C3
+    # reason spelled out below.
+    SQLServerPartitionAddSuggestionMixin,
+    SQLServerPartitionBuildSuggestionMixin,
+    SQLServerPartitionDropSuggestionMixin,
+    SQLServerPartitionMergeSuggestionMixin,
+    SQLServerPartitionRetentionSuggestionMixin,
+    SQLServerPartitionSplitSuggestionMixin,
+    SQLServerPartitionTableAlterSuggestionMixin,
+    SQLServerPartitionTableDropSuggestionMixin,
     SQLServerIntegerAutoIncrementColumnSuggestionMixin,
     # The bases below come in bundles: a backend mixin, then the core bundle
     # it stands in for. The backend's answer has to come first -- a mixin

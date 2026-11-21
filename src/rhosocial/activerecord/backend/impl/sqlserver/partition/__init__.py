@@ -15,7 +15,8 @@ This package now holds only the owner-agnostic layout description:
     optional scheme, with no table name and no retention rule.
 
 How to apply that layout is answered by the dialect's eight
-``suggest_partition_*`` methods (see ``suggestion.partition``); how to
+``suggest_partition_*`` methods (see the one-per-file ``suggestion`` modules);
+how to
 observe the catalogue is answered by the backend introspector. There is no
 maintenance executor: a caller owns the table, the rows and the retention
 decision, and executes the suggested expression chain itself.

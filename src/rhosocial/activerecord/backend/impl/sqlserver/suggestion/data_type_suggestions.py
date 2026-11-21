@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/suggestion/data_types.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/suggestion/data_type_suggestions.py
 """SQL Server's **suggested data types**: what a bare field is declared as here.
 
 The DDL half of the type answer; :mod:`.column_type` is the operation half. A

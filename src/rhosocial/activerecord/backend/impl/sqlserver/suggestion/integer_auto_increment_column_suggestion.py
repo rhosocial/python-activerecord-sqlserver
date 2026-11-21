@@ -1,4 +1,4 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/suggestion/integer_auto_increment.py
+# src/rhosocial/activerecord/backend/impl/sqlserver/suggestion/integer_auto_increment_column_suggestion.py
 """SQLServerIntegerAutoIncrementColumnSuggestionMixin -- sqlserver's integer auto-increment column suggestion.
 
 The answer is the backend's own spelling, assembled from its capability
