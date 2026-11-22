@@ -98,7 +98,7 @@ class TestInfoOffline:
         info_mod.handle(make_args(info_mod.create_parser, ["info", "-v", "-o", "json"]))
         payload = json.loads(capsys.readouterr().out)
         entry = payload["protocols"]["Query Features"]["WindowFunctionSupport"]
-        assert set(entry) == {"supported", "total", "percentage"}
+        assert set(entry) == {"supported", "total", "percentage", "origin"}
 
     def test_version_bits_differ_between_versions(self):
         old = info_mod.handle(
@@ -110,6 +110,24 @@ class TestInfoOffline:
         old_json_support = old["protocols"]["Data Types"]["JSONSupport"]
         new_json_support = new["protocols"]["Data Types"]["JSONSupport"]
         assert old_json_support["supported"] < new_json_support["supported"]
+
+    def test_json_has_shared_helper_sections(self, capsys):
+        info_mod.handle(make_args(info_mod.create_parser, ["info", "-o", "json"]))
+        payload = json.loads(capsys.readouterr().out)
+        assert {"database", "server", "capabilities", "suggestions", "protocols"} <= set(payload)
+        assert payload["capabilities"] == payload["protocols"]
+        assert set(payload["server"]) == {"version", "variables", "source", "connected"}
+        assert payload["server"]["connected"] is False
+        assert payload["server"]["variables"] == {}
+        assert all(
+            entry["origin"] in {"reuse", "override", "proprietary"}
+            for group in payload["capabilities"].values()
+            for entry in group.values()
+        )
+        assert all(
+            isinstance(entry["supported"], bool)
+            for entry in payload["suggestions"].values()
+        )
 
     def test_parse_version_variants(self):
         assert info_mod.parse_version("16") == (16, 0, 0)
