@@ -2100,14 +2100,20 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         carrying a declared type can do; a literal, a ``CASE`` and a function
         call are values, so the cast is built around them instead. The type is
         parsed by the dialect's own parser, so the spelling in the statement is
-        the one this backend uses everywhere else.
+        the one this backend uses everywhere else. That parser is this backend's
+        ``introspection.type_parser.SQLServerTypeParser``, not core's
+        generic ``parse_data_type_str``: the latter degrades an unknown spelling
+        to ``CustomType``, whose validation rejects ``NVARCHAR(MAX)`` because
+        ``MAX`` is not a numeric precision, while the backend parser maps it to
+        the unbounded text type the dialect renders back as ``NVARCHAR(MAX)``.
         """
         from rhosocial.activerecord.backend.expression.core import CastExpression
-        from rhosocial.activerecord.backend.expression.types._base import DataType
+
+        from ..introspection.type_parser import SQLServerTypeParser
 
         dialect = self._node_dialect
         return CastExpression(
-            dialect, node, DataType.parse_data_type_str(dialect, type_name), alias=alias
+            dialect, node, SQLServerTypeParser(dialect).parse(type_name), alias=alias
         )
 
     def _data_profile_label(self, text: Optional[str], alias: str):
