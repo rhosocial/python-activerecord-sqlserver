@@ -4,7 +4,7 @@
 T-SQL ``CREATE PROCEDURE`` and ``CREATE FUNCTION`` use a distinctive syntax
 (parameters with leading ``@``, ``RETURNS``, ``AS BEGIN ... END`` bodies)
 that differs from the SQL/PSM form used by other backends. This mixin
-provides the capability switches and the formatters used by the
+provides the support switches and the formatters used by the
 ``SQLServerCreateProcedureStatement`` / ``SQLServerCreateFunctionStatement``
 / ``SQLServerDropRoutineStatement`` expressions.
 """

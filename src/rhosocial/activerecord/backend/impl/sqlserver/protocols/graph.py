@@ -15,7 +15,7 @@ from typing import Any, Protocol, Tuple, runtime_checkable
 class SQLServerGraphSupport(Protocol):
     """Contract for SQL Server SQL Graph capability and formatting."""
 
-    # region capability switches
+    # region support switches
 
     def supports_sql_graph(self) -> bool:
         """Whether SQL Graph (node/edge tables + MATCH predicate) is supported."""

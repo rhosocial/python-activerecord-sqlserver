@@ -17,7 +17,7 @@ operand order SQL Server had first and encodes the direction in the name:
 ``LTRIM`` / ``RTRIM`` accept a second, characters argument only from 2022
 (16.x) at compatibility level 160 as well; on an earlier server that form is
 refused by the engine. This mixin does not attempt to version-gate: the
-dialect has no mechanism for a per-expression capability switch, and the
+dialect has no mechanism for a per-expression support switch, and the
 rendering is recorded here instead.
 
 Everything else about the node (the operands' parameters in order, the

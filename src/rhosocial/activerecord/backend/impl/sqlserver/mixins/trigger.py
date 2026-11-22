@@ -3,7 +3,7 @@
 
 T-SQL triggers use a syntax distinct from the SQL:1999 form rendered by the
 core ``TriggerMixin``: the body is an ``AS BEGIN ... END`` batch rather than
-``EXECUTE FUNCTION``. This mixin provides the capability switches and the
+``EXECUTE FUNCTION``. This mixin provides the support switches and the
 formatters used by ``SQLServerCreateTriggerStatement`` /
 ``SQLServerDropTriggerStatement``.
 """

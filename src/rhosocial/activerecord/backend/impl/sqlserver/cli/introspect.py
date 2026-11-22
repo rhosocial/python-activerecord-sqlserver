@@ -47,7 +47,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBacke
 from .connection import add_connection_args, resolve_connection_config_from_args
 from .output import OUTPUT_CHOICES, create_provider
 
-#: CLI type -> the dialect capability switch that answers for it.
+#: CLI type -> the dialect support switch that answers for it.
 #:
 #: The advertised list below is derived from this mapping, so a family cannot
 #: be added to one place and forgotten in the other: a type is in both or in

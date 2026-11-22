@@ -2,7 +2,7 @@
 """SQL Server PIVOT / UNPIVOT mixin.
 
 PIVOT and UNPIVOT have been available since SQL Server 2005 and work in
-every supported version. This mixin provides the capability switches and
+every supported version. This mixin provides the support switches and
 the ``format_pivot`` / ``format_unpivot`` formatters used by
 ``SQLServerPivotExpression`` and ``SQLServerUnpivotExpression``.
 """

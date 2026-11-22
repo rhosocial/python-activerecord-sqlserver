@@ -35,7 +35,7 @@ if TYPE_CHECKING:  # pragma: no cover
 class SQLServerGraphMixin:
     """SQL Server SQL Graph capability and formatting implementation."""
 
-    # region capability switches
+    # region support switches
 
     def supports_sql_graph(self) -> bool:
         """SQL Graph (node/edge tables + MATCH predicate) requires 2017+."""

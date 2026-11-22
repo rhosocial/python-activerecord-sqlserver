@@ -586,7 +586,7 @@ This checklist summarizes all the required and recommended steps for creating a 
     - [ ] Implement `get_default_adapter_suggestions` to define the conversion strategy.
 - [ ] Implement `Transaction Management`.
 - [ ] Implement `Error Handling` to map driver exceptions.
-- [ ] Implement the `supports_*` capability switches your dialect needs.
+- [ ] Implement the `supports_*` support switches your dialect needs.
 - [ ] If providing an `AsyncStorageBackend`, ensure it has **Functional Equivalence** with the sync version.
 
 ### Required Tests

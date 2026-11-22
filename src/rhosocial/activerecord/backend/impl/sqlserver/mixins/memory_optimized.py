@@ -8,7 +8,7 @@ expressed through ``CREATE TABLE ... WITH (...)`` table options:
     CREATE TABLE t (... INDEX ix NONCLUSTERED HASH (id) WITH (BUCKET_COUNT = 100000))
         WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_AND_DATA);
 
-This mixin provides the capability switch and the ``format_*`` helpers used
+This mixin provides the support switch and the ``format_*`` helpers used
 both standalone and from the dialect's ``format_create_table_statement``
 path (via the typed ``SQLServerCreateTableOptions``).
 """
