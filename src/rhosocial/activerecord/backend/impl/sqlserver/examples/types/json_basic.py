@@ -4,7 +4,8 @@ JSON operations using SQL Server 2016+ JSON functions.
 SQL Server doesn't have a native JSON type but provides functions
 for working with JSON data stored in NVARCHAR columns.
 """
-from rhosocial.activerecord.backend.suggestion import IntegerAutoIncrementSuggestionRenderer  # noqa: E402
+from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
 import os
 
@@ -47,12 +48,12 @@ create_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'json_data'),
     columns=[
-        ColumnDefinition('id', IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[0], constraints=[
+        ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
             ColumnConstraint(
                 dialect,
                 branch=ColumnPrimaryKeyConstraint(dialect),
             ),
-        ], attributes=IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[1]),
+        ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
         ColumnDefinition('data', 'NVARCHAR(MAX)'),
     ],
     if_not_exists=True,

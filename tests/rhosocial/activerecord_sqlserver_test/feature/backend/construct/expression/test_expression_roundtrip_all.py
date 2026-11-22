@@ -110,7 +110,6 @@ from typing import Any, Dict
 import pytest
 
 from rhosocial.activerecord.backend.dialect.exceptions import (
-    ProtocolNotImplementedError,
     UnsupportedDataTypeError,
     UnsupportedFeatureError,
 )
@@ -1110,11 +1109,13 @@ LEGITIMATE_NON_RENDERS = {
     #  per-object DDL retrieval call -- OBJECT_DEFINITION holds a routine's
     #  body, not a CREATE TABLE -- so answering would mean assembling a
     #  reconstruction and labelling it native.
+    # Core now raises UnsupportedFeatureError (not ProtocolNotImplementedError)
+    # when a dialect has no formatter for a statement class.
     "rhosocial.activerecord.backend.expression.introspection.TableUsageStatsQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
+        UnsupportedFeatureError, 'format_table_usage_stats_query_statement',
     ),
     "rhosocial.activerecord.backend.expression.introspection.DDLStatementQueryStatement": (
-        ProtocolNotImplementedError, 'does not implement ',
+        UnsupportedFeatureError, 'format_ddl_statement_query_statement',
     ),
 
 # ---- bases that name an expression category, not a renderable thing ----
@@ -1679,12 +1680,8 @@ UNMODELLED_FORMATTERS = {
     "REPEAT (SQL Server spells it REPLICATE)": ("format_repeat_expression",),
     "the TableSource root (every concrete row source overrides its formatter; "
     "the root carries nothing but an alias and is never rendered)": ("format_table_source",),
-    "inline partition definitions (SQL Server declares partitions with a "
-    "PARTITION FUNCTION and SCHEME, not inline VALUES definitions; a definition's "
-    "storage options and subpartitions therefore have no dialect formatter)": (
-        "format_partition_definition_options",
-        "format_subpartition_definition",
-    ),
+    # Inline partition definitions were replaced by PartitionByClause expression
+    # nodes in core, so no registry class needs these two formatters any more.
 }
 
 

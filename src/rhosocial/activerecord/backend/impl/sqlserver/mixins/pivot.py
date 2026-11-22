@@ -30,6 +30,17 @@ class SQLServerPivotMixin:
         """UNPIVOT is supported since SQL Server 2005."""
         return self.version_at_least(_SQL_SERVER_PIVOT_VERSION)  # type: ignore[attr-defined]
 
+    def format_pivot_value(self, expr) -> Tuple[str, tuple]:
+        """Render one value in a PIVOT ``IN (...)`` list.
+
+        SQL Server's PIVOT values name columns (identifiers), not data literals,
+        so a bare value is quoted as an identifier rather than as a string.
+        """
+        if hasattr(expr, "to_sql"):
+            sql, params = expr.to_sql()
+            return sql, tuple(params)
+        return self.format_identifier(str(expr)), ()  # type: ignore[attr-defined]
+
     def format_pivot(
         self, expr: "SQLServerPivotExpression"
     ) -> Tuple[str, tuple]:

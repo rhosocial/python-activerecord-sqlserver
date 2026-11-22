@@ -1,8 +1,8 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/column_type.py
 """SQL Server's answer to "which column class does this Python type mean here".
 
-This is the **column** half of the ColumnTypeSupport protocol (the storage half
-is :meth:`SQLServerDialect.suggested_data_types`), and it answers a different
+This is the **column** half of the ColumnTypeSuggestionSupport protocol (the storage half
+is :meth:`SQLServerDialect.suggest_data_types`), and it answers a different
 question from that one. A column class says what a value can *do*; how it is
 stored is the DDL layer's separate decision, and neither reads the other. Two
 of SQL Server's most famous facts therefore stay **out** of the table below and
@@ -21,7 +21,7 @@ as an oversight:
   ``.claude/plan/2026-10-08/secondary-gaps-investigation.md`` 附录 F.4-6). None of
   that changes the column answer: a document carries the same operations
   wherever it is kept, and the storage spelling is
-  :meth:`SQLServerDialect.suggested_data_types`'s business.
+  :meth:`SQLServerDialect.suggest_data_types`'s business.
 * **``UNIQUEIDENTIFIER``** is native, so nothing about the ``UUID`` cell is a
   substitute. What *is* unusual about it is its **order**: SQL Server sorts
   ``uniqueidentifier`` by its internal byte layout, not by the canonical text
@@ -87,7 +87,10 @@ from rhosocial.activerecord.backend.adapters import (
     Range,
     Vector,
 )
-from rhosocial.activerecord.backend.dialect.mixins.column_type import ColumnTypeMixin
+from rhosocial.activerecord.backend.suggestion.definitions import (
+    ColumnTypeSuggestion,
+    ExtraColumnTypeSuggestion,
+)
 from rhosocial.activerecord.backend.expression.column_types import (
     BinaryColumn,
     BitStringColumn,
@@ -143,7 +146,7 @@ SQLSERVER_COLUMN_TYPES: Dict[Any, Type[ColumnBase]] = {
     # --- text and bytes ----------------------------------------------------
     # `NVARCHAR(n)`; this backend's default rendering is the Unicode dialect
     # (`VARCHAR` spells as `NVARCHAR`), which is a storage decision and
-    # stays in `suggested_data_types`. Measured on all three versions:
+    # stays in `suggest_data_types`. Measured on all three versions:
     # `=` / `IN`, `LIKE` / `NOT LIKE`, concatenation, 1-based substring,
     # `UPPER` / `LOWER`, `TRIM` and `ORDER BY` all pass, and an over-long
     # value is **refused** (a truncation error, not a silent cut).
@@ -249,20 +252,21 @@ SQLSERVER_COLUMN_TYPES: Dict[Any, Type[ColumnBase]] = {
 }
 
 
-class SQLServerColumnTypeMixin(ColumnTypeMixin):
+class SQLServerColumnTypeMixin:
     """SQL Server's full 24-entry column-type table.
 
-    Composed into :class:`~...dialect.SQLServerDialect` **ahead of** core's
-    :class:`ColumnTypeMixin`, so its :meth:`suggested_column_types` is the one
-    a model layer reaches. Core supplies no table of its own: an entry a
-    dialect does not answer fails at resolution time, by name, rather than
-    being filled in with a guess about a server core has never seen.
+    Composed into :class:`~...dialect.SQLServerDialect`, so its
+    :meth:`suggest_column_types` is the one a model layer reaches. Core
+    declares only the suggestion protocol and supplies no table of its own:
+    an entry a dialect does not answer fails at resolution time, by name,
+    rather than being filled in with a guess about a server core has never
+    seen.
 
     The table is a class attribute because it does not vary by version: the
     measured 2019 / 2022 / 2025 sweep gives the same answer on all three.
     """
 
-    def suggested_column_types(self) -> Dict[Any, Type[ColumnBase]]:
+    def suggest_column_types(self) -> ColumnTypeSuggestion:
         """The column class each common Python type means on SQL Server.
 
         A fresh copy per call, so a caller mutating the answer cannot corrupt
@@ -271,7 +275,11 @@ class SQLServerColumnTypeMixin(ColumnTypeMixin):
         ``NVARCHAR(MAX)``, spans as counts, no native array) still carry the
         operations, so this table has no last-resort ``None``.
         """
-        return dict(SQLSERVER_COLUMN_TYPES)
+        return ColumnTypeSuggestion(table=dict(SQLSERVER_COLUMN_TYPES))
+
+    def suggest_extra_column_types(self) -> ExtraColumnTypeSuggestion:
+        """No backend-owned extra column types."""
+        return ExtraColumnTypeSuggestion(table={})
 
 
 __all__ = ["SQLSERVER_COLUMN_TYPES", "SQLServerColumnTypeMixin"]

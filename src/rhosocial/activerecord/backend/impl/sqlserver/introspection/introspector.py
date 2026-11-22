@@ -34,7 +34,7 @@ from rhosocial.activerecord.backend.introspection.types import (
     IntrospectionTriggerInfo,
     IntrospectionScope,
 )
-from rhosocial.activerecord.backend.expression.types._base import DataType
+from .type_parser import SQLServerTypeParser
 
 from ..mixins.introspection import DEFAULT_SCHEMA
 from ..query_nodes import SQLServerNodeBuilderMixin
@@ -107,8 +107,8 @@ _DATETIME_PRECISION_TYPES = frozenset({"time", "datetime2", "datetimeoffset"})
 #: a type carrying precision 7 while the rebuilt column is bare, so those two
 #: still compare unequal.  Closing *that* is the server-defaults question (a
 #: bare word and an explicit default name one server column), which belongs
-#: with the dialect's ``type_parameter_defaults`` machinery rather than this
-#: catalog rebuild; it is recorded here rather than silently widened.
+#: with the server-defaults question rather than this catalog rebuild; it is
+#: recorded here rather than silently widened.
 _DATETIME_DEFAULT_PRECISION = 7
 
 #: ``sys.objects.type`` codes for user-defined functions: scalar (``FN``),
@@ -405,7 +405,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
 
             if max_len == -1 and data_type in _MAX_LENGTH_TYPES:
                 # Rebuild the ``(MAX)`` spelling the catalog marker stands
-                # for; ``parse_type`` reads it as the documented widening
+                # for; the introspection type parser reads it as the documented widening
                 # (``TextType`` for the character pair,
                 # ``SQLServerVarBinaryMaxType`` for ``varbinary``).  Dropping
                 # the marker rebuilt a bare word, which re-read as the
@@ -445,7 +445,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
 
             parsed = None
             try:
-                parsed = DataType.parse_data_type_str(self._backend.dialect, full_type)
+                parsed = SQLServerTypeParser(self._backend.dialect).parse(full_type)
             except Exception:
                 pass
 

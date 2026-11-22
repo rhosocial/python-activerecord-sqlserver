@@ -253,7 +253,7 @@ class SQLServerUniqueIdentifierType(UUIDType):
     It stays a class of its own because T-SQL spells the type differently, and
     the ``sqlserver_uniqueidentifier`` name keeps the dispatch keys of this
     backend's ``format_data_type_*`` family isolated from the others'.
-    ``substitute_data_types()["uuid"]`` points at it — a substitute that names a
+    ``suggest_substitute_types()["uuid"]`` points at it — a substitute that names a
     type this dialect really renders, which is the only kind of substitute the
     contract allows.
     """

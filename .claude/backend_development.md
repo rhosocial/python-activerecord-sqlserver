@@ -309,9 +309,9 @@ which is a different question from whether the engine has those objects at all
 | `ConstraintSupport` | `ConstraintMixin` / `DDLColumnMixin` | Column and table constraints |
 | `IntrospectionSupport` | `IntrospectionMixin` | Catalog introspection queries |
 | `TransactionControlSupport` | `TransactionControlMixin` | BEGIN / COMMIT / ROLLBACK |
-| `CommentSupport` | `CommentOnMixin` | COMMENT ON |
+| `CommentSupport` | `CommentMixin` | COMMENT ON |
 | `GeneratedColumnSupport` | `GeneratedColumnMixin` | Generated (computed) columns |
-| `AutoIncrementSupport` | `AutoIncrementMixin` | IDENTITY / AUTO_INCREMENT |
+| `AutoIncrementSupport` | `AutoIncrementColumnMixin` | IDENTITY / AUTO_INCREMENT |
 | `AlterTableModifierSupport` | `SQLServerAlterColumnModifierMixin` (backend) | Backend-only ALTER TABLE options |
 | `CreateTableSupport` / `DropTableSupport` / `AlterTableSupport` | `TableMixin` | CREATE / DROP / ALTER TABLE |
 | `CreateTableAsSupport` / `CreateTableLikeSupport` / `CreateTableCloneSupport` / `CreateTableUsingTemplateSupport` | `TableMixin` | The other CREATE TABLE forms |
@@ -327,7 +327,7 @@ which is a different question from whether the engine has those objects at all
 | `CreateDomainSupport` / `AlterDomainSupport` / `DropDomainSupport` | `DomainMixin` | CREATE / ALTER / DROP DOMAIN |
 | `CreateDatabaseSupport` / `DropDatabaseSupport` / `AlterDatabaseSupport` | `DatabaseMixin` | CREATE / DROP / ALTER DATABASE |
 | `SQLXMLSupport` and the five `SQLXML*Support` protocols | `SQLXMLMixin` and its five siblings | SQL/XML and XQuery |
-| `TableObjectSupport`, `ViewObjectSupport`, `IndexObjectSupport`, `SequenceObjectSupport`, `TypeObjectSupport`, `RoutineObjectSupport`, `TriggerObjectSupport`, `SynonymObjectSupport`, `MaterializedViewObjectSupport`, `ForeignTableObjectSupport`, `PropertyGraphObjectSupport` | `TableNameMixin`, `ViewNameMixin`, … (one per kind) | Naming a catalogue object |
+| `TableObjectSupport`, `ViewObjectSupport`, `IndexObjectSupport`, `SequenceObjectSupport`, `TypeObjectSupport`, `RoutineObjectSupport`, `TriggerObjectSupport`, `SynonymObjectSupport`, `MaterializedViewObjectSupport`, `ForeignTableObjectSupport`, `PropertyGraphObjectSupport` | `TableObjectMixin`, `ViewObjectMixin`, … (one per kind) | Naming a catalogue object |
 | `NamespaceSupport` | `NamespaceMixin` | Which namespace levels a name may be qualified with |
 
 The naming protocols are per object kind rather than one: each kind's

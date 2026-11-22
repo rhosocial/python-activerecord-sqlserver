@@ -26,6 +26,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
     SQLServerUniqueIdentifierType,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.functions import json as json_functions
+from rhosocial.activerecord.backend.impl.sqlserver.introspection.type_parser import SQLServerTypeParser
 
 
 def _dialect(version=(16, 0, 0)):
@@ -100,14 +101,14 @@ def test_type_name_is_namespaced_to_this_backend():
 def test_suggestion_does_not_point_at_a_type_this_dialect_renders():
     """A suggestion exists precisely for types the dialect cannot render."""
     dialect = _dialect()
-    suggestions = dialect.substitute_data_types()
+    suggestions = dialect.suggest_substitute_types().mapping
     assert suggestions["uuid"] is SQLServerUniqueIdentifierType
     assert suggestions["uuid"].name != "uuid"
 
 
 def test_introspection_round_trips():
     dialect = _dialect()
-    parsed = dialect.parse_type("UNIQUEIDENTIFIER")
+    parsed = SQLServerTypeParser(dialect).parse("UNIQUEIDENTIFIER")
     assert isinstance(parsed, SQLServerUniqueIdentifierType)
     assert dialect.format_data_type(parsed) == ("UNIQUEIDENTIFIER", ())
 

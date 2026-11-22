@@ -8,6 +8,8 @@ based on the SQL Server version provided at initialization.
 
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.suggestion.definitions import SubstituteTypeSuggestion
+
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, ToSQLProtocol
@@ -49,7 +51,8 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
-    DDLTypeSupport,
+    ColumnAttributeSupport,
+    DataTypeSupport,
     CreateTypeSupport,
     DropTypeSupport,
 )
@@ -76,23 +79,22 @@ from .protocols import (
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
+    ColumnAttributeMixin,
     CTEMixin,
     # Named objects: each *NameMixin renders one object kind through
     # NamespaceMixin.format_qualified_name, so they precede it. A statement that
     # now holds an object -- CREATE INDEX's index and table, TRUNCATE's table --
     # has nowhere else to render it.
-    TableNameMixin,
-    ViewNameMixin,
-    MaterializedViewNameMixin,
-    ForeignTableNameMixin,
-    IndexNameMixin,
-    SequenceNameMixin,
-    TriggerNameMixin,
-    FunctionNameMixin,
-    ProcedureNameMixin,
-    TypeNameMixin,
-    DomainNameMixin,
-    SynonymNameMixin,
+    TableObjectMixin,
+    ViewObjectMixin,
+    MaterializedViewObjectMixin,
+    ForeignTableObjectMixin,
+    IndexObjectMixin,
+    SequenceObjectMixin,
+    TriggerObjectMixin,
+    RoutineObjectMixin,
+    TypeObjectMixin,
+    SynonymObjectMixin,
     SchemaNameMixin,
     DatabaseNameMixin,
     PropertyGraphNameMixin,
@@ -128,20 +130,19 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     DQLMixin,
     DMLMixin,
     DDLColumnMixin,
-    DDLTypeMixin,
+    DataTypeMixin,
     UserDefinedTypeMixin,
 
     TransactionControlMixin,
-    AutoIncrementMixin,
+    AutoIncrementColumnMixin,
     IdentityColumnMixin,
     GeneratedColumnMixin,
     TriggerMixin,
     PartitionMixin,
     ILIKEMixin,
     FunctionMixin,
-    # Column types: the generic half, which SQLServerColumnTypeMixin below
-    # overrides.
-    ColumnTypeMixin,
+    # Column types: SQLServerColumnTypeMixin below supplies the whole table;
+    # core no longer carries a generic ColumnTypeMixin to compose.
     # The FROM side of a named object: an alias and a temporal clause, which the
     # relation itself has no room for. The name comes from the relation.
     RelationSourceMixin,
@@ -305,18 +306,16 @@ class SQLServerDialect(
     # SQLServerNamespaceMixin refines, so they follow it here and precede it in
     # the MRO -- and a statement that holds a Table or an Index has somewhere to
     # render it without a formatter of its own.
-    TableNameMixin,
-    ViewNameMixin,
-    MaterializedViewNameMixin,
-    ForeignTableNameMixin,
-    IndexNameMixin,
-    SequenceNameMixin,
-    TriggerNameMixin,
-    FunctionNameMixin,
-    ProcedureNameMixin,
-    TypeNameMixin,
-    DomainNameMixin,
-    SynonymNameMixin,
+    TableObjectMixin,
+    ViewObjectMixin,
+    MaterializedViewObjectMixin,
+    ForeignTableObjectMixin,
+    IndexObjectMixin,
+    SequenceObjectMixin,
+    TriggerObjectMixin,
+    RoutineObjectMixin,
+    TypeObjectMixin,
+    SynonymObjectMixin,
     SchemaNameMixin,
     DatabaseNameMixin,
     PropertyGraphNameMixin,
@@ -343,7 +342,7 @@ class SQLServerDialect(
     SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
     SQLServerTypeDDLMixin,
-    # Before DDLTypeMixin: states the shape of the sqlserver_-prefixed type
+    # Before DataTypeMixin: states the shape of the sqlserver_-prefixed type
     # family. The implementations arrive as own-class attributes copied by
     # _register_type_formatters(), so they win in the MRO regardless; what this
     # position buys is that isinstance(dialect, SQLServerTypeSupport) is
@@ -352,12 +351,13 @@ class SQLServerDialect(
     # Before DDLColumnMixin: the backend block below comes later, so
     # supports_fk_match answered for the core. Same value by coincidence.
     SQLServerConstraintMixin,
-    # Before DDLTypeMixin, which inherits DataTypeMixin's answer -- a
+    # Before DataTypeMixin, which inherits DataTypeMixin's answer -- a
     # NotImplementedError. A table placed after the class it stands in for
     # never wins, so the backend's 24-key answer sits ahead of the core mixin.
     SQLServerDataTypeSuggestionsMixin,
+    ColumnAttributeMixin,
     DDLColumnMixin,
-    DDLTypeMixin,
+    DataTypeMixin,
     UserDefinedTypeMixin,
     SQLServerCollationMixin,
     CollationMixin,
@@ -384,7 +384,6 @@ class SQLServerDialect(
     # can answer it, so it may move as a unit without disturbing the order
     # around it.
     SQLServerColumnTypeMixin,
-    ColumnTypeMixin,
     SQLServerSetOperationMixin,
     SQLServerTableMixin,
     SQLServerTransactionMixin,
@@ -428,7 +427,7 @@ class SQLServerDialect(
     # Newly added global mixins (previously missing from inheritance)
 
     TransactionControlMixin,
-    AutoIncrementMixin,
+    AutoIncrementColumnMixin,
     IdentityColumnMixin,
     GeneratedColumnMixin,
     TriggerMixin,
@@ -480,8 +479,9 @@ class SQLServerDialect(
     IntrospectionSupport,
     TransactionControlSupport,
     SQLFunctionSupport,
+    ColumnAttributeSupport,
     # DataType Support Protocol
-    DDLTypeSupport,
+    DataTypeSupport,
     # TYPE DDL: SQL Server has CREATE TYPE and DROP TYPE but no ALTER TYPE.
     SQLServerUserDefinedTypeSupport,  # Before its core bases (subclass precedes base)
     CreateTypeSupport,
@@ -1538,12 +1538,12 @@ class SQLServerDialect(
     # DataType protocol — substitutions
     # ------------------------------------------------------------------
 
-    def substitute_data_types(self) -> Dict[str, type]:
+    def suggest_substitute_types(self) -> SubstituteTypeSuggestion:
         """Concepts SQL Server cannot spell, and what it stores instead (D9).
 
         Returns a mapping ``{<generic name>: DataType class}`` for every core
-        type this dialect does **not** render.  Keys are disjoint from
-        ``supports_data_types()``, and every value is a class this dialect
+        type this dialect does **not** render.  Keys are disjoint from the
+        framework-modelled types this dialect renders, and every value is a class this dialect
         really renders — a suggestion the backend cannot produce would trade a
         clear "unsupported" for a worse one, one whose advice does not work.
 
@@ -1605,7 +1605,7 @@ class SQLServerDialect(
         )
         from .expression.types import SQLServerUniqueIdentifierType
 
-        return {
+        return SubstituteTypeSuggestion(mapping={
             "binary": BlobType,
             "varbinary": BlobType,
             "interval": BigIntType,
@@ -1614,7 +1614,7 @@ class SQLServerDialect(
             "jsonb": JsonType,
             "timetz": TimeType,
             "uuid": SQLServerUniqueIdentifierType,
-        }
+        })
 
     def supports_database_assigned_integer_column(self) -> bool:
         """T-SQL assigns the value through ``IDENTITY(seed, increment)``.
@@ -1627,20 +1627,14 @@ class SQLServerDialect(
 
 # Lazy import to avoid circular dependency (backend → dialect → mixins.types → backend)
 def _register_type_formatters():
-    """Copy ``format_data_type_*`` / ``supports_data_type_*`` / ``parse_type``
-    methods from the mixin to the dialect class so that the naming-convention
-    dispatch in ``DDLTypeMixin.format_data_type()`` and
-    ``DDLTypeMixin.supports_data_types()`` find them.
+    """Copy ``format_data_type_*`` / ``supports_data_type_*`` methods from the
+    mixin to the dialect class so that the naming-convention dispatch in
+    ``DataTypeMixin.format_data_type()`` finds them.
 
-    Also copies the ``_SQLSERVER_*`` regex class attributes needed by
-    ``parse_type`` at runtime, and imports this backend's own ``DataType``
-    classes so ``supports_data_types()`` can resolve the ``sqlserver_``-prefixed
-    names to a class.  That last part is load order, not bookkeeping:
-    ``type_class_for(name)`` resolves a name by walking the live subclass tree
-    of ``DataType``, so a name whose class nothing has imported yet resolves to
-    ``None`` and drops out of the mapping silently.  Nothing noticed, because
-    every test that looked at the mapping imported a ``SQLServer*`` class in
-    its own import block first — which is exactly the load that was missing.
+    Reading a server-reported type spelling back into a ``DataType`` is an
+    introspection-only concern now: it lives in
+    ``introspection.type_parser.SQLServerTypeParser`` and is deliberately not a
+    dialect protocol member, so ``parse_type`` is not copied here.
 
     The private helpers — ``_refuse_unsigned_*`` and ``_check_*`` — are copied
     for the same reason the formatters are: inside a copied formatter ``self``
@@ -1651,15 +1645,6 @@ def _register_type_formatters():
     and ``_check_`` is the prefix this backend's own range helpers use
     (``_check_length``, ``_check_decimal_scale_sign``), so copying both keeps
     this backend in step rather than inventing a second convention.
-
-    ``type_parameter_defaults`` is copied for that same reason and is named
-    outright because it is a public hook with no prefix to match: it is this
-    backend's statement of the widths T-SQL supplies for a declaration that
-    named none, and both the copied formatter and the copied parser read it off
-    ``self``.  Left on the mixin it would resolve to core's empty answer through
-    the inherited ``DataTypeMixin`` version, so the dialect would silently claim
-    this server supplies no width for anything while its own formatters said
-    otherwise — which is the defect this hook exists to remove.
     """
     from .mixins.types import SQLServerTypeSupportMixin
     from .expression import types as _backend_data_types  # noqa: F401
@@ -1668,8 +1653,7 @@ def _register_type_formatters():
         if (member_name.startswith("format_data_type_")
                 or member_name.startswith("supports_data_type_")
                 or member_name.startswith("_refuse_unsigned_")
-                or member_name.startswith("_check_")
-                or member_name in ("parse_type", "type_parameter_defaults")):
+                or member_name.startswith("_check_")):
             member = getattr(SQLServerTypeSupportMixin, member_name, None)
             if callable(member):
                 setattr(SQLServerDialect, member_name, member)

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -16,15 +15,14 @@ if TYPE_CHECKING:  # pragma: no cover
     )
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
-from rhosocial.activerecord.backend.dialect.mixins.ddl_type import DDLTypeMixin
-from rhosocial.activerecord.backend.dialect.protocols import DDLTypeSupport
+from rhosocial.activerecord.backend.dialect.mixins.ddl_type import DataTypeMixin
+from rhosocial.activerecord.backend.dialect.protocols import DataTypeSupport
 from rhosocial.activerecord.backend.expression.types import (
     BigIntType,
     BlobType,
     BooleanType,
     CharType,
     CustomType,
-    DataType,
     DateType,
     DateTimeType,
     DecimalType,
@@ -44,16 +42,17 @@ from rhosocial.activerecord.backend.expression.types import (
 )
 
 
-class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
-    """SQL Server DataType formatting and parsing.
+class SQLServerTypeSupportMixin(DataTypeMixin, DataTypeSupport):
+    """SQL Server DataType formatting.
 
-    Implements ``DDLTypeSupport`` so the dialect can render ``DataType``
-    expressions to SQL strings and parse raw SQL type strings back into
-    ``DataType`` instances.
+    Implements ``DataTypeSupport`` so the dialect can render ``DataType``
+    expressions to SQL strings. Reading a server-reported type spelling back
+    into a ``DataType`` is an introspection-only concern handled by
+    ``introspection.type_parser.SQLServerTypeParser``.
 
     Formatting dispatches by the type instance's ``name`` through the
     naming-convention ``format_data_type_<name>`` methods (see
-    ``DDLTypeMixin``). SQL Server-specific types carry ``sqlserver_``-prefixed
+    ``DataTypeMixin``). SQL Server-specific types carry ``sqlserver_``-prefixed
     names; core types render their real SQL Server SQL.
 
     Spellings
@@ -111,62 +110,14 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
     # ------------------------------------------------------------------
     # What this dialect supplies for a width left undeclared
     # ------------------------------------------------------------------
-
-    #: The widths T-SQL gives a character or byte column whose ``n`` was not
-    #: written, keyed by concept name — the ``format_data_type_<name>`` dispatch
-    #: key, so a backend type declares under its own name.
-    #:
-    #: **Every value here was read off a live server, and one of them is not
-    #: T-SQL's own default.**  A bare declaration was created and the catalog
-    #: read back, identically on SQL Server 2022 (16.0.4250.1) and 2025
-    #: (17.0.4035.5), which agree on all of it::
-    #:
-    #:     CREATE TABLE #probe (v VARCHAR, c CHAR, nv NVARCHAR, nc NCHAR)
-    #:     -- sys.columns.max_length -> 1, 1, 2, 2
-    #:
-    #: ``max_length`` is in bytes and ``nvarchar`` counts byte-pairs, so those
-    #: four are lengths of **1** each.  For what the vendor says as well as
-    #: what the server did: the reference documents ``n`` for ``varchar(n)`` as
-    #: "a value from 1 through 8,000", and its sentence about an unspecified
-    #: ``n`` giving a length of 1 is scoped to variable and parameter
-    #: declarations.  **A column definition's own default is not spelled out on
-    #: that page**, which is why the measurement above is quoted rather than a
-    #: paraphrase: it is the only thing here that answers the question actually
-    #: being asked.
-    #: https://learn.microsoft.com/en-us/sql/t-sql/data-types/char-and-varchar-transact-sql
-    #:
-    #: So:
-    #:
-    #: * ``char``, ``sqlserver_nchar`` — **1, and the measured server default.**
-    #:   The declaration and the server agree, so nothing is being asserted
-    #:   against the vendor here.
-    #: * ``varchar``, ``sqlserver_nvarchar`` — **255, which is *not* T-SQL's
-    #:   default.**  This dialect has always written 255 for an undeclared
-    #:   width, and 1 would silently truncate every name, address and slug
-    #:   written through a bare ``VarCharType`` — the server would accept the
-    #:   DDL and store one character.  255 is therefore a decision of *this*
-    #:   backend, stated here rather than implied, and the reason it is a
-    #:   decision is the vendor sentence above: the server's own 1 is the one
-    #:   number that must not be adopted by accident.
-    #:
-    #: What this buys is that the two numbers the schema differ compares are one
-    #: value instead of two.  A bare ``VarCharType`` used to render
-    #: ``VARCHAR(255)`` while carrying no length, so the declared type and the
-    #: catalog's report of the very column it produced compared **unequal** and
-    #: the differ invented a change on every undeclared string column.
-    #:
-    #: ``sqlserver_nvarchar_max`` is **absent on purpose**: ``NVARCHAR(MAX)`` is
-    #: unbounded because ``MAX`` lifted a cap, which is a different statement
-    #: from "no width was declared", and it is carried by its own class for
-    #: exactly that reason.  Nothing exempts it — an absent entry *is* the
-    #: declaration that this concept's bare form has no width.
-    def type_parameter_defaults(self) -> dict:
-        return {
-            "char": {"length": 1},
-            "varchar": {"length": 255},
-            "sqlserver_nchar": {"length": 1},
-            "sqlserver_nvarchar": {"length": 255},
-        }
+    # A bare ``CHAR`` / ``NCHAR`` renders as length 1 (also the measured server
+    # default), while a bare ``VARCHAR`` / ``NVARCHAR`` renders as length 255 --
+    # 255 is a decision of this backend, not T-SQL's own default of 1, which
+    # would silently truncate every bare string column.  These widths are now
+    # written as literals in the formatters (and in the introspection type
+    # parser); core removed the old hook that once held them, so there is no
+    # central table to consult any more.
+    # ``NVARCHAR(MAX)`` is unbounded by its own class, not a missing width.
 
     # --- SQL Server-specific type formatters (dispatch key = type name) ---
 
@@ -179,9 +130,8 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_check_length` writes the range out and says why this backend
         checks the intersection of the page's two statements about the lower
         bound.  Declaring no length is this dialect's ``NVARCHAR(255)`` — which
-        T-SQL does **not** do; see :meth:`type_parameter_defaults`, where the
-        measured value and the reason this backend differs from it are written
-        down.  A type that carries no length still renders the declared width,
+        T-SQL does **not** do (its own default is 1).  A type that carries no
+        length still renders the declared width,
         because the fallback here and the declaration there are the same number
         and neither may drift from the other.
         """
@@ -197,7 +147,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         rather than variable-length.  Declaring no length is this dialect's
         ``NCHAR(1)``, and here that is also the measured server default — a bare
         ``NCHAR`` reports ``max_length = 2`` bytes on SQL Server 2022 and 2025,
-        which is one byte-pair; see :meth:`type_parameter_defaults`.
+        which is one byte-pair.
         """
         self._check_length("NCHAR", expr.length)
         return (f"NCHAR({expr.length})" if expr.length is not None else "NCHAR(1)"), ()
@@ -250,7 +200,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_refuse_unsigned_tinyint`, which is where a caller who writes
         ``TinyIntType(unsigned=True)`` is sent here by name.
         """
-        self.check_spelling(expr, TinyIntType)
+        self._check_spelling(expr, TinyIntType)
         return "TINYINT", ()
 
     def format_data_type_sqlserver_bit(self, expr) -> Tuple[str, tuple]:
@@ -536,7 +486,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         :meth:`_refuse_unsigned_integer`, which is also where the reason for
         the refusal is written down.
         """
-        self.check_spelling(expr, IntegerType)
+        self._check_spelling(expr, IntegerType)
         self._refuse_unsigned_integer(expr, "INT")
         return "INT", ()
 
@@ -546,7 +496,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
         ``unsigned`` is refused rather than ignored; see
         :meth:`_refuse_unsigned_integer`."""
-        self.check_spelling(expr, BigIntType)
+        self._check_spelling(expr, BigIntType)
         self._refuse_unsigned_integer(expr, "BIGINT")
         return "BIGINT", ()
 
@@ -556,7 +506,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
         ``unsigned`` is refused rather than ignored; see
         :meth:`_refuse_unsigned_integer`."""
-        self.check_spelling(expr, SmallIntType)
+        self._check_spelling(expr, SmallIntType)
         self._refuse_unsigned_integer(expr, "SMALLINT")
         return "SMALLINT", ()
 
@@ -576,7 +526,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         declares it; see :meth:`_refuse_unsigned_tinyint`, which is where that
         reasoning is written down and where the class to use instead is named.
         """
-        self.check_spelling(expr, TinyIntType)
+        self._check_spelling(expr, TinyIntType)
         self._refuse_unsigned_tinyint(expr)
         return "TINYINT", ()
 
@@ -642,7 +592,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         both sides -- so there is no unsigned double-precision column on this
         server for the request to have become.
         """
-        self.check_spelling(expr, DoubleType)
+        self._check_spelling(expr, DoubleType)
         self._refuse_unsigned_numeric(expr, "DOUBLE PRECISION")
         return "FLOAT(53)", ()
 
@@ -831,7 +781,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         still fires for a signed declaration.
         """
         self._refuse_unsigned_numeric(expr, "DECIMAL")
-        self.check_spelling(expr, DecimalType)
+        self._check_spelling(expr, DecimalType)
         self._check_decimal_scale_sign(expr)
         if expr.scale is not None and expr.precision is None:
             raise UnsupportedFeatureError(
@@ -872,7 +822,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
     def format_data_type_boolean(self, expr: BooleanType) -> Tuple[str, tuple]:
         """``BIT`` for both spellings — T-SQL's own name for the boolean."""
-        self.check_spelling(expr, BooleanType)
+        self._check_spelling(expr, BooleanType)
         return "BIT", ()
 
     def format_data_type_varchar(self, expr: VarCharType) -> Tuple[str, tuple]:
@@ -882,23 +832,21 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         forms are SQL's, not this backend's, so a portable spelling is
         normalised to the word the catalog reports.  An undeclared width is this
         dialect's **255** — which is a choice of this backend and *not* what T-SQL
-        does, whose own default is 1; :meth:`type_parameter_defaults` writes that
-        down with the measurement behind it.  The number is read from the same
-        declaration rather than repeated here, because this fallback exists only
-        for a type built without a dialect: a type bound to this one has already
-        resolved to the declared 255 in its own ``length``, and the two answers
-        must not be allowed to drift apart.
+        does, whose own default is 1.  The literal fallback exists only for a
+        type built without a dialect: a type bound to this one has already
+        resolved to the declared 255 in its own ``length``, so the two answers
+        stay the same.
 
         A declared length is range-checked against the 8000-byte inline ceiling
         T-SQL documents; see :meth:`_check_length`, which also sets out why this
         backend checks the intersection of that page's two statements about the
         lower bound rather than picking one of them.
         """
-        self.check_spelling(expr, VarCharType)
+        self._check_spelling(expr, VarCharType)
         self._check_length("VARCHAR", expr.length)
         length = expr.length
         if length is None:
-            length = self.type_parameter_defaults()["varchar"]["length"]
+            length = 255
         return f"VARCHAR({length})", ()
 
     def format_data_type_char(self, expr: CharType) -> Tuple[str, tuple]:
@@ -907,19 +855,18 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         Fixed length: a shorter value is space-padded to ``n`` rather than
         stored as written, and the padding is why the concept is fixed-length
         rather than variable-length.  Declaring no length is ``CHAR(1)``, and here
-        that is T-SQL's own default as well — measured, not assumed; see
-        :meth:`type_parameter_defaults`.  As in
-        :meth:`format_data_type_varchar` the fallback reads the one declaration,
-        for a type built without a dialect.
+        that is T-SQL's own default as well — measured, not assumed.  As in
+        :meth:`format_data_type_varchar` the literal fallback applies only to a
+        type built without a dialect.
 
         A declared length is range-checked exactly as :meth:`format_data_type_varchar`
         range-checks a ``VARCHAR`` one; see :meth:`_check_length`.
         """
-        self.check_spelling(expr, CharType)
+        self._check_spelling(expr, CharType)
         self._check_length("CHAR", expr.length)
         length = expr.length
         if length is None:
-            length = self.type_parameter_defaults()["char"]["length"]
+            length = 1
         return f"CHAR({length})", ()
 
     def format_data_type_text(self, expr: TextType) -> Tuple[str, tuple]:
@@ -931,7 +878,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         enums and byte strings here, and ``clob`` names the same unbounded
         concept, so it is accepted rather than refused.
         """
-        self.check_spelling(expr, TextType)
+        self._check_spelling(expr, TextType)
         return "NVARCHAR(MAX)", ()
 
     def format_data_type_datetime(self, expr: DateTimeType) -> Tuple[str, tuple]:
@@ -1007,7 +954,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         ``OPENJSON`` / ``JSON_VALUE`` / ``ISJSON`` are functions over that
         text, not a storage type.  So the concept is rendered as the text
         column that actually holds it, which is also why
-        ``substitute_data_types`` names this class for ``jsonb`` and ``array``.
+        ``suggest_substitute_types`` names this class for ``jsonb`` and ``array``.
         """
         return "NVARCHAR(MAX)", ()
 
@@ -1031,7 +978,7 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         unbounded byte storage — and is what an unbounded blob is on this
         dialect.
         """
-        self.check_spelling(expr, BlobType)
+        self._check_spelling(expr, BlobType)
         return "VARBINARY(MAX)", ()
 
     def format_data_type_custom(self, expr: CustomType) -> Tuple[str, tuple]:
@@ -1137,9 +1084,8 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
         JSON itself arrived in SQL Server 2016, but a JSON *value* lives in an
         ordinary ``NVARCHAR(MAX)`` column, which is what
         :meth:`format_data_type_json` emits, and ``NVARCHAR(MAX)`` is a type
-        from 2005.  Refusing the concept on a pre-2016 server would hide a key
-        from ``supports_data_types()`` without changing what this dialect can
-        actually write — the JSON *functions* are version-gated separately, in
+        from 2005.  Refusing the concept on a pre-2016 server would misstate
+        what this dialect can actually write — the JSON *functions* are version-gated separately, in
         ``supports_json_function()``.
         """
         return True
@@ -1158,243 +1104,3 @@ class SQLServerTypeSupportMixin(DDLTypeMixin, DDLTypeSupport):
 
     def supports_data_type_custom(self) -> bool:
         return True
-
-    # ------------------------------------------------------------------
-    # DDLTypeSupport — parsing
-    # ------------------------------------------------------------------
-    #
-    # Canonicality (D8): one spelling in, its own concept class out, with the
-    # spelling recorded on the instance.  Nothing here may yield a *different*
-    # concept than the word it read — that is how ``char`` came to yield
-    # ``VarCharType`` and ``date`` came to yield ``DateTimeType``.  A name this
-    # dialect cannot map to a concept the framework models falls through to
-    # ``CustomType``, which is honest ignorance rather than a wrong answer.
-
-    _SQLSERVER_INTEGER_TYPES = re.compile(
-        r"^(?:INT8|BIGINT|SMALLINT|INT2|TINYINT|INT1|INTEGER|INT)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_FLOAT_TYPES = re.compile(
-        r"^(?:FLOAT|REAL|DOUBLE)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_DECIMAL_TYPES = re.compile(
-        r"^(?:DECIMAL|NUMERIC|DEC|MONEY|SMALLMONEY)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_STRING_TYPES = re.compile(
-        r"^(?:CHARACTER|NCHAR|VARCHAR|NVARCHAR|CHAR|CLOB|NTEXT|TEXT)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_DATE_TYPES = re.compile(
-        r"^(?:DATETIMEOFFSET|DATETIME2|SMALLDATETIME|DATETIME|DATE)\b",
-        re.IGNORECASE,
-    )
-    #: The plain calendar date, separated from the datetimes that share its
-    #: letters.  ``startswith("DATE")`` cannot tell them apart — ``DATETIME``,
-    #: ``DATETIME2`` and ``SMALLDATETIME`` all begin with ``DATE`` — so the
-    #: check is anchored and word-bounded instead.
-    _SQLSERVER_DATE_ONLY_TYPES = re.compile(
-        r"^DATE\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_TIME_TYPES = re.compile(
-        r"^(?:TIME)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_BIT_TYPES = re.compile(
-        r"^(?:BIT|BOOL|BOOLEAN)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_BLOB_TYPES = re.compile(
-        r"^(?:VARBINARY|IMAGE|BLOB|BYTEA)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_XML_TYPES = re.compile(
-        r"^(?:XML)\b",
-        re.IGNORECASE,
-    )
-    #: The declared argument list: ``(n)`` for a length or a precision,
-    #: ``(p,s)`` for precision and scale.  Group 1 is always the first number,
-    #: group 2 the scale when one was declared — which is why ``DECIMAL(10,2)``
-    #: does not silently parse as ``DECIMAL``.
-    _SQLSERVER_ARGUMENTS = re.compile(r"\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)")
-
-    def parse_type(self, raw: str) -> DataType:
-        from ..expression.types import (
-            SQLServerBitType,
-            SQLServerImageType,
-            SQLServerNCharType,
-            SQLServerNVarCharType,
-            SQLServerTinyIntType,
-            SQLServerUniqueIdentifierType,
-            SQLServerVarBinaryMaxType,
-            SQLServerVarBinaryType,
-            SQLServerXmlType,
-        )
-
-        stripped = raw.strip()
-        upper = stripped.upper()
-        arguments = self._SQLSERVER_ARGUMENTS.search(stripped)
-        length = int(arguments.group(1)) if arguments else None
-        scale = int(arguments.group(2)) if arguments and arguments.group(2) else None
-
-        # BIT — the boolean, not MySQL/PostgreSQL's bit string.  The spelling
-        # recorded is the concept's own, so ``BOOLEAN`` and ``BOOL`` survive the
-        # round trip; T-SQL's ``BIT`` belongs to ``SQLServerBitType``'s own
-        # name, not to the concept's list.
-        #
-        # The lookup is on the whole stripped word and reads ``None`` for a
-        # parenthesised form, which used to escape as a bare
-        # ``KeyError: 'BIT(1)'``.  A width on ``bit`` is not a declaration
-        # this server accepts: all three live instances (SQL Server 2019
-        # 15.0.4465.1, 2022 16.0.4250.1, 2025 17.0.4035.5) refuse
-        # ``CREATE TABLE t (b bit(1))`` with error 2716, "Cannot specify a
-        # column width on data type bit."  So the parameter is answered with
-        # the ``ValueError`` this module uses for a value the server itself
-        # rejects (the same class as ``_check_length``), quoting the server's
-        # answer rather than silently dropping the width.  It is deliberately
-        # not ``InvalidTypeNameError``: ``bit(1)`` is a valid type *name*;
-        # the server rejects its width.
-        if self._SQLSERVER_BIT_TYPES.match(upper):
-            spelling = {"BIT": "boolean", "BOOL": "bool",
-                        "BOOLEAN": "boolean"}.get(upper)
-            if spelling is None:
-                raise ValueError(
-                    f"{stripped!r} is not a declaration this server accepts: "
-                    f"T-SQL's ``bit`` takes no width, and SQL Server refuses "
-                    f"one with error 2716, 'Cannot specify a column width on "
-                    f"data type bit.' (measured live on SQL Server 2019 "
-                    f"(15.0.4465.1), 2022 (16.0.4250.1) and 2025 "
-                    f"(17.0.4035.5)). Declare the bare word — ``bit``, or its "
-                    f"accepted spellings ``bool`` and ``boolean`` — without "
-                    f"parentheses."
-                )
-            return SQLServerBitType(dialect=self, spelling=spelling)
-
-        # UNIQUEIDENTIFIER — the native GUID.
-        if upper.startswith("UNIQUEIDENTIFIER"):
-            return SQLServerUniqueIdentifierType(dialect=self)
-
-        # XML — a binary XML representation, not a varchar (checked before the
-        # string family because ``XML`` shares no prefix with any of it).
-        if self._SQLSERVER_XML_TYPES.match(upper):
-            return SQLServerXmlType(dialect=self)
-
-        # Integer family: one class per width, and the spelling preserved.
-        if self._SQLSERVER_INTEGER_TYPES.match(upper):
-            if upper.startswith("INT8"):
-                return BigIntType(dialect=self, spelling="int8")
-            if upper.startswith("BIGINT"):
-                return BigIntType(dialect=self, spelling="bigint")
-            if upper.startswith("INT2"):
-                return SmallIntType(dialect=self, spelling="int2")
-            if upper.startswith("SMALLINT"):
-                return SmallIntType(dialect=self, spelling="smallint")
-            if upper.startswith("INT1"):
-                return TinyIntType(dialect=self, spelling="int1")
-            if upper.startswith("TINYINT"):
-                return SQLServerTinyIntType(dialect=self)
-            spelling = "integer" if upper.startswith("INTEGER") else "int"
-            return IntegerType(dialect=self, spelling=spelling)
-
-        # Float family.  ``DOUBLE`` / ``DOUBLE PRECISION`` is the concept SQL
-        # names for 8-byte floating point, which T-SQL spells ``FLOAT(53)``.
-        if self._SQLSERVER_FLOAT_TYPES.match(upper):
-            if upper.startswith("DOUBLE"):
-                spelling = "double precision" if "PRECISION" in upper else "double"
-                return DoubleType(dialect=self, spelling=spelling)
-            if upper.startswith("REAL"):
-                return RealType(dialect=self)
-            return FloatType(dialect=self, precision=length)
-
-        # Decimal family.  ``MONEY`` / ``SMALLMONEY`` are deliberately *not*
-        # spellings of this concept: they carry a fixed scale of 4 and a
-        # currency-formatted result that the schema does not record.  Mapping
-        # them to ``DecimalType`` loses that, and it stays because the framework
-        # has no money concept this dialect could declare instead.
-        if self._SQLSERVER_DECIMAL_TYPES.match(upper):
-            if upper.startswith("MONEY") or upper.startswith("SMALLMONEY"):
-                return DecimalType(dialect=self)
-            if upper.startswith("NUMERIC"):
-                spelling = "numeric"
-            elif upper.startswith("DECIMAL"):
-                spelling = "decimal"
-            else:
-                spelling = "dec"
-            return DecimalType(dialect=self, precision=length, scale=scale,
-                               spelling=spelling)
-
-        # String family.  Fixed length and variable length are different
-        # concepts, so ``CHAR`` never yields a VarCharType and ``VARCHAR`` never
-        # yields a CharType.
-        #
-        # A word that carries no ``n`` is completed from
-        # ``type_parameter_defaults()`` rather than from a literal here, so the
-        # parser and the formatter cannot disagree about what an unsized
-        # declaration means on this server.  ``CHARACTER VARYING`` and
-        # ``CHARACTER`` need no such completion: their concepts are the ones that
-        # already resolve to a width from the dialect they are constructed with,
-        # so the bare word arrives as a bound type whose width is the declared
-        # one.
-        if self._SQLSERVER_STRING_TYPES.match(upper):
-            # ``(MAX)`` lifts the length cap rather than setting one, in either
-            # character set, so it is unbounded text and not a 255-char column.
-            unbounded = arguments is None and "MAX" in upper
-            if upper.startswith("NCHAR"):
-                return SQLServerNCharType(
-                    dialect=self,
-                    length=length or self.type_parameter_defaults()["sqlserver_nchar"]["length"])
-            if upper.startswith("NVARCHAR"):
-                if unbounded:
-                    return TextType(dialect=self)
-                return SQLServerNVarCharType(
-                    dialect=self,
-                    length=length or self.type_parameter_defaults()["sqlserver_nvarchar"]["length"])
-            if upper.startswith("VARCHAR"):
-                if unbounded:
-                    return TextType(dialect=self)
-                return VarCharType(
-                    dialect=self,
-                    length=length or self.type_parameter_defaults()["varchar"]["length"])
-            if upper.startswith("CHARACTER VARYING"):
-                return VarCharType(dialect=self, length=length,
-                                   spelling="character varying")
-            if upper.startswith("CHARACTER"):
-                return CharType(dialect=self, length=length, spelling="character")
-            if upper.startswith("CHAR"):
-                return CharType(dialect=self, length=length)
-            # ``CLOB`` / ``TEXT`` / ``NTEXT`` are all unbounded text: the first
-            # is the portable spelling, the other two the deprecated T-SQL
-            # ones, and all three render ``NVARCHAR(MAX)``.
-            spelling = "clob" if upper.startswith("CLOB") else "text"
-            return TextType(dialect=self, spelling=spelling)
-
-        # Date/time family.  ``DATE`` is its own concept — a calendar date with
-        # no time of day — and T-SQL ``TIMESTAMP`` is ``ROWVERSION``, an
-        # 8-byte auto-incrementing counter that is *not* a timestamp; with no
-        # rowversion concept to declare, that name falls through to
-        # ``CustomType`` rather than being filed under datetime.
-        if self._SQLSERVER_DATE_TYPES.match(upper):
-            if upper.startswith("DATETIMEOFFSET"):
-                return TimestampTzType(dialect=self, precision=length)
-            if self._SQLSERVER_DATE_ONLY_TYPES.match(upper):
-                return DateType(dialect=self)
-            return DateTimeType(dialect=self, precision=length)
-
-        if self._SQLSERVER_TIME_TYPES.match(upper):
-            return TimeType(dialect=self, precision=length)
-
-        # Byte-string family.  ``VARBINARY(MAX)`` is the unbounded declaration
-        # and not a 255-byte one, so it gets its own class.
-        if self._SQLSERVER_BLOB_TYPES.match(upper):
-            if upper.startswith("VARBINARY"):
-                if arguments is None and "MAX" in upper:
-                    return SQLServerVarBinaryMaxType(dialect=self)
-                return SQLServerVarBinaryType(dialect=self, length=length)
-            if upper.startswith("IMAGE"):
-                return SQLServerImageType(dialect=self)
-            spelling = "bytea" if upper.startswith("BYTEA") else "blob"
-            return BlobType(dialect=self, spelling=spelling)
-
-        return CustomType(dialect=self, raw=stripped)

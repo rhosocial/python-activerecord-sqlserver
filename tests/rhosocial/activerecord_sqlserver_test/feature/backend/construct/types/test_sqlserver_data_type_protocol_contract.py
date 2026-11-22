@@ -19,6 +19,23 @@ def _dialect(version):
     return SQLServerDialect(version=version)
 
 
+def _rendered_names(dialect):
+    """Concept names this dialect renders: a formatter whose probe says yes.
+
+    Core removed the old type-class mapping; the capability is now read straight
+    off the ``format_data_type_*`` / ``supports_data_type_*`` method families.
+    """
+    names = set()
+    for member in dir(dialect):
+        if not member.startswith("format_data_type_"):
+            continue
+        name = member[len("format_data_type_"):]
+        probe = getattr(dialect, f"supports_data_type_{name}", None)
+        if probe is None or probe():
+            names.add(name)
+    return names
+
+
 def _core_concepts():
     seen = set()
     stack = [DataType]
@@ -58,8 +75,8 @@ def _renderable_substitute(dialect, klass):
 def test_every_core_concept_is_declared(version):
     """D9: rendered or substituted -- silence is not an answer."""
     dialect = _dialect(version)
-    supported = set(dialect.supports_data_types())
-    substitutes = dialect.substitute_data_types()
+    supported = _rendered_names(dialect)
+    substitutes = dialect.suggest_substitute_types().mapping
     undeclared = [
         name for name in _core_concepts() if name not in supported and name not in substitutes
     ]
@@ -70,8 +87,8 @@ def test_every_core_concept_is_declared(version):
 def test_substitutes_are_disjoint_and_renderable(version):
     """A substitute must be a DataType class this dialect really writes."""
     dialect = _dialect(version)
-    supported = set(dialect.supports_data_types())
-    substitutes = dialect.substitute_data_types()
+    supported = _rendered_names(dialect)
+    substitutes = dialect.suggest_substitute_types().mapping
     assert not supported & set(substitutes)
 
     for key, klass in substitutes.items():
@@ -84,8 +101,8 @@ def test_substitutes_are_disjoint_and_renderable(version):
 def test_formatter_and_probe_families_are_one_to_one(version):
     """D10: a formatter has a probe, and an absent answer is an explicit probe.
 
-    ``supports_data_types()`` may omit a version-gated concept; that is an
-    answer only when its probe says False. A formatter with no probe at all,
+    A version-gated concept may be absent; that is an answer only when its
+    probe says False. A formatter with no probe at all,
     or a supported key with no formatter, breaks the 1:1 discipline.
     """
     dialect = _dialect(version)
@@ -105,7 +122,8 @@ def test_formatter_and_probe_families_are_one_to_one(version):
         f"probe-only: {sorted(probe_names - format_names)}"
     )
 
-    supported = set(dialect.supports_data_types())
+    supported = {name for name in format_names
+                 if getattr(dialect, f"supports_data_type_{name}")()}
     assert supported <= format_names
     for name in sorted(format_names - supported):
         probe = getattr(dialect, f"supports_data_type_{name}")

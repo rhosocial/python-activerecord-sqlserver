@@ -438,7 +438,7 @@ class AsyncSQLServerBackend(
         
         try:
             # Prepare parameters using adapter suggestions
-            all_suggestions = self.get_default_adapter_suggestions()
+            all_suggestions = self.suggest_data_adapters().table
             prepared_params = params
             if params:
                 param_adapters = []

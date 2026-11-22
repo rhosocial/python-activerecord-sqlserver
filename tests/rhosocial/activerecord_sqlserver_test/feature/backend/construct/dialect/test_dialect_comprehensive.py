@@ -1,6 +1,6 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/construct/dialect/test_dialect_comprehensive.py
 """Comprehensive SQL Server dialect formatting tests."""
-from rhosocial.activerecord.backend.suggestion import IntegerAutoIncrementSuggestionRenderer  # noqa: E402
+from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
 
 import pytest
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
@@ -889,7 +889,7 @@ class TestDialectDDL:
             columns=[
                 ColumnDefinition(dialect,
                     name="id",
-                    data_type=IntegerAutoIncrementSuggestionRenderer().parts(dialect, IntegerType(dialect))[0],
+                    data_type=integer_auto_increment_parts(dialect, IntegerType(dialect))[0],
                     constraints=[
                         ColumnConstraint(
                             dialect,
@@ -898,7 +898,7 @@ class TestDialectDDL:
                             ),
                         )
                     ],
-                 attributes=IntegerAutoIncrementSuggestionRenderer().parts(dialect, IntegerType(dialect))[1]),
+                 attributes=integer_auto_increment_parts(dialect, IntegerType(dialect))[1]),
                 ColumnDefinition(dialect,
                     name="name",
                     data_type=VarCharType(dialect, length=255),

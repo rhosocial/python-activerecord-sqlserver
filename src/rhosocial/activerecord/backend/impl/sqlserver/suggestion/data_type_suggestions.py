@@ -48,6 +48,12 @@ import enum
 import uuid
 from typing import Any, Dict, Optional
 
+from rhosocial.activerecord.backend.suggestion.definitions import (
+    DataTypeSuggestion,
+    ExtraDataTypeSuggestion,
+    SubstituteAdviceSuggestion,
+)
+
 from rhosocial.activerecord.backend.adapters import (
     BitString,
     Geometry,
@@ -119,8 +125,14 @@ SQLSERVER_DATA_TYPE_SUGGESTIONS: Dict[Any, Optional[Any]] = {
 class SQLServerDataTypeSuggestionsMixin:
     """SQL Server's answer to "what declaration does a bare field get here"."""
 
-    def suggested_data_types(self) -> Dict[Any, Optional[Any]]:
-        return dict(SQLSERVER_DATA_TYPE_SUGGESTIONS)
+    def suggest_data_types(self) -> DataTypeSuggestion:
+        return DataTypeSuggestion(table=dict(SQLSERVER_DATA_TYPE_SUGGESTIONS))
+
+    def suggest_substitute_advice(self, name: str) -> SubstituteAdviceSuggestion:
+        return SubstituteAdviceSuggestion(advice="")
+
+    def suggest_extra_data_types(self) -> ExtraDataTypeSuggestion:
+        return ExtraDataTypeSuggestion(table={})
 
 
 __all__ = [

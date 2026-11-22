@@ -1,7 +1,8 @@
 """
 Batch insert multiple rows efficiently.
 """
-from rhosocial.activerecord.backend.suggestion import IntegerAutoIncrementSuggestionRenderer  # noqa: E402
+from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
 import os
 
@@ -44,12 +45,12 @@ create_table = CreateTableStatement(
     dialect=dialect,
     table=Table(dialect, 'batch_users'),
     columns=[
-        ColumnDefinition('id', IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[0], constraints=[
+        ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
             ColumnConstraint(
                 dialect,
                 branch=ColumnPrimaryKeyConstraint(dialect),
             ),
-        ], attributes=IntegerAutoIncrementSuggestionRenderer().parts(dialect, 'INT')[1]),
+        ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
         ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
             ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
         ]),

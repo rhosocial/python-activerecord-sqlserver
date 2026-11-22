@@ -246,8 +246,8 @@ class SQLServerBackend(
 
         self.log(logging.DEBUG, "Registered SQL Server-specific type adapters.")
 
-    def get_default_adapter_suggestions(self) -> Dict[Type, Tuple[Any, Type]]:
-        return super().get_default_adapter_suggestions()
+    def suggest_data_adapters(self):
+        return super().suggest_data_adapters()
 
     def connect(self) -> None:
         """Establish connection to SQL Server database.

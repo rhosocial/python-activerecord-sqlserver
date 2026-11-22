@@ -10,7 +10,7 @@ invariants over the same registry -- and the one dependency is now the harness
 this repository owns beside it. Fix drift here deliberately; do not re-import
 it from the suite.
 
-Every dialect's ``parse_type`` is the introspection inverse of its
+A backend's introspection type parser is the read-direction inverse of its
 ``format_data_type_<name>`` renderings. Two invariants make a dialect coherent,
 and this module checks both over a backend's full type registry:
 
@@ -43,6 +43,7 @@ What the sweep deliberately does **not** do:
 from typing import Any, Dict, Optional
 
 from rhosocial.activerecord.backend.expression.types import CustomType, DataType
+from rhosocial.activerecord.backend.impl.sqlserver.introspection.type_parser import SQLServerTypeParser
 
 # The harness is this module's sibling, and this module is itself loaded by path
 # (from ``test_type_protocol.py``) as well as by name (from the matrix
@@ -71,7 +72,7 @@ def parse_roundtrip_failures(
     """Sweep *registry* and return the parse round-trip failures as text.
 
     Args:
-        dialect: the dialect whose ``parse_type`` is under test.
+        dialect: the dialect whose introspection parser is under test.
         registry: a mapping of fully-qualified name to class, as the
             backend's round-trip module keeps it (``REGISTERED`` or
             ``ALL_CLASSES``). Only concrete ``DataType`` subclasses are
@@ -120,16 +121,16 @@ def parse_roundtrip_failures(
         except Exception:
             continue  # the matrix's pinned non-renders own this class
         try:
-            parsed = dialect.parse_type(rendered)
+            parsed = SQLServerTypeParser(dialect).parse(rendered)
         except Exception as exc:
             failures.append(
-                "%s renders %r but parse_type raises %s: %s"
+                "%s renders %r but the parser raises %s: %s"
                 % (cls.__name__, rendered, type(exc).__name__, exc)
             )
             continue
         if isinstance(parsed, CustomType):
             failures.append(
-                "%s renders %r but parse_type answers CustomType -- a "
+                "%s renders %r but the parser answers CustomType -- a "
                 "dialect must recognise its own renderings"
                 % (cls.__name__, rendered)
             )
@@ -138,7 +139,7 @@ def parse_roundtrip_failures(
         if expected_entry is None:
             if parsed != instance:
                 failures.append(
-                    "%s renders %r but parse_type answers %r -- neither "
+                    "%s renders %r but the parser answers %r -- neither "
                     "the declaration nor a documented widening"
                     % (cls.__name__, rendered, parsed)
                 )
@@ -150,7 +151,7 @@ def parse_roundtrip_failures(
         if type(parsed).__name__ != expected:
             failures.append(
                 "%s renders %r; the documented answer is %s but "
-                "parse_type answers %s"
+                "the parser answers %s"
                 % (cls.__name__, rendered, expected, type(parsed).__name__)
             )
             continue

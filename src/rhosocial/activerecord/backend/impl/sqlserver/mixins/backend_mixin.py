@@ -3,6 +3,11 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.suggestion.definitions import (
+    DataAdapterSuggestion,
+    ExtraDataAdapterSuggestion,
+)
+from rhosocial.activerecord.backend.adapters.portable import PORTABLE_TYPE_MAPPINGS
 from rhosocial.activerecord.backend.errors import (
     ConnectionError,
     DatabaseError,
@@ -342,15 +347,14 @@ class SQLServerBackendMixin:
             return "_CS" in collation or collation.endswith("_CS_AS")
         return False
 
-    def get_default_adapter_suggestions(self) -> Dict[Type, Tuple[Any, Type]]:
+    def suggest_data_adapters(self) -> DataAdapterSuggestion:
         """Provide SQL Server's type-adapter suggestions.
 
-        The framework defaults (:meth:`TypeAdaptionMixin.get_default_adapter_suggestions`)
-        are the base: SQL Server starts from the core table and merges its own
-        pairs on top, because the backend knows what pyodbc accepts better than
-        the framework does.  A pair is suggested only when this backend
-        registered an adapter for it, so the merged table never names an
-        adapter this backend does not provide.
+        Core declares no default table; this backend reuses the portable scalar
+        baseline and merges its own pairs on top, because it knows what pyodbc
+        accepts better than the framework does.  A pair is suggested only when
+        this backend registered an adapter for it, so the merged table never
+        names an adapter this backend does not provide.
 
         The neutral families have no SQL Server column type of their own.  They
         are carried as text -- WKT for geometry, a JSON array for vectors,
@@ -358,8 +362,8 @@ class SQLServerBackendMixin:
         ``Multirange``, and canonical lowercase colon text for MAC addresses --
         so each one is merged with a plain ``str`` target.
         """
-        if hasattr(self, '_default_suggestions_cache') and self._default_suggestions_cache is not None:
-            return self._default_suggestions_cache
+        if getattr(self, '_default_suggestions_cache', None) is not None:
+            return DataAdapterSuggestion(table=self._default_suggestions_cache)
 
         from datetime import date, datetime, time
         from decimal import Decimal
@@ -373,8 +377,6 @@ class SQLServerBackendMixin:
         from rhosocial.activerecord.backend.base.type_adaption import (
             merge_adapter_suggestions,
         )
-
-        base = super().get_default_adapter_suggestions()
 
         type_mappings = [
             (bool, bool), (int, int), (float, float),
@@ -390,8 +392,9 @@ class SQLServerBackendMixin:
             (MacAddress, str),
         ]
 
-        suggestions = merge_adapter_suggestions(base, type_mappings, self.adapter_registry)
-        for py_type, db_type in type_mappings:
+        overrides = list(PORTABLE_TYPE_MAPPINGS) + type_mappings
+        suggestions = merge_adapter_suggestions({}, overrides, self.adapter_registry)
+        for py_type, db_type in overrides:
             if py_type not in suggestions:
                 self.log(
                     logging.DEBUG,
@@ -400,7 +403,11 @@ class SQLServerBackendMixin:
                 )
 
         self._default_suggestions_cache = suggestions
-        return suggestions
+        return DataAdapterSuggestion(table=suggestions)
+
+    def suggest_extra_data_adapters(self) -> ExtraDataAdapterSuggestion:
+        """No backend-owned extra adapter types."""
+        return ExtraDataAdapterSuggestion(table={})
 
     def get_type_adapters(self) -> List["SQLTypeAdapter"]:
         """Return the adapter instances this backend provides.

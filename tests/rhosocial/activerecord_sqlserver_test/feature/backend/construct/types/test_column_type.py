@@ -3,7 +3,7 @@
 
 Pure dialect tests -- no server, no connection. What is asserted here is the
 *declaration*: that the dialect composes core's
-:class:`~rhosocial.activerecord.backend.dialect.mixins.column_type.ColumnTypeMixin`
+:class:`~rhosocial.activerecord.backend.suggestion.protocols.ColumnTypeSuggestionSupport`
 and answers every one of the framework's common Python types, that the cells
 SQL Server deviates on are the ones the live sweep measured, and that no entry
 is left to a ``None`` that nobody decided on.
@@ -25,7 +25,7 @@ import uuid
 
 import pytest
 
-from rhosocial.activerecord.backend.dialect.mixins import ColumnTypeMixin
+from rhosocial.activerecord.backend.suggestion.protocols import ColumnTypeSuggestionSupport
 from rhosocial.activerecord.backend.expression.column_types import (
     ArrayColumn,
     BinaryColumn,
@@ -95,32 +95,30 @@ class TestTableCompleteness:
     """A hole in the table is a silent gap, and the protocol forbids one."""
 
     def test_the_dialect_carries_the_mixin(self, dialect):
-        assert isinstance(dialect, ColumnTypeMixin)
+        assert isinstance(dialect, ColumnTypeSuggestionSupport)
 
     def test_the_dialect_carries_the_sql_server_mixin(self, dialect):
         """The backend's own half, not just core's plumbing.
 
-        Core supplies no table of its own -- its ``suggested_column_types()``
+        Core supplies no table of its own -- its ``suggest_column_types()``
         raises -- so the answer a model layer reads can only come from the
         backend's own mixin being in the MRO.
         """
         assert isinstance(dialect, SQLServerColumnTypeMixin)
 
-    def test_the_mixin_overrides_core(self):
-        """The backend's answer, not core's NotImplementedError, is reached."""
-        assert (
-            SQLServerColumnTypeMixin.suggested_column_types
-            is not ColumnTypeMixin.suggested_column_types
-        )
+    def test_the_mixin_provides_both_suggestions(self):
+        """The backend's mixin answers both the main and the extra table."""
+        assert callable(SQLServerColumnTypeMixin.suggest_column_types)
+        assert callable(SQLServerColumnTypeMixin.suggest_extra_column_types)
 
     def test_every_entry_is_answered(self, dialect):
         """All twenty-four, by name -- an omission fails here, not at lookup."""
-        missing = [e for e in COMMON_TYPES if e not in dialect.suggested_column_types()]
+        missing = [e for e in COMMON_TYPES if e not in dialect.suggest_column_types().table]
         assert missing == []
 
     def test_the_table_has_exactly_the_protocol_entries(self, dialect):
         """No backend-only extension is claimed, so the key space is closed here."""
-        assert set(dialect.suggested_column_types()) == set(COMMON_TYPES)
+        assert set(dialect.suggest_column_types().table) == set(COMMON_TYPES)
 
     def test_no_entry_is_answered_none(self, dialect):
         """``None`` is the last resort, and SQL Server never needs it.
@@ -131,12 +129,12 @@ class TestTableCompleteness:
         interval type so it is a count. Refusing any of them would read the
         *storage* as a statement about the *operations*.
         """
-        table = dialect.suggested_column_types()
+        table = dialect.suggest_column_types().table
         assert [e for e in COMMON_TYPES if table[e] is None] == []
 
     @pytest.mark.parametrize("entry", COMMON_TYPES, ids=_ENTRY_IDS)
     def test_every_answer_is_a_column_class(self, dialect, entry):
-        answer = dialect.suggested_column_types()[entry]
+        answer = dialect.suggest_column_types().table[entry]
         assert isinstance(answer, type)
         assert issubclass(answer, ColumnBase)
 
@@ -147,17 +145,17 @@ class TestTableCompleteness:
         ``FieldAccessor._select_column_class`` is the production path a model
         layer takes, so the table is only really answered if it surfaces there.
         """
-        assert resolve_column_class(dialect, entry) is dialect.suggested_column_types()[entry]
+        assert resolve_column_class(dialect, entry) is dialect.suggest_column_types().table[entry]
 
     def test_the_table_is_a_copy(self, dialect):
         """Mutating one answer must not corrupt the class attribute."""
-        first = dialect.suggested_column_types()
+        first = dialect.suggest_column_types().table
         first[str] = NumericColumn
-        assert dialect.suggested_column_types()[str] is StringColumn
+        assert dialect.suggest_column_types().table[str] is StringColumn
 
     def test_the_extra_table_is_empty(self, dialect):
         """SQL Server offers nothing beyond the framework's common types."""
-        assert dialect.suggested_extra_column_types() == {}
+        assert dialect.suggest_extra_column_types().table == {}
 
 
 class TestBaselineCells:
@@ -197,7 +195,7 @@ class TestBaselineCells:
         ],
     )
     def test_baseline_entry(self, dialect, entry, expected):
-        assert dialect.suggested_column_types()[entry] is expected
+        assert dialect.suggest_column_types().table[entry] is expected
 
     def test_the_tz_form_lands_on_the_same_entry(self, dialect):
         """A tz-aware ``datetime`` is annotated as ``datetime``; nothing is refused.
@@ -211,7 +209,7 @@ class TestBaselineCells:
         from datetime import timezone
 
         aware = datetime.datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
-        keys = dialect.suggested_column_types()
+        keys = dialect.suggest_column_types().table
         assert resolve_column_class(dialect, type(aware)) is keys[datetime.datetime]
 
     def test_uuid_is_native_and_still_the_baseline(self, measured_dialect):
@@ -221,7 +219,7 @@ class TestBaselineCells:
         ``[1, 2, 3]``, restored by ``CONVERT(varchar(36), u)``) is a rendering
         fact for Phase 2b, so it must not leak into the table as a refusal.
         """
-        assert measured_dialect.suggested_column_types()[uuid.UUID] is UUIDColumn
+        assert measured_dialect.suggest_column_types().table[uuid.UUID] is UUIDColumn
 
 
 class TestSQLServerDeviations:
@@ -238,13 +236,13 @@ class TestSQLServerDeviations:
         either way. The measured fact survives in the DDL layer's ``DataType``
         declaration rather than being dropped here.
         """
-        table = dialect.suggested_column_types()
+        table = dialect.suggest_column_types().table
         assert table[float] is NumericColumn
         assert table[decimal.Decimal] is NumericColumn
 
     def test_dict_is_json_column(self, dialect):
         """The χ route: ``NVARCHAR(MAX)`` plus the 2016 function family."""
-        assert dialect.suggested_column_types()[dict] is JSONColumn
+        assert dialect.suggest_column_types().table[dict] is JSONColumn
 
     @pytest.mark.parametrize(
         "entry", [list, tuple, set, frozenset], ids=["list", "tuple", "set", "frozenset"]
@@ -255,11 +253,11 @@ class TestSQLServerDeviations:
         ``ArrayColumn``'s whole surface is ``array_length`` / ``unnest`` over a
         *native* array -- a column this server cannot declare at all.
         """
-        assert dialect.suggested_column_types()[entry] is JSONColumn
+        assert dialect.suggest_column_types().table[entry] is JSONColumn
 
     def test_no_entry_answers_array_column(self, dialect):
         """The portable baseline says ``ArrayColumn`` for the containers; SQL Server may not."""
-        table = dialect.suggested_column_types()
+        table = dialect.suggest_column_types().table
         assert [e for e, cls in table.items() if cls is ArrayColumn] == []
 
     def test_timedelta_is_an_interval(self, dialect):
@@ -268,10 +266,10 @@ class TestSQLServerDeviations:
         The class names the value, so the stored count of seconds does not
         make it a number, and no numeric arithmetic is promised.
         """
-        assert dialect.suggested_column_types()[datetime.timedelta] is IntervalColumn
+        assert dialect.suggest_column_types().table[datetime.timedelta] is IntervalColumn
 
     def test_the_complex_families_answer_the_core_classes(self, dialect):
-        table = dialect.suggested_column_types()
+        table = dialect.suggest_column_types().table
         for entry, klass in (
             (Geometry, GeometryColumn),
             (Vector, VectorColumn),
@@ -362,7 +360,7 @@ class TestTheUnadaptedDialectAnswers:
     """A dialect built without a version answers rather than raising."""
 
     def test_the_table_needs_no_version(self):
-        assert SQLServerDialect().suggested_column_types()[dict] is JSONColumn
+        assert SQLServerDialect().suggest_column_types().table[dict] is JSONColumn
 
 
 class TestTheUnicodeDialectInheritsTheSameAnswers:
@@ -380,14 +378,14 @@ class TestTheUnicodeDialectInheritsTheSameAnswers:
             SQLServerUnicodeDialect,
         )
 
-        plain = SQLServerDialect(version=SQL_SERVER_2022).suggested_column_types()
-        unicode_ = SQLServerUnicodeDialect(version=SQL_SERVER_2022).suggested_column_types()
+        plain = SQLServerDialect(version=SQL_SERVER_2022).suggest_column_types().table
+        unicode_ = SQLServerUnicodeDialect(version=SQL_SERVER_2022).suggest_column_types().table
         assert plain == unicode_
 
 
 def test_the_summary_table_reads_the_way_the_spec_writes_it():
     """One test that states the whole answer, so a diff is legible at a glance."""
-    table = SQLServerDialect(version=SQL_SERVER_2022).suggested_column_types()
+    table = SQLServerDialect(version=SQL_SERVER_2022).suggest_column_types().table
     summary = {entry.__name__: _answer_name(table[entry]) for entry in COMMON_TYPES}
     assert summary == {
         "bool": "BooleanColumn",
@@ -421,6 +419,6 @@ def test_the_three_measured_servers_agree_item_for_item():
     """No version gate on the table: 2019, 2022 and 2025 give one answer."""
     answers = []
     for version in _MEASURED_VERSIONS:
-        table = SQLServerDialect(version=version).suggested_column_types()
+        table = SQLServerDialect(version=version).suggest_column_types().table
         answers.append({e.__name__: _answer_name(cls) for e, cls in table.items()})
     assert answers[0] == answers[1] == answers[2]

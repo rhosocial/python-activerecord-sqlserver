@@ -12,6 +12,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
     SQLServerXmlType,
 )
 from rhosocial.activerecord.backend.expression.types._base import DataType
+from rhosocial.activerecord.backend.impl.sqlserver.introspection.type_parser import SQLServerTypeParser
 from rhosocial.activerecord.backend.expression.types import (
     BigIntType,
     BlobType,
@@ -37,14 +38,14 @@ SQL_SERVER_2022 = (16, 0, 0)
 
 
 class TestParseType:
-    """Tests for SQL Server parse_type implementation."""
+    """Tests for the SQL Server introspection-only type parser."""
 
     @pytest.fixture
     def dialect(self):
         return SQLServerDialect(SQL_SERVER_2022)
 
     def _parse(self, dialect, raw: str) -> DataType:
-        return DataType.parse_data_type_str(dialect, raw)
+        return SQLServerTypeParser(dialect).parse(raw)
 
     def test_parse_integer_types(self, dialect):
         assert isinstance(self._parse(dialect, "INT"), IntegerType)
@@ -209,7 +210,7 @@ class TestParseType:
         result = self._parse(dialect, "GEOGRAPHY")
         assert isinstance(result, CustomType)
 
-    def test_parse_type_case_insensitive(self, dialect):
+    def test_parser_case_insensitive(self, dialect):
         assert isinstance(self._parse(dialect, "int"), IntegerType)
         assert isinstance(self._parse(dialect, "VARCHAR(50)"), VarCharType)
         assert isinstance(self._parse(dialect, "decimal(8,2)"), DecimalType)

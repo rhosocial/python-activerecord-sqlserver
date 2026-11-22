@@ -3,8 +3,8 @@
 
 Covers:
 - format/supports 1:1 correspondence
-- supports_data_types() includes sqlserver_* + core entries, on a cold import
-- substitute_data_types() returns classes, keys disjoint from supported, and
+- the format_data_type_* family includes sqlserver_* + core entries
+- suggest_substitute_types() returns classes, keys disjoint from rendered, and
   every suggested class is a type this dialect really renders (D9)
 - spelling gates: the default spelling always renders, an unknown one is
   refused and named
@@ -26,6 +26,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
     SQLServerVarBinaryType,
     SQLServerXmlType,
 )
+from rhosocial.activerecord.backend.impl.sqlserver.introspection.type_parser import SQLServerTypeParser
 from rhosocial.activerecord.backend.impl.sqlserver.protocols import (
     SQLServerTypeSupport,
 )
@@ -78,6 +79,47 @@ def _absent_spelling(concept):
     )
 
 
+def _all_datatype_classes():
+    """Every DataType class loaded (core + backend), keyed by its ``name``."""
+    seen = set()
+    stack = [DataType]
+    found = {}
+    while stack:
+        klass = stack.pop()
+        if klass in seen:
+            continue
+        seen.add(klass)
+        stack.extend(klass.__subclasses__())
+        name = getattr(klass, "name", None)
+        if name:
+            found[name] = klass
+    return found
+
+
+def _supported(dialect):
+    """Concept names this dialect renders, mapped to their DataType class.
+
+    Core removed the old type-class mapping. The capability is now read from the
+    ``format_data_type_*`` family, and the class is found by name in the live
+    DataType subclass tree (which is what the old probe did internally).
+    """
+    all_classes = _all_datatype_classes()
+    return {
+        name: all_classes[name]
+        for name in (
+            member[len("format_data_type_"):]
+            for member in dir(dialect)
+            if member.startswith("format_data_type_")
+        )
+        if name in all_classes
+    }
+
+
+def _parse(dialect, raw):
+    """Parse a server-reported type spelling with the introspection parser."""
+    return SQLServerTypeParser(dialect).parse(raw)
+
+
 class TestFormatSupportsCorrespondence:
     """Every format_data_type_<name> must have a matching supports_data_type_<name>."""
 
@@ -125,18 +167,18 @@ class TestFormatSupportsCorrespondence:
 
 
 class TestSupportsDataTypes:
-    """supports_data_types() returns sqlserver_* + core entries."""
+    """The rendered family includes sqlserver_* + core entries."""
 
     @pytest.fixture
     def dialect(self):
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_returns_dict(self, dialect):
-        result = dialect.supports_data_types()
+        result = _supported(dialect)
         assert isinstance(result, dict)
 
     def test_includes_core_types(self, dialect):
-        supported = dialect.supports_data_types()
+        supported = _supported(dialect)
         # ``int`` is deliberately absent: it is a *spelling* of ``integer``,
         # not a second concept, so it has no name to be dispatched by.  The
         # spelling is honoured inside ``format_data_type_integer`` instead —
@@ -146,40 +188,38 @@ class TestSupportsDataTypes:
                       "datetime", "time", "timestamp", "timestamptz", "float",
                       "real", "double", "decimal", "json", "xml", "blob",
                       "custom"]:
-            assert name in supported, f"Core type {name!r} missing from supports_data_types()"
+            assert name in supported, f"Core type {name!r} has no formatter"
 
     def test_includes_sqlserver_types(self, dialect):
-        supported = dialect.supports_data_types()
+        supported = _supported(dialect)
         for name in ["sqlserver_nvarchar", "sqlserver_nchar",
                       "sqlserver_nvarchar_max", "sqlserver_varbinary",
                       "sqlserver_varbinary_max", "sqlserver_xml",
                       "sqlserver_tinyint", "sqlserver_bit",
                       "sqlserver_image"]:
-            assert name in supported, f"SQL Server type {name!r} missing from supports_data_types()"
+            assert name in supported, f"SQL Server type {name!r} has no formatter"
 
     def test_values_are_type_classes(self, dialect):
-        supported = dialect.supports_data_types()
+        supported = _supported(dialect)
         for name, cls in supported.items():
             assert isinstance(cls, type), (
-                f"supports_data_types()[{name!r}] = {cls!r} is not a type class"
+                f"rendered type {name!r} = {cls!r} is not a type class"
             )
 
     def test_every_key_names_the_class_behind_it(self, dialect):
         """A key with a different class behind it is a dispatch that lies."""
-        supported = dialect.supports_data_types()
+        supported = _supported(dialect)
         for name, cls in supported.items():
             assert issubclass(cls, DataType), f"{name!r} -> {cls!r}"
             assert cls.name == name, f"{cls.__name__}.name={cls.name!r} != {name!r}"
 
     def test_backend_types_are_advertised_without_a_prior_import(self):
-        """``supports_data_types()`` must not depend on load order.
+        """The formatter family must not depend on load order.
 
-        ``type_class_for(name)`` resolves a dispatch key by walking the live
-        subclass tree of ``DataType``, so a name whose class nobody imported
-        resolves to ``None`` and silently drops out of the mapping.  It used to
-        drop out: every test that caught this had imported a ``SQLServer*``
-        class itself first, which is how the defect survived.  So this runs in
-        a subprocess, where the dialect module is the only import.
+        A capability is now declared by a ``format_data_type_<name>`` method on
+        the dialect, so a name is advertised by that method's presence rather
+        than by a class-resolution walk.  Run in a subprocess where the dialect
+        module is the only import, so nothing can pre-load a backend class.
         """
         import subprocess
         import sys
@@ -187,8 +227,9 @@ class TestSupportsDataTypes:
         script = (
             "from rhosocial.activerecord.backend.impl.sqlserver.dialect "
             "import SQLServerDialect\n"
-            f"supported = SQLServerDialect({SQL_SERVER_2022!r}).supports_data_types()\n"
-            "print(','.join(sorted(supported)))\n"
+            "names = [m[len('format_data_type_'):] for m in dir(SQLServerDialect) "
+            "if m.startswith('format_data_type_')]\n"
+            "print(','.join(sorted(names)))\n"
         )
         result = subprocess.run(
             [sys.executable, "-c", script],
@@ -201,33 +242,33 @@ class TestSupportsDataTypes:
                      "sqlserver_tinyint", "sqlserver_bit",
                      "sqlserver_image", "sqlserver_uniqueidentifier"):
             assert name in advertised, (
-                f"{name!r} missing from supports_data_types() on a cold import; "
+                f"{name!r} has no formatter on a cold import; "
                 f"the backend expression types are not being loaded. Advertised: "
                 f"{sorted(advertised)}"
             )
 
 
 class TestSuggestedDataTypes:
-    """substitute_data_types() returns classes, keys disjoint from supported."""
+    """suggest_substitute_types() returns classes, keys disjoint from rendered."""
 
     @pytest.fixture
     def dialect(self):
         return SQLServerDialect(SQL_SERVER_2022)
 
     def test_returns_dict(self, dialect):
-        result = dialect.substitute_data_types()
+        result = dialect.suggest_substitute_types().mapping
         assert isinstance(result, dict)
 
     def test_values_are_type_classes(self, dialect):
-        suggested = dialect.substitute_data_types()
+        suggested = dialect.suggest_substitute_types().mapping
         for name, cls in suggested.items():
             assert isinstance(cls, type) and issubclass(cls, DataType), (
-                f"substitute_data_types()[{name!r}] = {cls!r} is not a DataType class"
+                f"suggest_substitute_types().mapping[{name!r}] = {cls!r} is not a DataType class"
             )
 
     def test_keys_disjoint_from_supported(self, dialect):
-        supported = set(dialect.supports_data_types().keys())
-        suggested = set(dialect.substitute_data_types().keys())
+        supported = set(_supported(dialect).keys())
+        suggested = set(dialect.suggest_substitute_types().mapping.keys())
         overlap = supported & suggested
         assert not overlap, (
             f"Keys appear in both supports and suggested: {overlap}"
@@ -242,21 +283,21 @@ class TestSuggestedDataTypes:
         then refused on render.  D9 asks for "what this backend stores instead",
         and that has to be a thing this backend stores.
         """
-        supported = dialect.supports_data_types()
-        suggested = dialect.substitute_data_types()
+        supported = _supported(dialect)
+        suggested = dialect.suggest_substitute_types().mapping
         for key, substitute in sorted(suggested.items()):
             assert substitute.name in supported, (
-                f"substitute_data_types()[{key!r}] is {substitute.__name__}, "
+                f"suggest_substitute_types().mapping[{key!r}] is {substitute.__name__}, "
                 f"whose name {substitute.name!r} this dialect does not render"
             )
 
     def test_suggests_unsupported_core_types(self, dialect):
-        suggested = dialect.substitute_data_types()
+        suggested = dialect.suggest_substitute_types().mapping
         # Concepts SQL Server has no T-SQL word for.
         for name in ["uuid", "interval", "array", "enum", "jsonb", "timetz",
                       "binary", "varbinary"]:
             assert name in suggested, (
-                f"Expected suggestion for {name!r} in substitute_data_types()"
+                f"Expected suggestion for {name!r} in suggest_substitute_types()"
             )
 
     def test_does_not_suggest_what_it_renders(self, dialect):
@@ -265,14 +306,14 @@ class TestSuggestedDataTypes:
         Substituting text for ``xml`` or a zoneless ``DATETIME2`` for
         ``timestamptz`` would describe a backend that is not this one.
         """
-        suggested = dialect.substitute_data_types()
+        suggested = dialect.suggest_substitute_types().mapping
         for name in ("xml", "timestamptz"):
             assert name not in suggested, (
                 f"{name!r} is rendered natively on SQL Server "
                 f"({'XML' if name == 'xml' else 'DATETIMEOFFSET'}); it must not "
                 f"be substituted"
             )
-            assert name in dialect.supports_data_types()
+            assert name in _supported(dialect)
 
     def test_uuid_substitute_is_the_backend_class_not_the_core_one(self, dialect):
         """``uuid`` maps to ``UNIQUEIDENTIFIER``, which this dialect renders.
@@ -280,14 +321,14 @@ class TestSuggestedDataTypes:
         It used to map to the core ``UUIDType``, whose ``name`` equals the key —
         and which this dialect cannot render, so the suggestion could not be
         followed.  Pointing at ``SQLServerUniqueIdentifierType`` is the answer
-        D9 asks for: a class whose own ``name`` *is* in ``supports_data_types()``.
+        D9 asks for: a class whose own ``name`` *is* rendered by this dialect.
         """
-        assert dialect.substitute_data_types()["uuid"] is SQLServerUniqueIdentifierType
+        assert dialect.suggest_substitute_types().mapping["uuid"] is SQLServerUniqueIdentifierType
 
     def test_jsonb_substitute_is_json_because_sql_server_has_one_json(self, dialect):
         """``jsonb`` is PostgreSQL's binary JSON; SQL Server has no such split."""
-        assert dialect.substitute_data_types()["jsonb"] is JsonType
-        assert dialect.substitute_data_types()["array"] is JsonType
+        assert dialect.suggest_substitute_types().mapping["jsonb"] is JsonType
+        assert dialect.suggest_substitute_types().mapping["array"] is JsonType
 
 
 class TestSpellingGates:
@@ -355,9 +396,8 @@ class TestSpellingGates:
     def test_no_int_key_in_the_dispatch_family(self, dialect):
         """``int`` is a spelling, so it has no ``format_data_type_int``.
 
-        It had one, which meant two dispatch keys for one concept and a
-        ``supports_data_types()`` entry that vanished because no class is named
-        ``int`` any more.
+        It had one, which meant two dispatch keys for one concept and an
+        advertised name that vanished because no class is named ``int`` any more.
         """
         assert not hasattr(dialect, "format_data_type_int")
         assert not hasattr(dialect, "supports_data_type_int")
@@ -634,7 +674,7 @@ class TestConceptAnchoring:
 
 
 class TestBitTakesNoWidth:
-    """``parse_type("bit(1)")`` used to escape as a bare ``KeyError``.
+    """the introspection parser on ``"bit(1)"`` used to escape as a bare ``KeyError``.
 
     Appendix F.4-8: the BIT branch spelled its three spellings out in an
     exact-match dictionary keyed by the whole uppercased word, so a
@@ -656,14 +696,14 @@ class TestBitTakesNoWidth:
     @pytest.mark.parametrize("raw", ["BIT", "bit", "BOOL", "bool",
                                      "BOOLEAN", "boolean"])
     def test_bare_spellings_still_parse_to_the_bit_class(self, dialect, raw):
-        assert isinstance(dialect.parse_type(raw), SQLServerBitType)
+        assert isinstance(_parse(dialect, raw), SQLServerBitType)
 
     @pytest.mark.parametrize("raw", ["BIT(1)", "bit(1)", "BIT(0)", "BOOL(1)",
                                      "bit (1)"])
     def test_a_width_is_refused_with_the_server_answer(self, dialect, raw):
         with pytest.raises(ValueError,
                            match="Cannot specify a column width on data type bit") as excinfo:
-            dialect.parse_type(raw)
+            _parse(dialect, raw)
         assert "2716" in str(excinfo.value)
         # A server-rejected value, not an inexpressible declaration: the two
         # exception families stay apart, as everywhere else in this file.
@@ -845,7 +885,7 @@ class TestIntegerSignednessIsRefused:
         flipping the field either changes the SQL or raises.  Byte-identical SQL
         for both signs is the violation, whatever the reason for it.
         """
-        klass = dialect.supports_data_types()[name]
+        klass = _supported(dialect)[name]
         signed = dialect.format_data_type(klass(dialect))[0]
         try:
             unsigned = dialect.format_data_type(
@@ -965,7 +1005,7 @@ def _rendered_concepts_with_a_fractional_field(dialect):
     check against it.
     """
     found = {}
-    for klass in dialect.supports_data_types().values():
+    for klass in _supported(dialect).values():
         fields = tuple(
             field for field in klass.PARAMETERS
             if field in FRACTIONAL_PROBE_VALUES
@@ -1180,7 +1220,7 @@ class TestDecimalScaleNeedsAPrecision:
     def test_the_parser_never_produces_an_unanchored_scale(self, dialect):
         """The refusal cannot be reached from this dialect's own round trip.
 
-        ``parse_type`` reads ``(p, s)`` with a regex whose first group is the
+        the introspection parser reads ``(p, s)`` with a regex whose first group is the
         precision, so a parsed ``scale`` always has a precision beside it — the
         refusal is unreachable from introspection, which is what makes refusing
         it safe.
@@ -1195,7 +1235,7 @@ class TestDecimalScaleNeedsAPrecision:
             ("MONEY", "DECIMAL"),
             ("SMALLMONEY", "DECIMAL"),
         ):
-            assert dialect.format_data_type(dialect.parse_type(raw))[0] == expected, raw
+            assert dialect.format_data_type(_parse(dialect, raw))[0] == expected, raw
 
     def test_the_documented_grammar_still_puts_the_scale_second(self):
         """Guards the conclusion the refusal rests on, not the code.
@@ -1558,7 +1598,7 @@ class TestLengthsAreRangeChecked:
 
 
 # ---------------------------------------------------------------------------
-# parse_type: the shared round-trip sweep over the whole declared surface
+# introspection type parser: the shared round-trip sweep over the declared surface
 
 
 class TestParseRoundTripSweep:
@@ -1595,6 +1635,16 @@ class TestParseRoundTripSweep:
         "XmlType": "SQLServerXmlType",
         "SQLServerNVarCharMaxType": "TextType",
         "SQLServerVarBinaryType": "SQLServerVarBinaryType",
+        # A bare character declaration is completed by the introspection parser
+        # with the same width the formatter writes for an unsized type (1 for
+        # the fixed forms, 255 for the variable ones). The parsed instance
+        # therefore carries an explicit length that the bare declaration left
+        # implicit; both render the identical string, so record the completion
+        # here rather than pretending the two instances are equal.
+        "CharType": "CharType",
+        "VarCharType": "VarCharType",
+        "SQLServerNCharType": "SQLServerNCharType",
+        "SQLServerNVarCharType": "SQLServerNVarCharType",
     }
 
     @pytest.fixture(scope="class")

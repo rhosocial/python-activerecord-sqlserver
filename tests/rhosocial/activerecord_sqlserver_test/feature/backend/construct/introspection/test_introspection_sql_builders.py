@@ -34,7 +34,8 @@ from rhosocial.activerecord.backend.expression.introspection import (
     ViewInfoQueryStatement,
     ViewListQueryStatement,
 )
-from rhosocial.activerecord.backend.expression.types import DataType, TextType
+from rhosocial.activerecord.backend.expression.types import TextType
+from rhosocial.activerecord.backend.impl.sqlserver.introspection.type_parser import SQLServerTypeParser
 from rhosocial.activerecord.backend.introspection.types import TableType
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
@@ -811,10 +812,10 @@ class TestParseColumnsFullTypeRebuild:
         # Declared ``NVARCHAR(MAX)`` (TextType) and the introspected column
         # now agree, so the phantom diff is gone...
         assert col.parsed_data_type == TextType(dialect)
-        assert col.parsed_data_type == DataType.parse_data_type_str(dialect, "NVARCHAR(MAX)")
+        assert col.parsed_data_type == SQLServerTypeParser(dialect).parse("NVARCHAR(MAX)")
         # ...and a MAX column no longer compares equal to a sized one.
         assert col.parsed_data_type != SQLServerNVarCharType(dialect, length=255)
-        assert col.parsed_data_type != DataType.parse_data_type_str(dialect, "NVARCHAR(255)")
+        assert col.parsed_data_type != SQLServerTypeParser(dialect).parse("NVARCHAR(255)")
 
     def test_varchar_max_marker_rebuilds_to_max(self):
         dialect = make_introspector()._backend.dialect
@@ -822,7 +823,7 @@ class TestParseColumnsFullTypeRebuild:
         assert col.data_type_full == "varchar(MAX)"
         assert isinstance(col.parsed_data_type, TextType)
         assert col.parsed_data_type == TextType(dialect)
-        assert col.parsed_data_type != DataType.parse_data_type_str(dialect, "VARCHAR(255)")
+        assert col.parsed_data_type != SQLServerTypeParser(dialect).parse("VARCHAR(255)")
 
     def test_varbinary_max_marker_rebuilds_to_max_type(self):
         col = self._parse_one("varbinary", CHARACTER_MAXIMUM_LENGTH=-1)
@@ -900,21 +901,21 @@ class TestParseColumnsDatetimePrecision:
         for word in self.PRECISIONED:
             col = self._parse_one(word, 3)
             assert col.data_type_full == f"{word}(3)"
-            assert col.parsed_data_type == DataType.parse_data_type_str(dialect, f"{word}(3)")
+            assert col.parsed_data_type == SQLServerTypeParser(dialect).parse(f"{word}(3)")
 
     def test_zero_precision_is_rebuilt(self):
         dialect = make_introspector()._backend.dialect
         for word in self.PRECISIONED:
             col = self._parse_one(word, 0)
             assert col.data_type_full == f"{word}(0)"
-            assert col.parsed_data_type == DataType.parse_data_type_str(dialect, f"{word}(0)")
+            assert col.parsed_data_type == SQLServerTypeParser(dialect).parse(f"{word}(0)")
 
     def test_server_default_precision_stays_bare(self):
         dialect = make_introspector()._backend.dialect
         for word in self.PRECISIONED:
             col = self._parse_one(word, 7)
             assert col.data_type_full == word
-            assert col.parsed_data_type == DataType.parse_data_type_str(dialect, word)
+            assert col.parsed_data_type == SQLServerTypeParser(dialect).parse(word)
 
     def test_missing_catalog_precision_stays_bare(self):
         # Defensive: a row without the field rebuilds exactly as before.
@@ -937,10 +938,10 @@ class TestParseColumnsDatetimePrecision:
         dialect = make_introspector()._backend.dialect
         dt = self._parse_one("datetime", 3)
         assert dt.data_type_full == "datetime"
-        assert dt.parsed_data_type == DataType.parse_data_type_str(dialect, "datetime")
+        assert dt.parsed_data_type == SQLServerTypeParser(dialect).parse("datetime")
         sdt = self._parse_one("smalldatetime", 0)
         assert sdt.data_type_full == "smalldatetime"
-        assert sdt.parsed_data_type == DataType.parse_data_type_str(dialect, "smalldatetime")
+        assert sdt.parsed_data_type == SQLServerTypeParser(dialect).parse("smalldatetime")
 
 class TestTableStorageSlots:
     """The per-table storage projection, and what a view answers.

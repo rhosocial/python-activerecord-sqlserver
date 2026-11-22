@@ -302,7 +302,7 @@ class TestTableTypeConstraintValidation:
     def test_empty_rendered_sql_is_rejected(self, monkeypatch):
         d = dialect()
         constraint = TableConstraint(d, branch=TablePrimaryKeyConstraint(d, ["id"]))
-        monkeypatch.setattr(d, "format_table_constraint", lambda *a, **k: ("", ()))
+        monkeypatch.setattr(d, "render_table_constraint", lambda *a, **k: ("", ()))
         with pytest.raises(ValueError, match="did not render SQL"):
             d._format_table_type_constraint(constraint, memory_optimized=False)
 

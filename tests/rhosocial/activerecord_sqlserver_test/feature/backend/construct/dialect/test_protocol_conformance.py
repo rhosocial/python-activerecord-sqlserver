@@ -19,6 +19,7 @@ import inspect
 
 import pytest
 from rhosocial.activerecord.backend.dialect import protocols as dialect_protocols
+from rhosocial.activerecord.backend.suggestion import protocols as suggestion_protocols
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
 # Construction requires a version tuple; 2022 exercises the newest feature set.
@@ -58,7 +59,7 @@ def _classified_keys(protocols) -> set:
     """Every exported name whose protocol is in *protocols*.
 
     Keyed by the names the protocols package exports rather than by
-    ``__name__``, so an alias (``DDLTypeSupport`` is kept as a second name for
+    ``__name__``, so an alias (``DataTypeSupport`` is kept as a second name for
     ``DataTypeSupport``) counts as classified when its target is listed.
     """
     listed = {id(protocol) for protocol in protocols}
@@ -78,18 +79,18 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.CTESupport,
     dialect_protocols.CollationSupport,
     dialect_protocols.ColumnAttributeSupport,
-    dialect_protocols.ColumnTypeSupport,
+    suggestion_protocols.ColumnTypeSuggestionSupport,
     dialect_protocols.ConstraintSupport,
     dialect_protocols.DataTypeSupport,
     dialect_protocols.DatabaseAssignedColumnSupport,
-    dialect_protocols.DDLTypeSupport,
+    dialect_protocols.DataTypeSupport,
     dialect_protocols.ExplainSupport,
     dialect_protocols.FilterClauseSupport,
     dialect_protocols.GeneratedColumnSupport,
     dialect_protocols.GraphSupport,
     dialect_protocols.ILIKESupport,
     dialect_protocols.IdentityColumnSupport,
-    dialect_protocols.IntegerAutoIncrementColumnSuggestionSupport,
+    suggestion_protocols.IntegerAutoIncrementColumnSuggestionSupport,
     dialect_protocols.IntrospectionSupport,
     dialect_protocols.JSONSupport,
     dialect_protocols.JoinSupport,
@@ -97,14 +98,14 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.LockingSupport,
     dialect_protocols.MergeSupport,
     dialect_protocols.OrderedSetAggregationSupport,
-    dialect_protocols.PartitionAddSuggestionSupport,
-    dialect_protocols.PartitionBuildSuggestionSupport,
-    dialect_protocols.PartitionDropSuggestionSupport,
-    dialect_protocols.PartitionMergeSuggestionSupport,
-    dialect_protocols.PartitionRetentionSuggestionSupport,
-    dialect_protocols.PartitionSplitSuggestionSupport,
-    dialect_protocols.PartitionTableAlterSuggestionSupport,
-    dialect_protocols.PartitionTableDropSuggestionSupport,
+    suggestion_protocols.PartitionAddSuggestionSupport,
+    suggestion_protocols.PartitionBuildSuggestionSupport,
+    suggestion_protocols.PartitionDropSuggestionSupport,
+    suggestion_protocols.PartitionMergeSuggestionSupport,
+    suggestion_protocols.PartitionRetentionSuggestionSupport,
+    suggestion_protocols.PartitionSplitSuggestionSupport,
+    suggestion_protocols.PartitionTableAlterSuggestionSupport,
+    suggestion_protocols.PartitionTableDropSuggestionSupport,
     dialect_protocols.PartitionSupport,
     dialect_protocols.QualifyClauseSupport,
     dialect_protocols.UUIDSupport,
@@ -161,6 +162,20 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.TimestampSupport,
     dialect_protocols.DqlOrderSupport,
     dialect_protocols.PivotSupport,
+    # Protocols added by the core refactor that this dialect satisfies.
+    dialect_protocols.AsyncIntrospectionSupport,
+    dialect_protocols.DDLColumnSupport,
+    dialect_protocols.DMLSupport,
+    dialect_protocols.DQLSupport,
+    dialect_protocols.DatabaseNameSupport,
+    dialect_protocols.DateTimeSupport,
+    dialect_protocols.ExpressionSupport,
+    dialect_protocols.FunctionCallSupport,
+    dialect_protocols.PredicateSupport,
+    dialect_protocols.PropertyGraphNameSupport,
+    dialect_protocols.RelationSourceSupport,
+    dialect_protocols.SchemaNameSupport,
+    dialect_protocols.TrimSupport,
 ]
 
 
@@ -200,6 +215,11 @@ SQLSERVER_NOT_IMPLEMENTED = [
     dialect_protocols.SQLXMLQueryingSupport,
     # SQL Server has no SQL/PGQ property-graph GRAPH_TABLE expression.
     dialect_protocols.GraphTableSupport,
+    # SQL Server has no LPAD / RPAD / REPEAT functions; padding is spelled with
+    # REPLICATE together with RIGHT / LEFT.
+    dialect_protocols.LpadSupport,
+    dialect_protocols.RepeatSupport,
+    dialect_protocols.RpadSupport,
 ]
 
 

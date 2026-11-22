@@ -16,6 +16,7 @@ from typing import Any, List, Optional, Tuple
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.objects import Index, Table, View
+from rhosocial.activerecord.backend.suggestion.definitions import ConcatenationFunctionSuggestion
 
 
 class SQLServerProtocolSupportMixin:
@@ -25,6 +26,9 @@ class SQLServerProtocolSupportMixin:
     #: unambiguous spelling.
     STRING_CONCATENATION = "CONCAT"
 
+    def suggest_concatenation_function(self) -> ConcatenationFunctionSuggestion:
+        """Core reads the concatenation spelling from this suggestion protocol."""
+        return ConcatenationFunctionSuggestion(function=self.STRING_CONCATENATION)
 
     def supports_output_clause(self) -> bool:
         """SQL Server supports the OUTPUT clause."""
