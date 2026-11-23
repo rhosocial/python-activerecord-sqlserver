@@ -18,6 +18,7 @@ import pytest
 from rhosocial.activerecord.backend.adapters import (
     BitString,
     Geometry,
+    IPAddress,
     MacAddress,
     Multirange,
     Range,
@@ -26,7 +27,7 @@ from rhosocial.activerecord.backend.adapters import (
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
-NEUTRAL_FAMILIES = (Geometry, Vector, BitString, Range, Multirange, MacAddress)
+NEUTRAL_FAMILIES = (Geometry, Vector, BitString, Range, Multirange, MacAddress, IPAddress)
 
 
 @pytest.fixture(scope="module")

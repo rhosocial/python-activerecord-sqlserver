@@ -1,5 +1,5 @@
 # tests/rhosocial/activerecord_sqlserver_test/feature/backend/construct/types/test_column_type.py
-"""SQL Server's twenty-four-entry column-type table.
+"""SQL Server's framework-committed column-type table.
 
 Pure dialect tests -- no server, no connection. What is asserted here is the
 *declaration*: that the dialect composes core's
@@ -34,6 +34,7 @@ from rhosocial.activerecord.backend.expression.column_types import (
     ColumnBase,
     GeometryColumn,
     IntegerColumn,
+    IPAddressColumn,
     IntervalColumn,
     JSONColumn,
     MacAddressColumn,
@@ -46,8 +47,10 @@ from rhosocial.activerecord.backend.expression.column_types import (
     VectorColumn,
 )
 from rhosocial.activerecord.backend.adapters import (
+    AwareDatetime,
     BitString,
     Geometry,
+    IPAddress,
     MacAddress,
     Multirange,
     Range,
@@ -112,7 +115,7 @@ class TestTableCompleteness:
         assert callable(SQLServerColumnTypeMixin.suggest_extra_column_types)
 
     def test_every_entry_is_answered(self, dialect):
-        """All twenty-four, by name -- an omission fails here, not at lookup."""
+        """Every framework-committed entry, by name -- an omission fails here."""
         missing = [e for e in COMMON_TYPES if e not in dialect.suggest_column_types().table]
         assert missing == []
 
@@ -173,6 +176,7 @@ class TestBaselineCells:
             (bytearray, BinaryColumn),
             (datetime.date, TimestampColumn),
             (datetime.time, TimestampColumn),
+            (AwareDatetime, TimestampColumn),
             (datetime.datetime, TimestampColumn),
             (datetime.timedelta, IntervalColumn),
             (uuid.UUID, UUIDColumn),
@@ -188,6 +192,7 @@ class TestBaselineCells:
             "bytearray",
             "date",
             "time",
+            "AwareDatetime",
             "datetime",
             "timedelta",
             "UUID",
@@ -277,6 +282,7 @@ class TestSQLServerDeviations:
             (Range, RangeColumn),
             (Multirange, MultirangeColumn),
             (MacAddress, MacAddressColumn),
+            (IPAddress, IPAddressColumn),
         ):
             assert table[entry] is klass
 
@@ -397,6 +403,7 @@ def test_the_summary_table_reads_the_way_the_spec_writes_it():
         "bytearray": "BinaryColumn",
         "date": "TimestampColumn",
         "time": "TimestampColumn",
+        "AwareDatetime": "TimestampColumn",
         "datetime": "TimestampColumn",
         "timedelta": "IntervalColumn",
         "UUID": "UUIDColumn",
@@ -412,6 +419,7 @@ def test_the_summary_table_reads_the_way_the_spec_writes_it():
         "Range": "RangeColumn",
         "Multirange": "MultirangeColumn",
         "MacAddress": "MacAddressColumn",
+        "IPAddress": "IPAddressColumn",
     }
 
 

@@ -177,6 +177,7 @@ class AsyncSQLServerBackend(
             SQLServerBitStringAdapter,
             SQLServerRangeAdapter,
             SQLServerMacAddressAdapter,
+            SQLServerIPAddressAdapter,
             SQLServerHierarchyIdAdapter,
         )
         sqlserver_adapters = [
@@ -193,6 +194,7 @@ class AsyncSQLServerBackend(
             SQLServerBitStringAdapter(),
             SQLServerRangeAdapter(),
             SQLServerMacAddressAdapter(),
+            SQLServerIPAddressAdapter(),
             # Registered under the ``hierarchyid`` column type only (see the
             # sync backend's note): never under a Python target.
             SQLServerHierarchyIdAdapter(),

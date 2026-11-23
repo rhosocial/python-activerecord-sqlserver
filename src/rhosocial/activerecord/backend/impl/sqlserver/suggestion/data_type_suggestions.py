@@ -29,10 +29,11 @@ Shapes this server forces:
 The complex families are carried as the text their neutral adapters already
 write -- WKT for ``Geometry``, a JSON array for ``Vector``, bit-string text for
 ``BitString``, the literal text for ``Range`` / ``Multirange``, canonical
-lowercase colon text for ``MacAddress``. SQL Server does have native
-``geometry`` / ``geography`` CLR types, but this backend models no ``DataType``
-class for them yet, so the suggestion names the text carrier a bare field can
-round-trip through; a field that wants the CLR type declares it with
+lowercase colon text for ``MacAddress``, canonical text for ``IPAddress``.
+SQL Server does have native ``geometry`` / ``geography`` CLR types, but this
+backend models no ``DataType`` class for them yet, so the suggestion names the
+text carrier a bare field can round-trip through; a field that wants the CLR
+type declares it with
 ``UseSqlType``. No key answers ``None``: a suggestion is what a bare field gets,
 and taking the table away from the caller is not an answer.
 
@@ -55,8 +56,10 @@ from rhosocial.activerecord.backend.suggestion.definitions import (
 )
 
 from rhosocial.activerecord.backend.adapters import (
+    AwareDatetime,
     BitString,
     Geometry,
+    IPAddress,
     MacAddress,
     Multirange,
     Range,
@@ -71,6 +74,7 @@ from rhosocial.activerecord.backend.expression.types import (
     TextType,
     TimeType,
     TimestampType,
+    TimestampTzType,
     VarCharType,
 )
 from rhosocial.activerecord.backend.impl.sqlserver.expression.types import (
@@ -94,6 +98,11 @@ SQLSERVER_DATA_TYPE_SUGGESTIONS: Dict[Any, Optional[Any]] = {
     bytearray: SQLServerVarBinaryMaxType(),
     datetime.date: DateType(),
     datetime.time: TimeType(),
+    # An instant: DATETIMEOFFSET keeps the offset alongside the wall clock, so
+    # an AwareDatetime field declares the timezone-aware type. Use the same
+    # microsecond precision as the bare datetime recommendation (6) -- core's
+    # AwareDatetime attaches UTC to naive values, the driver binds it natively.
+    AwareDatetime: TimestampTzType(precision=6),
     # DATETIME2's default precision is 7, but anything below 6 loses the
     # microsecond part of a datetime (3 keeps only milliseconds).  Recommend 6
     # so a bare ``datetime`` field round-trips the microsecond a caller writes.
@@ -119,6 +128,9 @@ SQLSERVER_DATA_TYPE_SUGGESTIONS: Dict[Any, Optional[Any]] = {
     Range: TextType(),
     Multirange: TextType(),
     MacAddress: VarCharType(length=17),
+    # No native IP type; canonical text (max 45 chars covers IPv6) is the
+    # carrier the adapter writes and reads.
+    IPAddress: VarCharType(length=45),
 }
 
 

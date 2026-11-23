@@ -48,7 +48,7 @@ value was declared as, and the difference between a ``NUMERIC(18,4)`` and a
 answer :class:`NumericColumn` here, and the measured two-roundings fact is
 carried by the DataType declaration rather than dropped.
 
-The table answers all twenty-four of the framework's Python types and needs
+The table answers all of the framework-committed Python types and needs
 **no version gate**: the JSON route works on 2019, 2022 and 2025 alike, and the
 three agree item for item. An entry left out would be indistinguishable from
 one nobody thought about, so every key is present; the only permitted ``None``
@@ -80,8 +80,10 @@ import uuid
 from typing import Any, Dict, Type
 
 from rhosocial.activerecord.backend.adapters import (
+    AwareDatetime,
     BitString,
     Geometry,
+    IPAddress,
     MacAddress,
     Multirange,
     Range,
@@ -98,6 +100,7 @@ from rhosocial.activerecord.backend.expression.column_types import (
     ColumnBase,
     GeometryColumn,
     IntegerColumn,
+    IPAddressColumn,
     IntervalColumn,
     JSONColumn,
     MacAddressColumn,
@@ -173,6 +176,11 @@ SQLSERVER_COLUMN_TYPES: Dict[Any, Type[ColumnBase]] = {
     # measured working, so nothing about tz is narrowed.
     datetime.date: TimestampColumn,
     datetime.time: TimestampColumn,
+    # An instant is still a timestamp on the column surface -- the tz-aware
+    # declaration is the DataType layer's decision (see suggest_data_types).
+    # It precedes datetime.datetime in the lookup walk as AwareDatetime is a
+    # datetime subclass, so the exact-match step picks this entry first.
+    AwareDatetime: TimestampColumn,
     datetime.datetime: TimestampColumn,
     # A duration is a span, not a number, so it answers `IntervalColumn`.
     # SQL Server has no interval *type* at all -- a span exists only as
@@ -249,11 +257,12 @@ SQLSERVER_COLUMN_TYPES: Dict[Any, Type[ColumnBase]] = {
     Range: RangeColumn,
     Multirange: MultirangeColumn,
     MacAddress: MacAddressColumn,
+    IPAddress: IPAddressColumn,
 }
 
 
 class SQLServerColumnTypeMixin:
-    """SQL Server's full 24-entry column-type table.
+    """SQL Server's full, framework-committed column-type table.
 
     Composed into :class:`~...dialect.SQLServerDialect`, so its
     :meth:`suggest_column_types` is the one a model layer reaches. Core
@@ -270,10 +279,12 @@ class SQLServerColumnTypeMixin:
         """The column class each common Python type means on SQL Server.
 
         A fresh copy per call, so a caller mutating the answer cannot corrupt
-        what the next lookup reads. All twenty-four entries are answered with a
-        class: SQL Server's storage substitutions (JSON documents in
+        what the next lookup reads. Every framework-committed entry is answered
+        with a class: SQL Server's storage substitutions (JSON documents in
         ``NVARCHAR(MAX)``, spans as counts, no native array) still carry the
-        operations, so this table has no last-resort ``None``.
+        operations, so this table has no last-resort ``None``. Every
+        framework-committed entry, including ``AwareDatetime`` and
+        ``IPAddress``, is answered here.
         """
         return ColumnTypeSuggestion(table=dict(SQLSERVER_COLUMN_TYPES))
 

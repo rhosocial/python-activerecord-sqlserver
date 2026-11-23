@@ -2,7 +2,7 @@
 """DB-free coverage for SQL Server's neutral-type adapters.
 
 These adapters bridge the core neutral types (geometry, vector, bit string,
-range/multirange, MAC address) to SQL Server column representations. No live
+range/multirange, MAC address, IP address) to SQL Server column representations. No live
 server is involved: encoding/decoding is pure Python, and the backend inventory
 is built from the adapter registry.
 
@@ -19,6 +19,7 @@ import pytest
 from rhosocial.activerecord.backend.adapters import (
     BitString,
     Geometry,
+    IPAddress,
     LineString,
     MacAddress,
     Multirange,
@@ -31,6 +32,7 @@ from rhosocial.activerecord.backend.errors import TypeConversionError
 from rhosocial.activerecord.backend.impl.sqlserver.adapters import (
     SQLServerBitStringAdapter,
     SQLServerGeometryAdapter,
+    SQLServerIPAddressAdapter,
     SQLServerMacAddressAdapter,
     SQLServerRangeAdapter,
     SQLServerVectorAdapter,
@@ -60,6 +62,11 @@ def range_adapter():
 @pytest.fixture
 def mac_adapter():
     return SQLServerMacAddressAdapter()
+
+
+@pytest.fixture
+def ip_adapter():
+    return SQLServerIPAddressAdapter()
 
 
 class TestGeometryAdapter:
@@ -286,6 +293,37 @@ class TestMacAddressAdapter:
             mac_adapter.from_database(b"\x01\x02\x03\x04", MacAddress)
 
 
+class TestIPAddressAdapter:
+    @pytest.mark.parametrize(
+        "text", ["192.0.2.1", "2001:db8::1", "::1", "0.0.0.0"]
+    )
+    def test_encode_is_canonical_text(self, ip_adapter, text):
+        ip = IPAddress.parse(text)
+        assert ip_adapter.to_database(ip, str) == str(ip)
+
+    @pytest.mark.parametrize(
+        "text", ["192.0.2.1", "2001:db8::1"]
+    )
+    def test_round_trip(self, ip_adapter, text):
+        original = IPAddress.parse(text)
+        result = ip_adapter.from_database(ip_adapter.to_database(original, str), IPAddress)
+        assert result == original
+
+    def test_decode_accepts_a_stdlib_object(self, ip_adapter):
+        import ipaddress
+
+        std = ipaddress.ip_address("192.0.2.1")
+        assert ip_adapter.from_database(std, IPAddress) == IPAddress.parse("192.0.2.1")
+
+    def test_invalid_text_wrapped(self, ip_adapter):
+        with pytest.raises(TypeConversionError):
+            ip_adapter.from_database("not-an-ip", IPAddress)
+
+    def test_non_text_wrapped(self, ip_adapter):
+        with pytest.raises(TypeConversionError):
+            ip_adapter.from_database(b"192.0.2.1", IPAddress)
+
+
 @pytest.fixture(scope="module")
 def backend():
     from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
@@ -312,6 +350,7 @@ class TestAdapterInventory:
             SQLServerBitStringAdapter,
             SQLServerRangeAdapter,
             SQLServerMacAddressAdapter,
+            SQLServerIPAddressAdapter,
         ],
     )
     def test_neutral_adapter_is_registered(self, backend, adapter_class):

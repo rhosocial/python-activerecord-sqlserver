@@ -359,8 +359,9 @@ class SQLServerBackendMixin:
         The neutral families have no SQL Server column type of their own.  They
         are carried as text -- WKT for geometry, a JSON array for vectors,
         bit-string text for ``BitString``, range JSON for ``Range`` /
-        ``Multirange``, and canonical lowercase colon text for MAC addresses --
-        so each one is merged with a plain ``str`` target.
+        ``Multirange``, canonical lowercase colon text for MAC addresses, and
+        canonical text for ``IPAddress`` -- so each one is merged with a plain
+        ``str`` target.
         """
         if getattr(self, '_default_suggestions_cache', None) is not None:
             return DataAdapterSuggestion(table=self._default_suggestions_cache)
@@ -371,7 +372,7 @@ class SQLServerBackendMixin:
 
         from rhosocial.activerecord.backend.adapters.bitstring import BitString
         from rhosocial.activerecord.backend.adapters.geometry import Geometry
-        from rhosocial.activerecord.backend.adapters.network import MacAddress
+        from rhosocial.activerecord.backend.adapters.network import IPAddress, MacAddress
         from rhosocial.activerecord.backend.adapters.range import Multirange, Range
         from rhosocial.activerecord.backend.adapters.vector import Vector
         from rhosocial.activerecord.backend.base.type_adaption import (
@@ -390,6 +391,7 @@ class SQLServerBackendMixin:
             (Range, str),
             (Multirange, str),
             (MacAddress, str),
+            (IPAddress, str),
         ]
 
         overrides = list(PORTABLE_TYPE_MAPPINGS) + type_mappings

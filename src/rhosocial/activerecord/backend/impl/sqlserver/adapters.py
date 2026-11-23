@@ -18,6 +18,8 @@ from rhosocial.activerecord.backend.adapters import (
     BitStringAdapterBase,
     Geometry,
     GeometryAdapterBase,
+    IPAddress,
+    IPAddressAdapterBase,
     MacAddress,
     MacAddressAdapterBase,
     Multirange,
@@ -603,6 +605,28 @@ class SQLServerMacAddressAdapter(MacAddressAdapterBase):
             except UnicodeDecodeError as exc:
                 raise ValueError("MAC address bytes must be 6 or 8 octets") from exc
         return MacAddress.parse(value)
+
+
+class SQLServerIPAddressAdapter(IPAddressAdapterBase):
+    """Canonical-text adapter for IP addresses.
+
+    SQL Server has no IP address type; the value is stored in ``VARCHAR``/``NVARCHAR``
+    as the canonical compressed text (``192.0.2.1`` / ``2001:db8::1``), which is
+    what the neutral :class:`IPAddress` renders and parses. The base class supplies
+    the three conversion methods; only the two hooks below are backend-specific.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.register_type(IPAddress, str)
+
+    def _encode(
+        self, ip_addr: IPAddress, target_type: Type, options: Dict = None
+    ) -> str:
+        return str(ip_addr)
+
+    def _decode(self, value: Any, options: Dict = None) -> IPAddress:
+        return IPAddress.parse(value)
 
 
 class SQLServerHierarchyIdAdapter(TypeAdapter):

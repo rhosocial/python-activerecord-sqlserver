@@ -203,6 +203,7 @@ class SQLServerBackend(
             SQLServerBitStringAdapter,
             SQLServerRangeAdapter,
             SQLServerMacAddressAdapter,
+            SQLServerIPAddressAdapter,
             SQLServerHierarchyIdAdapter,
         )
         sqlserver_adapters = [
@@ -219,6 +220,7 @@ class SQLServerBackend(
             SQLServerBitStringAdapter(),
             SQLServerRangeAdapter(),
             SQLServerMacAddressAdapter(),
+            SQLServerIPAddressAdapter(),
             # Registered under the ``hierarchyid`` column type only, never under
             # a Python target: a ``str`` suggestion would put this adapter on
             # every text field. A field opts in with
