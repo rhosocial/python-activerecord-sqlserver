@@ -45,8 +45,8 @@ from rhosocial.activerecord.base import (
     CollationAttribute,
     DDLAnnotation,
     DDLAnnotationHandler,
-    DDLSourceMixin,
-    DDLSource,
+    ModelDDLDeclarationMixin,
+    ModelDDLDeclaration,
     IdentityAttribute,
     UseColumn,
     UseColumnAttributes,
@@ -317,8 +317,8 @@ def _index_signature(index):
 
 @pytest.mark.parametrize("model", [SyncModel, AsyncModel], ids=("sync", "async"))
 def test_field_declarations_are_collected_in_declaration_order(model):
-    assert issubclass(model, DDLSourceMixin)
-    assert isinstance(model, DDLSource)
+    assert issubclass(model, ModelDDLDeclarationMixin)
+    assert isinstance(model, ModelDDLDeclaration)
     assert ColumnOptionsHandler in model.get_feature_handlers()
     assert model.ddl_field_names() == (
         "pk_field",

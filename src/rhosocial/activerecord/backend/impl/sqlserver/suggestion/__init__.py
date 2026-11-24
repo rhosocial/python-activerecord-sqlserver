@@ -10,6 +10,7 @@ suggestion package. Shared plan-reading helpers and their common base live in
 """
 
 from ._common import SQLServerPartitionSuggestionBase
+from .create_table_layout_suggestion import SQLServerCreateTableLayoutSuggestionMixin
 from .data_type_suggestions import (
     SQLSERVER_DATA_TYPE_SUGGESTIONS,
     SQLServerDataTypeSuggestionsMixin,
@@ -28,6 +29,7 @@ from .partition_table_drop_suggestion import SQLServerPartitionTableDropSuggesti
 
 __all__ = [
     "SQLServerPartitionSuggestionBase",
+    "SQLServerCreateTableLayoutSuggestionMixin",
     "SQLServerIntegerAutoIncrementColumnSuggestionMixin",
     "SQLSERVER_DATA_TYPE_SUGGESTIONS",
     "SQLServerDataTypeSuggestionsMixin",

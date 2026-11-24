@@ -9,6 +9,9 @@ based on the SQL Server version provided at initialization.
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.suggestion.definitions import SubstituteTypeSuggestion
+from rhosocial.activerecord.backend.suggestion.protocols import (
+    CreateTableLayoutSuggestionSupport,
+)
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
@@ -151,6 +154,9 @@ from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
+from .suggestion.create_table_layout_suggestion import (
+    SQLServerCreateTableLayoutSuggestionMixin,
+)
 from .suggestion.integer_auto_increment_column_suggestion import (
     SQLServerIntegerAutoIncrementColumnSuggestionMixin,
 )
@@ -254,9 +260,9 @@ _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquer
 class SQLServerDialect(
     # Backend suggestions first: no core mixin may shadow their answers. The
     # eight partition mixins (one per lifecycle point, each sharing the plan
-    # readers in SQLServerPartitionSuggestionBase) and the auto-increment and
-    # data-type answers all sit ahead of every core/base mixin for the C3
-    # reason spelled out below.
+    # readers in SQLServerPartitionSuggestionBase) and the auto-increment,
+    # data-type and create-table-layout answers all sit ahead of every
+    # core/base mixin for the C3 reason spelled out below.
     SQLServerPartitionAddSuggestionMixin,
     SQLServerPartitionBuildSuggestionMixin,
     SQLServerPartitionDropSuggestionMixin,
@@ -266,6 +272,7 @@ class SQLServerDialect(
     SQLServerPartitionTableAlterSuggestionMixin,
     SQLServerPartitionTableDropSuggestionMixin,
     SQLServerIntegerAutoIncrementColumnSuggestionMixin,
+    SQLServerCreateTableLayoutSuggestionMixin,
     # The bases below come in bundles: a backend mixin, then the core bundle
     # it stands in for. The backend's answer has to come first -- a mixin
     # placed after the class it overrides never wins -- so a new mixin goes
@@ -435,6 +442,8 @@ class SQLServerDialect(
     ILIKEMixin,
     FunctionMixin,
     # Protocols for isinstance() checks
+    # Suggestion protocols (relocated to backend.suggestion.protocols)
+    CreateTableLayoutSuggestionSupport,
     CollationSupport,
     CTESupport,
     FilterClauseSupport,
