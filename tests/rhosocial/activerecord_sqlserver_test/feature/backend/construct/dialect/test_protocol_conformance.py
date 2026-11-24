@@ -90,7 +90,7 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.GraphSupport,
     dialect_protocols.ILIKESupport,
     dialect_protocols.IdentityColumnSupport,
-    suggestion_protocols.IntegerAutoIncrementColumnSuggestionSupport,
+    suggestion_protocols.GeneratedValueSuggestionSupport,
     dialect_protocols.IntrospectionSupport,
     dialect_protocols.JSONSupport,
     dialect_protocols.JoinSupport,

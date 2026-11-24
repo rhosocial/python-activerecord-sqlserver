@@ -1,5 +1,5 @@
-# src/rhosocial/activerecord/backend/impl/sqlserver/suggestion/integer_auto_increment_column_suggestion.py
-"""SQLServerIntegerAutoIncrementColumnSuggestionMixin -- sqlserver's integer auto-increment column suggestion.
+# src/rhosocial/activerecord/backend/impl/sqlserver/suggestion/generated_value_suggestion.py
+"""SQLServerGeneratedValueSuggestionMixin -- sqlserver's generated-value column suggestion.
 
 The answer is the backend's own spelling, assembled from its capability
 probes where it has one. It is placed first in the dialect bases so no core
@@ -10,18 +10,20 @@ formatter owns the SQL spelling.
 from typing import TYPE_CHECKING
 
 from ....expression.statements import IdentityClause
-from ....suggestion import IntegerAutoIncrementColumnSuggestion
+from ....suggestion import GeneratedValueSuggestion
 
 if TYPE_CHECKING:  # pragma: no cover
     from ....expression.types._base import DataType
 
 
-class SQLServerIntegerAutoIncrementColumnSuggestionMixin:
+class SQLServerGeneratedValueSuggestionMixin:
     """Suggest sqlserver's declaration for a generated integer key."""
 
-    def suggest_integer_auto_increment_column(
+    def suggest_generated_value(
         self, default_type: "DataType"
-    ) -> IntegerAutoIncrementColumnSuggestion:
-        return IntegerAutoIncrementColumnSuggestion(
-            default_type, IdentityClause(self, start=1, increment=1)
+    ) -> GeneratedValueSuggestion:
+        return GeneratedValueSuggestion(
+            state="generate",
+            storage_type=default_type,
+            clause=IdentityClause(self, start=1, increment=1),
         )

@@ -15,9 +15,7 @@ from .data_type_suggestions import (
     SQLSERVER_DATA_TYPE_SUGGESTIONS,
     SQLServerDataTypeSuggestionsMixin,
 )
-from .integer_auto_increment_column_suggestion import (
-    SQLServerIntegerAutoIncrementColumnSuggestionMixin,
-)
+from .generated_value_suggestion import SQLServerGeneratedValueSuggestionMixin
 from .partition_add_suggestion import SQLServerPartitionAddSuggestionMixin
 from .partition_build_suggestion import SQLServerPartitionBuildSuggestionMixin
 from .partition_drop_suggestion import SQLServerPartitionDropSuggestionMixin
@@ -30,7 +28,7 @@ from .partition_table_drop_suggestion import SQLServerPartitionTableDropSuggesti
 __all__ = [
     "SQLServerPartitionSuggestionBase",
     "SQLServerCreateTableLayoutSuggestionMixin",
-    "SQLServerIntegerAutoIncrementColumnSuggestionMixin",
+    "SQLServerGeneratedValueSuggestionMixin",
     "SQLSERVER_DATA_TYPE_SUGGESTIONS",
     "SQLServerDataTypeSuggestionsMixin",
     "SQLServerPartitionAddSuggestionMixin",

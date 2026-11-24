@@ -6,7 +6,7 @@ This dialect implements protocols for features that SQL Server actually supports
 based on the SQL Server version provided at initialization.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.suggestion.definitions import SubstituteTypeSuggestion
 from rhosocial.activerecord.backend.suggestion.protocols import (
@@ -157,8 +157,8 @@ from .mixins.identity_column import SQLServerIdentityColumnMixin
 from .suggestion.create_table_layout_suggestion import (
     SQLServerCreateTableLayoutSuggestionMixin,
 )
-from .suggestion.integer_auto_increment_column_suggestion import (
-    SQLServerIntegerAutoIncrementColumnSuggestionMixin,
+from .suggestion.generated_value_suggestion import (
+    SQLServerGeneratedValueSuggestionMixin,
 )
 from .suggestion.partition_add_suggestion import SQLServerPartitionAddSuggestionMixin
 from .suggestion.partition_build_suggestion import SQLServerPartitionBuildSuggestionMixin
@@ -271,7 +271,7 @@ class SQLServerDialect(
     SQLServerPartitionSplitSuggestionMixin,
     SQLServerPartitionTableAlterSuggestionMixin,
     SQLServerPartitionTableDropSuggestionMixin,
-    SQLServerIntegerAutoIncrementColumnSuggestionMixin,
+    SQLServerGeneratedValueSuggestionMixin,
     SQLServerCreateTableLayoutSuggestionMixin,
     # The bases below come in bundles: a backend mixin, then the core bundle
     # it stands in for. The backend's answer has to come first -- a mixin
