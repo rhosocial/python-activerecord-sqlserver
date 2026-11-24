@@ -1,4 +1,4 @@
-# tests/rhosocial/activerecord_sqlserver_test/feature/backend/execute/sequence_identity/test_identity_capability_conformance.py
+# tests/rhosocial/activerecord_sqlserver_test/feature/backend/execute/sequence_identity/test_identity_capability_conformance.py  # noqa: E501
 """Execution confirmation for SQL Server's identity column.
 
 Rendering is not execution: a formatter can produce SQL that looks perfect and
@@ -8,8 +8,9 @@ REJECTED -- a classifier that cannot see a rejection would make the
 confirmation vacuous.
 
 The SQL rendered by the dialect is what is executed: the ``CreateTableStatement``
-is built with an AR-layer ``IdentityAttribute``, exactly the path an application
-uses, and the rendered statement is handed to
+carries an expression-layer ``IdentityClause`` on a directly-built
+``ColumnDefinition`` (the AR layer's deriver normally produces that clause from a
+model declaration), and the rendered statement is handed to
 :func:`confirm_expression_execution`. Three outcomes stay distinct:
 
 * ACCEPTED -- the server accepted the SQL;
@@ -26,7 +27,6 @@ spelling.
 
 import pytest
 
-from rhosocial.activerecord.base import IdentityAttribute
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression import (
     ColumnDefinition,
@@ -58,8 +58,16 @@ def _drop(backend, table_name: str) -> None:
 
 
 def _create_table(dialect, table_name: str, *, generation=None, **identity_kwargs):
-    attribute = IdentityAttribute(
-        generation=generation or "BY DEFAULT", **identity_kwargs
+    # The deriver used to translate ``IdentityAttribute(cycle=False)`` into the
+    # expression layer's ``no_cycle`` parameter; a directly-built clause has to
+    # make that mapping itself so a NO CYCLE request still reaches the gate.
+    if "cycle" in identity_kwargs:
+        cycle = identity_kwargs.pop("cycle")
+        identity_kwargs["cycle" if cycle else "no_cycle"] = True
+    clause = IdentityClause(
+        dialect,
+        generation=generation or "BY DEFAULT",
+        **identity_kwargs,
     )
     return CreateTableStatement(
         dialect=dialect,
@@ -69,7 +77,7 @@ def _create_table(dialect, table_name: str, *, generation=None, **identity_kwarg
                 dialect,
                 "id",
                 IntegerType(dialect),
-                attributes=[attribute],
+                attributes=[clause],
             ),
             ColumnDefinition(dialect, "v", TextType(dialect)),
         ],
@@ -208,10 +216,9 @@ class TestUnsupportedRequestsAreNotRendered:
     ):
         """ORDER / CACHE have no spelling in ``IDENTITY(seed, increment)``.
 
-        The AR-layer ``IdentityAttribute`` does not carry these fields yet, so
-        the request is built at the clause level -- the unit the formatter
-        gates. The verdict is NOT_RENDERED: the dialect refuses before the
-        server is ever asked, and the refusal names the option.
+        These options are requested at the clause level -- the unit the
+        formatter gates. The verdict is NOT_RENDERED: the dialect refuses before
+        the server is ever asked, and the refusal names the option.
         """
         dialect = sqlserver_backend.dialect
         expr = IdentityClause(dialect, **identity_kwargs)
