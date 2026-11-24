@@ -520,6 +520,12 @@ class TestTriggerDdl:
         assert d.supports_trigger() is True
         assert d.supports_create_trigger() is True
         assert d.supports_drop_trigger() is True
+        assert d.supports_trigger_if_not_exists() is False
+        assert d.supports_trigger_if_exists() is False
+
+    def test_trigger_if_exists_probe_gates_on_2016(self):
+        assert SQLServerDialect(SQL_SERVER_2012).supports_trigger_if_exists() is False
+        assert SQLServerDialect(SQL_SERVER_2016).supports_trigger_if_exists() is True
 
     def test_create_trigger_after_insert(self, dialect):
         expr = SQLServerCreateTriggerStatement(
@@ -580,11 +586,12 @@ class TestTriggerDdl:
         sql, _ = expr.to_sql()
         assert sql == "DROP TRIGGER IF EXISTS [trg]"
 
-    def test_drop_trigger_if_exists_omitted_below_2016(self):
+    def test_drop_trigger_if_exists_refused_below_2016(self):
+        """Below 2016 the clause does not exist, so the flag is refused."""
         d = SQLServerDialect(SQL_SERVER_2012)
         expr = SQLServerDropTriggerStatement(d, "trg", if_exists=True)
-        sql, _ = expr.to_sql()
-        assert sql == "DROP TRIGGER [trg]"
+        with pytest.raises(UnsupportedFeatureError, match="DROP TRIGGER IF EXISTS"):
+            expr.to_sql()
 
     def test_validation(self, dialect):
         with pytest.raises(ValueError):

@@ -3,9 +3,12 @@
 
 SQL Server models named schema namespaces natively (e.g. dbo), so the dialect
 must report ``supports_schema()`` as True, and it renders every namespace level
-a name can carry -- catalog, schema and name. IF NOT EXISTS / IF EXISTS variants
-are not supported by the server and must stay False.
+a name can carry -- catalog, schema and name. ``DROP SCHEMA IF EXISTS`` is a
+2016+ clause; ``CREATE SCHEMA IF NOT EXISTS`` is not T-SQL at all.
 """
+import pytest
+
+from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.dialect.protocols import NamespaceSupport
 from rhosocial.activerecord.backend.expression.objects import Schema, Table
 from rhosocial.activerecord.backend.expression.statements.ddl_schema import (
@@ -130,8 +133,13 @@ class TestSchemaCapability:
         assert d.supports_create_schema() is True
         assert d.supports_drop_schema() is True
         assert d.supports_schema_if_not_exists() is False
-        assert d.supports_schema_if_exists() is False
+        assert d.supports_schema_if_exists() is True
         assert d.supports_schema_cascade() is False
+
+    def test_drop_schema_if_exists_gates_on_2016(self):
+        """DROP SCHEMA IF EXISTS arrived in 2016, so 2012 answers no."""
+        assert SQLServerDialect((12, 0, 0)).supports_schema_if_exists() is False
+        assert SQLServerDialect((13, 0, 0)).supports_schema_if_exists() is True
 
     def test_schema_authorization_capability(self):
         assert self._dialect().supports_schema_authorization() is True
@@ -151,13 +159,27 @@ class TestSchemaDDLFormatting:
         assert "IF NOT EXISTS" not in sql
         assert params == ()
 
+    def test_create_schema_if_not_exists_refused(self):
+        """CREATE SCHEMA has no IF NOT EXISTS, so the flag is refused."""
+        d = self._dialect()
+        expr = CreateSchemaStatement(d, Schema(d, "app"), if_not_exists=True)
+        with pytest.raises(UnsupportedFeatureError, match="CREATE SCHEMA IF NOT EXISTS"):
+            expr.to_sql()
+
     def test_drop_schema(self):
         d = self._dialect()
         sql, _ = DropSchemaStatement(d, Schema(d, "app")).to_sql()
         assert sql == "DROP SCHEMA [app]"
 
-    def test_drop_schema_rejects_unsupported_if_exists(self):
-        """The formatter must never emit IF EXISTS even if requested."""
+    def test_drop_schema_if_exists_renders_on_2016(self):
+        """DROP SCHEMA IF EXISTS is a 2016+ clause and must render there."""
         d = self._dialect()
         sql, _ = DropSchemaStatement(d, Schema(d, "app"), if_exists=True).to_sql()
-        assert "IF EXISTS" not in sql
+        assert sql == "DROP SCHEMA IF EXISTS [app]"
+
+    def test_drop_schema_if_exists_refused_before_2016(self):
+        """Below 2016 the clause does not exist, so the flag is refused."""
+        d = SQLServerDialect((11, 0, 0))
+        expr = DropSchemaStatement(d, Schema(d, "app"), if_exists=True)
+        with pytest.raises(UnsupportedFeatureError, match="DROP SCHEMA IF EXISTS"):
+            expr.to_sql()

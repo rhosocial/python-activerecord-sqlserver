@@ -44,6 +44,14 @@ class SQLServerTriggerDdlMixin:
         """DROP TRIGGER is supported since SQL Server 2005."""
         return self.version_at_least(_SQL_SERVER_TRIGGER_VERSION)  # type: ignore[attr-defined]
 
+    def supports_trigger_if_exists(self) -> bool:
+        """``DROP TRIGGER IF EXISTS`` arrived in SQL Server 2016 (13.x).
+
+        The ``DROP TRIGGER`` reference documents the ``IF EXISTS`` argument as
+        applying to SQL Server 2016 and later versions.
+        """
+        return self.version_at_least(_SQL_SERVER_TRIGGER_IF_EXISTS_VERSION)  # type: ignore[attr-defined]
+
     def _get_trigger_name(self, expr: Any) -> str:
         # Every T-SQL trigger expression names itself through its declared
         # ``name`` field; the shadowed SQL:1999 statements have no such field
@@ -127,7 +135,12 @@ class SQLServerTriggerDdlMixin:
             DROP TRIGGER [IF EXISTS] [schema.]name;
 
         T-SQL DROP TRIGGER does not accept an ON table clause; ``IF EXISTS``
-        is rendered only on SQL Server 2016+.
+        is rendered on SQL Server 2016+ and refused below that floor, where
+        the clause does not exist.
+
+        Raises:
+            UnsupportedFeatureError: If ``expr.if_exists`` was requested on a
+                release that has no ``DROP TRIGGER IF EXISTS``.
         """
         self.check_feature_support(  # type: ignore[attr-defined]
             "supports_drop_trigger",
@@ -139,7 +152,13 @@ class SQLServerTriggerDdlMixin:
             raise ValueError("trigger name is required")
 
         parts = ["DROP", "TRIGGER"]
-        if expr.if_exists and self.version >= _SQL_SERVER_TRIGGER_IF_EXISTS_VERSION:  # type: ignore[attr-defined]
+        if expr.if_exists:
+            if not self.supports_trigger_if_exists():
+                raise UnsupportedFeatureError(
+                    self.name,  # type: ignore[attr-defined]
+                    "DROP TRIGGER IF EXISTS",
+                    "requires SQL Server 2016+.",
+                )
             parts.append("IF EXISTS")
         parts.append(
             self.qualified_object_name_from_dotted(Trigger, name, schema_name=expr.schema)

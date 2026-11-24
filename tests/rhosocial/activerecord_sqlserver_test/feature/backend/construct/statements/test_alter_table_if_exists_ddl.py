@@ -30,6 +30,12 @@ class TestAlterTableModifierCapabilities:
         assert dialect.supports_drop_column_if_exists() is True
         assert dialect.supports_drop_constraint_if_exists() is True
 
+    def test_if_exists_switches_gate_on_2016(self):
+        """Both IF EXISTS clauses arrived in 2016, so 2012 answers no."""
+        old = SQLServerDialect(version=(11, 0, 0))
+        assert old.supports_drop_column_if_exists() is False
+        assert old.supports_drop_constraint_if_exists() is False
+
 
 class TestAddColumn:
     def test_add_column_omits_column_literal(self, dialect):
@@ -56,6 +62,14 @@ class TestDropColumnIfExists:
         assert "DROP COLUMN IF EXISTS [x]" == sql
         assert params == ()
 
+    def test_if_exists_refused_before_2016(self):
+        """The clause does not exist below 2016, so it is refused by name."""
+        action = DropColumnAction(
+            SQLServerDialect(version=(11, 0, 0)), column_name="x", if_exists=True
+        )
+        with pytest.raises(UnsupportedFeatureError, match="DROP COLUMN IF EXISTS"):
+            action.to_sql()
+
     def test_none_renders_plain_form(self, dialect):
         action = DropColumnAction(dialect, column_name="x")
         sql, params = action.to_sql()
@@ -72,6 +86,14 @@ class TestDropConstraintIfExists:
         sql, params = action.to_sql()
         assert "DROP CONSTRAINT IF EXISTS [fk]" == sql
         assert params == ()
+
+    def test_if_exists_refused_before_2016(self):
+        """The clause does not exist below 2016, so it is refused by name."""
+        action = DropTableConstraintAction(
+            SQLServerDialect(version=(11, 0, 0)), constraint_name="fk", if_exists=True
+        )
+        with pytest.raises(UnsupportedFeatureError, match="DROP CONSTRAINT IF EXISTS"):
+            action.to_sql()
 
     def test_none_renders_plain_form(self, dialect):
         action = DropTableConstraintAction(dialect, constraint_name="fk")

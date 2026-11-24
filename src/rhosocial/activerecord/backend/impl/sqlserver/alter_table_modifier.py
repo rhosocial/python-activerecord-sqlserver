@@ -13,6 +13,7 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 
 _SQL_SERVER_SPARSE_COLUMN_VERSION = (10, 0, 0)
 _SQL_SERVER_MASKED_COLUMN_VERSION = (13, 0, 0)
+_SQL_SERVER_IF_EXISTS_VERSION = (13, 0, 0)
 
 
 class SQLServerAlterColumnModifierMixin:
@@ -32,12 +33,13 @@ class SQLServerAlterColumnModifierMixin:
     def supports_drop_column_if_exists(self) -> bool:
         """``DROP COLUMN IF EXISTS`` is supported since SQL Server 2016.
 
-        The "since 2016" floor comes from the official ``ALTER TABLE``
-        grammar page; the instance measured here is 2019 only
-        (``tests/config/sqlserver_scenarios.yaml``: ``sqlserver_2019``,
-        RTM-CU32-GDR 15.0.4465.1, Developer Edition).
+        The ``ALTER TABLE`` reference documents the ``IF EXISTS`` argument as
+        applying to "the column or constraint" from SQL Server 2016 (13.x)
+        onwards, and its ``DROP ... COLUMN [ IF EXISTS ]`` grammar carries the
+        clause. Earlier releases have no ``IF EXISTS`` on ``DROP COLUMN``, so
+        this answers ``False`` below the 2016 floor.
         """
-        return True
+        return self.version_at_least(_SQL_SERVER_IF_EXISTS_VERSION)  # type: ignore[attr-defined]
 
     def supports_drop_constraint_if_exists(self) -> bool:
         """``DROP CONSTRAINT IF EXISTS`` is supported since SQL Server 2016.
@@ -54,10 +56,10 @@ class SQLServerAlterColumnModifierMixin:
         Catching that error pair instead of spelling ``IF EXISTS`` would also
         break on MySQL, which has no ``DROP CONSTRAINT IF EXISTS`` at all.
 
-        The "since 2016" floor is from the official ``ALTER TABLE`` grammar
-        page; no pre-2019 instance was measured here.
+        The same ``IF EXISTS`` argument covers constraints from SQL Server
+        2016 onwards, so this answers ``False`` below the 2016 floor.
         """
-        return True
+        return self.version_at_least(_SQL_SERVER_IF_EXISTS_VERSION)  # type: ignore[attr-defined]
 
     def format_add_column_action(self, expr: Any) -> Tuple[str, tuple]:
         if getattr(expr, "if_not_exists", None) is True:
@@ -74,12 +76,26 @@ class SQLServerAlterColumnModifierMixin:
     def format_drop_column_action(self, expr: Any) -> Tuple[str, tuple]:
         name = self.format_identifier(expr.column_name)
         if getattr(expr, "if_exists", None) is True:
+            if not self.supports_drop_column_if_exists():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    "DROP COLUMN IF EXISTS",
+                    suggestion="requires SQL Server 2016+. Use the plain "
+                               "DROP COLUMN after checking the column exists.",
+                )
             return f"DROP COLUMN IF EXISTS {name}", ()
         return f"DROP COLUMN {name}", ()
 
     def format_drop_table_constraint_action(self, expr: Any) -> Tuple[str, tuple]:
         name = self.format_identifier(expr.constraint_name)
         if getattr(expr, "if_exists", None) is True:
+            if not self.supports_drop_constraint_if_exists():
+                raise UnsupportedFeatureError(
+                    self.name,
+                    "DROP CONSTRAINT IF EXISTS",
+                    suggestion="requires SQL Server 2016+. Use the plain "
+                               "DROP CONSTRAINT after checking the constraint exists.",
+                )
             result = f"DROP CONSTRAINT IF EXISTS {name}"
         else:
             result = f"DROP CONSTRAINT {name}"

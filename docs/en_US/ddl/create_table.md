@@ -117,9 +117,10 @@ backend.execute(sql, params, options=ExecutionOptions(stmt_type=StatementType.DD
 ```
 
 `ALTER TABLE` support is implemented by a modifier with explicit feature
-answers: adding and dropping columns are supported; `ADD COLUMN IF NOT EXISTS`,
-`DROP COLUMN IF EXISTS` and `DROP CONSTRAINT IF EXISTS` are **not** (SQL Server
-has no such clause) and answer `False`.
+answers: adding and dropping columns are supported; `DROP COLUMN IF EXISTS`
+and `DROP CONSTRAINT IF EXISTS` answer `True` from SQL Server 2016 onwards
+(earlier releases have no such clause), while `ADD COLUMN IF NOT EXISTS` is
+**not** T-SQL and answers `False`.
 
 ## Next steps
 
