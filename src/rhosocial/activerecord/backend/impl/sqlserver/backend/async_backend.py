@@ -610,6 +610,31 @@ class AsyncSQLServerBackend(
         
         return self._version
     
+    async def get_edition(self) -> str:
+        """Read the server's ``SERVERPROPERTY('Edition')`` label.
+
+        The sync ``get_edition`` in :class:`SQLServerBackendMixin` drives a
+        synchronous cursor, which does not exist on this backend, so this
+        override is the async half of the same question.
+        """
+        if not self._connection:
+            await self.connect()
+
+        try:
+            probe, probe_params = server_property_value_sql(
+                self.dialect, "Edition"
+            )
+            async with await self._get_cursor() as cursor:
+                await cursor.execute(probe, probe_params)
+                row = await cursor.fetchone()
+                if row:
+                    return row[0]
+
+        except Exception as e:
+            self.log(logging.WARNING, f"Could not determine SQL Server edition: {str(e)}")
+
+        return ""
+
     async def ping(self, reconnect: bool = True) -> bool:
         """Ping the SQL Server asynchronously.
         
@@ -650,13 +675,19 @@ class AsyncSQLServerBackend(
             await self.connect()
         
         actual_version = await self.get_server_version()
+        # Same empty-answer handling as the sync adapt path.
+        actual_edition = await self.get_edition() or None
         if self._version != actual_version:
             self._version = actual_version
             self._dialect = SQLServerUnicodeDialect(
                 actual_version,
                 deployment_target=self.deployment_target,
+                edition=actual_edition,
             )
             self.log(logging.INFO, f"Adapted to SQL Server version {actual_version}")
+        else:
+            # The dialect may predate this probe; record the edition on it.
+            self._dialect.edition = actual_edition
     
     async def executescript(self, sql_script: str) -> None:
         """Execute a multi-statement SQL script asynchronously.

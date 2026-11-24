@@ -18,8 +18,8 @@ class SQLServerIndexMixin:
         return True
 
     def supports_concurrent_index(self) -> bool:
-        """SQL Server supports ONLINE index creation (Enterprise edition)."""
-        return True
+        """SQL Server supports ONLINE index creation (Enterprise feature set)."""
+        return self._has_enterprise_features()  # type: ignore[attr-defined]
 
     def supports_fulltext_index(self) -> bool:
         """SQL Server supports FULLTEXT indexes."""

@@ -578,13 +578,21 @@ class SQLServerBackend(
             self.connect()
         
         actual_version = self.get_server_version()
+        # An empty probe answer means "no value", not a non-Enterprise label:
+        # None keeps the dialect's unknown-edition answer.
+        actual_edition = self.get_edition() or None
         if self._version != actual_version:
             self._version = actual_version
             self._dialect = SQLServerUnicodeDialect(
                 actual_version,
                 deployment_target=self.deployment_target,
+                edition=actual_edition,
             )
             self.log(logging.INFO, f"Adapted to SQL Server version {actual_version}")
+        else:
+            # A dialect built before the probe (the constructor's own, or one
+            # from an earlier adapt) would otherwise keep the edition unknown.
+            self._dialect.edition = actual_edition
     
     def executescript(self, sql_script: str) -> None:
         """Execute a multi-statement SQL script.

@@ -256,6 +256,26 @@ _SUGGESTION_GRAPH_MATCH = (
 _SUGGESTION_ORDERED_SET_AGG = "SQL Server does not support ordered-set aggregate functions (WITHIN GROUP)."
 _SUGGESTION_QUALIFY = "SQL Server does not support QUALIFY clause. Use a subquery or CTE instead."
 
+#: Edition labels that name a server *without* the Enterprise feature set.
+#: Matched against the lower-cased ``SERVERPROPERTY('Edition')`` value, which
+#: is a version-qualified label ("Standard Edition (64-bit)"); see
+#: :meth:`SQLServerDialect._has_enterprise_features`.
+_NON_ENTERPRISE_EDITION_MARKERS = (
+    "standard",
+    "express",
+    "web",
+    "personal",
+    "azure sql database",
+)
+#: Edition labels that carry the Enterprise feature set. Developer and
+#: Evaluation are licensed for it, which is why they appear here beside the
+#: paid edition.
+_ENTERPRISE_EDITION_MARKERS = (
+    "enterprise",
+    "developer",
+    "evaluation",
+)
+
 
 class SQLServerDialect(
     # Backend suggestions first: no core mixin may shadow their answers. The
@@ -588,6 +608,7 @@ class SQLServerDialect(
         version: Optional[Tuple[int, int, int]] = None,
         *,
         deployment_target: str = "sqlserver",
+        edition: Optional[str] = None,
     ) -> None:
         """
         Initialize SQL Server dialect with specific version.
@@ -599,16 +620,44 @@ class SQLServerDialect(
                 features can be used.
             deployment_target: Deployment target label used for CLR capability
                 gating; the default is on-premises SQL Server.
+            edition: The server's ``SERVERPROPERTY('Edition')`` label, e.g.
+                "Enterprise Edition" or "Standard Edition". ``None`` means the
+                edition is unknown, and edition-gated capabilities keep their
+                optimistic answer. :meth:`_has_enterprise_features` interprets
+                the value.
         """
         super().__init__()
         self._reserved_words = SQLSERVER_RESERVED_WORDS
         self.deployment_target = deployment_target
+        self.edition = edition
         if version is not None:
             self.version = version
 
     def get_server_version(self) -> Tuple[int, int, int]:
         """Return the SQL Server version this dialect is configured for."""
         return self.version
+
+    def _has_enterprise_features(self) -> bool:
+        """Whether this server carries the Enterprise feature set.
+
+        Table partitioning (partition functions and schemes) and
+        ``CREATE INDEX ... WITH (ONLINE = ON)`` exist only on Enterprise, and
+        on Developer and Evaluation, which Microsoft licenses for the same
+        feature set. Standard, Express, Web, Personal and Azure SQL Database
+        do not have it.
+
+        An unknown edition (``None``) answers ``True``: the dialect has not
+        been told anything that justifies refusing, so the pre-edition
+        behaviour is kept rather than regressed. An unrecognised label also
+        answers ``False`` -- a capability nobody has confirmed is not claimed.
+        """
+        edition = self.edition
+        if edition is None:
+            return True
+        normalized = edition.lower()
+        if any(marker in normalized for marker in _NON_ENTERPRISE_EDITION_MARKERS):
+            return False
+        return any(marker in normalized for marker in _ENTERPRISE_EDITION_MARKERS)
 
     def create_schema_differ(self):
         """Return the SQL Server schema differ (ordinal-position aware)."""
