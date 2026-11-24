@@ -33,7 +33,6 @@ import typing
 
 import pytest
 
-from rhosocial.activerecord.base import IdentityAttribute
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression import ColumnDefinition
 from rhosocial.activerecord.backend.expression.statements import (
@@ -368,33 +367,37 @@ class TestAutoIncrementMarkerIsRefused:
 
 
 class TestColumnDefinitionUsesTheIdentityClause:
-    """The path a user hits: an ``IdentityAttribute`` on a column definition."""
+    """The path a user hits: an identity clause on a column definition.
 
-    def test_identity_attribute_renders_the_property(self, dialect):
+    AR-layer attributes are translated by the deriver before they reach the
+    dialect, so a directly-built ColumnDefinition carries the clause itself.
+    """
+
+    def test_identity_clause_renders_the_property(self, dialect):
         column = ColumnDefinition(
             dialect,
             "id",
             IntegerType(dialect),
-            attributes=[IdentityAttribute(start=100, increment=5)],
+            attributes=[IdentityClause(dialect, start=100, increment=5)],
         )
         assert column.to_sql() == ("[id] INT IDENTITY(100, 5)", ())
 
-    def test_always_identity_attribute_is_refused(self, dialect):
+    def test_always_identity_clause_is_refused(self, dialect):
         column = ColumnDefinition(
             dialect,
             "id",
             IntegerType(dialect),
-            attributes=[IdentityAttribute(generation="ALWAYS", start=100)],
+            attributes=[IdentityClause(dialect, generation="ALWAYS", start=100)],
         )
         with pytest.raises(UnsupportedFeatureError, match="IDENTITY GENERATED ALWAYS"):
             column.to_sql()
 
-    def test_unspellable_identity_attribute_is_refused(self, dialect):
+    def test_unspellable_identity_clause_is_refused(self, dialect):
         column = ColumnDefinition(
             dialect,
             "id",
             IntegerType(dialect),
-            attributes=[IdentityAttribute(minvalue=1)],
+            attributes=[IdentityClause(dialect, minvalue=1)],
         )
         with pytest.raises(UnsupportedFeatureError, match="IDENTITY MINVALUE"):
             column.to_sql()
