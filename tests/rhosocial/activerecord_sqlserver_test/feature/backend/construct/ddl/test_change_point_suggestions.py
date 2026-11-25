@@ -9,6 +9,7 @@ edit cannot quietly turn a documented refusal into an invented action.
 """
 import dataclasses
 import importlib
+import re
 
 import pytest
 
@@ -80,6 +81,45 @@ def _sql(operations):
 
 def _docstring(module_name):
     return importlib.import_module(f"{_SUGGESTION_PACKAGE}.{module_name}").__doc__ or ""
+
+
+_SWITCH_SOURCE = re.compile(r"\bALTER\s+TABLE\s+(\S+)\s+SWITCH\b", re.IGNORECASE)
+_SWITCH_TARGET = re.compile(
+    r"\bSWITCH(?:\s+PARTITION\s+\d+)?\s+TO\s+(\S+)", re.IGNORECASE
+)
+_DROP_OBJECT = re.compile(r"\bDROP\s+(TABLE|SCHEMA)\b", re.IGNORECASE)
+
+
+def _plain(name):
+    """Strip quoting so a rendered ``[dbo].[events]`` reads as ``dbo.events``."""
+    return name.replace("[", "").replace("]", "").lower()
+
+
+def _assert_data_preserved(operations, live="events"):
+    """Guard a suggestion chain: no destructive DDL, no SWITCH-out left open.
+
+    ``ALTER TABLE ... SWITCH TO`` reassigns a partition's storage to the target
+    (Microsoft Learn, ``ALTER TABLE (Transact-SQL)`` / SWITCH). A chain that
+    switches data out of the live table must switch it back in before it ends,
+    otherwise the live table is left without its rows. ``DROP TABLE`` and
+    ``DROP SCHEMA`` are never an acceptable way to finish a chain either.
+    """
+    if operations is None or operations is False:
+        return
+    outside = set()
+    for expression in operations:
+        sql = expression.to_sql()[0]
+        assert not _DROP_OBJECT.search(sql), f"destructive statement returned: {sql}"
+        source = _SWITCH_SOURCE.search(sql)
+        target = _SWITCH_TARGET.search(sql)
+        if source is None or target is None:
+            continue
+        src, dst = _plain(source.group(1)), _plain(target.group(1))
+        if src == _plain(live) and dst != _plain(live):
+            outside.add(dst)
+        elif dst == _plain(live) and src != _plain(live):
+            outside.discard(src)
+    assert not outside, f"live table data left outside: {sorted(outside)}"
 
 
 class TestProtocolRegistration:
@@ -327,38 +367,35 @@ class TestPartitionSchemeChange:
         "target_partition": 1,
     }
 
-    def test_native_chain_exact_sql(self, dialect):
+    def test_real_change_is_unaddressable(self, dialect):
+        # The old chain switched partition 1 out to [events_stage] and never
+        # switched it back, emptying the live table. It is not a safe answer.
         point = PartitionSchemeChangeSuggestion(
             table_name="events", old_partition=self.OLD, new_partition=self.NEW
         )
         answer = dialect.suggest_partition_scheme_change(point)
-        assert answer.state == "actions"
-        assert dialect.partition_capability() is PartitionCapability.NATIVE
-        assert [type(node) for node in answer.operations] == [
-            SQLServerPartitionFunctionExpression,
-            SQLServerPartitionSchemeExpression,
-            SQLServerSwitchPartitionExpression,
-            SQLServerDropPartitionSchemeExpression,
-            SQLServerDropPartitionFunctionExpression,
-        ]
-        assert _sql(answer.operations) == (
-            "CREATE PARTITION FUNCTION [pf_new] (DATE) AS RANGE RIGHT FOR VALUES ('2026-01-01') "
-            "CREATE PARTITION SCHEME [ps_new] AS PARTITION [pf_new] TO ([fg1], [fg2]) "
-            "ALTER TABLE [events] SWITCH PARTITION 1 TO [events_stage] PARTITION 1 "
-            "DROP PARTITION SCHEME [ps_old] "
-            "DROP PARTITION FUNCTION [pf_old]"
-        )
+        assert answer.operations is False
+        assert answer.state == "unaddressable"
 
-    def test_all_filegroup_variant(self, dialect):
-        new = {**self.NEW, "filegroups": (), "all_filegroup": "PRIMARY"}
-        answer = dialect.suggest_partition_scheme_change(
-            PartitionSchemeChangeSuggestion(
-                table_name="events", old_partition=self.OLD, new_partition=new
+    def test_refusal_documents_switch_semantics_and_the_missing_switch_back(self):
+        reason = _docstring("partition_scheme_change_suggestion")
+        assert "SWITCH" in reason and "SWITCH-back" in reason
+        assert "already exist" in reason and "empty" in reason
+        assert "rebuild/migration" in reason and "suggestion contract" in reason
+
+    def test_full_declarations_stay_unaddressable(self, dialect):
+        variants = (
+            self.NEW,
+            {**self.NEW, "filegroups": (), "all_filegroup": "PRIMARY"},
+            {**self.NEW, "source_partition": 2, "target_partition": 3},
+        )
+        for new in variants:
+            answer = dialect.suggest_partition_scheme_change(
+                PartitionSchemeChangeSuggestion(
+                    table_name="events", old_partition=self.OLD, new_partition=new
+                )
             )
-        )
-        assert "CREATE PARTITION SCHEME [ps_new] AS PARTITION [pf_new] ALL TO ([PRIMARY])" in _sql(
-            answer.operations
-        )
+            assert answer.operations is False
 
     def test_edition_gate_is_honest(self):
         standard = SQLServerDialect((16, 0, 0), edition="Standard Edition")
@@ -393,7 +430,7 @@ class TestPartitionSchemeChange:
         assert answer.operations is False
         reason = _docstring("partition_scheme_change_suggestion")
         assert "Enterprise" in reason and "2008" in reason
-        assert "type/boundaries" in reason and "SWITCH" in reason
+        assert "SWITCH" in reason and "rebuild/migration" in reason
 
     def test_incomplete_new_projection_is_unsupported(self, dialect):
         for missing in ("function", "data_type", "boundaries", "scheme", "stage_table"):
@@ -412,3 +449,76 @@ class TestPartitionSchemeChange:
             )
         )
         assert answer.operations is None
+
+
+class TestSuggestionChainSafety:
+    """Structural guard on every change-point answer, not just one pinned SQL."""
+
+    LIVE = "events"
+
+    def test_no_answer_leaves_live_table_data_outside(self, dialect):
+        points = (
+            ColumnReorderSuggestion(
+                table_name=self.LIVE,
+                old_order=("id", "created_at"),
+                new_order=("created_at", "id"),
+                reordered_columns=("id",),
+            ),
+            TableConstraintChangeSuggestion(
+                table_name=self.LIVE,
+                old_constraints=("uq_created",),
+                new_constraints=("uq_created_2",),
+            ),
+            TableIndexChangeSuggestion(
+                table_name=self.LIVE,
+                old_indexes=("ix_created",),
+                new_indexes=(IndexDefinition(dialect, name="ix_created", columns=["created_at"]),),
+            ),
+            PartitionSchemeChangeSuggestion(
+                table_name=self.LIVE,
+                old_partition=TestPartitionSchemeChange.OLD,
+                new_partition=TestPartitionSchemeChange.NEW,
+            ),
+        )
+        methods = {label: method for label, _cls, _protocol, method, _module in CASES}
+        for server in (dialect, SQLServerUnicodeDialect((16, 0, 0))):
+            for point in points:
+                answer = getattr(server, methods[point.label])(point)
+                _assert_data_preserved(answer.operations, live=self.LIVE)
+
+    def test_guard_rejects_a_switch_without_a_switch_back(self, dialect):
+        # Negative control: the exact shape the old scheme-change answer used.
+        old_chain = (
+            SQLServerPartitionFunctionExpression(dialect, "pf_new", "DATE", ["2026-01-01"]),
+            SQLServerPartitionSchemeExpression(dialect, "ps_new", "pf_new", ["fg1", "fg2"]),
+            SQLServerSwitchPartitionExpression(
+                dialect, self.LIVE, "events_stage", source_partition=1, target_partition=1
+            ),
+            SQLServerDropPartitionSchemeExpression(dialect, "ps_old"),
+            SQLServerDropPartitionFunctionExpression(dialect, "pf_old"),
+        )
+        with pytest.raises(AssertionError, match="data left outside"):
+            _assert_data_preserved(old_chain, live=self.LIVE)
+
+    def test_guard_accepts_a_balanced_switch_out_and_back(self, dialect):
+        chain = (
+            SQLServerSwitchPartitionExpression(
+                dialect, self.LIVE, "events_stage", source_partition=1, target_partition=1
+            ),
+            SQLServerSwitchPartitionExpression(
+                dialect, "events_stage", self.LIVE, source_partition=1, target_partition=1
+            ),
+        )
+        _assert_data_preserved(chain, live=self.LIVE)
+
+    def test_guard_rejects_destructive_statements(self):
+        class _Raw:
+            def __init__(self, sql):
+                self.sql = sql
+
+            def to_sql(self):
+                return self.sql, ()
+
+        for sql in ("DROP TABLE [events]", "DROP SCHEMA [dbo]"):
+            with pytest.raises(AssertionError, match="destructive"):
+                _assert_data_preserved((_Raw(sql),), live=self.LIVE)
