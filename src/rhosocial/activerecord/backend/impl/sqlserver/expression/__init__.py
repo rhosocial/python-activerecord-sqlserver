@@ -52,6 +52,8 @@ from .constraint_state import (
     SQLServerNocheckConstraintStatement,
 )
 from .extended_property import SQLServerExtendedPropertyWriteStatement
+from .rename import SQLServerRenameObjectStatement
+from .default_constraint import SQLServerAddDefaultConstraintAction
 from .fulltext import (
     SQLServerCreateFullTextCatalogStatement,
     SQLServerDropFullTextCatalogStatement,
@@ -122,6 +124,8 @@ __all__ = [
     "SQLServerCheckConstraintStatement",
     "SQLServerNocheckConstraintStatement",
     "SQLServerExtendedPropertyWriteStatement",
+    "SQLServerRenameObjectStatement",
+    "SQLServerAddDefaultConstraintAction",
     "SQLServerCreateFullTextCatalogStatement",
     "SQLServerDropFullTextCatalogStatement",
     "SQLServerCreateFullTextIndexStatement",

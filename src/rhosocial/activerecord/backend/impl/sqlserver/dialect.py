@@ -200,6 +200,7 @@ from .mixins.cte import SQLServerCTEMixin
 from .mixins.returning import SQLServerReturningMixin
 from .mixins.constraint import SQLServerConstraintMixin
 from .mixins.extended_property import SQLServerExtendedPropertyMixin
+from .mixins.ddl_extras import SQLServerDDLExtrasMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
 from .mixins.column_type import SQLServerColumnTypeMixin
@@ -403,6 +404,9 @@ class SQLServerDialect(
     # procedures behind one node. No core base defines this name, so the
     # position only has to keep it ahead of the generic bundle.
     SQLServerExtendedPropertyMixin,
+    # sp_rename and the named default constraint: the mechanisms T-SQL uses
+    # where core's clause vocabulary has no spelling.
+    SQLServerDDLExtrasMixin,
     # Before DataTypeMixin, which inherits DataTypeMixin's answer -- a
     # NotImplementedError. A table placed after the class it stands in for
     # never wins, so the backend's 24-key answer sits ahead of the core mixin.

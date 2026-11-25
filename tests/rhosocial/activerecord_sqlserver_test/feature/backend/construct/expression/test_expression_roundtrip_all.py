@@ -691,6 +691,22 @@ def register_specials():
             level1name="T1",
         )
 
+    def rename_object(d):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.rename import (
+            SQLServerRenameObjectStatement,
+        )
+
+        return SQLServerRenameObjectStatement(d, "dbo.T1.old_col", "new_col", "COLUMN")
+
+    def add_default_constraint(d):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.default_constraint import (
+            SQLServerAddDefaultConstraintAction,
+        )
+
+        return SQLServerAddDefaultConstraintAction(
+            d, "status", "new", constraint_name="df_status"
+        )
+
     def partition_range(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
             SQLServerPartitionByRangeClause,
@@ -971,6 +987,13 @@ def register_specials():
     register_special_constructor(
         "extended_property.SQLServerExtendedPropertyWriteStatement",
         extended_property_write,
+    )
+    register_special_constructor(
+        "rename.SQLServerRenameObjectStatement", rename_object
+    )
+    register_special_constructor(
+        "default_constraint.SQLServerAddDefaultConstraintAction",
+        add_default_constraint,
     )
     register_special_constructor(
         "partition.SQLServerPartitionByRangeClause", partition_range
