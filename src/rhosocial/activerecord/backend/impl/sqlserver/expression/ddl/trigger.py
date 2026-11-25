@@ -13,7 +13,7 @@ formatters. Bodies are passed through verbatim as raw T-SQL strings.
 
 from typing import List, Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from ...dialect import SQLServerDialect
@@ -77,8 +77,10 @@ class SQLServerCreateTriggerStatement(BaseExpression):
         if not self.body:
             raise ValueError("trigger body is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_create_trigger_statement(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this CREATE TRIGGER statement."""
+        return "format_create_trigger_statement"
 
 
 class SQLServerDropTriggerStatement(BaseExpression):
@@ -115,5 +117,7 @@ class SQLServerDropTriggerStatement(BaseExpression):
         if not self.name:
             raise ValueError("trigger name is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_drop_trigger_statement(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this DROP TRIGGER statement."""
+        return "format_drop_trigger_statement"

@@ -3,7 +3,7 @@
 
 from typing import Optional, Union, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.expression.objects import Table
 
 if TYPE_CHECKING:
@@ -30,10 +30,10 @@ class SQLServerTemporalPeriodDefinition(BaseExpression):
         self.start_column = start_column
         self.end_column = end_column
 
-    def to_sql(self) -> SQLQueryAndParams:
-        start = self.dialect.format_identifier(self.start_column)
-        end = self.dialect.format_identifier(self.end_column)
-        return f"PERIOD FOR SYSTEM_TIME ({start}, {end})", ()
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this PERIOD FOR SYSTEM_TIME."""
+        return "format_sqlserver_temporal_period_definition"
 
 
 class SQLServerSystemVersioningClause(BaseExpression):
@@ -82,9 +82,7 @@ class SQLServerSystemVersioningClause(BaseExpression):
                 f"got {type(history_table).__name__}"
             )
 
-    def to_sql(self) -> SQLQueryAndParams:
-        sql = "WITH (SYSTEM_VERSIONING = ON"
-        if self.history_table is not None:
-            sql += f", HISTORY_TABLE = {self.history_table.to_sql()[0]}"
-        sql += ")"
-        return sql, ()
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this SYSTEM_VERSIONING clause."""
+        return "format_sqlserver_system_versioning_clause"

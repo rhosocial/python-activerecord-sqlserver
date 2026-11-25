@@ -14,7 +14,7 @@ SQL generation is delegated to the dialect's ``format_pivot`` and
 
 from typing import Optional, Sequence, Union, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -68,8 +68,10 @@ class SQLServerPivotExpression(BaseExpression):
         if not self.values:
             raise ValueError("at least one pivot value is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_pivot(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this PIVOT clause."""
+        return "format_pivot"
 
 
 class SQLServerUnpivotExpression(BaseExpression):
@@ -117,5 +119,7 @@ class SQLServerUnpivotExpression(BaseExpression):
         if not self.columns:
             raise ValueError("at least one column is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_unpivot(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this UNPIVOT clause."""
+        return "format_unpivot"

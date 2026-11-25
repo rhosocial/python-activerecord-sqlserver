@@ -1,9 +1,9 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/expression/output.py
 """SQL Server OUTPUT clause expressions."""
 
-from typing import Any, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
@@ -29,8 +29,10 @@ class SQLServerOutputInsertedExpression(BaseExpression):
         if not isinstance(self.column, str):
             raise TypeError(f"column must be str, got {type(self.column)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return f"INSERTED.{self.dialect.format_identifier(self.column)}", ()
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this OUTPUT INSERTED reference."""
+        return "format_sqlserver_output_inserted_expression"
 
 
 class SQLServerOutputDeletedExpression(BaseExpression):
@@ -50,5 +52,7 @@ class SQLServerOutputDeletedExpression(BaseExpression):
         if not isinstance(self.column, str):
             raise TypeError(f"column must be str, got {type(self.column)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return f"DELETED.{self.dialect.format_identifier(self.column)}", ()
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this OUTPUT DELETED reference."""
+        return "format_sqlserver_output_deleted_expression"

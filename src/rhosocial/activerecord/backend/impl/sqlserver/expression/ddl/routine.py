@@ -15,7 +15,7 @@ verbatim as raw T-SQL strings.
 
 from typing import Any, List, Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from ...dialect import SQLServerDialect
@@ -67,8 +67,10 @@ class SQLServerCreateProcedureStatement(BaseExpression):
         if not self.body:
             raise ValueError("procedure body is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_create_procedure_statement(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this CREATE PROCEDURE statement."""
+        return "format_create_procedure_statement"
 
 
 class SQLServerCreateFunctionStatement(BaseExpression):
@@ -122,8 +124,10 @@ class SQLServerCreateFunctionStatement(BaseExpression):
         if not self.body:
             raise ValueError("function body is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_create_function_statement(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this CREATE FUNCTION statement."""
+        return "format_create_function_statement"
 
 
 class SQLServerDropRoutineStatement(BaseExpression):
@@ -165,5 +169,7 @@ class SQLServerDropRoutineStatement(BaseExpression):
         if self.kind.upper() not in ("PROCEDURE", "FUNCTION"):
             raise ValueError("kind must be either PROCEDURE or FUNCTION")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_drop_routine_statement(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this DROP routine statement."""
+        return "format_drop_routine_statement"

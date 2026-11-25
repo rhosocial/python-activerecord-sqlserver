@@ -1,10 +1,10 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/expression/locking.py
 """SQL Server table hint and locking expressions."""
 
-from dataclasses import dataclass, field
-from typing import Any, List, Optional, Tuple, TYPE_CHECKING
+from dataclasses import dataclass
+from typing import List, Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
@@ -14,15 +14,16 @@ if TYPE_CHECKING:
 class SQLServerTableHint:
     """SQL Server table hint definition.
 
+    A hint is a parameter of the clause that carries it, not a node of its own:
+    it holds the word and nothing else. The clause's dialect formatter reads
+    ``name`` and joins the words, so this value never renders SQL.
+
     Attributes:
         name: Hint name (e.g., 'NOLOCK', 'UPDLOCK', 'READPAST', 'HOLDLOCK')
     """
     KIND_RESERVED = ("SQLServer",)
 
     name: str
-
-    def to_sql(self) -> str:
-        return self.name
 
 
 class SQLServerReadPastHint(SQLServerTableHint):
@@ -62,8 +63,7 @@ class SQLServerTableHintClause(BaseExpression):
             if not isinstance(hint, SQLServerTableHint):
                 raise TypeError(f"hints must contain SQLServerTableHint, got {type(hint)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        if not self.hints:
-            return "", ()
-        hint_strs = [h.to_sql() for h in self.hints]
-        return f"WITH ({', '.join(hint_strs)})", ()
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this WITH (...) hint clause."""
+        return "format_sqlserver_table_hint_clause"

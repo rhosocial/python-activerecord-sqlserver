@@ -14,7 +14,7 @@ OPTION clause is available in every supported SQL Server version (2005+).
 
 from typing import Any, Sequence, Tuple, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -91,5 +91,7 @@ class SQLServerOptionHintClause(BaseExpression):
         if not self.hints:
             raise ValueError("at least one query hint is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_query_option_clause(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this OPTION hint clause."""
+        return "format_query_option_clause"

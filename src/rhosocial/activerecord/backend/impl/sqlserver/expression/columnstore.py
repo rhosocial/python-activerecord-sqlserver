@@ -13,7 +13,7 @@ SQL generation and version gating are delegated to the dialect's
 
 from typing import Sequence, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -78,5 +78,7 @@ class SQLServerColumnstoreIndexStatement(BaseExpression):
         if self.order_columns and self.nonclustered:
             raise ValueError("ORDER (...) is only valid for clustered columnstore")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_columnstore_index_statement(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this columnstore statement."""
+        return "format_columnstore_index_statement"

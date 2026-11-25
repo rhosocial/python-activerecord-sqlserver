@@ -14,7 +14,7 @@ sequence. SQL generation is delegated to the dialect's
 
 from typing import TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -45,5 +45,7 @@ class SQLServerNextValueForExpression(BaseExpression):
         if not isinstance(self.sequence_name, str):
             raise TypeError(f"sequence_name must be str, got {type(self.sequence_name)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_next_value_for_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this NEXT VALUE FOR expression."""
+        return "format_next_value_for_expression"

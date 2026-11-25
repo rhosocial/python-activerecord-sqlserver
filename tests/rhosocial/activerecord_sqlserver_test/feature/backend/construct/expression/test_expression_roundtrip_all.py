@@ -1448,10 +1448,12 @@ LEGITIMATE_NON_RENDERS = {
     # ``format_create_fulltext_index_statement`` took ``(table, columns,
     # key_index, catalog_name)`` where core's takes the expression, so the core
     # expression dispatched into a signature it could not satisfy. The
-    # statement/name unification renamed the backend's formatters to their own
-    # spelling (``render_create_full_text_index_statement`` and friends),
-    # which freed the core names: the core expressions now reach core's generic
-    # formatters and render, so there is nothing left to pin here.
+    # statement/name unification moved the backend's formatters onto its own
+    # spelling -- the node formatters are ``format_*_full_text_*`` (which core's
+    # ``format_create_fulltext_index_statement`` does not collide with) and the
+    # name-and-arguments entry points are ``render_*`` -- which freed the core
+    # names: the core expressions now reach core's generic formatters and
+    # render, so there is nothing left to pin here.
     #
     # The two rows below changed shape when the formatters stopped probing
     # for ``name`` and started reading it: the probe's default (``""``) used

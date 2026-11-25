@@ -3,7 +3,7 @@
 
 from typing import Any, Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
@@ -35,15 +35,10 @@ class SQLServerTryCastExpression(BaseExpression):
         if not isinstance(self.target_type, str):
             raise TypeError(f"target_type must be str, got {type(self.target_type)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        if isinstance(self.expression, BaseExpression):
-            expr_sql, expr_params = self.expression.to_sql()
-        else:
-            expr_sql, expr_params = str(self.expression), ()
-        from rhosocial.activerecord.backend.expression.types import DataType
-
-        target_sql, _ = DataType.as_type(self.dialect, self.target_type).to_sql()
-        return f"TRY_CAST({expr_sql} AS {target_sql})", expr_params
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this TRY_CAST expression."""
+        return "format_sqlserver_try_cast_expression"
 
 
 class SQLServerTryConvertExpression(BaseExpression):
@@ -74,19 +69,10 @@ class SQLServerTryConvertExpression(BaseExpression):
         if not isinstance(self.target_type, str):
             raise TypeError(f"target_type must be str, got {type(self.target_type)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        if isinstance(self.expression, BaseExpression):
-            expr_sql, expr_params = self.expression.to_sql()
-        else:
-            expr_sql, expr_params = str(self.expression), ()
-        from rhosocial.activerecord.backend.expression.types import DataType
-
-        target_sql, _ = DataType.as_type(self.dialect, self.target_type).to_sql()
-        sql = f"TRY_CONVERT({target_sql}, {expr_sql}"
-        if self.style is not None:
-            sql += f", {self.style}"
-        sql += ")"
-        return sql, expr_params
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this TRY_CONVERT expression."""
+        return "format_sqlserver_try_convert_expression"
 
 
 class SQLServerContainsPredicate(BaseExpression):
@@ -117,13 +103,10 @@ class SQLServerContainsPredicate(BaseExpression):
         if not isinstance(self.search_string, str):
             raise TypeError(f"search_string must be str, got {type(self.search_string)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        col = self.dialect.format_identifier(self.column)
-        sql = f"CONTAINS({col}, '{self.search_string.replace(chr(39), chr(39)+chr(39))}'"
-        if self.language:
-            sql += f", LANGUAGE '{self.language}'"
-        sql += ")"
-        return sql, ()
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this CONTAINS predicate."""
+        return "format_sqlserver_contains_predicate"
 
 
 class SQLServerFreetextPredicate(BaseExpression):
@@ -154,10 +137,7 @@ class SQLServerFreetextPredicate(BaseExpression):
         if not isinstance(self.search_string, str):
             raise TypeError(f"search_string must be str, got {type(self.search_string)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        col = self.dialect.format_identifier(self.column)
-        sql = f"FREETEXT({col}, '{self.search_string.replace(chr(39), chr(39)+chr(39))}'"
-        if self.language:
-            sql += f", LANGUAGE '{self.language}'"
-        sql += ")"
-        return sql, ()
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this FREETEXT predicate."""
+        return "format_sqlserver_freetext_predicate"

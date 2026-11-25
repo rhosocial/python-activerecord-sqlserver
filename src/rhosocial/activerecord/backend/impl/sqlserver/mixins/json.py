@@ -5,6 +5,7 @@ from .version_constants import SQL_SERVER_2016
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.bases import BaseExpression
+    from ..expression.openjson import SQLServerOpenJsonExpression
 
 
 class SQLServerJSONMixin:
@@ -43,6 +44,45 @@ class SQLServerJSONMixin:
             sql = f"{sql} AS {self.format_identifier(expr.alias)}"
 
         return sql, params
+
+    def format_sqlserver_open_json_expression(
+        self, expr: "SQLServerOpenJsonExpression"
+    ) -> Tuple[str, tuple]:
+        """Format an OPENJSON table-valued function call (2016+).
+
+        SQL Syntax:
+            OPENJSON(json_doc [, path]) [WITH (column type [path] [AS JSON], ...)]
+            [AS alias]
+
+        The column list is a *schema declaration inside the statement*, not a
+        bind value: each column names its own type, so the types are spelled
+        here rather than read from a data-type node.
+
+        Returns:
+            Tuple of (SQL string, params tuple).
+        """
+        parts = [f"OPENJSON({expr.json_doc}"]
+        if expr.path:
+            parts[0] += f", '{expr.path}'"
+        parts[0] += ")"
+
+        if expr.schema:
+            col_defs = []
+            for col in expr.schema:
+                col_sql = f"{self.format_identifier(col.name)} {col.type}"
+                if col.path:
+                    col_sql += f" '{col.path}'"
+                if col.as_json:
+                    col_sql += " AS JSON"
+                col_defs.append(col_sql)
+            parts.append(f"WITH ({', '.join(col_defs)})")
+
+        sql = " ".join(parts)
+
+        if expr.alias:
+            sql = f"{sql} AS {self.format_identifier(expr.alias)}"
+
+        return sql, ()
 
     def supports_json_table(self) -> bool:
         """Always False: this backend has no JSON_TABLE path.

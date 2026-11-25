@@ -2,9 +2,9 @@
 """SQL Server OPENJSON expression."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.dialect import SQLDialectBase
@@ -64,28 +64,7 @@ class SQLServerOpenJsonExpression(BaseExpression):
             if not isinstance(col, OpenJsonColumn):
                 raise TypeError(f"schema must contain OpenJsonColumn, got {type(col)}")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        params: list = []
-
-        parts = [f"OPENJSON({self.json_doc}"]
-        if self.path:
-            parts[0] += f", '{self.path}'"
-        parts[0] += ")"
-
-        if self.schema:
-            col_defs = []
-            for col in self.schema:
-                col_sql = f"{self.dialect.format_identifier(col.name)} {col.type}"
-                if col.path:
-                    col_sql += f" '{col.path}'"
-                if col.as_json:
-                    col_sql += " AS JSON"
-                col_defs.append(col_sql)
-            parts.append(f"WITH ({', '.join(col_defs)})")
-
-        sql = " ".join(parts)
-
-        if self.alias:
-            sql = f"{sql} AS {self.dialect.format_identifier(self.alias)}"
-
-        return sql, tuple(params)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this OPENJSON expression."""
+        return "format_sqlserver_open_json_expression"

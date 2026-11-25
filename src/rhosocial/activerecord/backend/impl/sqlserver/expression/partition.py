@@ -17,7 +17,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Sequence, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.expression.introspection import IntrospectionExpression
 from rhosocial.activerecord.backend.expression.statements import PartitionClause
 
@@ -119,8 +119,10 @@ class SQLServerPartitionByRangeClause(PartitionClause):
         self.partition_scheme = partition_scheme
         self.range_direction = _as_range_direction(range_direction)
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_clause(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this RANGE partition clause."""
+        return "format_partition_clause"
 
 
 class SQLServerPartitionFunctionExpression(BaseExpression):
@@ -148,8 +150,10 @@ class SQLServerPartitionFunctionExpression(BaseExpression):
         self.boundary_values = list(boundary_values)
         self.range_direction = _as_range_direction(range_direction)
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_function_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this CREATE PARTITION FUNCTION."""
+        return "format_partition_function_expression"
 
 
 class SQLServerPartitionSchemeExpression(BaseExpression):
@@ -180,8 +184,10 @@ class SQLServerPartitionSchemeExpression(BaseExpression):
             raise ValueError("all_filegroup and filegroups are mutually exclusive")
         self.all_filegroup = all_filegroup
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_scheme_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this CREATE PARTITION SCHEME."""
+        return "format_partition_scheme_expression"
 
 
 class _SQLServerPartitionFunctionRangeExpression(BaseExpression, ABC):
@@ -222,9 +228,10 @@ class _SQLServerPartitionFunctionRangeExpression(BaseExpression, ABC):
         self.function_name = function_name
         self.boundary_value = boundary_value
 
+    @property
     @abstractmethod
-    def to_sql(self) -> SQLQueryAndParams:
-        """Render the concrete range statement."""
+    def format_method(self) -> str:
+        """Name the dialect formatter the concrete range verb renders through."""
 
 
 class SQLServerPartitionFunctionSplitExpression(
@@ -240,8 +247,10 @@ class SQLServerPartitionFunctionSplitExpression(
 
     verb = "SPLIT"
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_function_split_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders ``ALTER ... SPLIT RANGE``."""
+        return "format_partition_function_split_expression"
 
 
 class SQLServerPartitionFunctionMergeExpression(
@@ -257,8 +266,10 @@ class SQLServerPartitionFunctionMergeExpression(
 
     verb = "MERGE"
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_function_merge_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders ``ALTER ... MERGE RANGE``."""
+        return "format_partition_function_merge_expression"
 
 
 class SQLServerPartitionSchemeNextUsedExpression(BaseExpression):
@@ -286,8 +297,10 @@ class SQLServerPartitionSchemeNextUsedExpression(BaseExpression):
         self.scheme_name = scheme_name
         self.filegroup = filegroup
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_scheme_next_used_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders ``ALTER ... NEXT USED``."""
+        return "format_partition_scheme_next_used_expression"
 
 
 class SQLServerSwitchPartitionExpression(BaseExpression):
@@ -357,8 +370,10 @@ class SQLServerSwitchPartitionExpression(BaseExpression):
         self.schema = schema
         self.target_schema = target_schema
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_switch_partition_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders ``ALTER TABLE ... SWITCH``."""
+        return "format_switch_partition_expression"
 
 
 class SQLServerDropPartitionFunctionExpression(BaseExpression):
@@ -377,8 +392,10 @@ class SQLServerDropPartitionFunctionExpression(BaseExpression):
             raise ValueError("function_name must be a non-empty string")
         self.function_name = function_name
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_drop_partition_function_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders ``DROP PARTITION FUNCTION``."""
+        return "format_drop_partition_function_expression"
 
 
 class SQLServerDropPartitionSchemeExpression(BaseExpression):
@@ -396,8 +413,10 @@ class SQLServerDropPartitionSchemeExpression(BaseExpression):
             raise ValueError("scheme_name must be a non-empty string")
         self.scheme_name = scheme_name
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_drop_partition_scheme_expression(self)
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders ``DROP PARTITION SCHEME``."""
+        return "format_drop_partition_scheme_expression"
 
 
 class _SQLServerPartitionCatalogStatement(IntrospectionExpression, ABC):
@@ -419,9 +438,10 @@ class _SQLServerPartitionCatalogStatement(IntrospectionExpression, ABC):
     def filter_value(self) -> Optional[str]:
         """The one name this statement narrows by, or ``None``."""
 
+    @property
     @abstractmethod
-    def to_sql(self) -> SQLQueryAndParams:
-        """Render this catalogue question."""
+    def format_method(self) -> str:
+        """Name the dialect formatter the concrete question renders through."""
 
 
 class SQLServerPartitionFunctionQueryStatement(_SQLServerPartitionCatalogStatement):
@@ -442,9 +462,6 @@ class SQLServerPartitionFunctionQueryStatement(_SQLServerPartitionCatalogStateme
 
     def filter_value(self) -> Optional[str]:
         return self.function_name
-
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_function_query_statement(self)
 
 
 class SQLServerPartitionSchemeQueryStatement(_SQLServerPartitionCatalogStatement):
@@ -467,9 +484,6 @@ class SQLServerPartitionSchemeQueryStatement(_SQLServerPartitionCatalogStatement
 
     def filter_value(self) -> Optional[str]:
         return self.scheme_name
-
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_scheme_query_statement(self)
 
 
 class SQLServerPartitionTableQueryStatement(_SQLServerPartitionCatalogStatement):
@@ -495,9 +509,6 @@ class SQLServerPartitionTableQueryStatement(_SQLServerPartitionCatalogStatement)
     def filter_value(self) -> Optional[str]:
         return self.table_name
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_table_query_statement(self)
-
 
 class SQLServerPartitionRangeQueryStatement(_SQLServerPartitionCatalogStatement):
     """Ask for one table's partitions: numbers, row counts, bounds and bytes."""
@@ -521,9 +532,6 @@ class SQLServerPartitionRangeQueryStatement(_SQLServerPartitionCatalogStatement)
 
     def filter_value(self) -> Optional[str]:
         return self.table_name
-
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_range_query_statement(self)
 
 
 class SQLServerPartitionBoundaryQueryStatement(_SQLServerPartitionCatalogStatement):
@@ -558,5 +566,3 @@ class SQLServerPartitionBoundaryQueryStatement(_SQLServerPartitionCatalogStateme
     def filter_value(self) -> Optional[str]:
         return self.function_name
 
-    def to_sql(self) -> SQLQueryAndParams:
-        return self.dialect.format_partition_boundary_query_statement(self)

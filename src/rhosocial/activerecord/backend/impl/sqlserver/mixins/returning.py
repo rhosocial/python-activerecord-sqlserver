@@ -5,6 +5,10 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.statements import ReturningClause
+    from ..expression.output import (
+        SQLServerOutputDeletedExpression,
+        SQLServerOutputInsertedExpression,
+    )
 
 
 class SQLServerReturningMixin:
@@ -126,3 +130,15 @@ class SQLServerReturningMixin:
             output_sql += f" INTO {clause.output_into}"
 
         return output_sql, tuple(all_params)
+
+    def format_sqlserver_output_inserted_expression(
+        self, expr: "SQLServerOutputInsertedExpression"
+    ) -> Tuple[str, tuple]:
+        """Format an ``INSERTED.column`` reference for an OUTPUT list."""
+        return f"INSERTED.{self.format_identifier(expr.column)}", ()
+
+    def format_sqlserver_output_deleted_expression(
+        self, expr: "SQLServerOutputDeletedExpression"
+    ) -> Tuple[str, tuple]:
+        """Format a ``DELETED.column`` reference for an OUTPUT list."""
+        return f"DELETED.{self.format_identifier(expr.column)}", ()

@@ -5,6 +5,7 @@ from .version_constants import SQL_SERVER_2019
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression.query_parts import ForUpdateClause
+    from ..expression.locking import SQLServerTableHintClause
 
 
 class SQLServerLockingMixin:
@@ -43,3 +44,19 @@ class SQLServerLockingMixin:
             sql_parts[0] = "WITH (UPDLOCK, ROWLOCK, READPAST)"
 
         return " ".join(sql_parts), tuple(all_params)
+
+    def format_sqlserver_table_hint_clause(
+        self, expr: "SQLServerTableHintClause"
+    ) -> Tuple[str, tuple]:
+        """Format a ``WITH (hint, ...)`` table hint clause.
+
+        The clause holds hint *values* -- each is a word, not a node -- so the
+        formatter reads ``name`` off each one rather than asking it to render
+        itself.
+
+        An empty clause renders as the empty string: the clause is a suffix on a
+        table reference, and "no hints" means there is nothing to append.
+        """
+        if not expr.hints:
+            return "", ()
+        return f"WITH ({', '.join(hint.name for hint in expr.hints)})", ()

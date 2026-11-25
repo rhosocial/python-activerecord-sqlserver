@@ -2,25 +2,45 @@
 """SQL Server protocol support mixin.
 
 Implements the SQL Server-specific protocol contracts declared in
-``protocols/`` by delegating to the dialect's existing formatting
-capabilities. This lets ``isinstance(dialect, SQLServerXxxSupport)``
-checks succeed for features that were already able to generate valid
-SQL but were previously left as empty protocol stubs.
+``protocols/``. Two kinds of member live here, and they are the two halves of
+one renderer:
+
+* the ``format_*`` methods that render the nodes whose only dialect home is
+  this backend -- the full-text statements and predicates, the TRY_CAST /
+  TRY_CONVERT nodes and the table-hint clause. Each node names one of these
+  through ``format_method``, and nothing else renders it;
+* the ``render_*`` convenience methods, which take a name and its arguments,
+  build the node and call the same formatter. A node handed here directly and
+  a node built from its parts therefore render through exactly one method.
 
 Still-missing capabilities (temporal DDL, indexed views, SELECT INTO)
 raise ``UnsupportedFeatureError`` with a clear message instead of
 silently returning a stub.
 """
 
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.expression.objects import Index, Table, View
 from rhosocial.activerecord.backend.suggestion.definitions import ConcatenationFunctionSuggestion
 
+if TYPE_CHECKING:
+    from ..expression.fulltext import (
+        SQLServerCreateFullTextCatalogStatement,
+        SQLServerCreateFullTextIndexStatement,
+        SQLServerDropFullTextCatalogStatement,
+        SQLServerDropFullTextIndexStatement,
+    )
+    from ..expression.functions import (
+        SQLServerContainsPredicate,
+        SQLServerFreetextPredicate,
+        SQLServerTryCastExpression,
+        SQLServerTryConvertExpression,
+    )
+
 
 class SQLServerProtocolSupportMixin:
-    """SQL Server protocol contract implementations delegating to dialect formatters."""
+    """SQL Server protocol contracts: one formatter per node, plus part-built entry points."""
 
     #: SQL Server reads ``||`` as logical OR, so ``CONCAT`` is the only
     #: unambiguous spelling.
@@ -66,8 +86,8 @@ class SQLServerProtocolSupportMixin:
         """FULLTEXT catalogs require SQL Server 2005+."""
         return self.version_at_least((9, 0, 0))
 
-    def render_create_full_text_catalog_statement(
-        self, catalog_name: str, as_default: bool = False
+    def format_create_full_text_catalog_statement(
+        self, expr: "SQLServerCreateFullTextCatalogStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE FULLTEXT CATALOG statement (2005+).
 
@@ -75,9 +95,9 @@ class SQLServerProtocolSupportMixin:
             CREATE FULLTEXT CATALOG catalog_name [AS DEFAULT]
 
         Args:
-            catalog_name: Name of the full-text catalog.
-            as_default: If True, append ``AS DEFAULT`` to make the catalog the
-                database default.
+            expr: The statement node; ``catalog_name`` names the catalog and
+                ``is_default`` appends ``AS DEFAULT`` to make it the database
+                default.
 
         Returns:
             Tuple of (SQL string, params tuple).
@@ -87,12 +107,24 @@ class SQLServerProtocolSupportMixin:
             "FULLTEXT catalogs",
             "requires SQL Server 2005+.",
         )
-        sql = f"CREATE FULLTEXT CATALOG {self.format_identifier(catalog_name)}"
-        if as_default:
+        sql = f"CREATE FULLTEXT CATALOG {self.format_identifier(expr.catalog_name)}"
+        if expr.is_default:
             sql += " AS DEFAULT"
         return sql, ()
 
-    def format_drop_full_text_catalog_statement(self, expr: str) -> Tuple[str, tuple]:
+    def render_create_full_text_catalog_statement(
+        self, catalog_name: str, as_default: bool = False
+    ) -> Tuple[str, tuple]:
+        """Format CREATE FULLTEXT CATALOG statement from its parts."""
+        from ..expression.fulltext import SQLServerCreateFullTextCatalogStatement
+
+        return self.format_create_full_text_catalog_statement(
+            SQLServerCreateFullTextCatalogStatement(self, catalog_name, as_default)
+        )
+
+    def format_drop_full_text_catalog_statement(
+        self, expr: "SQLServerDropFullTextCatalogStatement"
+    ) -> Tuple[str, tuple]:
         """Format DROP FULLTEXT CATALOG statement (2005+).
 
         SQL Syntax:
@@ -103,14 +135,10 @@ class SQLServerProtocolSupportMixin:
             "FULLTEXT catalogs",
             "requires SQL Server 2005+.",
         )
-        return f"DROP FULLTEXT CATALOG {self.format_identifier(expr)}", ()
+        return f"DROP FULLTEXT CATALOG {self.format_identifier(expr.catalog_name)}", ()
 
-    def render_create_full_text_index_statement(
-        self,
-        table: str,
-        columns: List[str],
-        key_index: str,
-        catalog_name: str,
+    def format_create_full_text_index_statement(
+        self, expr: "SQLServerCreateFullTextIndexStatement"
     ) -> Tuple[str, tuple]:
         """Format CREATE FULLTEXT INDEX statement (2005+).
 
@@ -128,17 +156,35 @@ class SQLServerProtocolSupportMixin:
             "FULLTEXT indexes",
             "requires SQL Server 2005+.",
         )
-        columns_str = ", ".join(self.format_identifier(col) for col in columns)
+        columns_str = ", ".join(self.format_identifier(col) for col in expr.columns)
         sql = (
             f"CREATE FULLTEXT INDEX ON "
-            f"{self.qualified_object_name(Table, table)} "
+            f"{self.qualified_object_name(Table, expr.table)} "
             f"({columns_str}) KEY INDEX "
-            f"{self.qualified_object_name(Index, key_index)} "
-            f"ON {self.format_identifier(catalog_name)}"
+            f"{self.qualified_object_name(Index, expr.key_index)} "
+            f"ON {self.format_identifier(expr.catalog_name)}"
         )
         return sql, ()
 
-    def format_drop_full_text_index_statement(self, expr: str) -> Tuple[str, tuple]:
+    def render_create_full_text_index_statement(
+        self,
+        table: str,
+        columns: List[str],
+        key_index: str,
+        catalog_name: str,
+    ) -> Tuple[str, tuple]:
+        """Format CREATE FULLTEXT INDEX statement from its parts."""
+        from ..expression.fulltext import SQLServerCreateFullTextIndexStatement
+
+        return self.format_create_full_text_index_statement(
+            SQLServerCreateFullTextIndexStatement(
+                self, table, columns, key_index, catalog_name
+            )
+        )
+
+    def format_drop_full_text_index_statement(
+        self, expr: "SQLServerDropFullTextIndexStatement"
+    ) -> Tuple[str, tuple]:
         """Format DROP FULLTEXT INDEX statement (2005+).
 
         SQL Syntax:
@@ -150,9 +196,31 @@ class SQLServerProtocolSupportMixin:
             "requires SQL Server 2005+.",
         )
         return (
-            f"DROP FULLTEXT INDEX ON {self.qualified_object_name(Table, expr)}",
+            f"DROP FULLTEXT INDEX ON {self.qualified_object_name(Table, expr.table)}",
             (),
         )
+
+    def format_sqlserver_contains_predicate(
+        self, expr: "SQLServerContainsPredicate"
+    ) -> Tuple[str, tuple]:
+        """Format a CONTAINS full-text search predicate."""
+        col = self.format_identifier(expr.column)
+        sql = f"CONTAINS({col}, '{expr.search_string.replace(chr(39), chr(39)+chr(39))}'"
+        if expr.language:
+            sql += f", LANGUAGE '{expr.language}'"
+        sql += ")"
+        return sql, ()
+
+    def format_sqlserver_freetext_predicate(
+        self, expr: "SQLServerFreetextPredicate"
+    ) -> Tuple[str, tuple]:
+        """Format a FREETEXT full-text search predicate."""
+        col = self.format_identifier(expr.column)
+        sql = f"FREETEXT({col}, '{expr.search_string.replace(chr(39), chr(39)+chr(39))}'"
+        if expr.language:
+            sql += f", LANGUAGE '{expr.language}'"
+        sql += ")"
+        return sql, ()
 
     def render_contains_predicate(self, column: str, search_string: str) -> Tuple[str, tuple]:
         """Format a CONTAINS predicate delegating to format_fulltext_match."""
@@ -164,7 +232,9 @@ class SQLServerProtocolSupportMixin:
         """Format a FREETEXT predicate."""
         from ..expression.functions import SQLServerFreetextPredicate
 
-        return SQLServerFreetextPredicate(self, column, search_string).to_sql()
+        return self.format_sqlserver_freetext_predicate(
+            SQLServerFreetextPredicate(self, column, search_string)
+        )
 
     def render_containstable_function(
         self, table: str, column: str, search_string: str, top_n: Optional[int] = None
@@ -203,11 +273,61 @@ class SQLServerProtocolSupportMixin:
         """TRY_CONVERT requires SQL Server 2012+."""
         return self.version_at_least((11, 0, 0))
 
+    def format_sqlserver_try_cast_expression(
+        self, expr: "SQLServerTryCastExpression"
+    ) -> Tuple[str, tuple]:
+        """Format TRY_CAST(expr AS type) (SQL Server 2012+).
+
+        Args:
+            expr: The node; ``expression`` is either a SQL node or a raw
+                fragment, and ``target_type`` names the type to cast to.
+
+        Returns:
+            Tuple of (SQL string, params tuple), e.g. ``(TRY_CAST(a AS INT), ())``.
+        """
+        from rhosocial.activerecord.backend.expression.bases import BaseExpression
+        from rhosocial.activerecord.backend.expression.types import DataType
+
+        if isinstance(expr.expression, BaseExpression):
+            expr_sql, expr_params = expr.expression.to_sql()
+        else:
+            expr_sql, expr_params = str(expr.expression), ()
+        target_sql, _ = DataType.as_type(self, expr.target_type).to_sql()
+        return f"TRY_CAST({expr_sql} AS {target_sql})", expr_params
+
     def render_try_cast_expression(self, expr_sql: str, target_type: str) -> Tuple[str, tuple]:
         """Format TRY_CAST(expr AS type)."""
         from ..expression.functions import SQLServerTryCastExpression
 
-        return SQLServerTryCastExpression(self, expr_sql, target_type).to_sql()
+        return self.format_sqlserver_try_cast_expression(
+            SQLServerTryCastExpression(self, expr_sql, target_type)
+        )
+
+    def format_sqlserver_try_convert_expression(
+        self, expr: "SQLServerTryConvertExpression"
+    ) -> Tuple[str, tuple]:
+        """Format TRY_CONVERT(type, expr[, style]) (SQL Server 2012+).
+
+        Args:
+            expr: The node; ``style`` is appended only when it is set, because
+                T-SQL reads a missing style as the type's default.
+
+        Returns:
+            Tuple of (SQL string, params tuple).
+        """
+        from rhosocial.activerecord.backend.expression.bases import BaseExpression
+        from rhosocial.activerecord.backend.expression.types import DataType
+
+        if isinstance(expr.expression, BaseExpression):
+            expr_sql, expr_params = expr.expression.to_sql()
+        else:
+            expr_sql, expr_params = str(expr.expression), ()
+        target_sql, _ = DataType.as_type(self, expr.target_type).to_sql()
+        sql = f"TRY_CONVERT({target_sql}, {expr_sql}"
+        if expr.style is not None:
+            sql += f", {expr.style}"
+        sql += ")"
+        return sql, expr_params
 
     def render_try_convert_expression(
         self, expr_sql: str, target_type: str, style: Optional[int] = None
@@ -215,7 +335,9 @@ class SQLServerProtocolSupportMixin:
         """Format TRY_CONVERT(type, expr[, style])."""
         from ..expression.functions import SQLServerTryConvertExpression
 
-        return SQLServerTryConvertExpression(self, target_type, expr_sql, style).to_sql()
+        return self.format_sqlserver_try_convert_expression(
+            SQLServerTryConvertExpression(self, target_type, expr_sql, style)
+        )
 
     def supports_table_hints(self) -> bool:
         """SQL Server supports WITH (...) table hints."""

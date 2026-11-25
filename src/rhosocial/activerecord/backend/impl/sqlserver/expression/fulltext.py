@@ -15,7 +15,7 @@ SQL generation and version gating are delegated to the dialect's
 
 from typing import List, TYPE_CHECKING
 
-from rhosocial.activerecord.backend.expression.bases import BaseExpression, SQLQueryAndParams
+from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -52,11 +52,10 @@ class SQLServerCreateFullTextCatalogStatement(BaseExpression):
         if not self.catalog_name:
             raise ValueError("catalog_name is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.render_create_full_text_catalog_statement(
-            self.catalog_name, as_default=self.is_default
-        )
-        return sql, params
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this CREATE FULLTEXT CATALOG."""
+        return "format_create_full_text_catalog_statement"
 
 
 class SQLServerDropFullTextCatalogStatement(BaseExpression):
@@ -82,9 +81,10 @@ class SQLServerDropFullTextCatalogStatement(BaseExpression):
         if not self.catalog_name:
             raise ValueError("catalog_name is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.format_drop_full_text_catalog_statement(self.catalog_name)
-        return sql, params
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this DROP FULLTEXT CATALOG."""
+        return "format_drop_full_text_catalog_statement"
 
 
 class SQLServerCreateFullTextIndexStatement(BaseExpression):
@@ -131,14 +131,10 @@ class SQLServerCreateFullTextIndexStatement(BaseExpression):
         if not self.catalog_name:
             raise ValueError("catalog_name is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.render_create_full_text_index_statement(
-            self.table,
-            self.columns,
-            self.key_index,
-            self.catalog_name,
-        )
-        return sql, params
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this CREATE FULLTEXT INDEX."""
+        return "format_create_full_text_index_statement"
 
 
 class SQLServerDropFullTextIndexStatement(BaseExpression):
@@ -164,6 +160,7 @@ class SQLServerDropFullTextIndexStatement(BaseExpression):
         if not self.table:
             raise ValueError("table is required")
 
-    def to_sql(self) -> SQLQueryAndParams:
-        sql, params = self.dialect.format_drop_full_text_index_statement(self.table)
-        return sql, params
+    @property
+    def format_method(self) -> str:
+        """The dialect formatter that renders this DROP FULLTEXT INDEX."""
+        return "format_drop_full_text_index_statement"
