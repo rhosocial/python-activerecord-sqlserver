@@ -1,7 +1,6 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/backend_mixin.py
 import logging
-import re
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.suggestion.definitions import (
     DataAdapterSuggestion,
@@ -17,6 +16,15 @@ from rhosocial.activerecord.backend.errors import (
     OperationalError,
     QueryError,
 )
+from .._scan import (
+    bare_identifier_end,
+    consume_keyword,
+    find_ci,
+    parse_identifier,
+    skip_space,
+    skip_space_at_least_one,
+    word_boundary_at,
+)
 from ..error_mapping import classify_sqlserver_error, normalize_integrity_message
 from ..query_nodes import (
     identity_columns_sql,
@@ -30,26 +38,198 @@ if TYPE_CHECKING:
     from rhosocial.activerecord.backend.type_adapter import SQLTypeAdapter
 
 
-_INSERT_PATTERN = re.compile(
-    r"^\s*INSERT\s+INTO\s+(?:(?:\[([^\]]+)\]|([A-Za-z_][\w$]*))\.)?(?:\[([^\]]+)\]|([A-Za-z_][\w$]*))\s*\(([^)]*)\)",
-    re.IGNORECASE,
-)
-
-_EXPLAIN_PATTERN = re.compile(
-    r"^\s*SET\s+(SHOWPLAN_(?:TEXT|XML|ALL)|STATISTICS\s+(?:PROFILE|XML))\s+ON\s*;(.+)$",
-    re.IGNORECASE | re.DOTALL,
-)
-
-_TABLE_HINT_PATTERN = re.compile(r"\s+WITH\s*\([^)]*\)\s*;?\s*$", re.IGNORECASE)
-
 _CLAUSE_KEYWORDS = (
-    r"WHERE|JOIN|ON|GROUP|HAVING|ORDER|LIMIT|OFFSET|FETCH|WITH|INNER|LEFT|RIGHT|"
-    r"FULL|CROSS|OUTER|UNION|INTERSECT|EXCEPT|OPTION|FOR|AS|FROM"
+    "WHERE", "JOIN", "ON", "GROUP", "HAVING", "ORDER", "LIMIT", "OFFSET",
+    "FETCH", "WITH", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "OUTER",
+    "UNION", "INTERSECT", "EXCEPT", "OPTION", "FOR", "AS", "FROM",
 )
 
-_TABLE_REF_PATTERN = re.compile(
-    rf"(\[[^\]]+\]|[A-Za-z_][\w$]*)(\s+(?:AS\s+)?(?!(?:{_CLAUSE_KEYWORDS})\b)[A-Za-z_][\w$]*)?"
-)
+_EXPLAIN_ESTIMATED_CLAUSES = ("SHOWPLAN_TEXT", "SHOWPLAN_XML", "SHOWPLAN_ALL")
+_EXPLAIN_ACTUAL_CLAUSES = ("PROFILE", "XML")
+
+
+def _parse_insert_header(sql: str) -> Optional[Tuple[Optional[str], str, str]]:
+    """Return ``(schema, table, column list)`` for an INSERT header, or None.
+
+    Recognises ``INSERT INTO [schema].[table] (col, ...)``; the schema is
+    optional, both names may be bracketed or bare, and the column list runs to
+    the first ``)``, as the statement renderer writes it.
+    """
+    index = skip_space(sql, 0)
+    after_insert = consume_keyword(sql, index, "INSERT")
+    if after_insert is None:
+        return None
+    index = skip_space_at_least_one(sql, after_insert)
+    if index is None:
+        return None
+    after_into = consume_keyword(sql, index, "INTO")
+    if after_into is None:
+        return None
+    index = skip_space_at_least_one(sql, after_into)
+    if index is None:
+        return None
+    schema: Optional[str] = None
+    parsed = parse_identifier(sql, index)
+    if parsed is not None and parsed[1] < len(sql) and sql[parsed[1]] == ".":
+        schema = parsed[0]
+        index = parsed[1] + 1
+    parsed = parse_identifier(sql, index)
+    if parsed is None:
+        return None
+    table, index = parsed
+    index = skip_space(sql, index)
+    if index >= len(sql) or sql[index] != "(":
+        return None
+    close = sql.find(")", index + 1)
+    if close == -1:
+        return None
+    return schema, table, sql[index + 1:close]
+
+
+def _starts_with_clause_keyword(text: str, index: int) -> bool:
+    """Whether an upper-case clause keyword begins at *index* as a whole word.
+
+    The original table-reference pattern carried no ``IGNORECASE`` flag, so only
+    the documented upper-case spellings stop an alias; a lower-case ``where``
+    was read as one. Keeping the comparison case-sensitive preserves that.
+    """
+    for word in _CLAUSE_KEYWORDS:
+        end = index + len(word)
+        if text.startswith(word, index) and word_boundary_at(text, end):
+            return True
+    return False
+
+
+def _table_reference_end(text: str, index: int) -> Optional[int]:
+    """End of a ``table [alias]`` reference starting at *index*.
+
+    The optional alias is a bare word that is not itself a clause keyword; a
+    keyword leaves the reference at the table name so the trailing hint lands
+    directly after it.
+    """
+    parsed = parse_identifier(text, index)
+    if parsed is None:
+        return None
+    table_end = parsed[1]
+    candidate = skip_space(text, table_end)
+    if candidate == table_end:
+        return table_end
+    if text.startswith("AS", candidate):
+        after_space = skip_space_at_least_one(text, candidate + 2)
+        if after_space is not None:
+            candidate = after_space
+    alias_end = bare_identifier_end(text, candidate)
+    if alias_end is None or _starts_with_clause_keyword(text, candidate):
+        return table_end
+    return alias_end
+
+
+def _trailing_table_hint_start(sql: str) -> Optional[int]:
+    """Start index of a trailing ``WITH (...)`` table hint, or None."""
+    index = find_ci(sql, "WITH", 0)
+    while index != -1:
+        if index > 0 and sql[index - 1].isspace():
+            open_paren = skip_space(sql, index + 4)
+            if open_paren < len(sql) and sql[open_paren] == "(":
+                close = sql.find(")", open_paren + 1)
+                if close != -1:
+                    tail = skip_space(sql, close + 1)
+                    if tail < len(sql) and sql[tail] == ";":
+                        tail = skip_space(sql, tail + 1)
+                    if tail == len(sql):
+                        start = index - 1
+                        while start > 0 and sql[start - 1].isspace():
+                            start -= 1
+                        return start
+        index = find_ci(sql, "WITH", index + 1)
+    return None
+
+
+def _last_from_end(text: str) -> Optional[int]:
+    """End index of the last ``FROM`` followed by whitespace, or None."""
+    found = None
+    index = find_ci(text, "FROM", 0)
+    while index != -1:
+        if word_boundary_at(text, index):
+            after_space = skip_space_at_least_one(text, index + 4)
+            if after_space is not None:
+                found = after_space
+        index = find_ci(text, "FROM", index + 1)
+    return found
+
+
+def _parse_explain_wrapper(sql: str) -> Optional[Tuple[str, str]]:
+    """Split ``SET SHOWPLAN_*/STATISTICS ... ON; statement`` into its parts."""
+    index = skip_space(sql, 0)
+    after_set = consume_keyword(sql, index, "SET")
+    if after_set is None:
+        return None
+    index = skip_space_at_least_one(sql, after_set)
+    if index is None:
+        return None
+
+    set_clause: Optional[str] = None
+    for word in _EXPLAIN_ESTIMATED_CLAUSES:
+        end = consume_keyword(sql, index, word)
+        if end is not None:
+            set_clause = sql[index:end]
+            index = end
+            break
+    if set_clause is None:
+        after_statistics = consume_keyword(sql, index, "STATISTICS")
+        if after_statistics is None:
+            return None
+        option_start = skip_space_at_least_one(sql, after_statistics)
+        if option_start is None:
+            return None
+        for word in _EXPLAIN_ACTUAL_CLAUSES:
+            end = consume_keyword(sql, option_start, word)
+            if end is not None:
+                set_clause = sql[index:end]
+                index = end
+                break
+        if set_clause is None:
+            return None
+
+    after_clause = skip_space_at_least_one(sql, index)
+    if after_clause is None:
+        return None
+    after_on = consume_keyword(sql, after_clause, "ON")
+    if after_on is None:
+        return None
+    semicolon = skip_space(sql, after_on)
+    if semicolon >= len(sql) or sql[semicolon] != ";":
+        return None
+    statement = sql[semicolon + 1:]
+    if not statement:
+        return None
+    return set_clause, statement
+
+
+def _strip_trailing_set_off(statement: str, set_clause: str) -> str:
+    """Remove a trailing ``; SET <set_clause> OFF`` from *statement*."""
+    target = set_clause.lower()
+    index = statement.find(";")
+    while index != -1:
+        after_semicolon = skip_space(statement, index + 1)
+        after_set = consume_keyword(statement, after_semicolon, "SET")
+        if after_set is not None:
+            after_space = skip_space_at_least_one(statement, after_set)
+            if after_space is not None:
+                literal_end = after_space + len(set_clause)
+                if statement[after_space:literal_end].lower() == target:
+                    after_off_space = skip_space_at_least_one(statement, literal_end)
+                    if after_off_space is not None:
+                        after_off = consume_keyword(statement, after_off_space, "OFF")
+                        if after_off is not None:
+                            tail = skip_space(statement, after_off)
+                            if tail == len(statement):
+                                start = index
+                                while start > 0 and statement[start - 1].isspace():
+                                    start -= 1
+                                return statement[:start]
+        index = statement.find(";", index + 1)
+    return statement
 
 _SQLSERVER_DATE_FORMATS = frozenset({"mdy", "dmy", "ymd", "ydm", "myd", "dym"})
 
@@ -93,21 +273,19 @@ class SQLServerBackendMixin:
         immediately after the referenced table, so relocate the hint from the
         end of the query to directly after the ``FROM`` table reference.
         """
-        hint_match = _TABLE_HINT_PATTERN.search(sql)
-        if not hint_match:
+        hint_start = _trailing_table_hint_start(sql)
+        if hint_start is None:
             return sql
-        hint = hint_match.group(0).strip().rstrip(";").strip()
-        body = sql[: hint_match.start()]
-        from_matches = list(re.finditer(r"\bFROM\s+", body, re.IGNORECASE))
-        if not from_matches:
+        hint = sql[hint_start:].strip().rstrip(";").strip()
+        body = sql[:hint_start]
+        from_end = _last_from_end(body)
+        if from_end is None:
             return sql
-        from_match = from_matches[-1]
-        after_from = body[from_match.end():]
-        table_match = _TABLE_REF_PATTERN.match(after_from)
-        if not table_match:
+        table_end = _table_reference_end(body[from_end:], 0)
+        if table_end is None:
             return sql
-        table_end = from_match.end() + table_match.end()
-        return (body[:table_end] + " " + hint + body[table_end:]).strip()
+        end = from_end + table_end
+        return (body[:end] + " " + hint + body[end:]).strip()
 
     def _get_identity_columns(self, table_name: str) -> Set[str]:
         """Return the set of identity column names for a table (cached).
@@ -138,24 +316,19 @@ class SQLServerBackendMixin:
         sole statement in a batch (error 1067), so the wrapped statement must
         be executed as a separate batch with the flag turned on/off around it.
         """
-        match = _EXPLAIN_PATTERN.match(sql)
-        if not match:
+        parsed = _parse_explain_wrapper(sql)
+        if parsed is None:
             return None
-        set_clause = match.group(1).strip()
-        statement = match.group(2)
-        off_pattern = re.compile(
-            rf"\s*;\s*SET\s+{re.escape(set_clause)}\s+OFF\s*$",
-            re.IGNORECASE | re.DOTALL,
-        )
-        statement = off_pattern.sub("", statement)
-        return set_clause, statement.strip()
+        set_clause, statement = parsed
+        statement = _strip_trailing_set_off(statement, set_clause)
+        return set_clause.strip(), statement.strip()
 
     def _insert_table_name(self, sql: str) -> Optional[str]:
         """Return the target table name of an ``INSERT`` statement, or None."""
-        match = _INSERT_PATTERN.match(sql)
-        if not match:
+        header = _parse_insert_header(sql)
+        if header is None:
             return None
-        return match.group(3) or match.group(4)
+        return header[1]
 
     def _identity_insert_info(
         self, sql: str, params: Optional[Tuple] = None, identity_columns: Optional[Set[str]] = None
@@ -177,8 +350,10 @@ class SQLServerBackendMixin:
             identity_columns = self._get_identity_columns(table_name)
         if not identity_columns:
             return None
-        match = _INSERT_PATTERN.match(sql)
-        raw_columns = match.group(5)
+        header = _parse_insert_header(sql)
+        if header is None:
+            return None
+        raw_columns = header[2]
         columns = [c.strip().strip("[]\"").lower() for c in raw_columns.split(",") if c.strip()]
         if any(column in identity_columns for column in columns):
             return table_name

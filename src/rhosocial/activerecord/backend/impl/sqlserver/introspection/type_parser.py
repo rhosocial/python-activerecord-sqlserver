@@ -7,8 +7,10 @@ server-reported type spelling back into a ``DataType`` is a backend-local
 introspection concern: this helper lives under SQL Server introspection and is
 used only when reading back a column's declared type. It is NOT a dialect
 protocol member and is deliberately not installed on the dialect class.
+
+The spelling is read with character scanning (see ``.._scan``) instead of
+regular expressions: a type family is the leading word of the declaration.
 """
-import re
 
 from rhosocial.activerecord.backend.expression.types import (
     BigIntType,
@@ -31,6 +33,8 @@ from rhosocial.activerecord.backend.expression.types import (
     CharType,
 )
 
+from .._scan import find_argument_list, leading_word
+
 from ..expression.types import (
     SQLServerBitType,
     SQLServerImageType,
@@ -47,54 +51,27 @@ from ..expression.types import (
 class SQLServerTypeParser:
     """Parse a raw SQL Server type spelling into a DataType, bound to a dialect."""
 
-    _SQLSERVER_INTEGER_TYPES = re.compile(
-        r"^(?:INT8|BIGINT|SMALLINT|INT2|TINYINT|INT1|INTEGER|INT)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_FLOAT_TYPES = re.compile(
-        r"^(?:FLOAT|REAL|DOUBLE)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_DECIMAL_TYPES = re.compile(
-        r"^(?:DECIMAL|NUMERIC|DEC|MONEY|SMALLMONEY)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_STRING_TYPES = re.compile(
-        r"^(?:CHARACTER|NCHAR|VARCHAR|NVARCHAR|CHAR|CLOB|NTEXT|TEXT)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_DATE_TYPES = re.compile(
-        r"^(?:DATETIMEOFFSET|DATETIME2|SMALLDATETIME|DATETIME|DATE)\b",
-        re.IGNORECASE,
-    )
+    _SQLSERVER_INTEGER_TYPES = frozenset({
+        "INT8", "BIGINT", "SMALLINT", "INT2", "TINYINT", "INT1", "INTEGER", "INT",
+    })
+    _SQLSERVER_FLOAT_TYPES = frozenset({"FLOAT", "REAL", "DOUBLE"})
+    _SQLSERVER_DECIMAL_TYPES = frozenset({
+        "DECIMAL", "NUMERIC", "DEC", "MONEY", "SMALLMONEY",
+    })
+    _SQLSERVER_STRING_TYPES = frozenset({
+        "CHARACTER", "NCHAR", "VARCHAR", "NVARCHAR", "CHAR", "CLOB", "NTEXT", "TEXT",
+    })
+    _SQLSERVER_DATE_TYPES = frozenset({
+        "DATETIMEOFFSET", "DATETIME2", "SMALLDATETIME", "DATETIME", "DATE",
+    })
     #: The plain calendar date, separated from the datetimes that share its
-    #: letters. ``startswith("DATE")`` cannot tell them apart, so the check is
-    #: anchored and word-bounded instead.
-    _SQLSERVER_DATE_ONLY_TYPES = re.compile(
-        r"^DATE\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_TIME_TYPES = re.compile(
-        r"^(?:TIME)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_BIT_TYPES = re.compile(
-        r"^(?:BIT|BOOL|BOOLEAN)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_BLOB_TYPES = re.compile(
-        r"^(?:VARBINARY|IMAGE|BLOB|BYTEA)\b",
-        re.IGNORECASE,
-    )
-    _SQLSERVER_XML_TYPES = re.compile(
-        r"^(?:XML)\b",
-        re.IGNORECASE,
-    )
-    #: The declared argument list: ``(n)`` for a length or a precision,
-    #: ``(p,s)`` for precision and scale. Group 1 is always the first number,
-    #: group 2 the scale when one was declared — which is why ``DECIMAL(10,2)``
-    #: does not silently parse as ``DECIMAL``.
-    _SQLSERVER_ARGUMENTS = re.compile(r"\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)")
+    #: letters. ``startswith("DATE")`` cannot tell them apart, so the leading
+    #: word has to equal ``DATE`` exactly.
+    _SQLSERVER_DATE_ONLY_TYPES = frozenset({"DATE"})
+    _SQLSERVER_TIME_TYPES = frozenset({"TIME"})
+    _SQLSERVER_BIT_TYPES = frozenset({"BIT", "BOOL", "BOOLEAN"})
+    _SQLSERVER_BLOB_TYPES = frozenset({"VARBINARY", "IMAGE", "BLOB", "BYTEA"})
+    _SQLSERVER_XML_TYPES = frozenset({"XML"})
 
     def __init__(self, dialect):
         self.dialect = dialect
@@ -103,16 +80,17 @@ class SQLServerTypeParser:
         dialect = self.dialect
         stripped = raw.strip()
         upper = stripped.upper()
-        arguments = self._SQLSERVER_ARGUMENTS.search(stripped)
-        length = int(arguments.group(1)) if arguments else None
-        scale = int(arguments.group(2)) if arguments and arguments.group(2) else None
+        word = leading_word(upper)
+        arguments = find_argument_list(stripped)
+        length = arguments[0] if arguments else None
+        scale = arguments[1] if arguments else None
 
         # BIT — the boolean, not MySQL/PostgreSQL's bit string. The spelling
         # recorded is the concept's own, so ``BOOLEAN`` and ``BOOL`` survive the
         # round trip. T-SQL refuses a width on ``bit`` (error 2716), so a
         # parenthesised form is answered with ValueError rather than silently
         # dropping the width or escaping as a bare KeyError.
-        if self._SQLSERVER_BIT_TYPES.match(upper):
+        if word in self._SQLSERVER_BIT_TYPES:
             spelling = {"BIT": "boolean", "BOOL": "bool",
                         "BOOLEAN": "boolean"}.get(upper)
             if spelling is None:
@@ -134,11 +112,11 @@ class SQLServerTypeParser:
 
         # XML — a binary XML representation, not a varchar (checked before the
         # string family because ``XML`` shares no prefix with any of it).
-        if self._SQLSERVER_XML_TYPES.match(upper):
+        if word in self._SQLSERVER_XML_TYPES:
             return SQLServerXmlType(dialect=dialect)
 
         # Integer family: one class per width, and the spelling preserved.
-        if self._SQLSERVER_INTEGER_TYPES.match(upper):
+        if word in self._SQLSERVER_INTEGER_TYPES:
             if upper.startswith("INT8"):
                 return BigIntType(dialect=dialect, spelling="int8")
             if upper.startswith("BIGINT"):
@@ -156,7 +134,7 @@ class SQLServerTypeParser:
 
         # Float family. ``DOUBLE`` / ``DOUBLE PRECISION`` is the concept SQL
         # names for 8-byte floating point, which T-SQL spells ``FLOAT(53)``.
-        if self._SQLSERVER_FLOAT_TYPES.match(upper):
+        if word in self._SQLSERVER_FLOAT_TYPES:
             if upper.startswith("DOUBLE"):
                 spelling = "double precision" if "PRECISION" in upper else "double"
                 return DoubleType(dialect=dialect, spelling=spelling)
@@ -167,7 +145,7 @@ class SQLServerTypeParser:
         # Decimal family. ``MONEY`` / ``SMALLMONEY`` carry a fixed scale of 4
         # and a currency-formatted result the schema does not record, so they
         # stay a plain DecimalType rather than a distinct concept.
-        if self._SQLSERVER_DECIMAL_TYPES.match(upper):
+        if word in self._SQLSERVER_DECIMAL_TYPES:
             if upper.startswith("MONEY") or upper.startswith("SMALLMONEY"):
                 return DecimalType(dialect=dialect)
             if upper.startswith("NUMERIC"):
@@ -183,7 +161,7 @@ class SQLServerTypeParser:
         # concepts, so ``CHAR`` never yields a VarCharType and ``VARCHAR`` never
         # yields a CharType. An unsized word is completed from the same literal
         # the formatters use: 1 for the fixed forms, 255 for the variable ones.
-        if self._SQLSERVER_STRING_TYPES.match(upper):
+        if word in self._SQLSERVER_STRING_TYPES:
             # ``(MAX)`` lifts the length cap rather than setting one, in either
             # character set, so it is unbounded text and not a 255-char column.
             unbounded = arguments is None and "MAX" in upper
@@ -215,19 +193,19 @@ class SQLServerTypeParser:
         # 8-byte auto-incrementing counter that is *not* a timestamp; with no
         # rowversion concept to declare, that name falls through to
         # ``CustomType`` rather than being filed under datetime.
-        if self._SQLSERVER_DATE_TYPES.match(upper):
+        if word in self._SQLSERVER_DATE_TYPES:
             if upper.startswith("DATETIMEOFFSET"):
                 return TimestampTzType(dialect=dialect, precision=length)
-            if self._SQLSERVER_DATE_ONLY_TYPES.match(upper):
+            if word in self._SQLSERVER_DATE_ONLY_TYPES:
                 return DateType(dialect=dialect)
             return DateTimeType(dialect=dialect, precision=length)
 
-        if self._SQLSERVER_TIME_TYPES.match(upper):
+        if word in self._SQLSERVER_TIME_TYPES:
             return TimeType(dialect=dialect, precision=length)
 
         # Byte-string family. ``VARBINARY(MAX)`` is the unbounded declaration
         # and not a 255-byte one, so it gets its own class.
-        if self._SQLSERVER_BLOB_TYPES.match(upper):
+        if word in self._SQLSERVER_BLOB_TYPES:
             if upper.startswith("VARBINARY"):
                 if arguments is None and "MAX" in upper:
                     return SQLServerVarBinaryMaxType(dialect=dialect)

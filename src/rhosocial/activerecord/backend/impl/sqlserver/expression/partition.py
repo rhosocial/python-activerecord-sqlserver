@@ -12,7 +12,6 @@ This module defines:
 - SQLServerPartitionSchemeExpression — CREATE PARTITION SCHEME
 """
 
-import re
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Sequence, TYPE_CHECKING
@@ -20,6 +19,13 @@ from typing import Any, Optional, Sequence, TYPE_CHECKING
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.expression.introspection import IntrospectionExpression
 from rhosocial.activerecord.backend.expression.statements import PartitionClause
+
+from .._scan import (
+    digit_run_length,
+    is_ascii_identifier_char,
+    is_ascii_identifier_start,
+    skip_space,
+)
 
 if TYPE_CHECKING:
     from ..dialect import SQLServerDialect
@@ -29,9 +35,31 @@ if TYPE_CHECKING:
 #: one or two non-negative integers as its parameters. The type is written
 #: into the catalog question that compares a boundary against it, so the
 #: spelling is refused at construction rather than pasted into SQL.
-_PARTITION_DATA_TYPE = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*(\(\s*\d+(\s*,\s*\d+)?\s*\))?$"
-)
+def _is_parameterised_type(text: str) -> bool:
+    """Whether *text* is ``NAME`` or ``NAME(n)`` / ``NAME(p, s)`` exactly."""
+    if not text or not is_ascii_identifier_start(text[0]):
+        return False
+    index = 1
+    while index < len(text) and is_ascii_identifier_char(text[index]):
+        index += 1
+    if index == len(text):
+        return True
+    if text[index] != "(":
+        return False
+    index = skip_space(text, index + 1)
+    first_length = digit_run_length(text, index)
+    if not first_length:
+        return False
+    index = skip_space(text, index + first_length)
+    if index < len(text) and text[index] == ",":
+        index = skip_space(text, index + 1)
+        second_length = digit_run_length(text, index)
+        if not second_length:
+            return False
+        index = skip_space(text, index + second_length)
+    if index >= len(text) or text[index] != ")":
+        return False
+    return index + 1 == len(text)
 
 
 def validate_partition_data_type(data_type: str) -> str:
@@ -45,7 +73,7 @@ def validate_partition_data_type(data_type: str) -> str:
         ValueError: The spelling is not a plain SQL type with optional
             parameters.
     """
-    if not isinstance(data_type, str) or not _PARTITION_DATA_TYPE.match(data_type.strip()):
+    if not isinstance(data_type, str) or not _is_parameterised_type(data_type.strip()):
         raise ValueError(
             f"invalid partition-function data type {data_type!r}; expected e.g. "
             f"DATE, INT, NVARCHAR(50) or DECIMAL(10, 2)"

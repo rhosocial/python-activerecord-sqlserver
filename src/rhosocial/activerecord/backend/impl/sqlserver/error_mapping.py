@@ -14,8 +14,7 @@ synthetic exceptions built for tests resolve the same way as driver-raised
 ones.
 """
 
-import re
-from typing import Optional
+from typing import Callable, Optional, Tuple
 
 from rhosocial.activerecord.backend.errors import (
     ConnectionError,
@@ -26,6 +25,14 @@ from rhosocial.activerecord.backend.errors import (
     OperationalError,
     QueryError,
     attach_diagnostics,
+)
+
+from ._scan import (
+    digit_run_length,
+    find_ci,
+    skip_space,
+    skip_space_at_least_one,
+    word_boundary_at,
 )
 
 BACKEND_NAME = "sqlserver"
@@ -130,11 +137,81 @@ _CONNECTION_MESSAGE_PATTERNS = (
 # ``[2627]``, ``(2627)``, ``Msg 2627`` and ``error 2627`` cover the forms
 # pyodbc, ODBC and SQL Server itself produce. The four-digit bound avoids
 # mistaking SQLSTATE values such as ``08001`` for native error numbers.
-_MESSAGE_CODE_PATTERNS = (
-    re.compile(r"\[(\d{1,4})\]"),
-    re.compile(r"\((\d{1,4})\)"),
-    re.compile(r"\bmsg\s*(\d{1,4})\b", re.IGNORECASE),
-    re.compile(r"\berror\s+(\d{1,4})\b", re.IGNORECASE),
+_MAX_NATIVE_CODE_DIGITS = 4
+
+
+def _code_before_terminator(message: str, start: int, terminator: str) -> Optional[int]:
+    """Read a 1-4 digit run immediately followed by *terminator*."""
+    length = digit_run_length(message, start)
+    if not 1 <= length <= _MAX_NATIVE_CODE_DIGITS:
+        return None
+    end = start + length
+    if end < len(message) and message[end] == terminator:
+        return int(message[start:end])
+    return None
+
+
+def _code_in_brackets(message: str) -> Optional[int]:
+    """Match ``[2627]`` anywhere in *message*."""
+    index = message.find("[")
+    while index != -1:
+        code = _code_before_terminator(message, index + 1, "]")
+        if code is not None:
+            return code
+        index = message.find("[", index + 1)
+    return None
+
+
+def _code_in_parentheses(message: str) -> Optional[int]:
+    """Match ``(2627)`` anywhere in *message*."""
+    index = message.find("(")
+    while index != -1:
+        code = _code_before_terminator(message, index + 1, ")")
+        if code is not None:
+            return code
+        index = message.find("(", index + 1)
+    return None
+
+
+def _code_after_marker(message: str, marker: str, spaced: bool) -> Optional[int]:
+    """Read a whole 1-4 digit run after a word marker.
+
+    Mirrors ``\\bmsg\\s*(\\d{1,4})\\b`` when *spaced* is false and
+    ``\\berror\\s+(\\d{1,4})\\b`` when it is true. The trailing word boundary
+    means a run longer than four digits is not a native error number, and a
+    letter directly after the digits breaks the run's end boundary as well.
+    """
+    index = find_ci(message, marker, 0)
+    while index != -1:
+        if word_boundary_at(message, index):
+            cursor = index + len(marker)
+            if spaced:
+                after_space = skip_space_at_least_one(message, cursor)
+                cursor = -1 if after_space is None else after_space
+            else:
+                cursor = skip_space(message, cursor)
+            if cursor >= 0:
+                length = digit_run_length(message, cursor)
+                if 1 <= length <= _MAX_NATIVE_CODE_DIGITS:
+                    if word_boundary_at(message, cursor + length):
+                        return int(message[cursor:cursor + length])
+        index = find_ci(message, marker, index + 1)
+    return None
+
+
+def _code_after_msg(message: str) -> Optional[int]:
+    return _code_after_marker(message, "msg", spaced=False)
+
+
+def _code_after_error(message: str) -> Optional[int]:
+    return _code_after_marker(message, "error", spaced=True)
+
+
+_MESSAGE_CODE_SCANNERS: Tuple[Callable[[str], Optional[int]], ...] = (
+    _code_in_brackets,
+    _code_in_parentheses,
+    _code_after_msg,
+    _code_after_error,
 )
 
 
@@ -162,10 +239,10 @@ def extract_driver_code(error: Exception) -> Optional[int]:
             return int(arg)
 
     message = str(error)
-    for pattern in _MESSAGE_CODE_PATTERNS:
-        match = pattern.search(message)
-        if match:
-            return int(match.group(1))
+    for scan in _MESSAGE_CODE_SCANNERS:
+        code = scan(message)
+        if code is not None:
+            return code
     return None
 
 
