@@ -8,6 +8,13 @@ mapping. These readers give the four ``suggest_*`` mixins one way to look at
 either shape without rendering SQL or guessing a class the projection does not
 carry. An opaque ``repr`` projection answers no fields, which is what lets a
 mixin refuse honestly instead of inventing a node.
+
+The enriched change points also carry *live* declaration nodes beside the
+frozen projections. ``projection`` mirrors core's freeze so the two shapes
+compare by the same facts, ``named_values`` keys either shape by its name for
+change detection, ``live_by_name`` exposes the live declarations an ADD needs
+but a frozen projection cannot rebuild, and ``fingerprint`` keeps a live
+branch class visible when deciding whether anything changed.
 """
 from __future__ import annotations
 
@@ -18,6 +25,10 @@ from ....expression.bases import BaseExpression
 
 __all__ = [
     "ChangeProjection",
+    "fingerprint",
+    "live_by_name",
+    "named_values",
+    "projection",
     "projection_name",
     "projection_node",
     "projection_param",
@@ -107,3 +118,71 @@ def projection_name(value: Any) -> Optional[str]:
         return value if value.strip() else None
     name = projection_param(value, "name")
     return name if isinstance(name, str) and name.strip() else None
+
+
+def projection(value: Any) -> Any:
+    """Comparable form of a declaration value, without rendering SQL.
+
+    This mirrors core's ``_freeze`` so a frozen projection and a live
+    declaration of the same constraint/index compare equal by the same facts
+    the change planner used to decide the point exists.
+    """
+    if value is None or isinstance(value, (str, int, float, bool, bytes, tuple)):
+        return value
+    getter = getattr(value, "get_params", None)
+    if callable(getter):
+        try:
+            return (
+                "params",
+                tuple(sorted((str(key), projection(item)) for key, item in getter().items())),
+            )
+        except (AttributeError, TypeError, ValueError):  # pragma: no cover - malformed node
+            pass
+    if isinstance(value, (list, set, frozenset)):
+        return tuple(projection(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(sorted((str(key), projection(item)) for key, item in value.items()))
+    return ("repr", repr(value))
+
+
+def named_values(values: Any) -> Optional[Dict[str, Any]]:
+    """Declarations keyed by name, or ``None`` when one has no usable name.
+
+    ``DROP CONSTRAINT`` / ``DROP INDEX`` need a name, so a projection that
+    hides it cannot be answered. A bare string is itself the name, which is
+    how a caller states an existing constraint/index it only knows by name.
+    """
+    named: Dict[str, Any] = {}
+    for value in values or ():
+        name = projection_name(value)
+        if name is None:
+            return None
+        named[name] = value
+    return named
+
+
+def live_by_name(values: Any, cls: type) -> Dict[str, Any]:
+    """Live declaration nodes keyed by name, skipping unusable entries."""
+    named: Dict[str, Any] = {}
+    for value in values or ():
+        if not isinstance(value, cls):
+            continue
+        name = getattr(value, "name", None)
+        if isinstance(name, str) and name.strip():
+            named[name] = value
+    return named
+
+
+def fingerprint(name: str, value: Any, live: Dict[str, Any]) -> Any:
+    """Comparable key for one named declaration.
+
+    A live node keeps what the frozen projection throws away -- notably a
+    constraint's branch *class* (PRIMARY KEY vs UNIQUE) and an index's own
+    options -- so a change that only differs there is still a change. Without
+    a live node the frozen projection is the only comparable fact surface.
+    """
+    node = live.get(name)
+    if node is None:
+        return projection(value)
+    inner = getattr(node, "branch", None)
+    return ("live", type(inner if inner is not None else node).__name__, projection(node))

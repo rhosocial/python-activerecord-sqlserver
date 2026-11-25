@@ -14,11 +14,16 @@ import re
 import pytest
 
 from rhosocial.activerecord.backend.dialect.partition_capability import PartitionCapability
+from rhosocial.activerecord.backend.expression import Column as ExprColumn
+from rhosocial.activerecord.backend.expression import Literal
+from rhosocial.activerecord.backend.expression.objects import Table as TableObject
+from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
 from rhosocial.activerecord.backend.expression.statements import (
     CreateIndexStatement,
     DropIndexStatement,
     IndexDefinition,
 )
+from rhosocial.activerecord.backend.expression.statements.ddl_partition import PartitionClause
 from rhosocial.activerecord.backend.expression.statements.ddl_alter import (
     AddIndexAction,
     AddTableConstraintAction,
@@ -27,9 +32,16 @@ from rhosocial.activerecord.backend.expression.statements.ddl_alter import (
     DropTableConstraintAction,
 )
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+    ColumnDefinition,
+    ConstraintValidation,
+    TableCheckConstraint,
     TableConstraint,
+    TableExcludeConstraint,
+    TableForeignKeyConstraint,
+    TablePrimaryKeyConstraint,
     TableUniqueConstraint,
 )
+from rhosocial.activerecord.backend.expression.types import IntegerType
 from rhosocial.activerecord.backend.impl.sqlserver.backend.backend import SQLServerUnicodeDialect
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
@@ -52,6 +64,7 @@ from rhosocial.activerecord.backend.suggestion.protocols import (
     TableConstraintChangeSuggestionSupport,
     TableIndexChangeSuggestionSupport,
 )
+from rhosocial.activerecord.migration.schema_change import _freeze
 
 _SUGGESTION_PACKAGE = "rhosocial.activerecord.backend.impl.sqlserver.suggestion"
 
@@ -120,6 +133,27 @@ def _assert_data_preserved(operations, live="events"):
         elif dst == _plain(live) and src != _plain(live):
             outside.discard(src)
     assert not outside, f"live table data left outside: {sorted(outside)}"
+
+
+def _constraint_point(table_name="events", old=(), new=()):
+    """A change point as core builds it: frozen projections plus live declarations."""
+    return TableConstraintChangeSuggestion(
+        table_name=table_name,
+        old_constraints=tuple(_freeze(value) for value in old),
+        new_constraints=tuple(_freeze(value) for value in new),
+        old_constraint_declarations=tuple(old),
+        new_constraint_declarations=tuple(new),
+    )
+
+
+def _index_point(table_name="events", old=(), new=()):
+    return TableIndexChangeSuggestion(
+        table_name=table_name,
+        old_indexes=tuple(_freeze(value) for value in old),
+        new_indexes=tuple(_freeze(value) for value in new),
+        old_index_declarations=tuple(old),
+        new_index_declarations=tuple(new),
+    )
 
 
 class TestProtocolRegistration:
@@ -451,6 +485,232 @@ class TestPartitionSchemeChange:
         assert answer.operations is None
 
 
+class TestEnrichedChangePointContext:
+    """Live declarations on a frozen point recover only the honest answers."""
+
+    def test_enriched_add_spells_every_tsql_constraint_kind(self, dialect):
+        cases = (
+            (
+                TableUniqueConstraint(dialect, ["created_at"]),
+                "UNIQUE ([created_at])",
+            ),
+            (
+                TablePrimaryKeyConstraint(dialect, ["id"]),
+                "PRIMARY KEY ([id])",
+            ),
+            (
+                TableCheckConstraint(
+                    dialect,
+                    ComparisonPredicate(
+                        dialect, ">", ExprColumn(dialect, "age"), Literal(dialect, 18, inline=True)
+                    ),
+                ),
+                "CHECK ([age] > 18)",
+            ),
+            (
+                TableForeignKeyConstraint(
+                    dialect, ["tenant_id"], (TableObject(dialect, "tenants"), ["id"])
+                ),
+                "FOREIGN KEY ([tenant_id]) REFERENCES [tenants]([id])",
+            ),
+        )
+        for branch, body in cases:
+            declaration = TableConstraint(dialect, branch=branch, name="c1")
+            answer = dialect.suggest_table_constraint_change(_constraint_point(new=(declaration,)))
+            assert answer.state == "actions"
+            assert len(answer.operations) == 1
+            statement = answer.operations[0]
+            assert len(statement.actions) == 1
+            action = statement.actions[0]
+            assert isinstance(action, AddTableConstraintAction)
+            assert action.constraint is declaration
+            assert statement.to_sql() == (
+                f"ALTER TABLE [events] ADD CONSTRAINT [c1] {body}",
+                (),
+            )
+
+    def test_enriched_changed_constraint_keeps_the_live_branch_and_drops_first(self, dialect):
+        old = TableConstraint(
+            dialect, branch=TableUniqueConstraint(dialect, ["created_at"]), name="c1"
+        )
+        new = TableConstraint(
+            dialect, branch=TablePrimaryKeyConstraint(dialect, ["created_at"]), name="c1"
+        )
+        answer = dialect.suggest_table_constraint_change(_constraint_point(old=(old,), new=(new,)))
+        assert _sql(answer.operations) == (
+            "ALTER TABLE [events] DROP CONSTRAINT [c1] "
+            "ALTER TABLE [events] ADD CONSTRAINT [c1] PRIMARY KEY ([created_at])"
+        )
+        assert isinstance(answer.operations[0].actions[0], DropTableConstraintAction)
+        add = answer.operations[1].actions[0]
+        assert isinstance(add, AddTableConstraintAction)
+        assert add.constraint is new
+        assert isinstance(add.constraint.branch, TablePrimaryKeyConstraint)
+
+    def test_enriched_unspellable_constraints_stay_false(self, dialect):
+        unspellable = (
+            TableConstraint(dialect, branch=TableExcludeConstraint(dialect, ["id"]), name="c1"),
+            TableConstraint(
+                dialect,
+                branch=TableUniqueConstraint(dialect, ["id"]),
+                name="c1",
+                enforced=True,
+            ),
+            TableConstraint(
+                dialect,
+                branch=TableUniqueConstraint(dialect, ["id"]),
+                name="c1",
+                deferrable=True,
+            ),
+            TableConstraint(
+                dialect,
+                branch=TableCheckConstraint(
+                    dialect,
+                    ComparisonPredicate(
+                        dialect, ">", ExprColumn(dialect, "age"), Literal(dialect, 18, inline=True)
+                    ),
+                ),
+                name="c1",
+                validation=ConstraintValidation.NOVALIDATE,
+            ),
+        )
+        for declaration in unspellable:
+            answer = dialect.suggest_table_constraint_change(
+                _constraint_point(new=(declaration,))
+            )
+            assert answer.operations is False
+
+    def test_enriched_declaration_with_a_different_name_is_not_reused(self, dialect):
+        frozen = TableConstraint(
+            dialect, branch=TableUniqueConstraint(dialect, ["id"]), name="wanted"
+        )
+        other = TableConstraint(
+            dialect, branch=TableUniqueConstraint(dialect, ["id"]), name="other"
+        )
+        point = TableConstraintChangeSuggestion(
+            table_name="events",
+            new_constraints=(_freeze(frozen),),
+            new_constraint_declarations=(other,),
+        )
+        assert dialect.suggest_table_constraint_change(point).operations is False
+
+    def test_enriched_create_spells_clustered_unique_and_include(self, dialect):
+        index = IndexDefinition(
+            dialect,
+            name="ix_created",
+            columns=["created_at"],
+            unique=True,
+            type="CLUSTERED",
+            include_columns=["tenant_id"],
+        )
+        answer = dialect.suggest_table_index_change(_index_point(new=(index,)))
+        assert answer.state == "actions"
+        statement = answer.operations[0]
+        assert isinstance(statement, CreateIndexStatement)
+        assert statement.to_sql() == (
+            "CREATE UNIQUE CLUSTERED INDEX [ix_created] ON [events] ([created_at]) "
+            "INCLUDE ([tenant_id])",
+            (),
+        )
+
+    def test_enriched_create_spells_nonclustered_composite_index(self, dialect):
+        index = IndexDefinition(
+            dialect,
+            name="ix_created",
+            columns=["created_at", "tenant_id"],
+            type="NONCLUSTERED",
+        )
+        answer = dialect.suggest_table_index_change(_index_point(new=(index,)))
+        assert answer.operations[0].to_sql() == (
+            "CREATE NONCLUSTERED INDEX [ix_created] ON [events] ([created_at], [tenant_id])",
+            (),
+        )
+
+    def test_enriched_drop_and_create_chain_exact_sql(self, dialect):
+        old = IndexDefinition(dialect, name="ix_old", columns=["created_at"])
+        new = IndexDefinition(dialect, name="ix_new", columns=["tenant_id"], unique=True)
+        answer = dialect.suggest_table_index_change(_index_point(old=(old,), new=(new,)))
+        assert _sql(answer.operations) == (
+            "DROP INDEX [ix_old] ON [events] "
+            "CREATE UNIQUE INDEX [ix_new] ON [events] ([tenant_id])"
+        )
+        assert isinstance(answer.operations[0], DropIndexStatement)
+        assert not any(
+            isinstance(action, (AddIndexAction, DropIndexAction))
+            for statement in answer.operations
+            for action in getattr(statement, "actions", ())
+        )
+
+    def test_enriched_unsupported_index_options_stay_false(self, dialect):
+        unsupported = (
+            SQLServerIndexDefinition(
+                dialect,
+                name="ix_hash",
+                columns=["created_at"],
+                hash_index=True,
+                bucket_count=1024,
+            ),
+            IndexDefinition(dialect, name="ix_ne", columns=["created_at"], if_not_exists=True),
+            IndexDefinition(dialect, name="ix_conc", columns=["created_at"], concurrent=True),
+            IndexDefinition(
+                dialect,
+                name="ix_partial",
+                columns=["created_at"],
+                partial_condition=("repr", "ComparisonPredicate"),
+            ),
+        )
+        for declaration in unsupported:
+            answer = dialect.suggest_table_index_change(_index_point(new=(declaration,)))
+            assert answer.operations is False
+
+    def test_enriched_full_column_definitions_do_not_change_reorder_refusal(self, dialect):
+        fields = {
+            "id": ColumnDefinition(dialect, "id", IntegerType(dialect)),
+            "created_at": ColumnDefinition(dialect, "created_at", IntegerType(dialect)),
+        }
+        point = ColumnReorderSuggestion(
+            table_name="events",
+            old_order=("id", "created_at"),
+            new_order=("created_at", "id"),
+            reordered_columns=("id",),
+            old_fields=fields,
+            new_fields=fields,
+        )
+        for server in (dialect, SQLServerUnicodeDialect((16, 0, 0))):
+            answer = server.suggest_column_reorder(point)
+            assert answer.operations is False
+            assert answer.state == "unaddressable"
+
+    def test_enriched_partition_declarations_stay_unaddressable(self, dialect):
+        old = PartitionClause(dialect, "RANGE", [ExprColumn(dialect, "created_at")])
+        new = PartitionClause(dialect, "RANGE", [ExprColumn(dialect, "id")])
+        point = PartitionSchemeChangeSuggestion(
+            table_name="events",
+            old_partition=_freeze(old),
+            new_partition=_freeze(new),
+            old_partition_declaration=old,
+            new_partition_declaration=new,
+        )
+        for server in (
+            dialect,
+            SQLServerUnicodeDialect((16, 0, 0)),
+            SQLServerDialect((16, 0, 0), edition="Standard Edition"),
+            SQLServerDialect((9, 0, 0)),
+        ):
+            answer = server.suggest_partition_scheme_change(point)
+            assert answer.operations is False
+            assert answer.state == "unaddressable"
+        # Enrichment does not turn an unchanged projection into an action.
+        unchanged = PartitionSchemeChangeSuggestion(
+            table_name="events",
+            old_partition=_freeze(old),
+            new_partition=_freeze(old),
+            old_partition_declaration=old,
+            new_partition_declaration=new,
+        )
+        assert dialect.suggest_partition_scheme_change(unchanged).operations is None
+
+
 class TestSuggestionChainSafety:
     """Structural guard on every change-point answer, not just one pinned SQL."""
 
@@ -478,6 +738,42 @@ class TestSuggestionChainSafety:
                 table_name=self.LIVE,
                 old_partition=TestPartitionSchemeChange.OLD,
                 new_partition=TestPartitionSchemeChange.NEW,
+            ),
+        )
+        methods = {label: method for label, _cls, _protocol, method, _module in CASES}
+        for server in (dialect, SQLServerUnicodeDialect((16, 0, 0))):
+            for point in points:
+                answer = getattr(server, methods[point.label])(point)
+                _assert_data_preserved(answer.operations, live=self.LIVE)
+
+    def test_enriched_points_keep_chains_safe(self, dialect):
+        constraint = TableConstraint(
+            dialect, branch=TableUniqueConstraint(dialect, ["created_at"]), name="uq_created"
+        )
+        index = IndexDefinition(dialect, name="ix_created", columns=["created_at"])
+        fields = {
+            "id": ColumnDefinition(dialect, "id", IntegerType(dialect)),
+            "created_at": ColumnDefinition(dialect, "created_at", IntegerType(dialect)),
+        }
+        old_partition = PartitionClause(dialect, "RANGE", [ExprColumn(dialect, "created_at")])
+        new_partition = PartitionClause(dialect, "RANGE", [ExprColumn(dialect, "id")])
+        points = (
+            ColumnReorderSuggestion(
+                table_name=self.LIVE,
+                old_order=("id", "created_at"),
+                new_order=("created_at", "id"),
+                reordered_columns=("id",),
+                old_fields=fields,
+                new_fields=fields,
+            ),
+            _constraint_point(self.LIVE, new=(constraint,)),
+            _index_point(self.LIVE, old=("ix_retired",), new=(index,)),
+            PartitionSchemeChangeSuggestion(
+                table_name=self.LIVE,
+                old_partition=_freeze(old_partition),
+                new_partition=_freeze(new_partition),
+                old_partition_declaration=old_partition,
+                new_partition_declaration=new_partition,
             ),
         )
         methods = {label: method for label, _cls, _protocol, method, _module in CASES}
