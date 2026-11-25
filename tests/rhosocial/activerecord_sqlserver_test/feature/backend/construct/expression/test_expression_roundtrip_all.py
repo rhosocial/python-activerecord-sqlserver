@@ -130,7 +130,11 @@ from rhosocial.activerecord.backend.expression.predicates import (
     ComparisonPredicate,
 )
 from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
-from rhosocial.activerecord.backend.expression.operators import ArithmeticOperation
+from rhosocial.activerecord.backend.expression.operators import (
+    ArithmeticOperation,
+    RawSQL,
+    RawSQLPredicate,
+)
 from rhosocial.activerecord.backend.expression.query_sources import SetOperation
 from rhosocial.activerecord.backend.expression.statements import (
     ddl_alter,
@@ -178,7 +182,6 @@ _spec.loader.exec_module(_harness)
 assert_params_equal = _harness.assert_params_equal
 collect_expression_classes = _harness.collect_expression_classes
 make_instance = _harness.make_instance
-register_all = _harness.register_all
 register_special_constructor = _harness.register_special_constructor
 roundtrip_expression = _harness.roundtrip_expression
 
@@ -209,14 +212,50 @@ def _collect(pkg: str) -> Dict[str, type]:
 CORE_REGISTERED = _collect(CORE_EXPR_PKG)
 SS_REGISTERED = _collect(SS_EXPR_PKG)
 REGISTERED: Dict[str, type] = {**CORE_REGISTERED, **SS_REGISTERED}
-register_all(REGISTERED)
-# Nothing else needs registering. The enum/dataclass sub-registries the old
-# matrix filled existed only because an artifact carried ``__enum__`` /
-# ``__dataclass__`` markers and had to resolve those class names on the way
-# back in; the artifact is plain JSON now, an enum rides as its value, a
-# dataclass as an object, and the kind whitelist has no name to resolve for
-# either. Registering an enum here would therefore be a call to a method the
-# core no longer ships, which is how this line got noticed.
+
+
+def _codec_registry():
+    """The matrix's own table: the published one, widened for codec coverage.
+
+    Reading an artifact resolves a kind through ``dialect.artifact_registry()``
+    by default, and that is what the production paths use. This matrix is
+    about the *codec*, though, and it deliberately covers classes no published
+    table admits:
+
+    * core base classes that declare no dialect formatter (``SQLPredicate``,
+      ``SchemaObject`` and friends) are not kinds the core registry publishes;
+    * ``RawSQL`` / ``RawSQLPredicate`` are caller-vouched text, so every
+      published table leaves them out -- a test that built the instance itself
+      is exactly the caller who may opt in;
+    * the generic-statement fixtures use the dummy backend's concrete TYPE
+      definition/alter action, which no SQL Server table holds.
+
+    Widening is done on a ``twin()`` of the backend's table, never on the
+    shared one, so this matrix cannot change what another reader resolves.
+    """
+    from rhosocial.activerecord.backend.impl.dummy.expression import (
+        _DummyTypeAlterAction,
+        _DummyTypeDefinition,
+    )
+    from rhosocial.activerecord.backend.impl.sqlserver.registry import (
+        backend_registry,
+    )
+
+    registry = backend_registry().twin()
+    for cls in REGISTERED.values():
+        registry.register_node(cls)
+    for cls in (
+        RawSQL,
+        RawSQLPredicate,
+        _DummyTypeDefinition,
+        _DummyTypeAlterAction,
+    ):
+        registry.register_node(cls)
+    registry.freeze()
+    return registry
+
+
+CODEC_REGISTRY = _codec_registry()
 
 
 # ---------------------------------------------------------------------------
@@ -1696,7 +1735,7 @@ def _unmodelled_methods():
 
 
 def assert_sql_roundtrip_classified(
-    fqn: str, instance, dialect
+    fqn: str, instance, dialect, registry=None
 ) -> str:
     """Assert an expression's SQL survives the round-trip, or say precisely why not.
 
@@ -1731,6 +1770,8 @@ def assert_sql_roundtrip_classified(
         fqn: Fully qualified name of the class, used in every message.
         instance: The expression to render.
         dialect: The dialect to render it against.
+        registry: The table reads resolve kinds through; ``None`` selects
+            ``dialect.artifact_registry()``.
 
     Returns:
         A short string naming the branch taken -- ``"rendered"``,
@@ -1783,7 +1824,7 @@ def assert_sql_roundtrip_classified(
     for channel, codec in ((name, _artifact_codecs()[name]) for name in _ARTIFACT_CHANNELS):
         encode, decode = codec
         try:
-            decoded = decode(encode(instance), dialect)
+            decoded = decode(encode(instance), dialect, registry=registry)
             decoded_sql, decoded_params = decoded.to_sql()
         except Exception as exc:
             # A channel that cannot carry the node is recorded, not swallowed:
@@ -2017,7 +2058,9 @@ class TestExpressionRoundtrip:
         fqn, instance = sqlserver_expr_case
         row = ARTIFACT_GAPS.get(fqn)
         if row is None:
-            roundtrip_expression(fqn, instance, sqlserver_dialect)
+            roundtrip_expression(
+                fqn, instance, sqlserver_dialect, registry=CODEC_REGISTRY
+            )
             return
         channels, exc_type, fragment = row
         pinned = _channel_channels(channels)
@@ -2070,7 +2113,9 @@ class TestExpressionRoundtrip:
     def test_to_sql_roundtrip_classified(self, sqlserver_expr_case, sqlserver_dialect):
         """A render must survive the round-trip; a non-render must be classified."""
         fqn, instance = sqlserver_expr_case
-        assert_sql_roundtrip_classified(fqn, instance, sqlserver_dialect)
+        assert_sql_roundtrip_classified(
+            fqn, instance, sqlserver_dialect, registry=CODEC_REGISTRY
+        )
 
 
 class TestMatrixIntegrity:
@@ -2217,19 +2262,28 @@ class TestMatrixIntegrity:
             f"have stopped early"
         )
 
-    def test_every_covered_class_is_registered_for_deserialization(self):
+    def test_every_covered_class_is_registered_for_deserialization(self, sqlserver_dialect):
         """A class in the matrix can be found again when deserializing.
 
-        Deserialization resolves a kind through the framework's default
-        registry -- the same whitelist ``register_all`` filled at import --
-        so a class the matrix renders but the registry cannot resolve would
-        round-trip into the wrong thing or nothing at all.
+        Two tables are checked, because they answer different questions.
+        Every SQL Server kind the matrix covers must resolve through
+        ``dialect.artifact_registry()``: that is the table production reads
+        with, and a shipped backend kind missing from it would make an artifact
+        unreadable. The matrix's own codec table is the widened twin it
+        round-trips with, and it must resolve every class the matrix covers --
+        see ``_codec_registry`` for the classes the published tables exclude
+        and the caller-side opt-in that admits them.
         """
-        from rhosocial.activerecord.backend.expression.serialization import (
-            default_registry,
+        published = sqlserver_dialect.artifact_registry()
+        unpublished = sorted(
+            fqn
+            for fqn, cls in SS_REGISTERED.items()
+            if published.resolve_node(cls.kind()) is not cls
         )
-
-        registry = default_registry()
+        assert not unpublished, (
+            f"SQL Server kinds the dialect registry cannot resolve: {unpublished}"
+        )
+        registry = CODEC_REGISTRY
         unresolved = sorted(
             fqn
             for fqn, cls in REGISTERED.items()
@@ -2297,9 +2351,10 @@ class TestMatrixIntegrity:
             if instance is None:
                 continue
             constructible.append(fqn)
-            branches[
-                assert_sql_roundtrip_classified(fqn, instance, sqlserver_dialect)
-            ] += 1
+            branch = assert_sql_roundtrip_classified(
+                fqn, instance, sqlserver_dialect, registry=CODEC_REGISTRY
+            )
+            branches[branch] += 1
         assert constructible
         print(
             f"\nexpression matrix: {len(REGISTERED)} collected, "

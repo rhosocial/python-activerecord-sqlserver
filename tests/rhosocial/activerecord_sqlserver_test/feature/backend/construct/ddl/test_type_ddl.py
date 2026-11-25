@@ -11,7 +11,6 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     DropTypeSupport,
 )
 from rhosocial.activerecord.backend.expression.serialization import (
-    default_registry,
     deserialize,
     deserialize_json,
     deserialize_xml,
@@ -622,14 +621,14 @@ def test_rename_type_uses_sp_rename():
     )
 
 
-def test_type_expressions_are_explicitly_registered():
-    """The backend's type nodes assemble into the framework kind registry.
+def test_type_expressions_resolve_through_the_dialects_registry():
+    """The backend's type nodes are discovered into the dialect's own table.
 
     Writing an artifact needs no registry: the node reports its own kind.
-    Reading one resolves the kind through the framework's default registry,
-    which this backend's expression module fills at import -- so the three
-    codec channels round-trip these backend-owned kinds through the same
-    default path the core's own classes use.
+    Reading one resolves the kind through ``dialect.artifact_registry()``,
+    which this backend assembles from its expression package -- so the three
+    codec channels round-trip these backend-owned kinds without any caller
+    registering them into a process-global table.
     """
     dialect = SQLServerDialect(SQL_SERVER_2022)
     expressions = (
@@ -644,9 +643,9 @@ def test_type_expressions_are_explicitly_registered():
     )
     for expression in expressions:
         # The kind whitelist is keyed by the kind derived from the class
-        # name; this backend fills the default registry at import.
+        # name; the dialect's registry is what resolves it.
         kind = type(expression).kind()
-        assert default_registry().resolve_node(kind) is type(expression)
+        assert dialect.artifact_registry().resolve_node(kind) is type(expression)
         for encoder, decoder in (
             (serialize, deserialize),
             (serialize_json, deserialize_json),

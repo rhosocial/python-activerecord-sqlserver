@@ -633,6 +633,18 @@ class SQLServerDialect(
         if version is not None:
             self.version = version
 
+    def artifact_registry(self):
+        """The kinds this backend can read: core's kinds plus SQL Server's own.
+
+        SQL Server owns its expression package, so the composition lives here
+        rather than in core: ``backend_registry()`` is
+        ``registry_for_packages("...impl.sqlserver.expression", base=core_registry())``,
+        frozen and cached.
+        """
+        from .registry import backend_registry
+
+        return backend_registry()
+
     def get_server_version(self) -> Tuple[int, int, int]:
         """Return the SQL Server version this dialect is configured for."""
         return self.version

@@ -15,8 +15,7 @@ This module is the test-only home (NOT shipped as part of the core library's
 runtime API) for constructing expression instances and asserting they survive
 all three serializations.
 
-After registering a class into the ExpressionRegistry, expression instances
-must satisfy:
+An expression instance whose kind a registry can resolve must satisfy:
 
 - ``get_params()`` reflects every ``__init__`` parameter
 - A round-trip through the three encoding channels returns a structurally
@@ -992,24 +991,6 @@ def collect_expression_classes(package_path: str) -> Dict[str, Type[BaseExpressi
     return classes
 
 
-def register_all(classes: Dict[str, Type[BaseExpression]]) -> None:
-    """Hand the collected classes to the deserialization kind whitelist.
-
-    Core split the class index out of the serialization module into a
-    registry: deserialization resolves a node to its class through the
-    framework's default registry, not through the ``(dialect, kind)`` render
-    registry -- the two are separate mechanisms and only the former names
-    expression classes. Core and the built-in backends populate that registry
-    on first use; registering one of those classes again is a no-op, and the
-    backend classes collected by the matrix are what this call adds.
-    """
-    from rhosocial.activerecord.backend.expression.serialization import default_registry
-
-    registry = default_registry()
-    for cls in classes.values():
-        registry.register_node(cls)
-
-
 def assert_params_equal(
     a: Any, b: Any, path: str = "params", allow_enum_names: bool = False
 ) -> None:
@@ -1081,42 +1062,55 @@ def _compare(a: Any, b: Any, path: str, allow_enum_names: bool) -> None:
     assert a == b, f"{path}: {a!r} != {b!r}"
 
 
-def roundtrip_expression(fqn: str, instance: BaseExpression, dialect: Any) -> None:
-    """Assert an instance round-trips losslessly through dict / JSON / XML."""
+def roundtrip_expression(
+    fqn: str, instance: BaseExpression, dialect: Any, registry: Any = None
+) -> None:
+    """Assert an instance round-trips losslessly through dict / JSON / XML.
+
+    ``registry`` is the table the read resolves kinds through; ``None`` lets
+    ``deserialize`` select ``dialect.artifact_registry()``. A test that covers
+    a codec wider than the published table passes a local twin explicitly.
+    """
     original = instance.get_params()
     for restored in (
-        _rt_dict(instance, dialect),
-        _rt_json(instance, dialect),
-        _rt_xml(instance, dialect),
+        _rt_dict(instance, dialect, registry),
+        _rt_json(instance, dialect, registry),
+        _rt_xml(instance, dialect, registry),
     ):
         assert_params_equal(restored.get_params(), original, fqn)
 
 
-def _rt_dict(instance, dialect):
+def _rt_dict(instance, dialect, registry=None):
     from rhosocial.activerecord.backend.expression.serialization import deserialize, serialize
 
-    return deserialize(serialize(instance), dialect)
+    return deserialize(serialize(instance), dialect, registry=registry)
 
 
-def _rt_json(instance, dialect):
+def _rt_json(instance, dialect, registry=None):
     from rhosocial.activerecord.backend.expression.serialization import deserialize_json, serialize_json
 
-    return deserialize_json(serialize_json(instance), dialect)
+    return deserialize_json(serialize_json(instance), dialect, registry=registry)
 
 
-def _rt_xml(instance, dialect):
+def _rt_xml(instance, dialect, registry=None):
     from rhosocial.activerecord.backend.expression.serialization import deserialize_xml, serialize_xml
 
-    return deserialize_xml(serialize_xml(instance), dialect)
+    return deserialize_xml(serialize_xml(instance), dialect, registry=registry)
 
 
-def sql_consistent(fqn: str, instance: BaseExpression, dialect: Any) -> None:
+def sql_consistent(
+    fqn: str, instance: BaseExpression, dialect: Any, registry: Any = None
+) -> None:
     """Assert to_sql is identical after round-trip, when the dialect supports it."""
     try:
         expected = instance.to_sql()
     except Exception:
         return
-    for restored in (_rt_dict(instance, dialect), _rt_json(instance, dialect), _rt_xml(instance, dialect)):
+    for restored in (
+        _rt_dict(instance, dialect, registry),
+        _rt_json(instance, dialect, registry),
+        _rt_xml(instance, dialect, registry),
+    ):
         assert restored.to_sql() == expected, fqn
 
 
@@ -1124,7 +1118,6 @@ __all__ = [
     "assert_params_equal",
     "collect_expression_classes",
     "make_instance",
-    "register_all",
     "register_special_constructor",
     "roundtrip_expression",
     "sql_consistent",

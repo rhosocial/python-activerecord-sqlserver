@@ -8,7 +8,6 @@ from typing import Any, List, Optional, Sequence, Union
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
 from rhosocial.activerecord.backend.expression.objects import Type
-from rhosocial.activerecord.backend.expression.serialization import default_registry
 from rhosocial.activerecord.backend.expression.statements.ddl_table import (
     ColumnDefinition,
     IndexDefinition,
@@ -19,8 +18,6 @@ from rhosocial.activerecord.backend.expression.statements.ddl_type import (
     TypeDefinition,
 )
 from rhosocial.activerecord.backend.expression.types import DataType
-from ..column import SQLServerColumnDefinition
-from ..index import SQLServerIndexDefinition
 
 
 class SQLServerTypeNullability(Enum):
@@ -233,27 +230,14 @@ class SQLServerRenameTypeStatement(BaseExpression):
         self.schema_name = schema_name
 
 
-_SQLSERVER_TYPE_EXPRESSIONS = (
-    SQLServerAliasTypeDefinition,
-    SQLServerTableTypeDefinition,
-    SQLServerClrTypeDefinition,
-    SQLServerDropTypeExpression,
-    SQLServerRenameTypeStatement,
-    SQLServerColumnDefinition,
-    SQLServerIndexDefinition,
-)
-
-# The kind whitelist the artifact reader resolves through. Registering into
-# the framework's default registry (the same singleton deserialization
-# consults) is what keeps these backend-owned kinds readable once a process
-# imports this package; re-registering a class the framework already knows
-# is a no-op. The nullability enum needs no registration of its own: an
-# artifact carries only JSON scalars, and this package normalises the enum
-# to a bool at construction (see _normalise_nullability), so no member ever
-# reaches the wire.
-_registry = default_registry()
-for _expression_class in _SQLSERVER_TYPE_EXPRESSIONS:
-    _registry.register_node(_expression_class)
+# No registration block here. The kinds these classes declare are discovered
+# from this package by ``backend_registry()`` (``..registry``), whose frozen
+# table is what ``SQLServerDialect.artifact_registry()`` hands the artifact
+# reader. Writing into a process-global table would make what a reader can
+# resolve depend on import order. The nullability enum needs no registration
+# of its own: an artifact carries only JSON scalars, and this package normalises
+# the enum to a bool at construction (see _normalise_nullability), so no member
+# ever reaches the wire.
 
 
 __all__ = [
