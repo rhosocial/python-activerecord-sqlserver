@@ -308,8 +308,7 @@ class TestAlterSideRefusals:
         The probe stays at core's ``False`` default -- SQL Server spells
         ``DROP CONSTRAINT <name>`` only, never ``DROP PRIMARY KEY`` /
         ``DROP UNIQUE (<cols>)`` / ``DROP FOREIGN KEY (<cols>)`` -- so a
-        declaration-only action is refused by name instead of being spelt from
-        its kind.
+        declaration-only action is refused by kind, exactly as core decides it.
         """
         d = _dialect()
         assert d.supports_drop_constraint_by_kind() is False
@@ -322,13 +321,42 @@ class TestAlterSideRefusals:
         with pytest.raises(UnsupportedFeatureError, match="DROP CONSTRAINT by kind"):
             action.to_sql()
 
-    def test_drop_constraint_by_kind_refused_even_with_a_name(self):
-        """Carrying a declaration asserts a by-kind intent T-SQL cannot honour.
+    def test_drop_constraint_equal_name_confirms_and_renders(self):
+        """A declaration naming the same constraint only confirms the name.
 
-        The name does not make the drop renderable here: the action says the
-        caller asked for a kind-based drop, and silently dropping by the given
-        name instead would answer a question nobody asked.
+        Core's address rule resolves this action to ``"name"``; the declaration
+        adds no second address, so the render is byte-for-byte the name-only
+        form.
         """
+        d = _dialect()
+        action = DropTableConstraintAction(
+            d,
+            "pk",
+            constraint=TableConstraint(
+                d, branch=TablePrimaryKeyConstraint(d, ["id"]), name="pk"
+            ),
+        )
+        sql, params = action.to_sql()
+        assert sql == "DROP CONSTRAINT [pk]"
+        assert params == ()
+
+    def test_drop_constraint_differing_name_refused_as_ambiguous(self):
+        """Two disagreeing names are an ambiguous address, never a preference."""
+        d = _dialect()
+        action = DropTableConstraintAction(
+            d,
+            "pk",
+            constraint=TableConstraint(
+                d, branch=TablePrimaryKeyConstraint(d, ["id"]), name="other"
+            ),
+        )
+        with pytest.raises(
+            UnsupportedFeatureError, match="DROP CONSTRAINT address"
+        ):
+            action.to_sql()
+
+    def test_drop_constraint_unnamed_declaration_refused_as_ambiguous(self):
+        """An unnamed declaration beside a name is also an ambiguous address."""
         d = _dialect()
         action = DropTableConstraintAction(
             d,
@@ -337,7 +365,9 @@ class TestAlterSideRefusals:
                 d, branch=TablePrimaryKeyConstraint(d, ["id"])
             ),
         )
-        with pytest.raises(UnsupportedFeatureError, match="DROP CONSTRAINT by kind"):
+        with pytest.raises(
+            UnsupportedFeatureError, match="DROP CONSTRAINT address"
+        ):
             action.to_sql()
 
     def test_drop_constraint_with_no_address_refused(self):

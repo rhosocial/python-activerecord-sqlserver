@@ -91,23 +91,18 @@ class SQLServerAlterColumnModifierMixin:
 
         T-SQL addresses a constraint by its name -- ``DROP CONSTRAINT
         [IF EXISTS] <name>`` -- and has no ``DROP PRIMARY KEY`` / ``DROP
-        UNIQUE (<cols>)`` / ``DROP FOREIGN KEY (<cols>)`` form. An action that
-        carries a declaration therefore asserts an intent this backend cannot
-        honour, so it is refused by name here rather than spelled from the
-        declaration's kind. The dialect deliberately does **not** advertise
-        ``supports_drop_constraint_by_kind``.
+        UNIQUE (<cols>)`` / ``DROP FOREIGN KEY (<cols>)`` form. Core's
+        :meth:`_resolve_drop_constraint_address` decides the address once -- it
+        also refuses an ambiguous address (a declaration that names a different
+        constraint than ``constraint_name``, or that has no name at all while a
+        name is given). This formatter then requires that answer to be
+        ``"name"``; anything else cannot be spelled here.
         """
-        if getattr(expr, "constraint", None) is not None:
-            raise UnsupportedFeatureError(
-                self.name,
-                "DROP CONSTRAINT by kind",
-                suggestion="T-SQL drops a constraint by name only: pass "
-                           "constraint_name and render ALTER TABLE ... "
-                           "DROP CONSTRAINT <name>.",
-            )
-        if expr.constraint_name is None:
-            raise ValueError(
-                "DropTableConstraintAction requires constraint_name or constraint"
+        address = self._resolve_drop_constraint_address(expr)
+        if address != "name":
+            raise NotImplementedError(
+                f"{self.name} can only render DROP CONSTRAINT by name; "
+                f"the action resolved to a {address!r} address."
             )
         name = self.format_identifier(expr.constraint_name)
         if getattr(expr, "if_exists", None) is True:
