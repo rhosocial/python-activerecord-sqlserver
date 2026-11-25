@@ -83,6 +83,8 @@ from .protocols import (
     SQLServerIndexedViewSupport,
     SQLServerUserDefinedTypeSupport,
     SQLServerTypeSupport,
+    SQLServerConstraintStateSupport,
+    SQLServerExtendedPropertyWriteSupport,
 )
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
@@ -197,6 +199,7 @@ from .mixins.collation import SQLServerCollationMixin
 from .mixins.cte import SQLServerCTEMixin
 from .mixins.returning import SQLServerReturningMixin
 from .mixins.constraint import SQLServerConstraintMixin
+from .mixins.extended_property import SQLServerExtendedPropertyMixin
 from .mixins.window import SQLServerWindowMixin
 from .mixins.json import SQLServerJSONMixin
 from .mixins.column_type import SQLServerColumnTypeMixin
@@ -396,6 +399,10 @@ class SQLServerDialect(
     # Before DDLColumnMixin: the backend block below comes later, so
     # supports_fk_match answered for the core. Same value by coincidence.
     SQLServerConstraintMixin,
+    # Extended-property writes: the three ``sys.sp_*extendedproperty``
+    # procedures behind one node. No core base defines this name, so the
+    # position only has to keep it ahead of the generic bundle.
+    SQLServerExtendedPropertyMixin,
     # Before DataTypeMixin, which inherits DataTypeMixin's answer -- a
     # NotImplementedError. A table placed after the class it stands in for
     # never wins, so the backend's 24-key answer sits ahead of the core mixin.
@@ -554,6 +561,10 @@ class SQLServerDialect(
     SQLServerSpatialSupport,
     SQLServerPartitionSupport,  # Before PartitionSupport
     PartitionSupport,
+    # Constraint state and extended-property writes: backend-owned DDL with
+    # no core counterpart, so they are advertised as their own protocols.
+    SQLServerConstraintStateSupport,
+    SQLServerExtendedPropertyWriteSupport,
 ):
     """
     SQL Server dialect implementation that adapts to the SQL Server version.

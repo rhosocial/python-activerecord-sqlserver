@@ -18,6 +18,8 @@ from .merge import SQLServerMergeSupport
 from .partition import SQLServerPartitionSupport
 from .type import SQLServerUserDefinedTypeSupport
 from .data_type import SQLServerTypeSupport
+from .constraint_state import SQLServerConstraintStateSupport
+from .extended_property import SQLServerExtendedPropertyWriteSupport
 
 __all__ = [
     "SQLServerIdentitySupport",
@@ -39,4 +41,6 @@ __all__ = [
     "SQLServerPartitionSupport",
     "SQLServerUserDefinedTypeSupport",
     "SQLServerTypeSupport",
+    "SQLServerConstraintStateSupport",
+    "SQLServerExtendedPropertyWriteSupport",
 ]

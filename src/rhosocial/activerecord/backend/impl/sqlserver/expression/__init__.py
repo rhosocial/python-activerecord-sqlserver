@@ -47,6 +47,11 @@ from .index import SQLServerIndexDefinition
 from .create_table import SQLServerCreateTableStatement
 from .dml import SQLServerMergeExpression, SQLServerSelectIntoExpression
 from .columnstore import SQLServerColumnstoreIndexStatement
+from .constraint_state import (
+    SQLServerCheckConstraintStatement,
+    SQLServerNocheckConstraintStatement,
+)
+from .extended_property import SQLServerExtendedPropertyWriteStatement
 from .fulltext import (
     SQLServerCreateFullTextCatalogStatement,
     SQLServerDropFullTextCatalogStatement,
@@ -114,6 +119,9 @@ __all__ = [
     "SQLServerIndexDefinition",
     "SQLServerCreateTableStatement",
     "SQLServerColumnstoreIndexStatement",
+    "SQLServerCheckConstraintStatement",
+    "SQLServerNocheckConstraintStatement",
+    "SQLServerExtendedPropertyWriteStatement",
     "SQLServerCreateFullTextCatalogStatement",
     "SQLServerDropFullTextCatalogStatement",
     "SQLServerCreateFullTextIndexStatement",

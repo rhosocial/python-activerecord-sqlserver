@@ -65,6 +65,12 @@ cannot drift apart.
 
 from typing import TYPE_CHECKING, Tuple
 
+from rhosocial.activerecord.backend.expression.objects import Table
+from ..expression.constraint_state import (
+    SQLServerCheckConstraintStatement,
+    SQLServerNocheckConstraintStatement,
+)
+
 if TYPE_CHECKING:  # pragma: no cover
     from rhosocial.activerecord.backend.expression.statements import (
         ColumnConstraint,
@@ -241,6 +247,130 @@ class SQLServerConstraintMixin:
         so core may still rename this.
         """
         return False
+
+    def supports_constraint_check_nocheck(self) -> bool:
+        """True: T-SQL changes constraint state with ``CHECK`` / ``NOCHECK``.
+
+        Microsoft Learn's `ALTER TABLE (Transact-SQL)
+        <https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-table-transact-sql>`_
+        gives the disk-based-table production as::
+
+            [ WITH { CHECK | NOCHECK } ] { CHECK | NOCHECK } CONSTRAINT
+                { ALL | constraint_name [ ,...n ] }
+
+        and names ``ALTER TABLE table WITH CHECK CHECK CONSTRAINT ALL`` as the
+        form that re-validates existing rows. The two keyword positions are
+        both load-bearing: ``WITH CHECK CONSTRAINT c`` without the second
+        keyword is not a state change, which is why this backend has two
+        distinct nodes for the two state verbs.
+
+        Measured on SQL Server 2019 (15.0.4465.1, Developer Edition), as
+        recorded in this module's docstring: ``NOCHECK CONSTRAINT name``,
+        ``CHECK CONSTRAINT name`` and ``WITH CHECK CHECK CONSTRAINT name``
+        are all accepted and flip ``is_disabled`` / ``is_not_trusted``.
+        There is no version or edition gate: every supported release has this
+        spelling, so the two formatters call :meth:`check_feature_support`
+        with this probe and refuse by name only if a caller withdraws it.
+        """
+        return True
+
+    def format_check_constraint_statement(
+        self, expr: "SQLServerCheckConstraintStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``ALTER TABLE ... [WITH ...] CHECK CONSTRAINT ...``.
+
+        Validation lives here, not in the constructor: the mutually exclusive
+        pairs are checked again on every render so a mutated or deserialised
+        node cannot smuggle both spellings into one statement. The address is
+        ``ALL`` or a list of bracket-quoted names, never both and never
+        neither; the table goes through the one dotted-name entry point so
+        ``dbo.t`` becomes ``[dbo].[t]``.
+        """
+        if not isinstance(expr, SQLServerCheckConstraintStatement):
+            raise TypeError(
+                "format_check_constraint_statement requires a "
+                "SQLServerCheckConstraintStatement, got "
+                f"{type(expr).__name__}"
+            )
+        self.check_feature_support(  # type: ignore[attr-defined]
+            "supports_constraint_check_nocheck",
+            "CHECK CONSTRAINT",
+            "requires ALTER TABLE ... CHECK CONSTRAINT (all SQL Server versions).",
+        )
+        if expr.with_check and expr.with_nocheck:
+            raise ValueError(
+                "with_check and with_nocheck are mutually exclusive on CHECK CONSTRAINT"
+            )
+        if expr.all_constraints and expr.constraint_names:
+            raise ValueError(
+                "ALL and constraint_names are mutually exclusive on CHECK CONSTRAINT"
+            )
+        if not expr.all_constraints and not expr.constraint_names:
+            raise ValueError("CHECK CONSTRAINT must name ALL or at least one constraint")
+
+        prefix = ""
+        if expr.with_check:
+            prefix = "WITH CHECK "
+        elif expr.with_nocheck:
+            prefix = "WITH NOCHECK "
+        target = (
+            "ALL"
+            if expr.all_constraints
+            else ", ".join(
+                self.format_identifier(name)  # type: ignore[attr-defined]
+                for name in expr.constraint_names
+            )
+        )
+        table = self.qualified_object_name_from_dotted(Table, expr.table_name)
+        return f"ALTER TABLE {table} {prefix}CHECK CONSTRAINT {target}", ()
+
+    def format_nocheck_constraint_statement(
+        self, expr: "SQLServerNocheckConstraintStatement"
+    ) -> Tuple[str, tuple]:
+        """Render ``ALTER TABLE ... [WITH ...] NOCHECK CONSTRAINT ...``.
+
+        The disable half, with its own formatter: one expression, one
+        formatter in both directions, so dispatch can never confuse enabling
+        with disabling. All validation is repeated here for the same reason
+        as in :meth:`format_check_constraint_statement`.
+        """
+        if not isinstance(expr, SQLServerNocheckConstraintStatement):
+            raise TypeError(
+                "format_nocheck_constraint_statement requires a "
+                "SQLServerNocheckConstraintStatement, got "
+                f"{type(expr).__name__}"
+            )
+        self.check_feature_support(  # type: ignore[attr-defined]
+            "supports_constraint_check_nocheck",
+            "NOCHECK CONSTRAINT",
+            "requires ALTER TABLE ... NOCHECK CONSTRAINT (all SQL Server versions).",
+        )
+        if expr.with_check and expr.with_nocheck:
+            raise ValueError(
+                "with_check and with_nocheck are mutually exclusive on NOCHECK CONSTRAINT"
+            )
+        if expr.all_constraints and expr.constraint_names:
+            raise ValueError(
+                "ALL and constraint_names are mutually exclusive on NOCHECK CONSTRAINT"
+            )
+        if not expr.all_constraints and not expr.constraint_names:
+            raise ValueError("NOCHECK CONSTRAINT must name ALL or at least one constraint")
+
+        prefix = ""
+        if expr.with_check:
+            prefix = "WITH CHECK "
+        elif expr.with_nocheck:
+            prefix = "WITH NOCHECK "
+        target = (
+            "ALL"
+            if expr.all_constraints
+            else ", ".join(
+                self.format_identifier(name)  # type: ignore[attr-defined]
+                for name in expr.constraint_names
+            )
+        )
+        table = self.qualified_object_name_from_dotted(Table, expr.table_name)
+        return f"ALTER TABLE {table} {prefix}NOCHECK CONSTRAINT {target}", ()
 
     def supports_rename_constraint(self) -> bool:
         """False: no ``RENAME CONSTRAINT ... TO ...`` clause, and ``sp_rename`` is narrower than it looks.

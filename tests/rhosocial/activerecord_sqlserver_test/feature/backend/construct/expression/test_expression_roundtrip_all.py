@@ -659,6 +659,38 @@ def register_specials():
 
         return SQLServerColumnstoreIndexStatement(d, "cci", "t", columns=["a"])
 
+    def check_constraint_state(d):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.constraint_state import (
+            SQLServerCheckConstraintStatement,
+        )
+
+        return SQLServerCheckConstraintStatement(
+            d, "dbo.t", constraint_names=["ck_a"], with_check=True
+        )
+
+    def nocheck_constraint_state(d):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.constraint_state import (
+            SQLServerNocheckConstraintStatement,
+        )
+
+        return SQLServerNocheckConstraintStatement(d, "t", all_constraints=True)
+
+    def extended_property_write(d):
+        from rhosocial.activerecord.backend.impl.sqlserver.expression.extended_property import (
+            SQLServerExtendedPropertyWriteStatement,
+        )
+
+        return SQLServerExtendedPropertyWriteStatement(
+            d,
+            "ADD",
+            "MS_Description",
+            value="note",
+            level0type="SCHEMA",
+            level0name="dbo",
+            level1type="TABLE",
+            level1name="T1",
+        )
+
     def partition_range(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
             SQLServerPartitionByRangeClause,
@@ -929,6 +961,16 @@ def register_specials():
     )
     register_special_constructor(
         "columnstore.SQLServerColumnstoreIndexStatement", columnstore
+    )
+    register_special_constructor(
+        "constraint_state.SQLServerCheckConstraintStatement", check_constraint_state
+    )
+    register_special_constructor(
+        "constraint_state.SQLServerNocheckConstraintStatement", nocheck_constraint_state
+    )
+    register_special_constructor(
+        "extended_property.SQLServerExtendedPropertyWriteStatement",
+        extended_property_write,
     )
     register_special_constructor(
         "partition.SQLServerPartitionByRangeClause", partition_range
