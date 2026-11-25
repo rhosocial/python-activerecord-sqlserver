@@ -302,6 +302,51 @@ class TestAlterSideRefusals:
         with pytest.raises(UnsupportedFeatureError):
             action.to_sql()
 
+    def test_drop_constraint_by_kind_refused(self):
+        """T-SQL drops constraints by name; a declaration has no spelling.
+
+        The probe stays at core's ``False`` default -- SQL Server spells
+        ``DROP CONSTRAINT <name>`` only, never ``DROP PRIMARY KEY`` /
+        ``DROP UNIQUE (<cols>)`` / ``DROP FOREIGN KEY (<cols>)`` -- so a
+        declaration-only action is refused by name instead of being spelt from
+        its kind.
+        """
+        d = _dialect()
+        assert d.supports_drop_constraint_by_kind() is False
+        action = DropTableConstraintAction(
+            d,
+            constraint=TableConstraint(
+                d, branch=TablePrimaryKeyConstraint(d, ["id"])
+            ),
+        )
+        with pytest.raises(UnsupportedFeatureError, match="DROP CONSTRAINT by kind"):
+            action.to_sql()
+
+    def test_drop_constraint_by_kind_refused_even_with_a_name(self):
+        """Carrying a declaration asserts a by-kind intent T-SQL cannot honour.
+
+        The name does not make the drop renderable here: the action says the
+        caller asked for a kind-based drop, and silently dropping by the given
+        name instead would answer a question nobody asked.
+        """
+        d = _dialect()
+        action = DropTableConstraintAction(
+            d,
+            "pk",
+            constraint=TableConstraint(
+                d, branch=TablePrimaryKeyConstraint(d, ["id"])
+            ),
+        )
+        with pytest.raises(UnsupportedFeatureError, match="DROP CONSTRAINT by kind"):
+            action.to_sql()
+
+    def test_drop_constraint_with_no_address_refused(self):
+        """Neither a name nor a declaration is refused, as core's formatter does."""
+        d = _dialect()
+        action = DropTableConstraintAction(d)
+        with pytest.raises(ValueError, match="requires constraint_name or constraint"):
+            action.to_sql()
+
 
 class TestColumnLevelNarrowing:
     """The column-level refusal, and the coupling it works around.

@@ -495,6 +495,16 @@ def register_specials():
         "ddl_alter.AddIndexAction",
         lambda d: ddl_alter.AddIndexAction(d, ddl_table.IndexDefinition(d, "i", ["a"])),
     )
+    # DROP CONSTRAINT is addressed by name. Core made both address fields
+    # optional (name *or* declaration), so the generic constructor now builds
+    # an action with nothing to name and the formatter refuses it -- while a
+    # declaration-only action is exactly the kind-based drop this backend
+    # refuses. Supplying the name keeps the class constructible and rendered
+    # without advertising a kind-based drop.
+    register_special_constructor(
+        "ddl_alter.DropTableConstraintAction",
+        lambda d: ddl_alter.DropTableConstraintAction(d, "c"),
+    )
 
     # -- constraints that must render without bind parameters ----------------
     register_special_constructor(

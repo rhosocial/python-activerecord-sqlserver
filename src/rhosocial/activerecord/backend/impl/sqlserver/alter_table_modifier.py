@@ -87,6 +87,28 @@ class SQLServerAlterColumnModifierMixin:
         return f"DROP COLUMN {name}", ()
 
     def format_drop_table_constraint_action(self, expr: Any) -> Tuple[str, tuple]:
+        """Format ``ALTER TABLE ... DROP CONSTRAINT`` for T-SQL.
+
+        T-SQL addresses a constraint by its name -- ``DROP CONSTRAINT
+        [IF EXISTS] <name>`` -- and has no ``DROP PRIMARY KEY`` / ``DROP
+        UNIQUE (<cols>)`` / ``DROP FOREIGN KEY (<cols>)`` form. An action that
+        carries a declaration therefore asserts an intent this backend cannot
+        honour, so it is refused by name here rather than spelled from the
+        declaration's kind. The dialect deliberately does **not** advertise
+        ``supports_drop_constraint_by_kind``.
+        """
+        if getattr(expr, "constraint", None) is not None:
+            raise UnsupportedFeatureError(
+                self.name,
+                "DROP CONSTRAINT by kind",
+                suggestion="T-SQL drops a constraint by name only: pass "
+                           "constraint_name and render ALTER TABLE ... "
+                           "DROP CONSTRAINT <name>.",
+            )
+        if expr.constraint_name is None:
+            raise ValueError(
+                "DropTableConstraintAction requires constraint_name or constraint"
+            )
         name = self.format_identifier(expr.constraint_name)
         if getattr(expr, "if_exists", None) is True:
             if not self.supports_drop_constraint_if_exists():
