@@ -10,7 +10,11 @@ from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.suggestion.definitions import SubstituteTypeSuggestion
 from rhosocial.activerecord.backend.suggestion.protocols import (
+    ColumnReorderSuggestionSupport,
     CreateTableLayoutSuggestionSupport,
+    PartitionSchemeChangeSuggestionSupport,
+    TableConstraintChangeSuggestionSupport,
+    TableIndexChangeSuggestionSupport,
 )
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
@@ -168,6 +172,14 @@ from .suggestion.partition_retention_suggestion import SQLServerPartitionRetenti
 from .suggestion.partition_split_suggestion import SQLServerPartitionSplitSuggestionMixin
 from .suggestion.partition_table_alter_suggestion import SQLServerPartitionTableAlterSuggestionMixin
 from .suggestion.partition_table_drop_suggestion import SQLServerPartitionTableDropSuggestionMixin
+from .suggestion.column_reorder_suggestion import SQLServerColumnReorderSuggestionMixin
+from .suggestion.table_constraint_change_suggestion import (
+    SQLServerTableConstraintChangeSuggestionMixin,
+)
+from .suggestion.table_index_change_suggestion import SQLServerTableIndexChangeSuggestionMixin
+from .suggestion.partition_scheme_change_suggestion import (
+    SQLServerPartitionSchemeChangeSuggestionMixin,
+)
 from .mixins.introspection import SQLServerIntrospectionMixin
 from .mixins.sequence import SQLServerSequenceMixin
 from .mixins.pivot import SQLServerPivotMixin
@@ -291,6 +303,12 @@ class SQLServerDialect(
     SQLServerPartitionSplitSuggestionMixin,
     SQLServerPartitionTableAlterSuggestionMixin,
     SQLServerPartitionTableDropSuggestionMixin,
+    # The four migration change-point answers, ahead of every core mixin for
+    # the same C3 reason: each owns exactly one ``suggest_*`` method.
+    SQLServerColumnReorderSuggestionMixin,
+    SQLServerTableConstraintChangeSuggestionMixin,
+    SQLServerTableIndexChangeSuggestionMixin,
+    SQLServerPartitionSchemeChangeSuggestionMixin,
     SQLServerGeneratedValueSuggestionMixin,
     SQLServerCreateTableLayoutSuggestionMixin,
     # The bases below come in bundles: a backend mixin, then the core bundle
@@ -464,6 +482,10 @@ class SQLServerDialect(
     # Protocols for isinstance() checks
     # Suggestion protocols (relocated to backend.suggestion.protocols)
     CreateTableLayoutSuggestionSupport,
+    ColumnReorderSuggestionSupport,
+    TableConstraintChangeSuggestionSupport,
+    TableIndexChangeSuggestionSupport,
+    PartitionSchemeChangeSuggestionSupport,
     CollationSupport,
     CTESupport,
     FilterClauseSupport,

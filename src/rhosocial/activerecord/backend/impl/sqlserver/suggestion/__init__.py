@@ -5,11 +5,18 @@ The suggestion data classes live in :mod:`rhosocial.activerecord.backend.suggest
 this package holds the backend's own answers to the suggestion protocols.
 
 There is one module per partition-lifecycle point, mirroring the SQLite
-suggestion package. Shared plan-reading helpers and their common base live in
-``_common.py``.
+suggestion package, plus one module for each of the four migration change-point
+protocols (column reorder, table constraint change, table index change and
+partition scheme change). Shared plan-reading helpers and their common base
+live in ``_common.py``; the change-point projection readers live in
+``_change_common.py``.
 """
 
 from ._common import SQLServerPartitionSuggestionBase
+from .column_reorder_suggestion import SQLServerColumnReorderSuggestionMixin
+from .table_constraint_change_suggestion import SQLServerTableConstraintChangeSuggestionMixin
+from .table_index_change_suggestion import SQLServerTableIndexChangeSuggestionMixin
+from .partition_scheme_change_suggestion import SQLServerPartitionSchemeChangeSuggestionMixin
 from .create_table_layout_suggestion import SQLServerCreateTableLayoutSuggestionMixin
 from .data_type_suggestions import (
     SQLSERVER_DATA_TYPE_SUGGESTIONS,
@@ -27,6 +34,10 @@ from .partition_table_drop_suggestion import SQLServerPartitionTableDropSuggesti
 
 __all__ = [
     "SQLServerPartitionSuggestionBase",
+    "SQLServerColumnReorderSuggestionMixin",
+    "SQLServerTableConstraintChangeSuggestionMixin",
+    "SQLServerTableIndexChangeSuggestionMixin",
+    "SQLServerPartitionSchemeChangeSuggestionMixin",
     "SQLServerCreateTableLayoutSuggestionMixin",
     "SQLServerGeneratedValueSuggestionMixin",
     "SQLSERVER_DATA_TYPE_SUGGESTIONS",
