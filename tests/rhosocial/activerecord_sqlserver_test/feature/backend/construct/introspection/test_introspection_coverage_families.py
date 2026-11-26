@@ -141,11 +141,14 @@ class TestParsePartitionState:
             include_stats=include_stats,
         )
 
-    def test_an_unpartitioned_table_has_no_scheme(self):
+    def test_an_unpartitioned_table_answers_an_empty_state_not_none(self):
         state = make_introspector().parse_partition_state(
             [], [], [], include_stats=False
         )
-        assert state is None
+        assert state is not None
+        assert state.scheme is None
+        assert state.bounds == ()
+        assert state.key_columns == ()
 
     def test_scheme_key_and_direction_are_the_neutral_answer(self):
         state = self._parse()
@@ -485,6 +488,26 @@ class _SyncExecutor:
         return _rows_for(sql)
 
 
+class _AsyncUnpartitioned(_AsyncExecutor):
+    """Answer the partition-table question with no row, everything else normally."""
+
+    async def execute(self, sql, params):
+        if "sys.partition_schemes AS ps" in sql:
+            self.calls.append((sql, params))
+            return []
+        return await super().execute(sql, params)
+
+
+class _SyncUnpartitioned(_SyncExecutor):
+    """The synchronous shape of :class:`_AsyncUnpartitioned`."""
+
+    def execute(self, sql, params):
+        if "sys.partition_schemes AS ps" in sql:
+            self.calls.append((sql, params))
+            return []
+        return super().execute(sql, params)
+
+
 class _NoQueries:
     """Fail if a kind without a catalogue query reaches the executor."""
 
@@ -642,6 +665,7 @@ class TestAsyncExecution:
         assert state.scheme.value == "range"
         assert [bound.name for bound in state.bounds] == ["p1", "p2", "p3"]
         assert all(bound.row_count is None for bound in state.bounds)
+        assert all(bound.size_bytes is None for bound in state.bounds)
         assert len(introspector._executor.calls) == 2
         assert all(
             "dm_db_partition_stats" not in sql
@@ -657,19 +681,25 @@ class TestAsyncExecution:
         assert "dm_db_partition_stats" in introspector._executor.calls[-1][0]
 
     @pytest.mark.asyncio
-    async def test_an_unpartitioned_table_answers_no_scheme(self):
-        class _Unpartitioned(_AsyncExecutor):
-            async def execute(self, sql, params):
-                if "sys.partition_schemes AS ps" in sql:
-                    self.calls.append((sql, params))
-                    return []
-                return await super().execute(sql, params)
-
+    async def test_an_unpartitioned_table_answers_an_empty_state(self):
         introspector = AsyncSQLServerIntrospector(
-            make_introspector()._backend, executor=_Unpartitioned()
+            make_introspector()._backend, executor=_AsyncUnpartitioned()
         )
-        assert await introspector.get_partition_state("orders") is None
+        state = await introspector.get_partition_state("orders")
+        assert state is not None
+        assert state.scheme is None
+        assert state.bounds == ()
         assert len(introspector._executor.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_an_unpartitioned_table_state_carries_that_empty_state(self):
+        introspector = AsyncSQLServerIntrospector(
+            make_introspector()._backend, executor=_AsyncUnpartitioned()
+        )
+        table_state = await introspector.get_table_state("orders")
+        assert table_state.partitioning is not None
+        assert table_state.partitioning.scheme is None
+        assert table_state.partitioning.bounds == ()
 
     @pytest.mark.asyncio
     async def test_list_index_states_maps_the_disabled_flag(self):
@@ -726,6 +756,7 @@ class TestSyncExecution:
         assert state.scheme.value == "range"
         assert [bound.name for bound in state.bounds] == ["p1", "p2", "p3"]
         assert all(bound.row_count is None for bound in state.bounds)
+        assert all(bound.size_bytes is None for bound in state.bounds)
         assert len(introspector._executor.calls) == 2
         assert all(
             "dm_db_partition_stats" not in sql
@@ -742,19 +773,24 @@ class TestSyncExecution:
         assert len(introspector._executor.calls) == 3
         assert "dm_db_partition_stats" in introspector._executor.calls[-1][0]
 
-    def test_an_unpartitioned_table_answers_no_scheme(self):
-        class _Unpartitioned(_SyncExecutor):
-            def execute(self, sql, params):
-                if "sys.partition_schemes AS ps" in sql:
-                    self.calls.append((sql, params))
-                    return []
-                return super().execute(sql, params)
-
+    def test_an_unpartitioned_table_answers_an_empty_state(self):
         introspector = SQLServerIntrospector(
-            make_introspector()._backend, executor=_Unpartitioned()
+            make_introspector()._backend, executor=_SyncUnpartitioned()
         )
-        assert introspector.get_partition_state("orders") is None
+        state = introspector.get_partition_state("orders")
+        assert state is not None
+        assert state.scheme is None
+        assert state.bounds == ()
         assert len(introspector._executor.calls) == 1
+
+    def test_an_unpartitioned_table_state_carries_that_empty_state(self):
+        introspector = SQLServerIntrospector(
+            make_introspector()._backend, executor=_SyncUnpartitioned()
+        )
+        table_state = introspector.get_table_state("orders")
+        assert table_state.partitioning is not None
+        assert table_state.partitioning.scheme is None
+        assert table_state.partitioning.bounds == ()
 
     def test_list_index_states_maps_the_disabled_flag(self):
         introspector = self._introspector()
@@ -821,7 +857,6 @@ class TestSyncExecution:
         state = introspector.get_table_state("orders")
         assert state.kind == "regular"
         assert state.comment == "orders"
-        assert state.partitioning is not None
         assert state.partitioning.scheme.value == "range"
 
     def test_list_types_and_get_type_info_answer(self):

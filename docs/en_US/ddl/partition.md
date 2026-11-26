@@ -188,7 +188,7 @@ The catalogue side is answered by introspection:
 ```python
 if dialect.supports_partition_metadata_introspection():
     state = backend.introspector.get_partition_state("orders", include_stats=True)
-    if state is not None:
+    if state.scheme is not None:
         for bound in state.bounds:
             print(bound.name, bound.upper, bound.row_count)
 ```
@@ -199,10 +199,11 @@ above are `supports_table_partitioning()`'s question and still need the
 Enterprise feature set. A `False` from that DDL probe never means a table is
 unpartitioned.
 
-`PartitionState` is core's neutral record: `scheme` is `None` for an
-unpartitioned table, `key_expression`/`key_columns` name the partitioning
-column, `bounds` carries one `PartitionBound` per partition, and `raw` keeps
-this engine's own spelling -- the scheme name, the partition function and the
+`PartitionState` is core's neutral record: an unpartitioned table answers an
+empty `PartitionState` whose `scheme` is `None` -- never `None` itself. For a
+partitioned table, `key_expression`/`key_columns` name the partitioning column,
+`bounds` carries one `PartitionBound` per partition, and `raw` keeps this
+engine's own spelling -- the scheme name, the partition function and the
 boundary direction. See [Database Introspection](../introspection/README.md)
 for the full probe table. The
 caller decides which partitions are old, which table to act on, and whether to

@@ -16,6 +16,7 @@ Coverage:
 """
 
 import inspect
+import re
 from pathlib import Path
 
 import pytest
@@ -459,4 +460,34 @@ class TestDocsDoNotAdvertiseRemovedIntrospectionNames:
         assert not unexcused, (
             "docs must not present the removed introspection names as live; "
             "state the removal or drop the name:\n" + "\n".join(unexcused)
+        )
+
+
+class TestPartitioningIsNeverNone:
+    """Pin core's non-optional ``TableState.partitioning``.
+
+    ``PartitionState.scheme is None`` is the single answer for "not
+    partitioned"; ``None`` itself is not an answer, so no source file may
+    pass one into ``partitioning`` or test for it. RegExp is built without the
+    contiguous spelling so this guard does not flag itself.
+    """
+
+    _NONE_FOR_PARTITIONING = re.compile(
+        r"partitioning\s*=\s*None|partitioning\s+is\s+None"
+    )
+
+    def test_no_source_or_test_passes_or_tests_none(self):
+        root = _repository_root()
+        offenders = []
+        for package in ("src", "tests"):
+            for path in sorted((root / package).rglob("*.py")):
+                for number, line in enumerate(
+                    path.read_text(encoding="utf-8").splitlines(), start=1
+                ):
+                    if self._NONE_FOR_PARTITIONING.search(line):
+                        offenders.append(f"{path}:{number}: {line.strip()}")
+        assert not offenders, (
+            "core makes TableState.partitioning non-optional; answer an empty "
+            "PartitionState whose scheme is None instead of None:\n"
+            + "\n".join(offenders)
         )

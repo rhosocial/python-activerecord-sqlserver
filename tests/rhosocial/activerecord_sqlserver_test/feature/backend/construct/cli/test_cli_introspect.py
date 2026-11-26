@@ -633,7 +633,7 @@ class TestHandleDispatch:
                         },
                     )
                 )
-                return None
+                return PartitionState(scheme=None)
 
         monkeypatch.setattr(
             introspect_mod,
@@ -661,7 +661,7 @@ class TestHandleDispatch:
                         },
                     )
                 )
-                return None
+                return PartitionState(scheme=None)
 
             def table_exists(self, table_name, schema=None):
                 self.calls.append(

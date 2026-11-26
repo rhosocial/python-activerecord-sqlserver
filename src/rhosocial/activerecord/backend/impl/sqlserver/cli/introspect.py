@@ -721,8 +721,16 @@ def _missing_from(
     different reasons -- a table with no ``MS_Description`` and a table that is
     not there both answer with no rows -- so for that type the name is checked
     against the catalogue before it is called missing.
+
+    A partition state is empty for the same two reasons: core answers an empty
+    :class:`PartitionState` whose ``scheme`` is ``None`` for every table it
+    finds unpartitioned, and the catalogue also has no row for a table that is
+    not there. The name is likewise checked by the caller.
     """
-    if value or method not in _NAMED_TYPES:
+    if method == "get_partition_state":
+        if getattr(value, "scheme", None) is not None:
+            return None
+    elif value or method not in _NAMED_TYPES:
         return None
     label, argument = _NAMED_TYPES[method]
     name = kwargs.get(argument)
@@ -802,22 +810,10 @@ def _partition_rows(value: Any) -> List[Dict[str, Any]]:
     The state is one object whose interesting part is a tuple of bounds;
     rendering it as one record would put that tuple in a single cell, which
     a table, CSV or TSV renderer cannot show usefully. One row per bound
-    keeps every field a scalar. ``value`` being ``None`` is core's answer
-    for "not partitioned", and renders as a single row whose ``scheme`` is
-    ``None`` rather than as no answer at all.
+    keeps every field a scalar. An unpartitioned table is an empty state from
+    core -- ``scheme`` is ``None`` -- and renders as a single row whose
+    ``scheme`` is ``None`` rather than as no answer at all.
     """
-    if value is None:
-        return [{
-            "partition": None,
-            "scheme": None,
-            "key_expression": None,
-            "upper": None,
-            "values": None,
-            "is_maxvalue": None,
-            "row_count": None,
-            "size_bytes": None,
-        }]
-
     scheme = value.scheme.value if value.scheme else None
     bounds = value.bounds or (None,)
     return [

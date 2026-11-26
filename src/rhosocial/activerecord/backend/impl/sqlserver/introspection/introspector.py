@@ -877,12 +877,13 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         range_rows: List[Dict[str, Any]],
         *,
         include_stats: bool,
-    ) -> Optional[PartitionState]:
+    ) -> PartitionState:
         """Fold the partition catalogue rows into the neutral partition state.
 
-        Returns ``None`` when the table is not partitioned, which is core's
-        single neutral answer for that -- whatever the engine's own spelling
-        is. SQL Server only partitions by range, so the scheme is always
+        An unpartitioned table answers an empty :class:`PartitionState` whose
+        ``scheme`` is ``None`` -- core's single neutral answer for that,
+        whatever the engine's own spelling is. ``None`` is not an answer.
+        SQL Server only partitions by range, so the scheme is always
         ``PartitionScheme.RANGE``; the engine's scheme *name*, its partition
         function and the boundary direction are spelling this engine owns
         and ride ``raw``.
@@ -899,7 +900,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         and the caller's rows never touched that view.
         """
         if not table_rows:
-            return None
+            return PartitionState(scheme=None)
 
         row = table_rows[0]
         scheme_name = row.get("scheme_name")
@@ -1409,8 +1410,9 @@ class SQLServerIntrospector(
     ) -> TableState:
         """Read the table's kind, comment and partition scheme.
 
-        The partitioning member is :meth:`get_partition_state`'s answer, so
-        ``partitioning`` is ``None`` exactly when the table is unpartitioned.
+        ``partitioning`` is always a :class:`PartitionState`, because it is
+        :meth:`get_partition_state`'s answer: an unpartitioned table answers
+        an empty state whose ``scheme`` is ``None``, never ``None`` itself.
         A table that is not there raises ``ObjectNotFoundError`` rather than
         answering with a default state, because "no such table" and "a table
         with no storage options" are not the same answer.
@@ -1455,12 +1457,12 @@ class SQLServerIntrospector(
         table_name: str,
         schema: Optional[str] = None,
         include_stats: bool = False,
-    ) -> Optional[PartitionState]:
+    ) -> PartitionState:
         """Read one table's partition scheme, bounds and optional statistics.
 
-        ``None`` is the neutral answer for "this table is not partitioned";
-        the partition-table question returns no row for an unpartitioned
-        table, so nothing else is asked.
+        An unpartitioned table answers an empty :class:`PartitionState` whose
+        ``scheme`` is ``None``; the partition-table question returns no row
+        for it, so nothing else is asked and ``bounds`` stays empty.
 
         ``include_stats`` decides whether ``sys.dm_db_partition_stats`` is
         read at all. Without it the bounds come from the function's own
@@ -1484,7 +1486,9 @@ class SQLServerIntrospector(
         ).to_sql()
         table_rows = self._executor.execute(sql, params)
         if not table_rows:
-            return None
+            state = PartitionState(scheme=None)
+            self._cache.set(key, state)
+            return state
 
         function_rows: List[Dict[str, Any]] = []
         function_name = table_rows[0].get("function_name")
@@ -1984,8 +1988,12 @@ class AsyncSQLServerIntrospector(
         table_name: str,
         schema: Optional[str] = None,
         include_stats: bool = False,
-    ) -> Optional[PartitionState]:
-        """Read one table's partition scheme, bounds and optional statistics."""
+    ) -> PartitionState:
+        """Read one table's partition scheme, bounds and optional statistics.
+
+        An unpartitioned table answers an empty :class:`PartitionState` whose
+        ``scheme`` is ``None``, exactly as the synchronous manager does.
+        """
         target = schema if schema is not None else self.default_schema
         key = self._cache.key(
             IntrospectionScope.PARTITION,
@@ -2002,7 +2010,9 @@ class AsyncSQLServerIntrospector(
         ).to_sql()
         table_rows = await self._executor.execute(sql, params)
         if not table_rows:
-            return None
+            state = PartitionState(scheme=None)
+            self._cache.set(key, state)
+            return state
 
         function_rows: List[Dict[str, Any]] = []
         function_name = table_rows[0].get("function_name")
