@@ -43,7 +43,7 @@ Every question in the introspection contract has a probe on the dialect, and a p
 | `supports_column_data_profile()` | `True` | What each column of a table holds |
 | `supports_column_value_sample()` | `True` from 2012 | Which values occur, and how often |
 | `supports_join_coverage()` | `True` | How much two columns' domains overlap |
-| `supports_partition_info()` | `True` from 2008 | One table's partition state |
+| `supports_partition_metadata_introspection()` | `True` from 2008, every edition | One table's partition state — reading only |
 | `supports_extensions()` | `False` | Installed add-on components |
 
 Eight families are this backend's own or newly answered, and each is declared
@@ -51,9 +51,10 @@ in the mixin that owns it: `supports_extended_property_introspection()` for the
 `extended-properties` family over `sys.extended_properties`, plus
 `supports_schema_introspection()`, `supports_procedure_introspection()`,
 `supports_function_introspection()` and `supports_sequence_introspection()`.
-The partition family also has the backend-local spelling
-`supports_partition_metadata_introspection()`, and the two new families are
-`supports_type_introspection()` -- 2008 (10.0) and up, where
+The partition family answers two questions with two probes:
+`supports_partition_metadata_introspection()` reads one table's state, while
+`supports_table_partitioning()` gates the partition DDL. The two new families
+are `supports_type_introspection()` -- 2008 (10.0) and up, where
 `sys.table_types` arrived -- and `supports_constraint_introspection()`.
 `get_primary_key()` is core's method, answered from `list_indexes()`'s
 `is_primary` flag; the primary-key statement is also what `list_columns()`
@@ -71,15 +72,41 @@ A `True` promises only that the query renders and the server accepts it; it says
 
 `supports_unused_indexes_detection()`, `supports_index_stats()` and `supports_runtime_stats()` are the 2005 (9.0) floor: the three dynamic management views arrived there. `supports_object_dependencies()` is the 2008 (10.0) floor, where `sys.sql_expression_dependencies` arrived. `supports_column_value_sample()` is the 2012 (11.0) floor, because its cap rides `OFFSET 0 ROWS FETCH NEXT n ROWS ONLY`, which the engine parses only from that release — asking the version accessor is a truer answer than a statement that fails to parse.
 
-`supports_partition_info()` answers `True` from SQL Server 2008 (10.0), the
-floor the partition mixin already used for table partitioning; the answer is
-one table's `PartitionState`, read from `sys.partition_schemes` /
+Partitioning asks two different questions, and this backend answers them with
+two different probes. `supports_partition_metadata_introspection()` is the
+read: one table's `PartitionState`, assembled from `sys.partition_schemes` /
 `sys.partition_functions` for the scheme, function and key and from
-`sys.partition_range_values` for the bounds. Statistics are a separate
-question -- `sys.dm_db_partition_stats` is read only when `include_stats`
-asks for it. `supports_extensions()` stays `False` by
-inheritance: no catalogue is mapped for installable add-on components, so
-there is no answer behind a `True`.
+`sys.partition_range_values` for the bounds, with `sys.dm_db_partition_stats`
+read only when `include_stats` asks for it. Those are ordinary catalogue
+reads, so the probe answers `True` from SQL Server 2008 (10.0) on every
+edition. `supports_table_partitioning()` is the creation:
+`CREATE PARTITION FUNCTION` / `CREATE PARTITION SCHEME` and
+`ALTER TABLE ... SWITCH`, which additionally need the Enterprise feature set.
+
+| Server | `supports_partition_metadata_introspection()` | `supports_table_partitioning()` |
+|--------|----------------------------------------------|---------------------------------|
+| Enterprise, Developer, Evaluation (2008+) | `True` | `True` |
+| Standard, Express, Web, Personal, Azure SQL Database (2008+) | `True` | `False` |
+| edition unknown (`None`, 2008+) | `True` | `True` (optimistic, as before the edition was known) |
+| any server before 2008 (10.0) | `False` | `False` |
+
+A `False` from `supports_table_partitioning()` means "do not emit the DDL",
+never "this table is not partitioned". A Standard or Express server can hold
+partitioned tables — restored from an Enterprise database, and natively
+supported since 2016 SP1 — so `supports_partition_metadata_introspection()`
+must not block `get_partition_state()` there. The edition label alone decides
+the DDL answer: Standard stays `False` even where the service pack permits
+partitioning, because a conservative `False` never emits a statement the
+server might reject. Both probes keep the 2008 floor, so a 2005 server answers
+`False` to the read as well: the catalogue views are not there.
+
+The four-family split removed the former `supports_partition_info()` probe
+without an alias: read the state through
+`supports_partition_metadata_introspection()`, and gate the DDL on
+`supports_table_partitioning()`.
+
+`supports_extensions()` stays `False` by inheritance: no catalogue is mapped
+for installable add-on components, so there is no answer behind a `True`.
 
 ## Basic Usage
 
@@ -167,7 +194,7 @@ sets are `ITEM_KINDS_ABSENT`, `ITEM_KINDS_UNQUERIED` and
 - **Indexes.** `sys.indexes` joined to `sys.index_columns` and `sys.columns`; a heap has no named index row and is excluded, so `index_id` 0 never appears as an index.
 - **Triggers.** Firing events are not a column of `sys.triggers`; they live one table over, in `sys.trigger_events`, one row per event. The join is a `LEFT JOIN`, one row per event, and the parser folds contiguous rows back into one trigger — so a trigger with no event row is still a trigger, and its definition comes from `OBJECT_DEFINITION`.
 - **Views.** `INFORMATION_SCHEMA.VIEWS` carries `VIEW_DEFINITION`, which is `NULL` for a view whose text the caller may not read — unlike `OBJECT_DEFINITION()`, which returns the text to a caller holding `VIEW DEFINITION`. Both the list and the single-view question read that one view, so they cannot disagree, and `include_system` is not consulted because the view holds no server-owned row.
-- **Partitions.** SQL Server partitions by range only, in three catalogue levels: `sys.partition_schemes` names the scheme and the function behind it, `sys.partition_functions` carries the boundary direction and fanout, and `sys.partition_range_values` holds the boundaries (cast to text because they are `sql_variant`). `get_partition_state` folds those into core's `PartitionState`: `scheme` is `range`, `key_expression`/`key_columns` are the partitioning column, and each `PartitionBound.upper` is that partition's high boundary -- `None` for the last, unbounded partition, recorded as `is_maxvalue`. The scheme name, function name and direction have no neutral slot and ride `raw`. Statistics are asked separately: `include_stats` is the only thing that renders the `sys.dm_db_partition_stats` question, and without it every `row_count`/`size_bytes` stays `None`. The database-wide listing of partition functions has no neutral shape and is not offered.
+- **Partitions.** SQL Server partitions by range only, in three catalogue levels: `sys.partition_schemes` names the scheme and the function behind it, `sys.partition_functions` carries the boundary direction and fanout, and `sys.partition_range_values` holds the boundaries (cast to text because they are `sql_variant`). `get_partition_state` folds those into core's `PartitionState`: `scheme` is `range`, `key_expression`/`key_columns` are the partitioning column, and each `PartitionBound.upper` is that partition's high boundary -- `None` for the last, unbounded partition, recorded as `is_maxvalue`. The scheme name, function name and direction have no neutral slot and ride `raw`. Statistics are asked separately: `include_stats` is the only thing that renders the `sys.dm_db_partition_stats` question, and without it every `row_count`/`size_bytes` stays `None`. The database-wide listing of partition functions has no neutral shape and is not offered. This read is gated by `supports_partition_metadata_introspection()`, a version answer on every edition; `supports_table_partitioning()` gates the DDL instead, and its `False` never says a table is unpartitioned.
 - **Types.** `sys.types` supplies alias, table and CLR types; `sys.table_types` adds the object id whose columns a table type declares, so the count is the catalogue's rather than a guess. `TYPE_NAME(system_type_id)` names an alias type's base, and `MS_Description` under `class_desc = 'TYPE'` is the comment. System types are not listed: a model never has to map one back to a declaration.
 - **Constraints.** One `sys.objects` row per constraint, with `sys.key_constraints` (PK/UQ), `sys.foreign_keys`/`sys.foreign_key_columns` (F), `sys.check_constraints` (C) and `sys.default_constraints` (D) joined by `object_id`. The check and default constraints are the two no other family answers; the primary-key, unique and foreign-key families are also reachable through the index and foreign-key questions. Each column join is LEFT and matches only the constraint family that owns it, so a primary key does not acquire a foreign key's columns.
 
@@ -318,8 +345,9 @@ python -m rhosocial.activerecord.backend.impl.sqlserver introspect tables --data
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect columns orders --database mydb
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect extended-properties orders --database mydb
 
-# Partition functions, user-defined types and constraint objects
-python -m rhosocial.activerecord.backend.impl.sqlserver introspect partitions --database mydb
+# One table's partition scheme, bounds and statistics; user-defined types and
+# constraint objects
+python -m rhosocial.activerecord.backend.impl.sqlserver introspect partitions orders --database mydb
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect types --database mydb
 python -m rhosocial.activerecord.backend.impl.sqlserver introspect constraints orders --database mydb
 

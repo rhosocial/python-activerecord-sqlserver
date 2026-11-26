@@ -16,6 +16,7 @@ Coverage:
 """
 
 import inspect
+from pathlib import Path
 
 import pytest
 from rhosocial.activerecord.backend.dialect import protocols as dialect_protocols
@@ -25,6 +26,31 @@ from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDiale
 
 # Construction requires a version tuple; 2022 exercises the newest feature set.
 SQLSERVER_VERSION = (16, 0, 0)
+
+#: Names the four-family split deleted. Documentation may mention them only to
+#: record the removal; a table row or a recipe that presents one as live sends
+#: a reader to a method that no longer exists.
+REMOVED_INTROSPECTION_NAMES = ("supports_partition_info", "list_partitions")
+
+#: Words that turn a mention into a historical note. A line naming a removed
+#: name without one of these is read as an instruction to call it.
+HISTORICAL_MARKERS = (
+    "removed",
+    "is gone",
+    "no longer",
+    "deleted",
+    "does not exist",
+    "was renamed",
+    "replaced by",
+)
+
+
+def _repository_root() -> Path:
+    """Locate the checkout root by its ``pyproject.toml`` and ``src`` directory."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").is_file() and (parent / "src").is_dir():
+            return parent
+    raise AssertionError("cannot locate the repository root above this test file")
 
 
 def get_all_protocol_methods(proto: type) -> set:
@@ -405,3 +431,32 @@ class TestIntrospectionFamilySplit:
         assert dialect.supports_ddl_extraction() is False
         with pytest.raises(UnsupportedFeatureError):
             dialect.format_ddl_statement_query_statement(object())
+
+
+class TestDocsDoNotAdvertiseRemovedIntrospectionNames:
+    """Guard the docs against naming probes the split deleted as live.
+
+    ``docs/**/*.md`` is scanned for the removed names. A hit is allowed only on
+    a line that also records the removal ("removed", "no longer", "is gone"
+    and friends), so a historical note passes while a table row, an example
+    or a recipe that tells a reader to call the method fails.
+    """
+
+    def test_docs_mention_removed_names_only_historically(self):
+        docs = sorted((_repository_root() / "docs").rglob("*.md"))
+        assert docs, "no docs found; the guard would pass vacuously"
+        unexcused = []
+        for path in docs:
+            for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                names = [name for name in REMOVED_INTROSPECTION_NAMES if name in line]
+                if not names:
+                    continue
+                if any(marker in line.lower() for marker in HISTORICAL_MARKERS):
+                    continue
+                unexcused.append(f"{path}:{number}: {', '.join(names)}")
+        assert not unexcused, (
+            "docs must not present the removed introspection names as live; "
+            "state the removal or drop the name:\n" + "\n".join(unexcused)
+        )

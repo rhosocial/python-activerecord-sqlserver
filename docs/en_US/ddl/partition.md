@@ -193,12 +193,18 @@ if dialect.supports_partition_metadata_introspection():
             print(bound.name, bound.upper, bound.row_count)
 ```
 
+`supports_partition_metadata_introspection()` asks only whether the catalogue
+can be read, so it answers on Standard and Express too; the mutating chains
+above are `supports_table_partitioning()`'s question and still need the
+Enterprise feature set. A `False` from that DDL probe never means a table is
+unpartitioned.
+
 `PartitionState` is core's neutral record: `scheme` is `None` for an
 unpartitioned table, `key_expression`/`key_columns` name the partitioning
 column, `bounds` carries one `PartitionBound` per partition, and `raw` keeps
 this engine's own spelling -- the scheme name, the partition function and the
-boundary direction. See [Database Introspection](../introspection.md) for the
-full probe table. The
+boundary direction. See [Database Introspection](../introspection/README.md)
+for the full probe table. The
 caller decides which partitions are old, which table to act on, and whether to
 execute a suggested chain -- no retention policy is embedded in the backend.
 
