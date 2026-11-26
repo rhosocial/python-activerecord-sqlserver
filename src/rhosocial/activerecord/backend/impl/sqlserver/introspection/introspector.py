@@ -15,13 +15,24 @@ from rhosocial.activerecord.backend.introspection.base import (
     AsyncAbstractIntrospector,
 )
 from rhosocial.activerecord.backend.introspection.cache import IntrospectionCache
+from rhosocial.activerecord.backend.introspection.errors import ObjectNotFoundError
 from rhosocial.activerecord.backend.introspection.executor import (
     IntrospectorExecutor,
     AsyncIntrospectorExecutor,
 )
 from rhosocial.activerecord.backend.introspection.types import (
+    ConstraintState,
+    DerivedObjectState,
+    IndexState,
     IntrospectionDatabaseInfo,
     IntrospectionTableInfo,
+    ItemKind,
+    PartitionBound,
+    PartitionScheme,
+    PartitionState,
+    SequenceState,
+    StorageOptionsState,
+    TableState,
     TableType,
     IntrospectionColumnInfo,
     ColumnNullable,
@@ -41,9 +52,6 @@ from ..query_nodes import SQLServerNodeBuilderMixin
 from .types import (
     SQLServerConstraintInfo,
     SQLServerExtendedPropertyInfo,
-    SQLServerPartitionIndexInfo,
-    SQLServerPartitionInfo,
-    SQLServerPartitionSchemeInfo,
     SQLServerRoutineInfo,
     SQLServerSchemaInfo,
     SQLServerSequenceInfo,
@@ -55,15 +63,18 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..expression.introspection import (
         SQLServerConstraintListQueryStatement,
         SQLServerExtendedPropertyListQueryStatement,
-        SQLServerPartitionAlignedIndexListQueryStatement,
-        SQLServerPartitionBoundaryListQueryStatement,
-        SQLServerPartitionFunctionListQueryStatement,
-        SQLServerPartitionSchemeListQueryStatement,
         SQLServerPrimaryKeyQueryStatement,
         SQLServerRoutineListQueryStatement,
         SQLServerSchemaListQueryStatement,
         SQLServerSequenceListQueryStatement,
+        SQLServerTemporalHistoryListQueryStatement,
         SQLServerTypeListQueryStatement,
+    )
+    from ..expression.partition import (
+        SQLServerPartitionFunctionQueryStatement,
+        SQLServerPartitionRangeQueryStatement,
+        SQLServerPartitionSchemeQueryStatement,
+        SQLServerPartitionTableQueryStatement,
     )
 
 #: ``INFORMATION_SCHEMA.COLUMNS.CHARACTER_MAXIMUM_LENGTH`` reports ``-1``
@@ -130,6 +141,36 @@ _TABLE_TYPE_BY_CODE = {
     "S": TableType.SYSTEM_TABLE,
     "SYSTEM TABLE": TableType.SYSTEM_TABLE,
 }
+
+#: SQL Server's page size, a constant of the engine with no configuration
+#: switch. ``sys.dm_db_partition_stats.used_page_count`` counts 8 KiB pages,
+#: so bytes are the count multiplied by this.
+_PAGE_SIZE_BYTES = 8192
+
+#: ``TableType`` -> the neutral ``TableState.kind`` vocabulary. A catalogue
+#: kind with no neutral member keeps its own lower-case spelling rather than
+#: being folded into ``regular``.
+_TABLE_STATE_KIND = {
+    TableType.BASE_TABLE: "regular",
+    TableType.VIEW: "view",
+    TableType.SYSTEM_TABLE: "system",
+}
+
+#: ``sys.objects.type`` constraint code -> ``ConstraintState.kind``. The
+#: engine spells constraints by code, and the neutral answer is a word a
+#: caller can branch on without knowing the code set.
+_CONSTRAINT_STATE_KIND = {
+    "PK": "primary_key",
+    "UQ": "unique",
+    "F": "foreign_key",
+    "C": "check",
+    "D": "default",
+}
+
+#: The temporal-table release: ``sys.tables.history_table_id`` and
+#: ``temporal_type`` arrived with SQL Server 2016 (13.0), so a server older
+#: than it cannot be asked for a history table -- it also cannot have one.
+_TEMPORAL_TABLE_VERSION = (13, 0, 0)
 
 
 class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
@@ -244,50 +285,76 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
 
         return SQLServerSequenceListQueryStatement(self.dialect, schema=schema)
 
-    def partition_function_list_statement(
-        self,
-    ) -> "SQLServerPartitionFunctionListQueryStatement":
-        """Return the statement that lists partition functions and parameters."""
-        from ..expression.introspection import (
-            SQLServerPartitionFunctionListQueryStatement,
-        )
+    def partition_table_statement(
+        self, *, table_name: str, schema: Optional[str] = None
+    ) -> "SQLServerPartitionTableQueryStatement":
+        """Return the statement that reads one table's partition scheme.
 
-        return SQLServerPartitionFunctionListQueryStatement(self.dialect)
-
-    def partition_boundary_list_statement(
-        self,
-    ) -> "SQLServerPartitionBoundaryListQueryStatement":
-        """Return the statement that lists partition range boundary values."""
-        from ..expression.introspection import (
-            SQLServerPartitionBoundaryListQueryStatement,
-        )
-
-        return SQLServerPartitionBoundaryListQueryStatement(self.dialect)
-
-    def partition_scheme_list_statement(
-        self,
-    ) -> "SQLServerPartitionSchemeListQueryStatement":
-        """Return the statement that lists partition schemes and destinations."""
-        from ..expression.introspection import (
-            SQLServerPartitionSchemeListQueryStatement,
-        )
-
-        return SQLServerPartitionSchemeListQueryStatement(self.dialect)
-
-    def partition_aligned_index_list_statement(
-        self, *, table_name: Optional[str] = None, schema: Optional[str] = None
-    ) -> "SQLServerPartitionAlignedIndexListQueryStatement":
-        """Return the statement that lists indexes aligned to a scheme.
-
-        A table name narrows the answer to one table; a schema narrows it to
-        one schema, with or without a table name. With neither, every aligned
-        index in the database is listed.
+        The question answers the scheme name, the function behind it, the
+        partitioning column and the function's partition count in one row --
+        the three facts ``get_partition_state`` needs before it can ask for
+        bounds.
         """
-        from ..expression.introspection import (
-            SQLServerPartitionAlignedIndexListQueryStatement,
+        from ..expression.partition import SQLServerPartitionTableQueryStatement
+
+        return SQLServerPartitionTableQueryStatement(
+            self.dialect, table_name=table_name, schema=schema
         )
 
-        return SQLServerPartitionAlignedIndexListQueryStatement(
+    def partition_function_statement(
+        self, *, function_name: str
+    ) -> "SQLServerPartitionFunctionQueryStatement":
+        """Return the statement that reads one function's direction and bounds.
+
+        One row per boundary, with the direction on every row: the boundaries
+        are ``sql_variant`` and cast to text by the statement, and the
+        direction says which side of each boundary belongs to the upper
+        partition.
+        """
+        from ..expression.partition import SQLServerPartitionFunctionQueryStatement
+
+        return SQLServerPartitionFunctionQueryStatement(
+            self.dialect, function_name=function_name
+        )
+
+    def partition_scheme_statement(
+        self, *, scheme_name: str
+    ) -> "SQLServerPartitionSchemeQueryStatement":
+        """Return the statement that reads one partition scheme by name."""
+        from ..expression.partition import SQLServerPartitionSchemeQueryStatement
+
+        return SQLServerPartitionSchemeQueryStatement(
+            self.dialect, scheme_name=scheme_name
+        )
+
+    def partition_range_statement(
+        self, *, table_name: str, schema: Optional[str] = None
+    ) -> "SQLServerPartitionRangeQueryStatement":
+        """Return the statement that reads one table's partitions *and their
+        statistics*.
+
+        The single statement returns the partition number, row count, used
+        pages and the two boundary values, so an answer that asks for
+        statistics gets bounds and measurements from one read. It is never
+        rendered when ``include_stats`` is false: ``get_partition_state``
+        builds bounds from the function's boundary rows in that case, and
+        nothing touches ``sys.dm_db_partition_stats``.
+        """
+        from ..expression.partition import SQLServerPartitionRangeQueryStatement
+
+        return SQLServerPartitionRangeQueryStatement(
+            self.dialect, table_name=table_name, schema=schema
+        )
+
+    def temporal_history_list_statement(
+        self, *, table_name: str, schema: Optional[str] = None
+    ) -> "SQLServerTemporalHistoryListQueryStatement":
+        """Return the statement that reads a table's temporal history table."""
+        from ..expression.introspection import (
+            SQLServerTemporalHistoryListQueryStatement,
+        )
+
+        return SQLServerTemporalHistoryListQueryStatement(
             self.dialect, table_name=table_name, schema=schema
         )
 
@@ -479,6 +546,14 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     def parse_indexes(
         self, rows: List[Dict[str, Any]], table_name: str, schema: str
     ) -> List[IndexInfo]:
+        """Fold the one-row-per-column answer into one record per index.
+
+        ``extra`` carries the three facts core's ``IndexInfo`` has no slot
+        for: the catalogue's own ``type_desc`` spelling, and the two flags
+        that decide whether the engine still treats the index as usable
+        (``is_disabled`` and ``is_hypothetical``). ``filter_definition``
+        lands on the declared ``filter_condition`` slot.
+        """
         type_map = {
             "CLUSTERED": IndexType.BTREE,
             "NONCLUSTERED": IndexType.BTREE,
@@ -496,7 +571,16 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
                     is_unique=bool(row.get("is_unique")),
                     is_primary=bool(row.get("is_primary_key")),
                     index_type=type_map.get(idx_type_str, IndexType.BTREE),
+                    filter_condition=row.get("filter_definition"),
                     columns=[],
+                    extra={
+                        "index_type": idx_type_str,
+                        "is_disabled": self._as_flag(row.get("is_disabled")),
+                        "is_hypothetical": self._as_flag(
+                            row.get("is_hypothetical")
+                        ),
+                        "has_filter": self._as_flag(row.get("has_filter")),
+                    },
                 )
             index_map[idx_name].columns.append(IndexColumnInfo(
                 name=row.get("column_name", ""),
@@ -688,6 +772,36 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
             )
         return sequences
 
+    def parse_sequence_states(
+        self, sequences: List[SQLServerSequenceInfo]
+    ) -> List[SequenceState]:
+        """Project this engine's complete sequence records onto core's state.
+
+        T-SQL has no ``OWNED BY``: a sequence is a schema object that a
+        column's *default* may reference, not one it owns, so ``owned_by``
+        stays ``None``. ``start`` and ``increment`` are the catalogue's own
+        values through ``to_core``, the one exact-numeric projection this
+        backend already owns; the engine-specific remainder (the declared
+        type, the current value and the cache flag) rides ``raw``.
+        """
+        states: List[SequenceState] = []
+        for sequence in sequences:
+            core = sequence.to_core()
+            states.append(
+                SequenceState(
+                    name=sequence.name,
+                    schema=sequence.schema,
+                    start=core.start_value,
+                    increment=core.increment,
+                    raw={
+                        "data_type": sequence.data_type,
+                        "current_value": sequence.current_value,
+                        "is_cached": sequence.is_cached,
+                    },
+                )
+            )
+        return states
+
     @staticmethod
     def _as_decimal(value: Any) -> Optional[Decimal]:
         """Read a cast-to-text sequence value back as an exact number.
@@ -714,151 +828,110 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
         except (TypeError, ValueError):
             return None
 
-    def parse_partitions(
+    def parse_partition_state(
         self,
+        table_rows: List[Dict[str, Any]],
         function_rows: List[Dict[str, Any]],
-        boundary_rows: List[Dict[str, Any]],
-        scheme_rows: List[Dict[str, Any]],
-        index_rows: List[Dict[str, Any]],
-        table_name: Optional[str] = None,
-        schema: Optional[str] = None,
-    ) -> List[SQLServerPartitionInfo]:
-        """Fold four partition questions into one record per function.
+        range_rows: List[Dict[str, Any]],
+        *,
+        include_stats: bool,
+    ) -> Optional[PartitionState]:
+        """Fold the partition catalogue rows into the neutral partition state.
 
-        SQL Server answers partitions at three levels: the function holds the
-        boundaries, the scheme maps destinations to filegroups, and an index
-        is aligned to a scheme by sharing its ``data_space_id``. The
-        statement for each level returns its own row shape, so the fold
-        happens here rather than in one SQL join whose cartesian product would
-        multiply boundaries by destinations by indexes.
+        Returns ``None`` when the table is not partitioned, which is core's
+        single neutral answer for that -- whatever the engine's own spelling
+        is. SQL Server only partitions by range, so the scheme is always
+        ``PartitionScheme.RANGE``; the engine's scheme *name*, its partition
+        function and the boundary direction are spelling this engine owns
+        and ride ``raw``.
 
-        When ``table_name`` or ``schema`` is given, only the functions used
-        by that table's (or schema's) aligned indexes are returned; a function
-        no index there uses is not that table's (or schema's) partition
-        function.
+        ``upper`` is the partition's high boundary as the server spells it,
+        and the last partition's ``None`` is its unbounded top -- the same
+        fact a ``MAXVALUE`` partition records elsewhere. Partitions have no
+        names in this engine, so ``name`` is the catalogue's partition
+        number under a ``p`` prefix.
+
+        With ``include_stats`` the bounds carry ``row_count`` and
+        ``size_bytes`` from ``sys.dm_db_partition_stats`` (``used_page_count``
+        multiplied by the engine's 8 KiB page). Without it both stay ``None``,
+        and the caller's rows never touched that view.
         """
-        functions: Dict[int, SQLServerPartitionInfo] = {}
-        for row in function_rows:
-            function_id = int(row.get("function_id") or 0)
-            if function_id in functions:
-                continue
-            functions[function_id] = SQLServerPartitionInfo(
-                name=row.get("partition_function", ""),
-                function_id=function_id,
-                data_type=row.get("data_type"),
-                base_type=row.get("base_type"),
-                range_direction=(
-                    "RIGHT" if row.get("boundary_value_on_right") else "LEFT"
-                ),
-                fanout=int(row.get("fanout") or 0),
-            )
+        if not table_rows:
+            return None
 
-        boundaries: Dict[int, List[Tuple[int, int, str]]] = {}
-        for row in boundary_rows:
-            function_id = int(row.get("function_id") or 0)
-            value = row.get("boundary_value")
-            if value is None:
-                continue
-            boundaries.setdefault(function_id, []).append(
-                (
-                    int(row.get("boundary_id") or 0),
-                    int(row.get("parameter_id") or 0),
-                    str(value),
-                )
-            )
+        row = table_rows[0]
+        scheme_name = row.get("scheme_name")
+        function_name = row.get("function_name")
+        column = row.get("partition_column")
 
-        schemes: Dict[int, Dict[int, Tuple[str, List[Tuple[int, str]]]]] = {}
-        for row in scheme_rows:
-            function_id = int(row.get("function_id") or 0)
-            scheme_id = int(row.get("scheme_id") or 0)
-            scheme_map = schemes.setdefault(function_id, {})
-            if scheme_id not in scheme_map:
-                scheme_map[scheme_id] = (row.get("scheme_name", ""), [])
-            filegroup = row.get("filegroup_name")
-            if filegroup:
-                scheme_map[scheme_id][1].append(
-                    (int(row.get("destination_id") or 0), filegroup)
+        direction = "RIGHT"
+        fanout = self._as_int(row.get("partition_count")) or 0
+        boundaries: List[str] = []
+        for function_row in function_rows:
+            flag = self._as_flag(function_row.get("boundary_value_on_right"))
+            if flag is not None:
+                direction = "RIGHT" if flag else "LEFT"
+            count = self._as_int(function_row.get("partition_count"))
+            if count:
+                fanout = max(fanout, count)
+            value = function_row.get("boundary_value")
+            if value is not None:
+                boundaries.append(str(value))
+
+        bounds: List[PartitionBound] = []
+        if include_stats and range_rows:
+            for index, range_row in enumerate(range_rows, start=1):
+                number = self._as_int(range_row.get("partition_number"))
+                label = number if number is not None else index
+                used_pages = self._as_int(range_row.get("used_page_count"))
+                bounds.append(
+                    PartitionBound(
+                        name=f"p{label}",
+                        upper=range_row.get("high_boundary"),
+                        is_maxvalue=range_row.get("high_boundary") is None,
+                        row_count=self._as_int(range_row.get("row_count")),
+                        size_bytes=(
+                            used_pages * _PAGE_SIZE_BYTES
+                            if used_pages is not None
+                            else None
+                        ),
+                    )
+                )
+        else:
+            # The boundary rows are the partition function's own, one per
+            # SPLIT RANGE value; N values divide the domain into N + 1
+            # partitions. The first partition's lower side and the last
+            # partition's upper side are unbounded, so the high boundary of
+            # partition k is the k-th value (absent for the last).
+            count = fanout or len(boundaries) + 1
+            for number in range(1, count + 1):
+                upper = boundaries[number - 1] if number <= len(boundaries) else None
+                bounds.append(
+                    PartitionBound(
+                        name=f"p{number}",
+                        upper=upper,
+                        is_maxvalue=upper is None,
+                    )
                 )
 
-        indexes: Dict[int, Dict[Tuple[str, str, str, int], Dict[str, Any]]] = {}
-        for row in index_rows:
-            function_id = int(row.get("function_id") or 0)
-            scheme = row.get("scheme_name") or ""
-            row_schema = row.get("schema_name") or ""
-            table = row.get("table_name") or ""
-            index_id = int(row.get("index_id") or 0)
-            key = (scheme, row_schema, table, index_id)
-            entries = indexes.setdefault(function_id, {})
-            entry = entries.get(key)
-            if entry is None:
-                entry = {
-                    "schema": row_schema,
-                    "table": table,
-                    "scheme": scheme or None,
-                    "name": row.get("index_name"),
-                    "index_id": index_id,
-                    "index_type": row.get("index_type") or "",
-                    "is_unique": bool(row.get("is_unique")),
-                    "is_primary_key": bool(row.get("is_primary_key")),
-                    "columns": [],
-                    "row_count": self._as_int(row.get("row_count")),
-                    "size_bytes": self._as_int(row.get("size_bytes")),
-                }
-                entries[key] = entry
-            column = row.get("partition_column")
-            if column and column not in entry["columns"]:
-                entry["columns"].append(column)
-
-        result: List[SQLServerPartitionInfo] = []
-        for function_id, record in functions.items():
-            boundary_values = tuple(
-                value for _boundary, _parameter, value in sorted(
-                    boundaries.get(function_id, [])
-                )
-            )
-            scheme_infos = tuple(
-                SQLServerPartitionSchemeInfo(
-                    name=name,
-                    data_space_id=scheme_id,
-                    filegroups=tuple(
-                        filegroup
-                        for _destination, filegroup in sorted(filegroups)
-                    ),
-                )
-                for scheme_id, (name, filegroups) in sorted(
-                    schemes.get(function_id, {}).items()
-                )
-            )
-            index_infos = tuple(
-                SQLServerPartitionIndexInfo(
-                    schema=entry["schema"],
-                    table=entry["table"],
-                    scheme=entry["scheme"],
-                    name=entry["name"],
-                    index_id=entry["index_id"],
-                    index_type=entry["index_type"],
-                    is_unique=entry["is_unique"],
-                    is_primary_key=entry["is_primary_key"],
-                    columns=tuple(entry["columns"]),
-                    row_count=entry["row_count"],
-                    size_bytes=entry["size_bytes"],
-                )
-                for entry in sorted(
-                    indexes.get(function_id, {}).values(),
-                    key=lambda item: (
-                        item["schema"],
-                        item["table"],
-                        item["index_id"],
-                    ),
-                )
-            )
-            if (table_name is not None or schema is not None) and not index_infos:
-                continue
-            record.boundary_values = boundary_values
-            record.schemes = scheme_infos
-            record.indexes = index_infos
-            result.append(record)
-        return sorted(result, key=lambda partition: partition.name)
+        return PartitionState(
+            scheme=PartitionScheme.RANGE,
+            # SQL Server partitions a table on exactly one column, recorded by
+            # ``sys.index_columns.partition_ordinal = 1``; the column is the
+            # key expression and the key column at once.
+            key_expression=column or "",
+            key_columns=(column,) if column else (),
+            has_default=False,
+            auto_extend=False,
+            bounds=tuple(bounds),
+            raw={
+                "scheme_name": scheme_name,
+                "function_name": function_name,
+                "range_direction": direction,
+                "partition_column": column,
+                "partition_count": fanout,
+            },
+        )
 
     def parse_types(self, rows: List[Dict[str, Any]]) -> List[SQLServerTypeInfo]:
         """Read ``sys.types`` rows into user-defined type records.
@@ -937,6 +1010,7 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
                     "definition": None,
                     "is_disabled": None,
                     "is_not_trusted": None,
+                    "is_system_named": None,
                     "delete_action": None,
                     "update_action": None,
                 }
@@ -974,6 +1048,9 @@ class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
                 column = row.get("default_column")
                 referenced = None
                 record["definition"] = row.get("default_definition")
+                record["is_system_named"] = self._as_flag(
+                    row.get("default_system_named")
+                )
             else:
                 column = None
                 referenced = None
@@ -1095,9 +1172,9 @@ class SQLServerIntrospector(
     # ``list_functions(schema="dbo")`` never answer each other.
     # ------------------------------------------------------------------
 
-    def list_schemas(self) -> List[SQLServerSchemaInfo]:
+    def list_schema_details(self) -> List[SQLServerSchemaInfo]:
         """List the database's schemas with their owning principal."""
-        key = self._cache.key(IntrospectionScope.SCHEMA)
+        key = self._cache.key(IntrospectionScope.SCHEMA, extra="schema_details")
         cached = self._cache.get(key)
         if cached is not None:
             return cached
@@ -1106,6 +1183,15 @@ class SQLServerIntrospector(
         schemas = self.parse_schemas(self._executor.execute(sql, params))
         self._cache.set(key, schemas)
         return schemas
+
+    def list_schemas(self) -> List[str]:
+        """List the schema names the server exposes.
+
+        Core's neutral answer is the names alone; the owner and schema id
+        this engine also reports stay on :meth:`list_schema_details`, which
+        is the backend's own complete answer beside it.
+        """
+        return [schema.name for schema in self.list_schema_details()]
 
     def list_extended_properties(
         self,
@@ -1214,50 +1300,6 @@ class SQLServerIntrospector(
         self._cache.set(key, sequences)
         return sequences
 
-    def list_partitions(
-        self,
-        table_name: Optional[str] = None,
-        schema: Optional[str] = None,
-    ) -> List[SQLServerPartitionInfo]:
-        """List partition functions, schemes and aligned indexes.
-
-        SQL Server answers partitions at three levels and the question is
-        rendered as four statements rather than one join, because the
-        cartesian product of boundaries, destinations and indexes would
-        describe combinations that do not exist. ``table_name`` narrows the
-        answer to the functions that table is partitioned by; ``schema``
-        narrows the aligned indexes to one schema, with or without a table
-        name. With neither, every partition function in the database is
-        reported, including one no table currently uses.
-        """
-        key = self._cache.key(
-            IntrospectionScope.TABLE,
-            table_name or "*",
-            schema=schema,
-            extra="partitions",
-        )
-        cached = self._cache.get(key)
-        if cached is not None:
-            return cached
-
-        function_sql, function_params = self.partition_function_list_statement().to_sql()
-        function_rows = self._executor.execute(function_sql, function_params)
-        boundary_sql, boundary_params = self.partition_boundary_list_statement().to_sql()
-        boundary_rows = self._executor.execute(boundary_sql, boundary_params)
-        scheme_sql, scheme_params = self.partition_scheme_list_statement().to_sql()
-        scheme_rows = self._executor.execute(scheme_sql, scheme_params)
-        index_sql, index_params = self.partition_aligned_index_list_statement(
-            table_name=table_name, schema=schema
-        ).to_sql()
-        index_rows = self._executor.execute(index_sql, index_params)
-
-        partitions = self.parse_partitions(
-            function_rows, boundary_rows, scheme_rows, index_rows,
-            table_name, schema,
-        )
-        self._cache.set(key, partitions)
-        return partitions
-
     def list_types(self, schema: Optional[str] = None) -> List[SQLServerTypeInfo]:
         """List one schema's user-defined alias, table and CLR types."""
         key = self._cache.key(
@@ -1309,6 +1351,313 @@ class SQLServerIntrospector(
         constraints = self.parse_constraints(self._executor.execute(sql, params))
         self._cache.set(key, constraints)
         return constraints
+
+    # ------------------------------------------------------------------
+    # Neutral object state (sync)
+    # ------------------------------------------------------------------
+    #
+    # These answer core's object-state contract in core's own dataclasses.
+    # Where the engine has no neutral slot for a fact it owns -- the
+    # partition scheme's name, its function, the boundary direction -- the
+    # fact rides ``raw``, which is what that channel is for. A family the
+    # engine cannot answer is not overridden and stays refused.
+
+    def get_table_state(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> TableState:
+        """Read the table's kind, comment and partition scheme.
+
+        The partitioning member is :meth:`get_partition_state`'s answer, so
+        ``partitioning`` is ``None`` exactly when the table is unpartitioned.
+        A table that is not there raises ``ObjectNotFoundError`` rather than
+        answering with a default state, because "no such table" and "a table
+        with no storage options" are not the same answer.
+        """
+        target = schema if schema is not None else self.default_schema
+        key = self._cache.key(
+            IntrospectionScope.TABLE, table_name, schema=target, extra="state"
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        table = next(
+            (
+                candidate
+                for candidate in self.list_tables(target, include_system=True)
+                if candidate.name == table_name
+            ),
+            None,
+        )
+        if table is None:
+            raise ObjectNotFoundError("Table", table_name, target)
+
+        state = TableState(
+            name=table_name,
+            schema=target,
+            kind=_TABLE_STATE_KIND.get(table.table_type, "regular"),
+            # SQL Server has no table-level engine, charset, collation or
+            # tablespace declaration: the storage a table has is its
+            # filegroup and compression, neither of which this neutral
+            # record models. The dataclass default is the honest answer.
+            storage=StorageOptionsState(),
+            comment=table.comment,
+            partitioning=self.get_partition_state(table_name, target),
+            raw={"table_type": table.table_type.value},
+        )
+        self._cache.set(key, state)
+        return state
+
+    def get_partition_state(
+        self,
+        table_name: str,
+        schema: Optional[str] = None,
+        include_stats: bool = False,
+    ) -> Optional[PartitionState]:
+        """Read one table's partition scheme, bounds and optional statistics.
+
+        ``None`` is the neutral answer for "this table is not partitioned";
+        the partition-table question returns no row for an unpartitioned
+        table, so nothing else is asked.
+
+        ``include_stats`` decides whether ``sys.dm_db_partition_stats`` is
+        read at all. Without it the bounds come from the function's own
+        boundary rows and every bound's ``row_count``/``size_bytes`` stays
+        ``None``; with it the range question returns numbers and pages
+        beside each boundary and they fill the bounds.
+        """
+        target = schema if schema is not None else self.default_schema
+        key = self._cache.key(
+            IntrospectionScope.PARTITION,
+            table_name,
+            schema=target,
+            extra=f"state:stats={include_stats}",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self.partition_table_statement(
+            table_name=table_name, schema=target
+        ).to_sql()
+        table_rows = self._executor.execute(sql, params)
+        if not table_rows:
+            return None
+
+        function_rows: List[Dict[str, Any]] = []
+        function_name = table_rows[0].get("function_name")
+        if function_name:
+            sql, params = self.partition_function_statement(
+                function_name=function_name
+            ).to_sql()
+            function_rows = self._executor.execute(sql, params)
+
+        range_rows: List[Dict[str, Any]] = []
+        if include_stats:
+            sql, params = self.partition_range_statement(
+                table_name=table_name, schema=target
+            ).to_sql()
+            range_rows = self._executor.execute(sql, params)
+
+        state = self.parse_partition_state(
+            table_rows, function_rows, range_rows, include_stats=include_stats
+        )
+        self._cache.set(key, state)
+        return state
+
+    def list_index_states(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> List[IndexState]:
+        """Read every index on the table, with usability and its predicate.
+
+        ``usable`` is false for an index the engine reports disabled or
+        hypothetical: both are catalogue rows that will not serve a query.
+        SQL Server has no invisible index, so ``visible`` stays true.
+        """
+        target = schema if schema is not None else self.default_schema
+        states: List[IndexState] = []
+        for index in self.list_indexes(table_name, target):
+            extra = index.extra or {}
+            disabled = self._as_flag(extra.get("is_disabled")) is True
+            hypothetical = self._as_flag(extra.get("is_hypothetical")) is True
+            states.append(
+                IndexState(
+                    name=index.name,
+                    table=index.table_name,
+                    schema=index.schema if index.schema is not None else target,
+                    unique=index.is_unique,
+                    method=extra.get("index_type") or None,
+                    predicate=index.filter_condition,
+                    visible=True,
+                    usable=not (disabled or hypothetical),
+                    raw={
+                        "is_primary": index.is_primary,
+                        "is_disabled": disabled,
+                        "is_hypothetical": hypothetical,
+                    },
+                )
+            )
+        return states
+
+    def list_constraint_states(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> List[ConstraintState]:
+        """Read every constraint on the table, including its trust state.
+
+        ``validated`` is the inverse of ``is_not_trusted`` and ``enforced``
+        the inverse of ``is_disabled`` -- the two flags ``NOCHECK`` clears.
+        SQL Server has no deferred constraints, so ``deferred`` is false.
+        """
+        target = schema if schema is not None else self.default_schema
+        states: List[ConstraintState] = []
+        for constraint in self.list_constraints(table_name, target):
+            disabled = self._as_flag(constraint.is_disabled) is True
+            states.append(
+                ConstraintState(
+                    name=constraint.name,
+                    table=constraint.table or table_name,
+                    kind=_CONSTRAINT_STATE_KIND.get(
+                        constraint.constraint_type,
+                        constraint.constraint_type.lower() or "constraint",
+                    ),
+                    schema=constraint.schema if constraint.schema is not None else target,
+                    validated=self._as_flag(constraint.is_not_trusted) is not True,
+                    enforced=not disabled,
+                    deferred=False,
+                    disabled=disabled,
+                    raw={
+                        "constraint_type": constraint.constraint_type,
+                        "constraint_type_desc": constraint.constraint_type_desc,
+                        "columns": constraint.columns,
+                        "definition": constraint.definition,
+                        "referenced_table": constraint.referenced_table,
+                        "is_system_named": constraint.is_system_named,
+                    },
+                )
+            )
+        return states
+
+    def list_sequence_states(
+        self, schema: Optional[str] = None
+    ) -> List[SequenceState]:
+        """Read this schema's sequences as core's neutral state."""
+        return self.parse_sequence_states(self.list_sequences(schema))
+
+    def list_derived_objects(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> List[DerivedObjectState]:
+        """Read the objects this table's declarations caused the engine to make.
+
+        Two kinds exist here: an explicitly *named* default constraint, whose
+        name a plan must know before it can drop it, and a temporal history
+        table, which the engine creates for a ``SYSTEM_VERSIONING``
+        declaration. A system-named default is excluded: the engine generated
+        its name from the column, so it is recreated from the declaration and
+        is not a separate object a caller refers to.
+
+        The history question is asked only from SQL Server 2016 (13.0), the
+        release that added ``history_table_id``; an older server cannot have
+        a temporal table at all, so there is nothing to miss.
+        """
+        target = schema if schema is not None else self.default_schema
+        key = self._cache.key(
+            IntrospectionScope.TABLE,
+            table_name,
+            schema=target,
+            extra="derived_objects",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        objects: List[DerivedObjectState] = []
+        for constraint in self.list_constraints(table_name, target):
+            if constraint.constraint_type == "D" and not constraint.is_system_named:
+                objects.append(
+                    DerivedObjectState(
+                        kind="named_default",
+                        name=constraint.name,
+                        owned_by=(
+                            constraint.columns[0] if constraint.columns else None
+                        ),
+                        raw={
+                            "definition": constraint.definition,
+                            "is_system_named": constraint.is_system_named,
+                        },
+                    )
+                )
+
+        if self._get_version() >= _TEMPORAL_TABLE_VERSION:
+            sql, params = self.temporal_history_list_statement(
+                table_name=table_name, schema=target
+            ).to_sql()
+            for row in self._executor.execute(sql, params):
+                history = row.get("history_table")
+                if history:
+                    objects.append(
+                        DerivedObjectState(
+                            kind="history_table",
+                            name=history,
+                            owned_by=table_name,
+                            raw={
+                                "schema": row.get("history_schema"),
+                                "temporal_type": self._as_int(
+                                    row.get("temporal_type")
+                                ),
+                            },
+                        )
+                    )
+
+        objects.sort(key=lambda item: (item.kind, item.name))
+        self._cache.set(key, objects)
+        return objects
+
+    def item_exists(
+        self, kind: ItemKind, name: str, schema: Optional[str] = None
+    ) -> bool:
+        """Whether a shared object of this kind exists.
+
+        A partition function or scheme is database-scoped, so ``schema``
+        means nothing for those two and is not forwarded. A kind this backend
+        does not answer is refused rather than answered ``False``: "there is
+        no such object" and "I cannot check" are different answers.
+        """
+        if not isinstance(kind, ItemKind):
+            try:
+                kind = ItemKind(kind)
+            except ValueError:
+                self._refuse("StructureIntrospectionSupport", "item_exists")
+
+        if kind is ItemKind.SCHEMA:
+            return name in self.list_schemas()
+        if kind is ItemKind.TABLE:
+            return self.table_exists(name, schema)
+        if kind is ItemKind.SEQUENCE:
+            return any(sequence.name == name for sequence in self.list_sequences(schema))
+        if kind is ItemKind.TYPE:
+            return self.get_type_info(name, schema) is not None
+        if kind is ItemKind.FUNCTION:
+            return any(
+                routine.name == name for routine in self.list_functions(schema)
+            )
+        if kind is ItemKind.PARTITION_FUNCTION:
+            statement = self.partition_function_statement(function_name=name)
+        elif kind is ItemKind.PARTITION_SCHEME:
+            statement = self.partition_scheme_statement(scheme_name=name)
+        else:
+            self._refuse("StructureIntrospectionSupport", "item_exists")
+            return False
+
+        cache_key = self._cache.key(
+            IntrospectionScope.PARTITION, name, extra=f"exists:{kind.value}"
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+        sql, params = statement.to_sql()
+        exists = bool(self._executor.execute(sql, params))
+        self._cache.set(cache_key, exists)
+        return exists
 
 
 class AsyncSQLServerIntrospector(
@@ -1384,9 +1733,9 @@ class AsyncSQLServerIntrospector(
     # only the executor is awaited.
     # ------------------------------------------------------------------
 
-    async def list_schemas(self) -> List[SQLServerSchemaInfo]:
+    async def list_schema_details(self) -> List[SQLServerSchemaInfo]:
         """List the database's schemas with their owning principal."""
-        key = self._cache.key(IntrospectionScope.SCHEMA)
+        key = self._cache.key(IntrospectionScope.SCHEMA, extra="schema_details")
         cached = self._cache.get(key)
         if cached is not None:
             return cached
@@ -1395,6 +1744,10 @@ class AsyncSQLServerIntrospector(
         schemas = self.parse_schemas(await self._executor.execute(sql, params))
         self._cache.set(key, schemas)
         return schemas
+
+    async def list_schemas(self) -> List[str]:
+        """List the schema names the server exposes."""
+        return [schema.name for schema in await self.list_schema_details()]
 
     async def list_extended_properties(
         self,
@@ -1485,44 +1838,6 @@ class AsyncSQLServerIntrospector(
         self._cache.set(key, sequences)
         return sequences
 
-    async def list_partitions(
-        self,
-        table_name: Optional[str] = None,
-        schema: Optional[str] = None,
-    ) -> List[SQLServerPartitionInfo]:
-        """List partition functions, schemes and aligned indexes asynchronously.
-
-        Same question, same fold and same cache key as the synchronous
-        manager; only the four catalog reads are awaited.
-        """
-        key = self._cache.key(
-            IntrospectionScope.TABLE,
-            table_name or "*",
-            schema=schema,
-            extra="partitions",
-        )
-        cached = self._cache.get(key)
-        if cached is not None:
-            return cached
-
-        function_sql, function_params = self.partition_function_list_statement().to_sql()
-        function_rows = await self._executor.execute(function_sql, function_params)
-        boundary_sql, boundary_params = self.partition_boundary_list_statement().to_sql()
-        boundary_rows = await self._executor.execute(boundary_sql, boundary_params)
-        scheme_sql, scheme_params = self.partition_scheme_list_statement().to_sql()
-        scheme_rows = await self._executor.execute(scheme_sql, scheme_params)
-        index_sql, index_params = self.partition_aligned_index_list_statement(
-            table_name=table_name, schema=schema
-        ).to_sql()
-        index_rows = await self._executor.execute(index_sql, index_params)
-
-        partitions = self.parse_partitions(
-            function_rows, boundary_rows, scheme_rows, index_rows,
-            table_name, schema,
-        )
-        self._cache.set(key, partitions)
-        return partitions
-
     async def list_types(
         self, schema: Optional[str] = None
     ) -> List[SQLServerTypeInfo]:
@@ -1570,4 +1885,262 @@ class AsyncSQLServerIntrospector(
         )
         self._cache.set(key, constraints)
         return constraints
+
+    # ------------------------------------------------------------------
+    # Neutral object state (async)
+    #
+    # Same signatures, cache keys, parsers and answers as the synchronous
+    # manager; only the executor is awaited.
+    # ------------------------------------------------------------------
+
+    async def get_table_state(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> TableState:
+        """Read the table's kind, comment and partition scheme."""
+        target = schema if schema is not None else self.default_schema
+        key = self._cache.key(
+            IntrospectionScope.TABLE, table_name, schema=target, extra="state"
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        table = next(
+            (
+                candidate
+                for candidate in await self.list_tables(target, include_system=True)
+                if candidate.name == table_name
+            ),
+            None,
+        )
+        if table is None:
+            raise ObjectNotFoundError("Table", table_name, target)
+
+        state = TableState(
+            name=table_name,
+            schema=target,
+            kind=_TABLE_STATE_KIND.get(table.table_type, "regular"),
+            storage=StorageOptionsState(),
+            comment=table.comment,
+            partitioning=await self.get_partition_state(table_name, target),
+            raw={"table_type": table.table_type.value},
+        )
+        self._cache.set(key, state)
+        return state
+
+    async def get_partition_state(
+        self,
+        table_name: str,
+        schema: Optional[str] = None,
+        include_stats: bool = False,
+    ) -> Optional[PartitionState]:
+        """Read one table's partition scheme, bounds and optional statistics."""
+        target = schema if schema is not None else self.default_schema
+        key = self._cache.key(
+            IntrospectionScope.PARTITION,
+            table_name,
+            schema=target,
+            extra=f"state:stats={include_stats}",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        sql, params = self.partition_table_statement(
+            table_name=table_name, schema=target
+        ).to_sql()
+        table_rows = await self._executor.execute(sql, params)
+        if not table_rows:
+            return None
+
+        function_rows: List[Dict[str, Any]] = []
+        function_name = table_rows[0].get("function_name")
+        if function_name:
+            sql, params = self.partition_function_statement(
+                function_name=function_name
+            ).to_sql()
+            function_rows = await self._executor.execute(sql, params)
+
+        range_rows: List[Dict[str, Any]] = []
+        if include_stats:
+            sql, params = self.partition_range_statement(
+                table_name=table_name, schema=target
+            ).to_sql()
+            range_rows = await self._executor.execute(sql, params)
+
+        state = self.parse_partition_state(
+            table_rows, function_rows, range_rows, include_stats=include_stats
+        )
+        self._cache.set(key, state)
+        return state
+
+    async def list_index_states(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> List[IndexState]:
+        """Read every index on the table, with usability and its predicate."""
+        target = schema if schema is not None else self.default_schema
+        states: List[IndexState] = []
+        for index in await self.list_indexes(table_name, target):
+            extra = index.extra or {}
+            disabled = self._as_flag(extra.get("is_disabled")) is True
+            hypothetical = self._as_flag(extra.get("is_hypothetical")) is True
+            states.append(
+                IndexState(
+                    name=index.name,
+                    table=index.table_name,
+                    schema=index.schema if index.schema is not None else target,
+                    unique=index.is_unique,
+                    method=extra.get("index_type") or None,
+                    predicate=index.filter_condition,
+                    visible=True,
+                    usable=not (disabled or hypothetical),
+                    raw={
+                        "is_primary": index.is_primary,
+                        "is_disabled": disabled,
+                        "is_hypothetical": hypothetical,
+                    },
+                )
+            )
+        return states
+
+    async def list_constraint_states(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> List[ConstraintState]:
+        """Read every constraint on the table, including its trust state."""
+        target = schema if schema is not None else self.default_schema
+        states: List[ConstraintState] = []
+        for constraint in await self.list_constraints(table_name, target):
+            disabled = self._as_flag(constraint.is_disabled) is True
+            states.append(
+                ConstraintState(
+                    name=constraint.name,
+                    table=constraint.table or table_name,
+                    kind=_CONSTRAINT_STATE_KIND.get(
+                        constraint.constraint_type,
+                        constraint.constraint_type.lower() or "constraint",
+                    ),
+                    schema=constraint.schema if constraint.schema is not None else target,
+                    validated=self._as_flag(constraint.is_not_trusted) is not True,
+                    enforced=not disabled,
+                    deferred=False,
+                    disabled=disabled,
+                    raw={
+                        "constraint_type": constraint.constraint_type,
+                        "constraint_type_desc": constraint.constraint_type_desc,
+                        "columns": constraint.columns,
+                        "definition": constraint.definition,
+                        "referenced_table": constraint.referenced_table,
+                        "is_system_named": constraint.is_system_named,
+                    },
+                )
+            )
+        return states
+
+    async def list_sequence_states(
+        self, schema: Optional[str] = None
+    ) -> List[SequenceState]:
+        """Read this schema's sequences as core's neutral state."""
+        return self.parse_sequence_states(await self.list_sequences(schema))
+
+    async def list_derived_objects(
+        self, table_name: str, schema: Optional[str] = None
+    ) -> List[DerivedObjectState]:
+        """Read the objects this table's declarations caused the engine to make."""
+        target = schema if schema is not None else self.default_schema
+        key = self._cache.key(
+            IntrospectionScope.TABLE,
+            table_name,
+            schema=target,
+            extra="derived_objects",
+        )
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        objects: List[DerivedObjectState] = []
+        for constraint in await self.list_constraints(table_name, target):
+            if constraint.constraint_type == "D" and not constraint.is_system_named:
+                objects.append(
+                    DerivedObjectState(
+                        kind="named_default",
+                        name=constraint.name,
+                        owned_by=(
+                            constraint.columns[0] if constraint.columns else None
+                        ),
+                        raw={
+                            "definition": constraint.definition,
+                            "is_system_named": constraint.is_system_named,
+                        },
+                    )
+                )
+
+        if self._get_version() >= _TEMPORAL_TABLE_VERSION:
+            sql, params = self.temporal_history_list_statement(
+                table_name=table_name, schema=target
+            ).to_sql()
+            for row in await self._executor.execute(sql, params):
+                history = row.get("history_table")
+                if history:
+                    objects.append(
+                        DerivedObjectState(
+                            kind="history_table",
+                            name=history,
+                            owned_by=table_name,
+                            raw={
+                                "schema": row.get("history_schema"),
+                                "temporal_type": self._as_int(
+                                    row.get("temporal_type")
+                                ),
+                            },
+                        )
+                    )
+
+        objects.sort(key=lambda item: (item.kind, item.name))
+        self._cache.set(key, objects)
+        return objects
+
+    async def item_exists(
+        self, kind: ItemKind, name: str, schema: Optional[str] = None
+    ) -> bool:
+        """Whether a shared object of this kind exists."""
+        if not isinstance(kind, ItemKind):
+            try:
+                kind = ItemKind(kind)
+            except ValueError:
+                self._refuse("StructureIntrospectionSupport", "item_exists")
+
+        if kind is ItemKind.SCHEMA:
+            return name in await self.list_schemas()
+        if kind is ItemKind.TABLE:
+            return await self.table_exists(name, schema)
+        if kind is ItemKind.SEQUENCE:
+            return any(
+                sequence.name == name
+                for sequence in await self.list_sequences(schema)
+            )
+        if kind is ItemKind.TYPE:
+            return await self.get_type_info(name, schema) is not None
+        if kind is ItemKind.FUNCTION:
+            return any(
+                routine.name == name
+                for routine in await self.list_functions(schema)
+            )
+        if kind is ItemKind.PARTITION_FUNCTION:
+            statement = self.partition_function_statement(function_name=name)
+        elif kind is ItemKind.PARTITION_SCHEME:
+            statement = self.partition_scheme_statement(scheme_name=name)
+        else:
+            self._refuse("StructureIntrospectionSupport", "item_exists")
+            return False
+
+        cache_key = self._cache.key(
+            IntrospectionScope.PARTITION, name, extra=f"exists:{kind.value}"
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+        sql, params = statement.to_sql()
+        exists = bool(await self._executor.execute(sql, params))
+        self._cache.set(cache_key, exists)
+        return exists
 

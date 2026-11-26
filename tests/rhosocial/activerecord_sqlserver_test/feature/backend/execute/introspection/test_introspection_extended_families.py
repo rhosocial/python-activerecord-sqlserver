@@ -110,8 +110,13 @@ def assert_extended_properties(properties):
 
 
 class TestExtendedFamilies:
-    def test_list_schemas(self, probed_backend):
-        assert_schemas(probed_backend.introspector.list_schemas())
+    def test_list_schema_details(self, probed_backend):
+        assert_schemas(probed_backend.introspector.list_schema_details())
+
+    def test_list_schemas_is_the_neutral_names_only(self, probed_backend):
+        names = probed_backend.introspector.list_schemas()
+        assert "dbo" in names
+        assert all(isinstance(name, str) for name in names)
 
     def test_list_procedures(self, probed_backend):
         assert_procedures(probed_backend.introspector.list_procedures(schema="dbo"))
@@ -145,8 +150,17 @@ class TestExtendedFamilies:
 
 
 class TestAsyncExtendedFamilies:
-    async def test_list_schemas(self, probed_async_backend):
-        assert_schemas(await probed_async_backend.introspector.list_schemas())
+    async def test_list_schema_details(self, probed_async_backend):
+        assert_schemas(
+            await probed_async_backend.introspector.list_schema_details()
+        )
+
+    async def test_list_schemas_is_the_neutral_names_only(
+        self, probed_async_backend
+    ):
+        names = await probed_async_backend.introspector.list_schemas()
+        assert "dbo" in names
+        assert all(isinstance(name, str) for name in names)
 
     async def test_list_procedures(self, probed_async_backend):
         assert_procedures(await probed_async_backend.introspector.list_procedures(schema="dbo"))

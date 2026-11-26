@@ -60,14 +60,11 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..expression.introspection import (
         SQLServerConstraintListQueryStatement,
         SQLServerExtendedPropertyListQueryStatement,
-        SQLServerPartitionAlignedIndexListQueryStatement,
-        SQLServerPartitionBoundaryListQueryStatement,
-        SQLServerPartitionFunctionListQueryStatement,
-        SQLServerPartitionSchemeListQueryStatement,
         SQLServerPrimaryKeyQueryStatement,
         SQLServerRoutineListQueryStatement,
         SQLServerSchemaListQueryStatement,
         SQLServerSequenceListQueryStatement,
+        SQLServerTemporalHistoryListQueryStatement,
         SQLServerTypeListQueryStatement,
     )
 
@@ -205,11 +202,15 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         return True
 
     def supports_partition_info(self) -> bool:
-        """``sys.partition_*`` answers partition functions, schemes and indexes.
+        """``sys.partition_*`` answers a table's partition state.
 
         This is core's name for the family; the backend-local spelling is
         ``supports_partition_metadata_introspection`` on the partition mixin.
         Both answer the same engine question, so a caller may gate on either.
+        The answer is one table's ``PartitionState`` -- scheme, key, range
+        direction and per-partition bounds -- because that is the neutral
+        shape every backend fills; the database-wide listing of partition
+        functions has no neutral shape and is not offered.
         """
         return self.version_at_least((10, 0, 0))
 
@@ -598,6 +599,16 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
                 self._col("name", "c", alias="column_name"),
                 self._col("key_ordinal", "ic", alias="column_position"),
                 self._col("is_descending_key", "ic"),
+                # ``is_disabled`` and ``is_hypothetical`` are the two ways an
+                # index can be present in the catalogue but not answer a
+                # query; ``filter_definition`` is the predicate a filtered
+                # index applies. None of the three has a slot on core's
+                # ``IndexInfo``, so they ride the row and ``list_index_states``
+                # maps them onto ``IndexState.usable`` / ``predicate``.
+                self._col("is_disabled", "i"),
+                self._col("is_hypothetical", "i"),
+                self._col("has_filter", "i"),
+                self._col("filter_definition", "i"),
             ],
             from_=joins,
             where=self._and(
@@ -1119,255 +1130,68 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         )
 
     # ------------------------------------------------------------------ #
-    # Partitions, user-defined types and constraints
+    # User-defined types, constraints and temporal history
     #
-    # These three families have no core statement class either. Partitions
-    # are three catalogue questions because SQL Server's model has three
-    # levels -- function, scheme and the index whose ``data_space_id`` is a
-    # scheme -- and each is rendered here rather than folded into one join
-    # that would multiply boundaries by destinations by indexes.
+    # These families have no core statement class either. Types and
+    # constraints are SQL Server's own questions; the temporal history answer
+    # is the object a ``SYSTEM_VERSIONING`` declaration caused the engine to
+    # create, which no neutral shape records.
     # ------------------------------------------------------------------ #
 
-    def format_partition_function_list_query_statement(
-        self, expr: "SQLServerPartitionFunctionListQueryStatement"
+    def format_temporal_history_list_query_statement(
+        self, expr: "SQLServerTemporalHistoryListQueryStatement"
     ) -> Tuple[str, tuple]:
-        """Render ``sys.partition_functions`` with its parameter type.
+        """Render the history table a system-versioned table owns.
 
-        ``sys.partition_parameters`` carries the declared type: the
-        function view itself does not. ``TYPE_NAME`` is asked twice, once for
-        the user type and once for its system base, so an alias-typed function
-        keeps both names. The parameter rows are folded into one function
-        record by the parser.
-        """
-        joined = self._join(
-            self._relation("partition_functions", "sys", alias="pf"),
-            self._relation("partition_parameters", "sys", alias="pp"),
-            join_type="LEFT JOIN",
-            condition=self._eq(
-                self._col("function_id", "pf"), self._col("function_id", "pp")
-            ),
-        )
-        return self._select(
-            [
-                self._col("name", "pf", alias="partition_function"),
-                self._col("function_id", "pf"),
-                self._col("type", "pf", alias="function_type"),
-                self._col("type_desc", "pf", alias="function_type_desc"),
-                self._col("fanout", "pf"),
-                self._col("boundary_value_on_right", "pf"),
-                self._fn(
-                    "TYPE_NAME", self._col("user_type_id", "pp"), alias="data_type"
-                ),
-                self._fn(
-                    "TYPE_NAME", self._col("system_type_id", "pp"), alias="base_type"
-                ),
-                self._col("max_length", "pp"),
-                self._col("precision", "pp"),
-                self._col("scale", "pp"),
-                self._col("collation_name", "pp", alias="collation"),
-                self._col("parameter_id", "pp"),
-            ],
-            from_=joined,
-            order_by=[
-                self._col("name", "pf"),
-                self._col("parameter_id", "pp"),
-            ],
-        )
-
-    def format_partition_boundary_list_query_statement(
-        self, expr: "SQLServerPartitionBoundaryListQueryStatement"
-    ) -> Tuple[str, tuple]:
-        """Render ``sys.partition_range_values`` with the value cast to text.
-
-        ``value`` is ``sql_variant``; pyodbc raises on that type before a
-        row reaches the parser, which is why the cast is in the statement.
-        The cast is wide enough for a boundary on a long character type and
-        the boundary id orders a function's values.
-        """
-        return self._select(
-            [
-                self._col("function_id", "prv"),
-                self._col("boundary_id", "prv"),
-                self._col("parameter_id", "prv"),
-                self._cast(
-                    self._col("value", "prv"), "NVARCHAR(4000)"
-                ).as_("boundary_value"),
-            ],
-            from_=self._relation("partition_range_values", "sys", alias="prv"),
-            order_by=[
-                self._col("function_id", "prv"),
-                self._col("boundary_id", "prv"),
-                self._col("parameter_id", "prv"),
-            ],
-        )
-
-    def format_partition_scheme_list_query_statement(
-        self, expr: "SQLServerPartitionSchemeListQueryStatement"
-    ) -> Tuple[str, tuple]:
-        """Render ``sys.partition_schemes`` with each destination's filegroup.
-
-        ``sys.partition_schemes`` inherits ``sys.data_spaces``; its
-        ``data_space_id`` is the scheme id the indexes point at.
-        ``sys.destination_data_spaces`` maps one destination to one data
-        space, and ``sys.data_spaces`` is where that space's filegroup name
-        lives. The joins are LEFT so a scheme with no destination rows is
-        still a scheme.
-        """
-        joined = self._join(
-            self._relation("partition_schemes", "sys", alias="ps"),
-            self._relation("destination_data_spaces", "sys", alias="dds"),
-            join_type="LEFT JOIN",
-            condition=self._eq(
-                self._col("data_space_id", "ps"),
-                self._col("partition_scheme_id", "dds"),
-            ),
-        )
-        joined = self._join(
-            joined,
-            self._relation("data_spaces", "sys", alias="ds"),
-            join_type="LEFT JOIN",
-            condition=self._eq(
-                self._col("data_space_id", "dds"), self._col("data_space_id", "ds")
-            ),
-        )
-        return self._select(
-            [
-                self._col("name", "ps", alias="scheme_name"),
-                self._col("data_space_id", "ps", alias="scheme_id"),
-                self._col("function_id", "ps"),
-                self._col("destination_id", "dds"),
-                self._col(
-                    "data_space_id", "dds", alias="destination_data_space_id"
-                ),
-                self._col("name", "ds", alias="filegroup_name"),
-            ],
-            from_=joined,
-            order_by=[
-                self._col("name", "ps"),
-                self._col("destination_id", "dds"),
-            ],
-        )
-
-    def format_partition_aligned_index_list_query_statement(
-        self, expr: "SQLServerPartitionAlignedIndexListQueryStatement"
-    ) -> Tuple[str, tuple]:
-        """Render the indexes whose ``data_space_id`` is a partition scheme.
-
-        An index is aligned when its ``data_space_id`` is the scheme's -- no
-        separate flag records it. The partitioning columns are the
-        ``sys.index_columns`` rows with a non-zero ``partition_ordinal``, and
-        the row and byte counts are this index's own partitions from
-        ``sys.dm_db_partition_stats``: measured per index rather than summed
-        across indexes, because a nonclustered index repeats the table's
-        rows and a sum would count every row twice.
+        ``sys.tables.history_table_id`` is the engine's own link from the
+        current table to the history table it maintains; a table that is not
+        system-versioned reports 0. The predicate excludes the zero rather
+        than filtering it in the parser, so "no history table" is an empty
+        answer rather than a row the caller has to inspect. The two joins are
+        LEFT because the history table can sit in another schema and the
+        catalogue keeps its row either way.
         """
         params = expr.get_params()
-        table_name = params.get("table_name")
-        schema = params.get("schema")
+        target = params.get("schema") or DEFAULT_SCHEMA
 
         joined = self._join(
             self._join(
-                self._join(
-                    self._join(
-                        self._relation("indexes", "sys", alias="i"),
-                        self._relation("partition_schemes", "sys", alias="ps"),
-                        join_type="JOIN",
-                        condition=self._eq(
-                            self._col("data_space_id", "i"),
-                            self._col("data_space_id", "ps"),
-                        ),
-                    ),
-                    self._relation("objects", "sys", alias="o"),
-                    join_type="JOIN",
-                    condition=self._eq(
-                        self._col("object_id", "i"), self._col("object_id", "o")
-                    ),
-                ),
+                self._relation("tables", "sys", alias="t"),
                 self._relation("schemas", "sys", alias="s"),
                 join_type="JOIN",
                 condition=self._eq(
-                    self._col("schema_id", "o"), self._col("schema_id", "s")
+                    self._col("schema_id", "t"), self._col("schema_id", "s")
                 ),
             ),
-            self._relation("index_columns", "sys", alias="ic"),
+            self._relation("tables", "sys", alias="ht"),
             join_type="LEFT JOIN",
-            condition=self._and(
-                self._eq(self._col("object_id", "i"), self._col("object_id", "ic")),
-                self._eq(self._col("index_id", "i"), self._col("index_id", "ic")),
-                self._gt(
-                    self._col("partition_ordinal", "ic"),
-                    self._lit(0, inline=True),
-                ),
+            condition=self._eq(
+                self._col("object_id", "ht"), self._col("history_table_id", "t")
             ),
         )
         joined = self._join(
             joined,
-            self._relation("columns", "sys", alias="c"),
+            self._relation("schemas", "sys", alias="hs"),
             join_type="LEFT JOIN",
-            condition=self._and(
-                self._eq(self._col("object_id", "c"), self._col("object_id", "ic")),
-                self._eq(self._col("column_id", "c"), self._col("column_id", "ic")),
+            condition=self._eq(
+                self._col("schema_id", "hs"), self._col("schema_id", "ht")
             ),
         )
-
-        stats_conditions = self._and(
-            self._eq(self._col("object_id", "st"), self._col("object_id", "i")),
-            self._eq(self._col("index_id", "st"), self._col("index_id", "i")),
-        )
-        row_count = self._subquery(
-            [self._fn("SUM", self._col("row_count", "st"))],
-            from_=self._relation("dm_db_partition_stats", "sys", alias="st"),
-            where=stats_conditions,
-            alias="row_count",
-        )
-        size_bytes = self._mul(
-            self._subquery(
-                [self._fn("SUM", self._col("used_page_count", "st"))],
-                from_=self._relation("dm_db_partition_stats", "sys", alias="st"),
-                where=stats_conditions,
-            ),
-            self._lit(8192, inline=True),
-        ).as_("size_bytes")
-
-        conditions = []
-        if table_name is not None:
-            conditions.append(
-                self._eq(
-                    self._col("name", "s"),
-                    self._lit(schema or DEFAULT_SCHEMA),
-                )
-            )
-            conditions.append(
-                self._eq(self._col("name", "o"), self._lit(table_name))
-            )
-        elif schema is not None:
-            conditions.append(self._eq(self._col("name", "s"), self._lit(schema)))
 
         return self._select(
             [
-                self._col("name", "ps", alias="scheme_name"),
-                self._col("function_id", "ps"),
-                self._col("name", "s", alias="schema_name"),
-                self._col("name", "o", alias="table_name"),
-                self._col("name", "i", alias="index_name"),
-                self._col("index_id", "i"),
-                self._col("type_desc", "i", alias="index_type"),
-                self._col("is_unique", "i"),
-                self._col("is_primary_key", "i"),
-                self._col("name", "c", alias="partition_column"),
-                self._col("partition_ordinal", "ic"),
-                row_count,
-                size_bytes,
+                self._col("name", "ht", alias="history_table"),
+                self._col("name", "hs", alias="history_schema"),
+                self._col("temporal_type", "t"),
             ],
             from_=joined,
-            where=self._and(*conditions) if conditions else None,
-            order_by=[
-                self._col("name", "ps"),
-                self._col("name", "s"),
-                self._col("name", "o"),
-                self._col("index_id", "i"),
-                self._col("partition_ordinal", "ic"),
-            ],
+            where=self._and(
+                self._eq(self._col("name", "s"), self._lit(target)),
+                self._eq(self._col("name", "t"), self._lit(expr.table_name)),
+                self._gt(
+                    self._col("history_table_id", "t"), self._lit(0, inline=True)
+                ),
+            ),
         )
 
     def format_type_list_query_statement(
@@ -1637,6 +1461,7 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
                 self._col("name", "cchk", alias="check_column"),
                 self._col("parent_column_id", "dc", alias="default_column_id"),
                 self._col("definition", "dc", alias="default_definition"),
+                self._col("is_system_named", "dc", alias="default_system_named"),
                 self._col("name", "cd", alias="default_column"),
                 self._col("is_disabled", "fk", alias="fk_disabled"),
                 self._col("is_not_trusted", "fk", alias="fk_not_trusted"),

@@ -3,11 +3,16 @@
 
 Every type this command offers is answered by ``backend.introspector``. The
 introspector speaks the core API -- ``list_tables``/``list_views``/
-``list_columns``/... -- plus this backend's own ``list_schemas``,
+``list_columns``/... -- plus this backend's own ``list_schema_details``,
 ``list_procedures``, ``list_functions``, ``list_sequences``,
-``list_partitions``, ``list_types`` and ``list_constraints``; there are no
+``list_types`` and ``list_constraints``; there are no
 ``get_tables``/``get_views``/``get_columns`` methods anywhere, and asking for
 them was why this command used to fail for every type.
+
+``partitions`` is answered by core's neutral ``get_partition_state``, not by
+a backend listing: one table's scheme, key expression and bounds, the same
+shape every backend fills. "Is this table partitioned" is that answer's
+``scheme`` -- ``None`` when it is not -- so the type needs a table name.
 
 The mapping from a type name to an introspector method lives in ``_steps``
 and nowhere else, so a new type is one entry there plus one title. The sync
@@ -121,7 +126,7 @@ _NAME_RULE = {
     "functions": "forbidden",
     "sequences": "forbidden",
     "schemas": "forbidden",
-    "partitions": "optional",
+    "partitions": "required",
     "types": "optional",
     "constraints": "optional",
     # The shared families: the counters and the listings describe the database
@@ -176,8 +181,8 @@ _RESULT_TITLES = {
     "list_procedures": "Stored Procedures",
     "list_functions": "User-Defined Functions",
     "list_sequences": "Sequences",
-    "list_schemas": "Schemas",
-    "list_partitions": "Partitions",
+    "list_schema_details": "Schemas",
+    "get_partition_state": "Partitions",
     "list_types": "User-Defined Types",
     "list_constraints": "Constraints",
     "get_database_info": "Database Info",
@@ -237,8 +242,7 @@ def create_parser(subparsers):
   # List sequences
   %(prog)s sequences --database mydb
 
-  # Partition functions, schemes and aligned indexes (all, or one table's)
-  %(prog)s partitions --database mydb
+  # One table's partition scheme, bounds and statistics
   %(prog)s partitions orders --database mydb
 
   # User-defined alias, table and CLR types (all, or one type)
@@ -279,8 +283,8 @@ def create_parser(subparsers):
 
 NAME per type:
   columns, indexes, foreign-keys, extended-properties, column-profiles,
-  value-samples               a table name, required
-  partitions, constraints    a table name, optional
+  value-samples, partitions    a table name, required
+  constraints                a table name, optional
   types                      a type name, optional
   views                       a view name, optional
   triggers, dependencies      optional narrowing
@@ -561,11 +565,21 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     if kind == "sequences":
         return [("list_sequences", {"schema": None})]
     if kind == "schemas":
-        return [("list_schemas", {})]
+        # The database's schemas with their owners; the neutral ``list_schemas``
+        # is the names alone, and the CLI's readers want the owner too.
+        return [("list_schema_details", {})]
     if kind == "partitions":
+        # One table's partition state. The neutral answer is per table --
+        # ``scheme is None`` says unpartitioned -- so the name is the whole
+        # question. Statistics ride along because a partition listing without
+        # row counts answers only half of what a reader asks.
         return [(
-            "list_partitions",
-            {"table_name": args.name, "schema": None},
+            "get_partition_state",
+            {
+                "table_name": _name_of(args, kind),
+                "schema": None,
+                "include_stats": True,
+            },
         )]
     if kind == "types":
         if args.name:
@@ -658,8 +672,8 @@ def _title_for(method: str, kwargs: Dict[str, Any]) -> str:
             return f"Dependencies of {kwargs['object_name']}"
         if method == "list_column_data_profiles":
             return f"Column profiles of {kwargs.get('table_name', '')}"
-        if method == "list_partitions" and kwargs.get("table_name"):
-            return f"Partitions of {kwargs['table_name']}"
+        if method == "get_partition_state":
+            return f"Partitions of {kwargs.get('table_name', '')}"
         if method == "list_constraints" and kwargs.get("table_name"):
             return f"Constraints of {kwargs['table_name']}"
         return _RESULT_TITLES[method]
@@ -693,6 +707,7 @@ _NAMED_TYPES: Dict[str, Tuple[str, str]] = {
     "get_view_info": ("View", "view_name"),
     "get_type_info": ("Type", "type_name"),
     "list_extended_properties": ("Table", "table_name"),
+    "get_partition_state": ("Table", "table_name"),
 }
 
 
@@ -730,6 +745,10 @@ def _require_found(introspector: Any, method: str, kwargs: Dict[str, Any], value
         kwargs["table_name"], kwargs.get("schema")
     ):
         return  # the table is there; it simply carries no properties
+    if method == "get_partition_state" and introspector.table_exists(
+        kwargs["table_name"], kwargs.get("schema")
+    ):
+        return  # the table is there; it simply is not partitioned
     _report_missing(missing)
 
 
@@ -746,6 +765,10 @@ async def _require_found_async(
     if missing is None:
         return
     if method == "list_extended_properties" and await introspector.table_exists(
+        kwargs["table_name"], kwargs.get("schema")
+    ):
+        return
+    if method == "get_partition_state" and await introspector.table_exists(
         kwargs["table_name"], kwargs.get("schema")
     ):
         return
@@ -773,17 +796,64 @@ def _require_measured(method: str, kwargs: Dict[str, Any], value: Any) -> None:
         sys.exit(1)
 
 
+def _partition_rows(value: Any) -> List[Dict[str, Any]]:
+    """Render one neutral ``PartitionState`` as rows of its bounds.
+
+    The state is one object whose interesting part is a tuple of bounds;
+    rendering it as one record would put that tuple in a single cell, which
+    a table, CSV or TSV renderer cannot show usefully. One row per bound
+    keeps every field a scalar. ``value`` being ``None`` is core's answer
+    for "not partitioned", and renders as a single row whose ``scheme`` is
+    ``None`` rather than as no answer at all.
+    """
+    if value is None:
+        return [{
+            "partition": None,
+            "scheme": None,
+            "key_expression": None,
+            "upper": None,
+            "values": None,
+            "is_maxvalue": None,
+            "row_count": None,
+            "size_bytes": None,
+        }]
+
+    scheme = value.scheme.value if value.scheme else None
+    bounds = value.bounds or (None,)
+    return [
+        {
+            "partition": bound.name if bound is not None else None,
+            "scheme": scheme,
+            "key_expression": value.key_expression or None,
+            "upper": bound.upper if bound is not None else None,
+            "values": (
+                ",".join(bound.values)
+                if bound is not None and bound.values
+                else None
+            ),
+            "is_maxvalue": bound.is_maxvalue if bound is not None else None,
+            "row_count": bound.row_count if bound is not None else None,
+            "size_bytes": bound.size_bytes if bound is not None else None,
+        }
+        for bound in bounds
+    ]
+
+
 def _value_sections(
     method: str, kwargs: Dict[str, Any], value: Any
 ) -> List[Tuple[str, Any]]:
     """Turn one introspection result into the sections to render.
 
     One result, one section. Nothing is expanded into parts here any more,
-    because no type asks more than one question.
+    because no type asks more than one question. The partition state is the
+    one result whose bounds are rendered as rows; the section is still one.
     """
 
     if method == "get_database_info":
         return [(_title_for(method, kwargs), [value])]
+
+    if method == "get_partition_state":
+        return [(_title_for(method, kwargs), _partition_rows(value))]
 
     return [(_title_for(method, kwargs), value)]
 

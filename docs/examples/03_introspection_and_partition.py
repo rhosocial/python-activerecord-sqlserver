@@ -39,7 +39,7 @@ def show_introspection(backend: SQLServerBackend) -> None:
     info = introspector.get_database_info()
     print("Database:", info.name, info.version, info.collation)
 
-    for schema in introspector.list_schemas():
+    for schema in introspector.list_schema_details():
         print("Schema:", schema.name, "owner:", schema.owner)
 
     for table in introspector.list_tables():

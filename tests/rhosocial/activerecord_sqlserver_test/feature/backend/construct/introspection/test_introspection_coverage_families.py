@@ -26,6 +26,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
     AsyncSQLServerIntrospector,
     SQLServerIntrospector,
 )
+from rhosocial.activerecord.backend.introspection import ItemKind
 
 
 def make_introspector(version=(16, 0, 0)) -> SQLServerIntrospector:
@@ -40,211 +41,157 @@ def make_introspector(version=(16, 0, 0)) -> SQLServerIntrospector:
     return SQLServerIntrospector(backend, executor=object())
 
 
-class TestPartitionStatements:
-    """The three catalogue questions behind one partition answer."""
+class TestPartitionStateQuestions:
+    """The catalogue questions behind the neutral partition answer."""
 
-    def test_function_list_reads_the_catalogue_and_parameter_type(self):
-        sql, params = (
-            make_introspector().partition_function_list_statement().to_sql()
-        )
-        assert "[sys].[partition_functions] AS [pf]" in sql
-        assert "[sys].[partition_parameters] AS [pp]" in sql
-        assert "TYPE_NAME([pp].[user_type_id]) AS [data_type]" in sql
-        assert "TYPE_NAME([pp].[system_type_id]) AS [base_type]" in sql
-        assert "[pf].[boundary_value_on_right]" in sql
-        assert params == (), "the question names no caller value"
-
-    def test_boundary_value_is_cast_off_the_sql_variant(self):
-        """``value`` is sql_variant and pyodbc refuses to fetch it (HY106)."""
-        sql, params = (
-            make_introspector().partition_boundary_list_statement().to_sql()
-        )
-        assert (
-            "CAST([prv].[value] AS NVARCHAR(4000)) AS [boundary_value]" in sql
-        )
-        assert params == ()
-
-    def test_scheme_list_joins_destinations_to_filegroups(self):
-        sql, params = (
-            make_introspector().partition_scheme_list_statement().to_sql()
-        )
-        assert "[sys].[partition_schemes] AS [ps]" in sql
-        assert "[sys].[destination_data_spaces] AS [dds]" in sql
-        assert "[sys].[data_spaces] AS [ds]" in sql
-        assert "[ps].[data_space_id] = [dds].[partition_scheme_id]" in sql
-        assert params == ()
-
-    def test_aligned_indexes_join_on_the_scheme_data_space(self):
-        """An index is aligned when it shares the scheme's ``data_space_id``."""
-        sql, params = (
-            make_introspector().partition_aligned_index_list_statement().to_sql()
-        )
-        assert "[sys].[indexes] AS [i]" in sql
-        assert "[i].[data_space_id] = [ps].[data_space_id]" in sql
-        assert "[ic].[partition_ordinal] > 0" in sql
-        assert params == (), "no table named, no caller value carried"
-
-    def test_a_table_name_narrows_the_aligned_indexes(self):
-        sql, params = (
-            make_introspector()
-            .partition_aligned_index_list_statement(
-                table_name="orders", schema="sales"
-            )
-            .to_sql()
-        )
-        assert "[s].[name] = ?" in sql
-        assert "[o].[name] = ?" in sql
-        assert params == ("sales", "orders")
-        assert "'sales'" not in sql and "'orders'" not in sql
-
-    def test_a_table_name_defaults_the_schema(self):
-        sql, params = (
-            make_introspector()
-            .partition_aligned_index_list_statement(table_name="orders")
-            .to_sql()
-        )
+    def test_table_question_reads_scheme_function_and_key(self):
+        sql, params = make_introspector().partition_table_statement(
+            table_name="orders", schema="dbo"
+        ).to_sql()
+        assert "sys.partition_schemes AS ps" in sql
+        assert "sys.partition_functions AS pf" in sql
+        assert "partition_ordinal = 1" in sql
         assert params == ("dbo", "orders")
 
-    def test_index_storage_is_measured_per_index(self):
-        """Row and byte counts are this index's own partitions, not a sum."""
-        sql, _ = (
-            make_introspector().partition_aligned_index_list_statement().to_sql()
-        )
-        assert sql.count("[sys].[dm_db_partition_stats] AS [st]") == 2
-        assert "[st].[object_id] = [i].[object_id]" in sql
-        assert "[st].[index_id] = [i].[index_id]" in sql
-        assert "* 8192 AS [size_bytes]" in sql
+    def test_function_question_names_the_direction_and_orders_boundaries(self):
+        sql, params = make_introspector().partition_function_statement(
+            function_name="pf_orders"
+        ).to_sql()
+        assert "pf.boundary_value_on_right" in sql
+        assert "SQL_VARIANT_PROPERTY" in sql
+        assert "ORDER BY pf.name, prv.boundary_id" in sql
+        assert params == ("pf_orders",)
+
+    def test_range_question_is_the_only_statistics_read(self):
+        sql, params = make_introspector().partition_range_statement(
+            table_name="orders", schema="dbo"
+        ).to_sql()
+        assert "sys.dm_db_partition_stats AS stats" in sql
+        assert "stats.partition_number" in sql
+        assert "stats.used_page_count" in sql
+        assert "low_b.boundary_value AS low_boundary" in sql
+        assert params == ("dbo", "orders")
 
 
-class TestParsePartitions:
-    """The four row shapes fold into one record per partition function."""
+class TestParsePartitionState:
+    """The catalogue rows fold into core's neutral ``PartitionState``."""
+
+    @staticmethod
+    def _table():
+        return [
+            {
+                "scheme_name": "ps_orders",
+                "function_name": "pf_orders",
+                "partition_column": "created_at",
+                "partition_count": 3,
+            }
+        ]
 
     @staticmethod
     def _functions():
         return [
             {
-                "partition_function": "pf_orders",
-                "function_id": 11,
-                "type_desc": "RANGE",
-                "fanout": 3,
                 "boundary_value_on_right": 1,
-                "data_type": "datetime2",
-                "base_type": "datetime2",
-                "parameter_id": 1,
-            }
+                "partition_count": 3,
+                "boundary_id": 1,
+                "boundary_value": "2026-01-01",
+            },
+            {
+                "boundary_value_on_right": 1,
+                "partition_count": 3,
+                "boundary_id": 2,
+                "boundary_value": "2026-02-01",
+            },
         ]
 
     @staticmethod
-    def _boundaries():
-        return [
-            {"function_id": 11, "boundary_id": 2, "parameter_id": 1,
-             "boundary_value": "2026-02-01"},
-            {"function_id": 11, "boundary_id": 1, "parameter_id": 1,
-             "boundary_value": "2026-01-01"},
-        ]
-
-    @staticmethod
-    def _schemes():
-        return [
-            {"scheme_name": "ps_orders", "scheme_id": 21, "function_id": 11,
-             "destination_id": 2, "filegroup_name": "fg_2"},
-            {"scheme_name": "ps_orders", "scheme_id": 21, "function_id": 11,
-             "destination_id": 1, "filegroup_name": "fg_1"},
-        ]
-
-    @staticmethod
-    def _indexes():
+    def _ranges():
         return [
             {
-                "scheme_name": "ps_orders",
-                "function_id": 11,
-                "schema_name": "dbo",
-                "table_name": "orders",
-                "index_name": "PK_orders",
-                "index_id": 1,
-                "index_type": "CLUSTERED",
-                "is_unique": 1,
-                "is_primary_key": 1,
-                "partition_column": "created_at",
-                "partition_ordinal": 1,
+                "partition_number": 1,
                 "row_count": 120,
-                "size_bytes": 8192,
-            }
+                "used_page_count": 3,
+                "low_boundary": None,
+                "high_boundary": "2026-01-01",
+            },
+            {
+                "partition_number": 2,
+                "row_count": 80,
+                "used_page_count": 2,
+                "low_boundary": "2026-01-01",
+                "high_boundary": "2026-02-01",
+            },
+            {
+                "partition_number": 3,
+                "row_count": 40,
+                "used_page_count": 1,
+                "low_boundary": "2026-02-01",
+                "high_boundary": None,
+            },
         ]
 
-    def _parse(self, table_name=None):
-        return make_introspector().parse_partitions(
-            self._functions(), self._boundaries(), self._schemes(),
-            self._indexes(), table_name,
+    def _parse(self, *, include_stats=False, range_rows=None):
+        return make_introspector().parse_partition_state(
+            self._table(),
+            self._functions(),
+            self._ranges() if range_rows is None else range_rows,
+            include_stats=include_stats,
         )
 
-    def test_function_level_fields_are_read(self):
-        partition = self._parse()[0]
-        assert partition.name == "pf_orders"
-        assert partition.function_id == 11
-        assert partition.fanout == 3
-        assert partition.range_direction == "RIGHT"
-        assert partition.data_type == "datetime2"
-
-    def test_boundary_value_bits_read_left_when_the_flag_is_clear(self):
-        rows = self._functions()
-        rows[0]["boundary_value_on_right"] = 0
-        partition = make_introspector().parse_partitions(
-            rows, self._boundaries(), self._schemes(), self._indexes()
-        )[0]
-        assert partition.range_direction == "LEFT"
-
-    def test_boundaries_are_ordered_and_folded(self):
-        assert self._parse()[0].boundary_values == (
-            "2026-01-01", "2026-02-01"
+    def test_an_unpartitioned_table_has_no_scheme(self):
+        state = make_introspector().parse_partition_state(
+            [], [], [], include_stats=False
         )
+        assert state is None
 
-    def test_scheme_keeps_its_filegroups(self):
-        scheme = self._parse()[0].schemes[0]
-        assert (scheme.name, scheme.data_space_id) == ("ps_orders", 21)
-        assert scheme.filegroups == ("fg_1", "fg_2")
+    def test_scheme_key_and_direction_are_the_neutral_answer(self):
+        state = self._parse()
+        assert state.scheme.value == "range"
+        assert state.key_expression == "created_at"
+        assert state.key_columns == ("created_at",)
+        assert state.raw["scheme_name"] == "ps_orders"
+        assert state.raw["range_direction"] == "RIGHT"
+        assert state.raw["function_name"] == "pf_orders"
 
-    def test_aligned_index_keeps_its_partitioning_column_and_storage(self):
-        index = self._parse()[0].indexes[0]
-        assert (index.schema, index.table, index.name) == ("dbo", "orders", "PK_orders")
-        assert index.columns == ("created_at",)
-        assert (index.row_count, index.size_bytes) == (120, 8192)
+    def test_the_direction_is_read_from_the_function_flag(self):
+        functions = self._functions()
+        for row in functions:
+            row["boundary_value_on_right"] = 0
+        state = make_introspector().parse_partition_state(
+            self._table(), functions, [], include_stats=False
+        )
+        assert state.raw["range_direction"] == "LEFT"
 
-    def test_a_table_filter_keeps_only_the_functions_it_uses(self):
-        functions = self._functions() + [
-            {"partition_function": "pf_unused", "function_id": 12,
-             "fanout": 2, "boundary_value_on_right": 1}
+    def test_bounds_come_from_the_boundary_rows_without_statistics(self):
+        state = self._parse()
+        assert [bound.name for bound in state.bounds] == ["p1", "p2", "p3"]
+        assert [bound.upper for bound in state.bounds] == [
+            "2026-01-01", "2026-02-01", None,
         ]
-        partitions = make_introspector().parse_partitions(
-            functions, self._boundaries(), self._schemes(), self._indexes(),
-            table_name="orders",
-        )
-        assert [partition.name for partition in partitions] == ["pf_orders"]
+        assert state.bounds[-1].is_maxvalue is True
+        assert all(bound.row_count is None for bound in state.bounds)
+        assert all(bound.size_bytes is None for bound in state.bounds)
 
-    def test_a_function_no_index_uses_is_kept_without_a_table_filter(self):
-        functions = self._functions() + [
-            {"partition_function": "pf_unused", "function_id": 12,
-             "fanout": 2, "boundary_value_on_right": 1}
-        ]
-        partitions = make_introspector().parse_partitions(
-            functions, self._boundaries(), self._schemes(), self._indexes()
-        )
-        assert {partition.name for partition in partitions} == {
-            "pf_orders", "pf_unused"
-        }
+    def test_statistics_fill_row_count_and_size_only_when_asked(self):
+        state = self._parse(include_stats=True)
+        assert [bound.name for bound in state.bounds] == ["p1", "p2", "p3"]
+        assert [bound.row_count for bound in state.bounds] == [120, 80, 40]
+        assert [bound.size_bytes for bound in state.bounds] == [24576, 16384, 8192]
 
-    def test_a_schema_filter_keeps_only_the_functions_used_there(self):
-        sales_indexes = self._indexes()
-        sales_indexes[0]["schema_name"] = "sales"
-        partitions = make_introspector().parse_partitions(
-            self._functions(), self._boundaries(), self._schemes(),
-            sales_indexes, schema="sales",
+    def test_a_statistics_request_that_came_back_empty_still_answers_bounds(self):
+        state = self._parse(include_stats=True, range_rows=[])
+        assert [bound.name for bound in state.bounds] == ["p1", "p2", "p3"]
+        assert all(bound.row_count is None for bound in state.bounds)
+
+    def test_the_function_answers_one_partition_when_it_has_no_boundary(self):
+        table = self._table()
+        table[0]["partition_count"] = 1
+        state = make_introspector().parse_partition_state(
+            table, [], [], include_stats=False
         )
-        assert [partition.name for partition in partitions] == ["pf_orders"]
-        assert make_introspector().parse_partitions(
-            self._functions(), self._boundaries(), self._schemes(),
-            [], schema="dbo",
-        ) == []
+        assert len(state.bounds) == 1
+        assert state.bounds[0].upper is None
+        assert state.bounds[0].is_maxvalue is True
 
 
 class TestTypeStatements:
@@ -472,15 +419,19 @@ class TestParseConstraints:
 
 
 class TestAsyncParity:
-    """The asynchronous manager answers the same three questions."""
+    """The asynchronous manager answers the same questions."""
 
     @pytest.mark.parametrize(
         ("sync_method", "async_method"),
         [
-            ("list_partitions", "list_partitions"),
+            ("get_partition_state", "get_partition_state"),
             ("list_types", "list_types"),
             ("get_type_info", "get_type_info"),
             ("list_constraints", "list_constraints"),
+            ("list_index_states", "list_index_states"),
+            ("list_constraint_states", "list_constraint_states"),
+            ("list_derived_objects", "list_derived_objects"),
+            ("item_exists", "item_exists"),
         ],
     )
     def test_the_async_class_has_the_same_method_with_the_same_parameters(
@@ -498,7 +449,12 @@ class TestAsyncParity:
         )
 
     def test_the_async_parsers_are_the_same_functions(self):
-        for name in ("parse_partitions", "parse_types", "parse_constraints"):
+        for name in (
+            "parse_partition_state",
+            "parse_sequence_states",
+            "parse_types",
+            "parse_constraints",
+        ):
             sync_parser = getattr(SQLServerIntrospector, name)
             async_parser = getattr(AsyncSQLServerIntrospector, name)
             assert sync_parser is async_parser
@@ -527,34 +483,67 @@ class _SyncExecutor:
 
 
 def _rows_for(sql):
-    if "partition_functions" in sql:
-        return [_function_row()]
-    if "partition_range_values" in sql:
-        return [_boundary_row()]
-    if "key_constraints" in sql:
-        return [_constraint_row()]
-    if "index_columns" in sql:
-        return [_index_row()]
-    if "partition_schemes" in sql:
+    if "dm_db_partition_stats" in sql and "boundary_text" in sql:
+        return _partition_range_rows()
+    if "sys.partition_functions AS pf" in sql:
+        return _partition_function_rows()
+    if "sys.destination_data_spaces AS dds" in sql:
         return [_scheme_row()]
+    if "sys.partition_schemes AS ps" in sql:
+        return [_partition_table_row()]
+    if "history_table_id" in sql:
+        return [_history_row()]
+    if "[sys].[database_principals] AS [p]" in sql:
+        return [{"schema_id": 1, "schema_name": "dbo", "owner": "dbo"}]
+    if "key_constraints" in sql:
+        return [_constraint_row(), _default_row()]
+    if "[sys].[objects] AS [o]" in sql:
+        return [_table_row()]
+    if "[sys].[indexes] AS [i]" in sql:
+        return [_core_index_row()]
     if "table_types" in sql:
         return [_type_row()]
     return []
 
 
-def _function_row():
+def _partition_table_row():
     return {
-        "partition_function": "pf_orders", "function_id": 11, "fanout": 2,
-        "boundary_value_on_right": 1, "data_type": "datetime2",
-        "base_type": "datetime2",
+        "table_name": "orders", "schema_name": "dbo", "scheme_name": "ps_orders",
+        "function_name": "pf_orders", "partition_column": "created_at",
+        "partition_count": 3,
     }
 
 
-def _boundary_row():
-    return {
-        "function_id": 11, "boundary_id": 1, "parameter_id": 1,
-        "boundary_value": "2026-01-01",
-    }
+def _partition_function_rows():
+    return [
+        {
+            "function_name": "pf_orders", "boundary_value_on_right": 1,
+            "partition_count": 3, "boundary_id": 1,
+            "boundary_value": "2026-01-01",
+        },
+        {
+            "function_name": "pf_orders", "boundary_value_on_right": 1,
+            "partition_count": 3, "boundary_id": 2,
+            "boundary_value": "2026-02-01",
+        },
+    ]
+
+
+def _partition_range_rows():
+    return [
+        {
+            "partition_number": 1, "row_count": 120, "used_page_count": 3,
+            "low_boundary": None, "high_boundary": "2026-01-01",
+        },
+        {
+            "partition_number": 2, "row_count": 80, "used_page_count": 2,
+            "low_boundary": "2026-01-01", "high_boundary": "2026-02-01",
+        },
+        {
+            "partition_number": 3, "row_count": 40, "used_page_count": 1,
+            "low_boundary": "2026-02-01", "high_boundary": None,
+        },
+    ]
 
 
 def _scheme_row():
@@ -564,13 +553,18 @@ def _scheme_row():
     }
 
 
-def _index_row():
+def _history_row():
     return {
-        "scheme_name": "ps_orders", "function_id": 11, "schema_name": "dbo",
-        "table_name": "orders", "index_name": "PK_orders", "index_id": 1,
-        "index_type": "CLUSTERED", "is_unique": 1, "is_primary_key": 1,
-        "partition_column": "created_at", "partition_ordinal": 1,
-        "row_count": 2, "size_bytes": 8192,
+        "history_table": "orders_history", "history_schema": "dbo",
+        "temporal_type": 2,
+    }
+
+
+def _table_row():
+    return {
+        "TABLE_NAME": "orders", "TABLE_TYPE": "U", "table_comment": "orders",
+        "size_bytes": 40960, "data_size_bytes": 32768,
+        "index_size_bytes": 8192,
     }
 
 
@@ -579,6 +573,17 @@ def _type_row():
         "type_name": "order_note", "schema_name": "dbo", "base_type": "nvarchar",
         "max_length": 40, "is_nullable": 1, "is_user_defined": 1,
         "is_table_type": 0, "is_assembly_type": 0,
+    }
+
+
+def _core_index_row():
+    return {
+        "index_name": "ix_orders_status", "is_unique": 0,
+        "is_primary_key": 0, "index_type": "NONCLUSTERED",
+        "column_name": "status", "column_position": 1,
+        "is_descending_key": 0, "is_disabled": 1,
+        "is_hypothetical": 0, "has_filter": 1,
+        "filter_definition": "([status] = 'paid')",
     }
 
 
@@ -592,6 +597,15 @@ def _constraint_row():
     }
 
 
+def _default_row():
+    return {
+        "constraint_name": "df_orders_status", "schema_name": "dbo",
+        "table_name": "orders", "constraint_type": "D",
+        "constraint_type_desc": "DEFAULT_CONSTRAINT", "default_column": "status",
+        "default_definition": "('pending')", "default_system_named": 0,
+    }
+
+
 class TestAsyncExecution:
     """The await path reaches the same parsers and result types."""
 
@@ -601,13 +615,49 @@ class TestAsyncExecution:
         )
 
     @pytest.mark.asyncio
-    async def test_list_partitions_executes_all_four_questions(self):
+    async def test_get_partition_state_does_not_read_statistics_by_default(self):
         introspector = self._introspector()
-        partitions = await introspector.list_partitions("orders")
-        assert [partition.name for partition in partitions] == ["pf_orders"]
-        assert len(introspector._executor.calls) == 4
-        last_params = introspector._executor.calls[-1][1]
-        assert last_params == ("dbo", "orders")
+        state = await introspector.get_partition_state("orders")
+        assert state.scheme.value == "range"
+        assert [bound.name for bound in state.bounds] == ["p1", "p2", "p3"]
+        assert all(bound.row_count is None for bound in state.bounds)
+        assert len(introspector._executor.calls) == 2
+        assert all(
+            "dm_db_partition_stats" not in sql
+            for sql, _params in introspector._executor.calls
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_partition_state_reads_statistics_only_when_asked(self):
+        introspector = self._introspector()
+        state = await introspector.get_partition_state("orders", include_stats=True)
+        assert [bound.row_count for bound in state.bounds] == [120, 80, 40]
+        assert len(introspector._executor.calls) == 3
+        assert "dm_db_partition_stats" in introspector._executor.calls[-1][0]
+
+    @pytest.mark.asyncio
+    async def test_an_unpartitioned_table_answers_no_scheme(self):
+        class _Unpartitioned(_AsyncExecutor):
+            async def execute(self, sql, params):
+                if "sys.partition_schemes AS ps" in sql:
+                    self.calls.append((sql, params))
+                    return []
+                return await super().execute(sql, params)
+
+        introspector = AsyncSQLServerIntrospector(
+            make_introspector()._backend, executor=_Unpartitioned()
+        )
+        assert await introspector.get_partition_state("orders") is None
+        assert len(introspector._executor.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_index_states_maps_the_disabled_flag(self):
+        introspector = self._introspector()
+        states = await introspector.list_index_states("orders")
+        assert states[0].name == "ix_orders_status"
+        assert states[0].usable is False
+        assert states[0].method == "NONCLUSTERED"
+        assert states[0].predicate == "([status] = 'paid')"
 
     @pytest.mark.asyncio
     async def test_list_types_and_get_type_info_answer(self):
@@ -632,12 +682,94 @@ class TestSyncExecution:
             make_introspector()._backend, executor=_SyncExecutor()
         )
 
-    def test_list_partitions_executes_all_four_questions(self):
+    def test_get_partition_state_does_not_read_statistics_by_default(self):
         introspector = self._introspector()
-        partitions = introspector.list_partitions("orders")
-        assert [partition.name for partition in partitions] == ["pf_orders"]
-        assert len(introspector._executor.calls) == 4
-        assert introspector._executor.calls[-1][1] == ("dbo", "orders")
+        state = introspector.get_partition_state("orders")
+        assert state.scheme.value == "range"
+        assert [bound.name for bound in state.bounds] == ["p1", "p2", "p3"]
+        assert all(bound.row_count is None for bound in state.bounds)
+        assert len(introspector._executor.calls) == 2
+        assert all(
+            "dm_db_partition_stats" not in sql
+            for sql, _params in introspector._executor.calls
+        )
+
+    def test_get_partition_state_reads_statistics_only_when_asked(self):
+        introspector = self._introspector()
+        state = introspector.get_partition_state("orders", include_stats=True)
+        assert [bound.row_count for bound in state.bounds] == [120, 80, 40]
+        assert [bound.size_bytes for bound in state.bounds] == [
+            24576, 16384, 8192,
+        ]
+        assert len(introspector._executor.calls) == 3
+        assert "dm_db_partition_stats" in introspector._executor.calls[-1][0]
+
+    def test_an_unpartitioned_table_answers_no_scheme(self):
+        class _Unpartitioned(_SyncExecutor):
+            def execute(self, sql, params):
+                if "sys.partition_schemes AS ps" in sql:
+                    self.calls.append((sql, params))
+                    return []
+                return super().execute(sql, params)
+
+        introspector = SQLServerIntrospector(
+            make_introspector()._backend, executor=_Unpartitioned()
+        )
+        assert introspector.get_partition_state("orders") is None
+        assert len(introspector._executor.calls) == 1
+
+    def test_list_index_states_maps_the_disabled_flag(self):
+        introspector = self._introspector()
+        states = introspector.list_index_states("orders")
+        assert states[0].name == "ix_orders_status"
+        assert states[0].usable is False
+        assert states[0].method == "NONCLUSTERED"
+        assert states[0].predicate == "([status] = 'paid')"
+
+    def test_list_constraint_states_report_the_kind_and_trust(self):
+        introspector = self._introspector()
+        states = introspector.list_constraint_states("orders")
+        check = next(state for state in states if state.name == "ck_orders_total")
+        assert check.kind == "check"
+        assert check.validated is True
+        assert check.enforced is True
+
+    def test_list_derived_objects_reads_the_named_default_and_history(self):
+        introspector = self._introspector()
+        objects = introspector.list_derived_objects("orders")
+        assert [item.kind for item in objects] == [
+            "history_table", "named_default",
+        ]
+        default = next(item for item in objects if item.kind == "named_default")
+        assert (default.name, default.owned_by) == ("df_orders_status", "status")
+        history = next(item for item in objects if item.kind == "history_table")
+        assert history.name == "orders_history"
+
+    def test_item_exists_answers_the_shared_objects_it_can(self):
+        introspector = self._introspector()
+        assert introspector.item_exists(
+            ItemKind.PARTITION_FUNCTION, "pf_orders"
+        ) is True
+        assert introspector.item_exists(
+            ItemKind.PARTITION_SCHEME, "ps_orders"
+        ) is True
+        assert introspector.item_exists(ItemKind.SCHEMA, "dbo") is True
+
+    def test_list_schemas_is_the_neutral_names_only(self):
+        introspector = self._introspector()
+        assert introspector.list_schemas() == ["dbo"]
+        details = introspector.list_schema_details()
+        assert [(schema.name, schema.owner) for schema in details] == [
+            ("dbo", "dbo"),
+        ]
+
+    def test_get_table_state_carries_the_kind_and_partitioning(self):
+        introspector = self._introspector()
+        state = introspector.get_table_state("orders")
+        assert state.kind == "regular"
+        assert state.comment == "orders"
+        assert state.partitioning is not None
+        assert state.partitioning.scheme.value == "range"
 
     def test_list_types_and_get_type_info_answer(self):
         introspector = self._introspector()

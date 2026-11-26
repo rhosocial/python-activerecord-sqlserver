@@ -187,14 +187,18 @@ The catalogue side is answered by introspection:
 
 ```python
 if dialect.supports_partition_metadata_introspection():
-    info = backend.introspector.get_database_info()
-    for table in backend.introspector.list_tables():
-        print(table.name, table.table_type.value)
+    state = backend.introspector.get_partition_state("orders", include_stats=True)
+    if state is not None:
+        for bound in state.bounds:
+            print(bound.name, bound.upper, bound.row_count)
 ```
 
-`SQLServerPartitionSchemeInfo` and the other introspection records describe
-the server's current partition functions, schemes and tables; see
-[Database Introspection](../introspection.md) for the full probe table. The
+`PartitionState` is core's neutral record: `scheme` is `None` for an
+unpartitioned table, `key_expression`/`key_columns` name the partitioning
+column, `bounds` carries one `PartitionBound` per partition, and `raw` keeps
+this engine's own spelling -- the scheme name, the partition function and the
+boundary direction. See [Database Introspection](../introspection.md) for the
+full probe table. The
 caller decides which partitions are old, which table to act on, and whether to
 execute a suggested chain -- no retention policy is embedded in the backend.
 

@@ -43,7 +43,7 @@ Every question in the introspection contract has a probe on the dialect, and a p
 | `supports_column_data_profile()` | `True` | What each column of a table holds |
 | `supports_column_value_sample()` | `True` from 2012 | Which values occur, and how often |
 | `supports_join_coverage()` | `True` | How much two columns' domains overlap |
-| `supports_partition_info()` | `True` from 2008 | Partition functions, schemes and aligned indexes |
+| `supports_partition_info()` | `True` from 2008 | One table's partition state |
 | `supports_extensions()` | `False` | Installed add-on components |
 
 Eight families are this backend's own or newly answered, and each is declared
@@ -72,9 +72,12 @@ A `True` promises only that the query renders and the server accepts it; it says
 `supports_unused_indexes_detection()`, `supports_index_stats()` and `supports_runtime_stats()` are the 2005 (9.0) floor: the three dynamic management views arrived there. `supports_object_dependencies()` is the 2008 (10.0) floor, where `sys.sql_expression_dependencies` arrived. `supports_column_value_sample()` is the 2012 (11.0) floor, because its cap rides `OFFSET 0 ROWS FETCH NEXT n ROWS ONLY`, which the engine parses only from that release — asking the version accessor is a truer answer than a statement that fails to parse.
 
 `supports_partition_info()` answers `True` from SQL Server 2008 (10.0), the
-floor the partition mixin already used for table partitioning; the family is
-answered from `sys.partition_functions`, `sys.partition_schemes` and the
-indexes aligned to a scheme. `supports_extensions()` stays `False` by
+floor the partition mixin already used for table partitioning; the answer is
+one table's `PartitionState`, read from `sys.partition_schemes` /
+`sys.partition_functions` for the scheme, function and key and from
+`sys.partition_range_values` for the bounds. Statistics are a separate
+question -- `sys.dm_db_partition_stats` is read only when `include_stats`
+asks for it. `supports_extensions()` stays `False` by
 inheritance: no catalogue is mapped for installable add-on components, so
 there is no answer behind a `True`.
 
@@ -112,7 +115,7 @@ for column in introspector.list_columns("orders"):
 Schema is a real level here. Every statement that takes one falls back to `dbo` when the caller names none, and the CLI's `schemas` type lists the database's schemas with their owners (`sys.schemas` left-joined to `sys.database_principals` on `principal_id`, because a schema and its owner need not share a name). The backend's own families sit beside the core API:
 
 ```python
-for schema in introspector.list_schemas():
+for schema in introspector.list_schema_details():
     print(schema.name, schema.owner)
 
 for property_ in introspector.list_extended_properties(
@@ -123,8 +126,10 @@ for property_ in introspector.list_extended_properties(
 for routine in introspector.list_functions():
     print(routine.name, routine.type_code)
 
-for partition in introspector.list_partitions("orders"):
-    print(partition.name, partition.range_direction, partition.boundary_values)
+state = introspector.get_partition_state("orders", include_stats=True)
+if state is not None:
+    for bound in state.bounds:
+        print(bound.name, bound.upper, bound.row_count, bound.size_bytes)
 
 for type_ in introspector.list_types():
     print(type_.name, type_.kind, type_.base_type)
@@ -132,6 +137,17 @@ for type_ in introspector.list_types():
 for constraint in introspector.list_constraints("orders"):
     print(constraint.name, constraint.constraint_type, constraint.definition)
 ```
+
+`list_schemas()` is core's neutral answer -- the schema names alone -- while
+`list_schema_details()` is this backend's complete one, carrying the owner and
+schema id. Core's other neutral object-state methods (`get_table_state`,
+`get_partition_state`, `list_index_states`, `list_constraint_states`,
+`list_sequence_states`, `list_derived_objects`, `item_exists`) are answered
+here too: index usability comes from `is_disabled`/`is_hypothetical`,
+constraint trust from `is_not_trusted`/`is_disabled`, derived objects from the
+named default constraints and the temporal history table, and `item_exists`
+covers a partition function, a partition scheme, a schema, a sequence, a type,
+a table and a function.
 
 `list_extended_properties()` takes either a `major_id` it already has or a `table_name` to resolve — the named form joins `sys.tables` and `sys.schemas`, so a caller needs no first round trip to turn a name into an id. Its `class_name` is checked against the `class_desc` values the engine documents (`OBJECT_OR_COLUMN`, `INDEX`, `DATABASE`, `PARAMETER` and so on), and a schema filter is refused for a class whose `major_id` lives in another id space, because "no rows" there would be a silent contradiction rather than an answer. `value` is `sql_variant` and the driver cannot fetch it, so it is cast to `NVARCHAR(4000)` in the statement.
 
@@ -146,7 +162,7 @@ for constraint in introspector.list_constraints("orders"):
 - **Indexes.** `sys.indexes` joined to `sys.index_columns` and `sys.columns`; a heap has no named index row and is excluded, so `index_id` 0 never appears as an index.
 - **Triggers.** Firing events are not a column of `sys.triggers`; they live one table over, in `sys.trigger_events`, one row per event. The join is a `LEFT JOIN`, one row per event, and the parser folds contiguous rows back into one trigger — so a trigger with no event row is still a trigger, and its definition comes from `OBJECT_DEFINITION`.
 - **Views.** `INFORMATION_SCHEMA.VIEWS` carries `VIEW_DEFINITION`, which is `NULL` for a view whose text the caller may not read — unlike `OBJECT_DEFINITION()`, which returns the text to a caller holding `VIEW DEFINITION`. Both the list and the single-view question read that one view, so they cannot disagree, and `include_system` is not consulted because the view holds no server-owned row.
-- **Partitions.** SQL Server has three levels: `sys.partition_functions` declares the range boundaries, `sys.partition_schemes` maps destinations to filegroups, and an index is aligned when its `data_space_id` is the scheme's. The family is answered with four catalogue questions -- functions, boundaries, schemes and aligned indexes -- and folded in the parser rather than one join, because a single join would multiply boundaries, destinations and indexes into combinations the database does not have. Boundary values are `sql_variant` and cast to text; the direction comes from `boundary_value_on_right`; the aligned index's row and byte counts are its own partitions in `sys.dm_db_partition_stats`, not a sum across indexes that would count a table's rows twice.
+- **Partitions.** SQL Server partitions by range only, in three catalogue levels: `sys.partition_schemes` names the scheme and the function behind it, `sys.partition_functions` carries the boundary direction and fanout, and `sys.partition_range_values` holds the boundaries (cast to text because they are `sql_variant`). `get_partition_state` folds those into core's `PartitionState`: `scheme` is `range`, `key_expression`/`key_columns` are the partitioning column, and each `PartitionBound.upper` is that partition's high boundary -- `None` for the last, unbounded partition, recorded as `is_maxvalue`. The scheme name, function name and direction have no neutral slot and ride `raw`. Statistics are asked separately: `include_stats` is the only thing that renders the `sys.dm_db_partition_stats` question, and without it every `row_count`/`size_bytes` stays `None`. The database-wide listing of partition functions has no neutral shape and is not offered.
 - **Types.** `sys.types` supplies alias, table and CLR types; `sys.table_types` adds the object id whose columns a table type declares, so the count is the catalogue's rather than a guess. `TYPE_NAME(system_type_id)` names an alias type's base, and `MS_Description` under `class_desc = 'TYPE'` is the comment. System types are not listed: a model never has to map one back to a declaration.
 - **Constraints.** One `sys.objects` row per constraint, with `sys.key_constraints` (PK/UQ), `sys.foreign_keys`/`sys.foreign_key_columns` (F), `sys.check_constraints` (C) and `sys.default_constraints` (D) joined by `object_id`. The check and default constraints are the two no other family answers; the primary-key, unique and foreign-key families are also reachable through the index and foreign-key questions. Each column join is LEFT and matches only the constraint family that owns it, so a primary key does not acquire a foreign key's columns.
 
@@ -333,7 +349,7 @@ python -m rhosocial.activerecord.backend.impl.sqlserver introspect table-stats -
 | `functions` | User-defined functions in `dbo` | not accepted |
 | `sequences` | Sequences in `dbo` | not accepted |
 | `schemas` | Schemas and their owners | not accepted |
-| `partitions` | Partition functions, schemes and aligned indexes | optional (table) |
+| `partitions` | One table's partition scheme, bounds and statistics | required (table) |
 | `types` | User-defined alias, table and CLR types | optional (type) |
 | `constraints` | Constraint objects, including CHECK and DEFAULT | optional (table) |
 | `unused-indexes` | Indexes with no recorded read, from 2005 | not accepted |
@@ -345,7 +361,7 @@ python -m rhosocial.activerecord.backend.impl.sqlserver introspect table-stats -
 | `value-samples` | Most frequent values of one column | required (table), plus `--column` |
 | `join-coverage` | Overlap of two columns' value domains | not accepted; four flags required |
 
-The operational and data families are the set the other CLIs ask for too, and each one names the probe that answers for it here — which is not automatically the same answer it gives elsewhere. `views NAME` is a *view* name and `triggers NAME` is a *table* name: the two are not the same kind of argument, which is why the rule table names both. A name the type cannot use is refused (exit 2) rather than ignored; a missing required name or flag is an incomplete invocation (exit 1); a flag the type does not read is refused (exit 2). A `views` name or an `extended-properties` name that answers nothing is reported as "not found" (exit 1), and for extended properties the table is first checked against the catalogue, because a table with no `MS_Description` and a table that is not there both answer with no rows. `join-coverage` answering `None` — "the overlap could not be measured" — also leaves with 1 rather than printing a row of nulls a reader would take for a measurement.
+The operational and data families are the set the other CLIs ask for too, and each one names the probe that answers for it here — which is not automatically the same answer it gives elsewhere. `views NAME` is a *view* name and `triggers NAME` is a *table* name: the two are not the same kind of argument, which is why the rule table names both. A name the type cannot use is refused (exit 2) rather than ignored; a missing required name or flag is an incomplete invocation (exit 1); a flag the type does not read is refused (exit 2). A `views` name or an `extended-properties` name that answers nothing is reported as "not found" (exit 1), and for extended properties the table is first checked against the catalogue, because a table with no `MS_Description` and a table that is not there both answer with no rows. `partitions` makes the same distinction: a missing table exits 1, while a table that is there and unpartitioned renders a row whose `scheme` is null. `join-coverage` answering `None` — "the overlap could not be measured" — also leaves with 1 rather than printing a row of nulls a reader would take for a measurement.
 
 `ddl` is absent from the table on purpose: `supports_ddl_extraction()` is permanently `False`, so the parser rejects it as an invalid choice (exit 2). The no-result rule for DDL retrieval remains the backend's concern, not the CLI's.
 

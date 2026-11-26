@@ -2,7 +2,7 @@
 """SQL Server's own introspection questions.
 
 Core's statement classes cover the catalogue questions every backend asks:
-tables, their columns, indexes, foreign keys, views and triggers. Five families
+tables, their columns, indexes, foreign keys, views and triggers. Eight families
 have no core entry point and are SQL Server's own:
 
 * **the primary key** -- core reads the column list and asks the backend to
@@ -15,8 +15,8 @@ have no core entry point and are SQL Server's own:
   engine keeps in one relation and separates by ``sys.objects.type``;
 * **sequences** -- ``sys.sequences``, whose values are ``sql_variant`` and
   must be cast to text before the driver can fetch them;
-* **partitions** -- the partition function, its range boundaries, the
-  partition scheme over it and the indexes aligned to that scheme;
+* **temporal history** -- the history table a ``SYSTEM_VERSIONING``
+  declaration caused the engine to create;
 * **types** -- user-defined alias, table and CLR types in ``sys.types``;
 * **constraints** -- the constraint objects in ``sys.objects``, including the
   check and default constraints no other family answers.
@@ -46,14 +46,11 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = [
     "SQLServerConstraintListQueryStatement",
     "SQLServerExtendedPropertyListQueryStatement",
-    "SQLServerPartitionAlignedIndexListQueryStatement",
-    "SQLServerPartitionBoundaryListQueryStatement",
-    "SQLServerPartitionFunctionListQueryStatement",
-    "SQLServerPartitionSchemeListQueryStatement",
     "SQLServerPrimaryKeyQueryStatement",
     "SQLServerRoutineListQueryStatement",
     "SQLServerSchemaListQueryStatement",
     "SQLServerSequenceListQueryStatement",
+    "SQLServerTemporalHistoryListQueryStatement",
     "SQLServerTypeListQueryStatement",
 ]
 
@@ -234,104 +231,40 @@ class SQLServerSequenceListQueryStatement(IntrospectionExpression):
         return f"SQLServerSequenceListQueryStatement(schema={self.schema!r})"
 
 
-class SQLServerPartitionFunctionListQueryStatement(IntrospectionExpression):
-    """Ask for the partition functions of this database, with their parameters.
+class SQLServerTemporalHistoryListQueryStatement(IntrospectionExpression):
+    """Ask for the history table a system-versioned table owns.
 
-    Partition functions are database-scoped, not schema-scoped, so the
-    question carries no schema. One row per parameter is the catalogue's
-    shape; SQL Server defines one parameter for a table-partitioning
-    function, and the parser folds the rows into one record per function.
-
-    Args:
-        dialect: The dialect the statement is bound to.
-    """
-
-    KIND_RESERVED = ("SQLServer",)
-
-    @property
-    def format_method(self) -> str:
-        """The dialect formatter that renders this statement."""
-        return "format_partition_function_list_query_statement"
-
-    def __repr__(self) -> str:
-        return "SQLServerPartitionFunctionListQueryStatement()"
-
-
-class SQLServerPartitionBoundaryListQueryStatement(IntrospectionExpression):
-    """Ask for the range boundary values of every partition function.
-
-    ``sys.partition_range_values.value`` is ``sql_variant`` and the ODBC
-    driver cannot fetch it, so the dialect casts it to text in the statement
-    rather than leaving the driver to refuse the row.
+    A temporal table's history is not a partition, an index or a constraint:
+    the engine created it for the ``SYSTEM_VERSIONING`` declaration, and
+    ``sys.tables.history_table_id`` is the only row that names it. A
+    non-temporal table answers with no rows (the predicate excludes
+    ``history_table_id = 0``), so "this table has no history table" and "no
+    such table" need no second question.
 
     Args:
         dialect: The dialect the statement is bound to.
-    """
-
-    KIND_RESERVED = ("SQLServer",)
-
-    @property
-    def format_method(self) -> str:
-        """The dialect formatter that renders this statement."""
-        return "format_partition_boundary_list_query_statement"
-
-    def __repr__(self) -> str:
-        return "SQLServerPartitionBoundaryListQueryStatement()"
-
-
-class SQLServerPartitionSchemeListQueryStatement(IntrospectionExpression):
-    """Ask for every partition scheme and its destination filegroups.
-
-    Args:
-        dialect: The dialect the statement is bound to.
-    """
-
-    KIND_RESERVED = ("SQLServer",)
-
-    @property
-    def format_method(self) -> str:
-        """The dialect formatter that renders this statement."""
-        return "format_partition_scheme_list_query_statement"
-
-    def __repr__(self) -> str:
-        return "SQLServerPartitionSchemeListQueryStatement()"
-
-
-class SQLServerPartitionAlignedIndexListQueryStatement(IntrospectionExpression):
-    """Ask for the indexes whose ``data_space_id`` is a partition scheme.
-
-    An index aligned to a scheme is partitioned by that scheme's function;
-    an unaligned index of the same table lives on a filegroup instead and is
-    not an answer. A table name narrows the answer to one table's aligned
-    indexes; without it every aligned index in the database is listed.
-
-    Args:
-        dialect: The dialect the statement is bound to.
-        table_name: One table's indexes, or ``None`` for every table.
-        schema: The schema the aligned indexes are resolved in, with or
-            without ``table_name``.
+        table_name: The table whose history table is wanted.
+        schema: The schema the table is resolved in.
     """
 
     KIND_RESERVED = ("SQLServer",)
 
     def __init__(
-        self,
-        dialect: "SQLDialectBase",
-        *,
-        table_name: Optional[str] = None,
-        schema: Optional[str] = None,
+        self, dialect: "SQLDialectBase", *, table_name: str, schema: Optional[str] = None
     ):
         super().__init__(dialect, schema=schema)
-        self.table_name: Optional[str] = table_name
+        if not isinstance(table_name, str) or not table_name.strip():
+            raise ValueError("table_name must be a non-empty string")
+        self.table_name: str = table_name
 
     @property
     def format_method(self) -> str:
         """The dialect formatter that renders this statement."""
-        return "format_partition_aligned_index_list_query_statement"
+        return "format_temporal_history_list_query_statement"
 
     def __repr__(self) -> str:
         return (
-            f"SQLServerPartitionAlignedIndexListQueryStatement("
+            f"SQLServerTemporalHistoryListQueryStatement("
             f"table_name={self.table_name!r}, schema={self.schema!r})"
         )
 

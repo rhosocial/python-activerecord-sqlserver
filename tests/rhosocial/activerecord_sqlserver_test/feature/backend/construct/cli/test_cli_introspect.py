@@ -22,6 +22,11 @@ from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
     AsyncSQLServerIntrospector,
     SQLServerIntrospector,
 )
+from rhosocial.activerecord.backend.introspection import (
+    PartitionBound,
+    PartitionScheme,
+    PartitionState,
+)
 
 
 class FakeTable:
@@ -77,8 +82,33 @@ class FakeIntrospector:
     def list_schemas(self):
         return self._record("list_schemas")
 
-    def list_partitions(self, table_name=None, schema=None):
-        return self._record("list_partitions", table_name=table_name, schema=schema)
+    def list_schema_details(self):
+        return self._record("list_schema_details")
+
+    def get_partition_state(self, table_name, schema=None, include_stats=False):
+        self.calls.append(
+            (
+                "get_partition_state",
+                {
+                    "table_name": table_name,
+                    "schema": schema,
+                    "include_stats": include_stats,
+                },
+            )
+        )
+        return PartitionState(
+            scheme=PartitionScheme.RANGE,
+            key_expression="created_at",
+            key_columns=("created_at",),
+            bounds=(
+                PartitionBound(
+                    name="p1",
+                    upper="2026-01-01",
+                    row_count=120 if include_stats else None,
+                    size_bytes=8192 if include_stats else None,
+                ),
+            ),
+        )
 
     def list_types(self, schema=None):
         return self._record("list_types", schema=schema)
@@ -191,6 +221,16 @@ class FakeAsyncIntrospector(FakeIntrospector):
 
     async def list_schemas(self):
         return FakeIntrospector.list_schemas(self)
+
+    async def list_schema_details(self):
+        return FakeIntrospector.list_schema_details(self)
+
+    async def get_partition_state(
+        self, table_name, schema=None, include_stats=False
+    ):
+        return FakeIntrospector.get_partition_state(
+            self, table_name, schema, include_stats
+        )
 
     async def list_triggers(self, table_name=None, schema=None):
         return FakeIntrospector.list_triggers(self, table_name, schema)
@@ -401,7 +441,7 @@ class TestDispatchContract:
     def test_type_maps_to_a_real_method_on_both_managers(self, kind):
         argv = ["introspect", kind]
         if kind in ("columns", "indexes", "foreign-keys", "extended-properties",
-                    "column-profiles", "value-samples"):
+                    "column-profiles", "value-samples", "partitions"):
             argv.append("users")
         if kind == "value-samples":
             argv += ["--column", "status"]
@@ -438,9 +478,8 @@ class TestHandleDispatch:
             (["procedures"], "list_procedures"),
             (["functions"], "list_functions"),
             (["sequences"], "list_sequences"),
-            (["schemas"], "list_schemas"),
-            (["partitions"], "list_partitions"),
-            (["partitions", "orders"], "list_partitions"),
+            (["schemas"], "list_schema_details"),
+            (["partitions", "orders"], "get_partition_state"),
             (["types"], "list_types"),
             (["types", "order_note"], "get_type_info"),
             (["constraints"], "list_constraints"),
@@ -479,6 +518,10 @@ class TestHandleDispatch:
             # shape the other families return; the four names it carries are
             # asserted by the test beside this one.
             pytest.skip("asserted by test_join_coverage_receives_the_four_names")
+        if method == "get_partition_state":
+            # The partition answer is core's neutral state rendered as rows
+            # of bounds; its columns are asserted by the test beside this one.
+            pytest.skip("asserted by test_partitions_render_the_neutral_state")
         introspect_mod.handle(make_args(["introspect"] + argv + ["--database", "db"]))
         payload = json.loads(capsys.readouterr().out)
         assert isinstance(payload, list)
@@ -555,7 +598,90 @@ class TestHandleDispatch:
     def test_schemas_take_no_scope_argument(self):
         introspect_mod.handle(make_args(["introspect", "schemas", "--database", "db"]))
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
-        assert (method, kwargs) == ("list_schemas", {})
+        assert (method, kwargs) == ("list_schema_details", {})
+
+
+    def test_partitions_render_the_neutral_state(self, capsys):
+        """``partitions`` renders core's ``PartitionState`` as bound rows."""
+        introspect_mod.handle(
+            make_args(["introspect", "partitions", "orders", "--database", "db", "-o", "json"])
+        )
+        method, kwargs = FakeIntrospector.instances[-1].calls[-1]
+        assert method == "get_partition_state"
+        assert kwargs == {
+            "table_name": "orders",
+            "schema": None,
+            "include_stats": True,
+        }
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[0]["partition"] == "p1"
+        assert payload[0]["scheme"] == "range"
+        assert payload[0]["key_expression"] == "created_at"
+        assert payload[0]["upper"] == "2026-01-01"
+        assert payload[0]["row_count"] == 120
+
+    def test_an_unpartitioned_table_renders_a_null_scheme(self, monkeypatch, capsys):
+        class _Unpartitioned(FakeIntrospector):
+            def get_partition_state(self, table_name, schema=None, include_stats=False):
+                self.calls.append(
+                    (
+                        "get_partition_state",
+                        {
+                            "table_name": table_name,
+                            "schema": schema,
+                            "include_stats": include_stats,
+                        },
+                    )
+                )
+                return None
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(FakeBackendBase, "UnpartitionedBackend", _Unpartitioned),
+        )
+        introspect_mod.handle(
+            make_args(["introspect", "partitions", "orders", "--database", "db", "-o", "json"])
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[0]["scheme"] is None
+
+    def test_a_missing_table_is_an_error_not_an_unpartitioned_answer(
+        self, monkeypatch, capsys
+    ):
+        class _Missing(FakeIntrospector):
+            def get_partition_state(self, table_name, schema=None, include_stats=False):
+                self.calls.append(
+                    (
+                        "get_partition_state",
+                        {
+                            "table_name": table_name,
+                            "schema": schema,
+                            "include_stats": include_stats,
+                        },
+                    )
+                )
+                return None
+
+            def table_exists(self, table_name, schema=None):
+                self.calls.append(
+                    ("table_exists", {"table_name": table_name, "schema": schema})
+                )
+                return False
+
+        monkeypatch.setattr(
+            introspect_mod,
+            "SQLServerBackend",
+            _tracking_class(FakeBackendBase, "MissingTableBackend", _Missing),
+        )
+        with pytest.raises(SystemExit) as exc:
+            introspect_mod.handle(
+                make_args(
+                    ["introspect", "partitions", "nope", "--database", "db"]
+                )
+            )
+        assert exc.value.code == 1
+        assert "Table 'nope' not found" in capsys.readouterr().err
 
 
     @pytest.mark.parametrize(
@@ -720,7 +846,7 @@ class TestDeclaredVocabulary:
             "functions": "forbidden",
             "sequences": "forbidden",
             "schemas": "forbidden",
-            "partitions": "optional",
+            "partitions": "required",
             "types": "optional",
             "constraints": "optional",
             "unused-indexes": "forbidden",
@@ -750,6 +876,7 @@ class TestDeclaredVocabulary:
             "extended-properties",
             "column-profiles",
             "value-samples",
+            "partitions",
         }
 
     def test_the_removed_aggregate_is_not_readvertised(self):
@@ -861,18 +988,20 @@ class TestSupportedScopes:
 class TestCoverageFamiliesDispatch:
     """The three coverage families reach their introspector methods.
 
-    ``partitions`` and ``constraints`` take an optional table name; ``types``
-    takes an optional type name and switches from a list to one record, the
-    same shape ``views`` uses.
+    ``partitions`` asks for one table's neutral state; ``constraints`` takes
+    an optional table name; ``types`` takes an optional type name and
+    switches from a list to one record, the same shape ``views`` uses.
     """
 
-    def test_partitions_asks_for_the_whole_database_or_one_table(self):
-        assert introspect_mod._steps(
-            make_args(["introspect", "partitions"])
-        ) == [("list_partitions", {"table_name": None, "schema": None})]
+    def test_partitions_asks_for_one_table_s_neutral_state(self):
         assert introspect_mod._steps(
             make_args(["introspect", "partitions", "orders"])
-        ) == [("list_partitions", {"table_name": "orders", "schema": None})]
+        ) == [
+            (
+                "get_partition_state",
+                {"table_name": "orders", "schema": None, "include_stats": True},
+            )
+        ]
 
     def test_types_lists_or_describes_one_type(self):
         assert introspect_mod._steps(
@@ -1097,7 +1226,7 @@ class TestHandleAsync:
             make_args(["introspect", "schemas", "--database", "db", "-o", "json", "--async"])
         )
         payload = json.loads(capsys.readouterr().out)
-        assert payload[0]["method"] == "list_schemas"
+        assert payload[0]["method"] == "list_schema_details"
 
     def test_async_connection_error_exits_nonzero(self, monkeypatch):
         cls = _tracking_class(FakeAsyncBackendBase, "AsyncErr")

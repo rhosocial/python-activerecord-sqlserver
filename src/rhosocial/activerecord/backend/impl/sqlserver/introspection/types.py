@@ -11,6 +11,12 @@ are declared. Those answers get their own types here rather than being
 crammed into ``extra`` dictionaries: a caller that wants the owner of a
 schema should read an attribute, not a string key.
 
+Partition state is *not* among them: core's ``PartitionState`` /
+``PartitionBound`` is the one answer to "which partitions does this table
+have", and this backend folds its catalogue rows into it. The database-wide
+partition listing that used to live here had no neutral shape, and the state
+answer replaced it.
+
 Every field is populated from a catalogue column this backend selected
 explicitly; nothing is inferred, and a value the server reports as NULL stays
 ``None``. Numeric sequence values are :class:`~decimal.Decimal` because a
@@ -143,70 +149,6 @@ class SQLServerSequenceInfo:
 
 
 @dataclass
-class SQLServerPartitionSchemeInfo:
-    """One partition scheme, and the filegroups its destinations map to.
-
-    A scheme is a database object of its own: it names one partition function
-    and maps each of that function's destinations to a filegroup. Two schemes
-    can share one function, which is why the scheme is a record beside the
-    function rather than a field of it.
-    """
-
-    name: str
-    data_space_id: int = 0
-    filegroups: Tuple[str, ...] = ()
-
-
-@dataclass
-class SQLServerPartitionIndexInfo:
-    """One index aligned to a partition scheme.
-
-    ``name`` is ``None`` for a heap, which the catalogue keeps as
-    ``index_id`` 0 with no named row. ``columns`` is the index's partitioning
-    columns -- the ones ``sys.index_columns.partition_ordinal`` marks -- not
-    the whole key. ``row_count`` and ``size_bytes`` are this index's own
-    figures from ``sys.dm_db_partition_stats``, measured per index and not
-    summed across indexes: a nonclustered index repeats the table's row count
-    and adding it to the clustered index's would count every row twice.
-    """
-
-    schema: str
-    table: str
-    scheme: Optional[str] = None
-    name: Optional[str] = None
-    index_id: int = 0
-    index_type: str = ""
-    is_unique: bool = False
-    is_primary_key: bool = False
-    columns: Tuple[str, ...] = ()
-    row_count: Optional[int] = None
-    size_bytes: Optional[int] = None
-
-
-@dataclass
-class SQLServerPartitionInfo:
-    """One partition function, its schemes, boundary values and aligned indexes.
-
-    SQL Server's partition model has three levels: a partition function
-    declares the range boundaries, a partition scheme maps the resulting
-    destinations to filegroups, and a table or index is partitioned when its
-    ``data_space_id`` is that scheme. ``range_direction`` comes from
-    ``sys.partition_functions.boundary_value_on_right`` -- ``RIGHT`` when the
-    boundary belongs to the upper range, ``LEFT`` otherwise.
-    """
-
-    name: str
-    function_id: int = 0
-    data_type: Optional[str] = None
-    base_type: Optional[str] = None
-    range_direction: str = "RIGHT"
-    fanout: int = 0
-    boundary_values: Tuple[str, ...] = ()
-    schemes: Tuple[SQLServerPartitionSchemeInfo, ...] = ()
-    indexes: Tuple[SQLServerPartitionIndexInfo, ...] = ()
-
-
-@dataclass
 class SQLServerTypeInfo:
     """One user-defined type: an alias type, a table type or a CLR type.
 
@@ -251,7 +193,11 @@ class SQLServerConstraintInfo:
 
     ``definition`` carries the check predicate or the default expression, and
     ``is_disabled``/``is_not_trusted`` are the engine's own flags for the
-    constraint kinds that have them (check and foreign key).
+    constraint kinds that have them (check and foreign key). ``is_system_named``
+    is the flag the default-constraint catalogue keeps: ``True`` for a name the
+    engine generated, ``False`` for one the declaration gave. A system-named
+    default is recreated from the column's declaration, so only a named one is
+    a derived object a plan can refer to (``list_derived_objects``).
     """
 
     name: str
@@ -266,6 +212,7 @@ class SQLServerConstraintInfo:
     definition: Optional[str] = None
     is_disabled: Optional[bool] = None
     is_not_trusted: Optional[bool] = None
+    is_system_named: Optional[bool] = None
     delete_action: Optional[str] = None
     update_action: Optional[str] = None
 
@@ -273,9 +220,6 @@ class SQLServerConstraintInfo:
 __all__ = [
     "SQLServerConstraintInfo",
     "SQLServerExtendedPropertyInfo",
-    "SQLServerPartitionIndexInfo",
-    "SQLServerPartitionInfo",
-    "SQLServerPartitionSchemeInfo",
     "SQLServerRoutineInfo",
     "SQLServerSchemaInfo",
     "SQLServerSequenceInfo",
