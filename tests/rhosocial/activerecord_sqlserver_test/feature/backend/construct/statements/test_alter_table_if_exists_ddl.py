@@ -6,6 +6,9 @@ IF EXISTS`` since 2016 but **not** ``ADD COLUMN IF NOT EXISTS``. The
 ``ADD`` form omits the ``COLUMN`` literal (SQL Server syntax).
 """
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
@@ -19,9 +22,82 @@ from rhosocial.activerecord.backend.expression.types import TextType
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
 
+def _project_root() -> Path:
+    """The repository root, found by walking up to ``pyproject.toml``."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").is_file():
+            return parent
+    raise AssertionError("could not locate the project root (no pyproject.toml)")
+
+
+def _scan_dialect_support_bases(source_root: Path) -> tuple[int, list[str]]:
+    """AST-walk *source_root* for ``Dialect`` classes with ``Support`` bases.
+
+    A ``runtime_checkable`` protocol is satisfied structurally, so inheriting
+    one adds nothing but ellipsis stubs -- and makes ``isinstance`` lie when
+    the class does not actually implement the contract. The dialect must
+    therefore compose mixins, never protocol classes.
+
+    Returns ``(files_scanned, violations)`` so a caller can also assert that
+    the walk was not empty.
+    """
+    files = sorted(source_root.rglob("*.py"))
+    violations = []
+    for path in files:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef) or not node.name.endswith("Dialect"):
+                continue
+            for base in node.bases:
+                base_name = base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
+                if base_name.endswith("Support"):
+                    violations.append(f"{path}:{node.lineno}: {node.name} inherits {base_name}")
+    return len(files), violations
+
+
 @pytest.fixture
 def dialect():
     return SQLServerDialect(version=(15, 0, 0))
+
+
+class TestDialectBasesAreNotProtocols:
+    """No ``Dialect`` class may inherit a ``*Support`` protocol.
+
+    Inheriting a ``runtime_checkable`` protocol is not how conformance is
+    obtained -- structural satisfaction is -- so the base only contributes
+    ellipsis stubs and a nominal ``isinstance`` answer that can disagree with
+    the implementation. Composition belongs to mixins; protocol classes are
+    contracts, not superclasses.
+    """
+
+    def test_supports_switches_scan_all_dialect_classes(self):
+        """The real source tree has no ``Dialect`` class with a protocol base."""
+        source_root = _project_root() / "src"
+        files_scanned, violations = _scan_dialect_support_bases(source_root)
+        assert files_scanned > 0, "the AST walk found no source files"
+        assert not violations, "Dialect classes inherit protocol stubs:\n" + "\n".join(violations)
+
+    def test_supports_switches_guard_rejects_fabricated_violation(self, tmp_path):
+        """The guard itself catches a ``Dialect`` class with a protocol base."""
+        (tmp_path / "fabricated_dialect.py").write_text(
+            "class FabricatedDialect(SomeSupport):\n    pass\n",
+            encoding="utf-8",
+        )
+        files_scanned, violations = _scan_dialect_support_bases(tmp_path)
+        assert files_scanned == 1
+        assert violations, "the guard did not flag a fabricated Support base"
+        assert "FabricatedDialect" in violations[0]
+        assert "SomeSupport" in violations[0]
+
+    def test_supports_switches_guard_accepts_a_clean_control(self, tmp_path):
+        """A ``Dialect`` class composed from a mixin is accepted."""
+        (tmp_path / "clean_dialect.py").write_text(
+            "class CleanDialect(CleanMixin):\n    pass\n",
+            encoding="utf-8",
+        )
+        files_scanned, violations = _scan_dialect_support_bases(tmp_path)
+        assert files_scanned == 1
+        assert violations == []
 
 
 class TestAlterTableModifierCapabilities:

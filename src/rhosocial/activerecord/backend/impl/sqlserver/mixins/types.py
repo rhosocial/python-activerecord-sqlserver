@@ -16,7 +16,6 @@ if TYPE_CHECKING:  # pragma: no cover
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.dialect.mixins.ddl_type import DataTypeMixin
-from rhosocial.activerecord.backend.dialect.protocols import DataTypeSupport
 from rhosocial.activerecord.backend.expression.types import (
     BigIntType,
     BlobType,
@@ -42,10 +41,10 @@ from rhosocial.activerecord.backend.expression.types import (
 )
 
 
-class SQLServerTypeSupportMixin(DataTypeMixin, DataTypeSupport):
+class SQLServerTypeSupportMixin(DataTypeMixin):
     """SQL Server DataType formatting.
 
-    Implements ``DataTypeSupport`` so the dialect can render ``DataType``
+    Satisfies ``DataTypeSupport`` so the dialect can render ``DataType``
     expressions to SQL strings. Reading a server-reported type spelling back
     into a ``DataType`` is an introspection-only concern handled by
     ``introspection.type_parser.SQLServerTypeParser``.

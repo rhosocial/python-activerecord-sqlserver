@@ -9,82 +9,11 @@ based on the SQL Server version provided at initialization.
 from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.suggestion.definitions import SubstituteTypeSuggestion
-from rhosocial.activerecord.backend.suggestion.protocols import (
-    ColumnReorderSuggestionSupport,
-    CreateTableLayoutSuggestionSupport,
-    PartitionSchemeChangeSuggestionSupport,
-    TableConstraintChangeSuggestionSupport,
-    TableIndexChangeSuggestionSupport,
-)
 
 from rhosocial.activerecord.backend.dialect.base import SQLDialectBase
 from rhosocial.activerecord.backend.expression import bases
 from rhosocial.activerecord.backend.expression.bases import BaseExpression, ToSQLProtocol
 from rhosocial.activerecord.backend.expression.objects import Index, Sequence, Table
-from rhosocial.activerecord.backend.dialect.protocols import (
-    CollationSupport,
-    CTESupport,
-    FilterClauseSupport,
-    WindowFunctionSupport,
-    JSONSupport,
-    ReturningSupport,
-    AdvancedGroupingSupport,
-    ArraySupport,
-    ExplainSupport,
-    GraphSupport,
-    LockingSupport,
-    MergeSupport,
-    OrderedSetAggregationSupport,
-    QualifyClauseSupport,
-    TemporalTableSupport,
-    UpsertSupport,
-    LateralJoinSupport,
-    WildcardSupport,
-    JoinSupport,
-    SetOperationSupport,
-    TruncateSupport,
-    NamespaceSupport,
-    TableObjectSupport,
-    ViewObjectSupport,
-    MaterializedViewObjectSupport,
-    ForeignTableObjectSupport,
-    IndexObjectSupport,
-    SequenceObjectSupport,
-    TriggerObjectSupport,
-    RoutineObjectSupport,
-    TypeObjectSupport,
-    SynonymObjectSupport,
-    ConstraintSupport,
-    IntrospectionSupport,
-    TransactionControlSupport,
-    ColumnAttributeSupport,
-    DataTypeSupport,
-    CreateTypeSupport,
-    DropTypeSupport,
-)
-from .protocols import (
-    SQLServerTableSupport,
-    SQLServerLockingSupport,
-    SQLServerJSONSupport,
-    SQLServerSetTypeSupport,
-    SQLServerSpatialSupport,
-    SQLServerTemporalTableSupport,
-    SQLServerSequenceSupport,
-    SQLServerFullTextSearchSupport,
-    SQLServerPaginationSupport,
-    SQLServerGraphSupport,
-    SQLServerMergeSupport,
-    SQLServerPartitionSupport,
-    SQLServerOutputSupport,
-    SQLServerTableHintSupport,
-    SQLServerTryCastSupport,
-    SQLServerIdentitySupport,
-    SQLServerIndexedViewSupport,
-    SQLServerUserDefinedTypeSupport,
-    SQLServerTypeSupport,
-    SQLServerConstraintStateSupport,
-    SQLServerExtendedPropertyWriteSupport,
-)
 from rhosocial.activerecord.backend.dialect.mixins import (
     CollationMixin,
     ColumnAttributeMixin,
@@ -155,7 +84,6 @@ from rhosocial.activerecord.backend.dialect.mixins import (
     # relation itself has no room for. The name comes from the relation.
     RelationSourceMixin,
 )
-from rhosocial.activerecord.backend.dialect.protocols import PartitionSupport
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from .alter_table_modifier import SQLServerAlterColumnModifierMixin
 from .mixins.identity_column import SQLServerIdentityColumnMixin
@@ -390,12 +318,6 @@ class SQLServerDialect(
     SQLServerRoutineMixin,  # PROCEDURE / FUNCTION DDL (2005+)
     SQLServerTriggerDdlMixin,  # TRIGGER DDL (2005+)
     SQLServerTypeDDLMixin,
-    # Before DataTypeMixin: states the shape of the sqlserver_-prefixed type
-    # family. The implementations arrive as own-class attributes copied by
-    # _register_type_formatters(), so they win in the MRO regardless; what this
-    # position buys is that isinstance(dialect, SQLServerTypeSupport) is
-    # meaningful next to the mixin that carries the behaviour.
-    SQLServerTypeSupport,
     # Before DDLColumnMixin: the backend block below comes later, so
     # supports_fk_match answered for the core. Same value by coincidence.
     SQLServerConstraintMixin,
@@ -489,84 +411,6 @@ class SQLServerDialect(
     PartitionMixin,
     ILIKEMixin,
     FunctionMixin,
-    # Protocols for isinstance() checks
-    # Suggestion protocols (relocated to backend.suggestion.protocols)
-    CreateTableLayoutSuggestionSupport,
-    ColumnReorderSuggestionSupport,
-    TableConstraintChangeSuggestionSupport,
-    TableIndexChangeSuggestionSupport,
-    PartitionSchemeChangeSuggestionSupport,
-    CollationSupport,
-    CTESupport,
-    FilterClauseSupport,
-    WindowFunctionSupport,
-    SQLServerJSONSupport,  # Before JSONSupport (subclass must precede its base)
-    JSONSupport,
-    ReturningSupport,
-    AdvancedGroupingSupport,
-    ArraySupport,
-    ExplainSupport,
-    GraphSupport,
-    SQLServerLockingSupport,  # Before LockingSupport
-    LockingSupport,
-    MergeSupport,
-    OrderedSetAggregationSupport,
-    QualifyClauseSupport,
-    TemporalTableSupport,
-    UpsertSupport,
-    LateralJoinSupport,
-    WildcardSupport,
-    JoinSupport,
-    SetOperationSupport,
-    TruncateSupport,
-    # The object protocols: one per kind, each naming its format_<kind>_object
-    # method and inheriting NamespaceSupport, so a subclass precedes its base and
-    # NamespaceSupport follows every one of them. SQL Server has all three
-    # namespace levels and renders every one of them, which is what
-    # NamespaceSupport says.
-    SQLServerTableSupport,  # Before TableObjectSupport (subclass precedes base)
-    TableObjectSupport,
-    ViewObjectSupport,
-    MaterializedViewObjectSupport,
-    ForeignTableObjectSupport,
-    IndexObjectSupport,
-    SequenceObjectSupport,
-    TriggerObjectSupport,
-    RoutineObjectSupport,
-    TypeObjectSupport,
-    SynonymObjectSupport,
-    NamespaceSupport,
-    ConstraintSupport,
-    IntrospectionSupport,
-    TransactionControlSupport,
-    ColumnAttributeSupport,
-    # DataType Support Protocol
-    DataTypeSupport,
-    # TYPE DDL: SQL Server has CREATE TYPE and DROP TYPE but no ALTER TYPE.
-    SQLServerUserDefinedTypeSupport,  # Before its core bases (subclass precedes base)
-    CreateTypeSupport,
-    DropTypeSupport,
-    # SQL Server-specific protocols (marker classes for isinstance() checks;
-    # implementations live in SQLServerProtocolSupportMixin / SQLServerSequenceMixin)
-    SQLServerOutputSupport,
-    SQLServerPaginationSupport,
-    SQLServerGraphSupport,
-    SQLServerFullTextSearchSupport,
-    SQLServerTryCastSupport,
-    SQLServerTableHintSupport,
-    SQLServerTemporalTableSupport,
-    SQLServerMergeSupport,
-    SQLServerSequenceSupport,
-    SQLServerIdentitySupport,
-    SQLServerIndexedViewSupport,
-    SQLServerSetTypeSupport,
-    SQLServerSpatialSupport,
-    SQLServerPartitionSupport,  # Before PartitionSupport
-    PartitionSupport,
-    # Constraint state and extended-property writes: backend-owned DDL with
-    # no core counterpart, so they are advertised as their own protocols.
-    SQLServerConstraintStateSupport,
-    SQLServerExtendedPropertyWriteSupport,
 ):
     """
     SQL Server dialect implementation that adapts to the SQL Server version.

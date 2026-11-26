@@ -10,12 +10,9 @@ being hardcoded so the answer cannot drift from the switches that gate rendering
 from rhosocial.activerecord.backend.suggestion.definitions import (
     CreateTableLayoutSuggestion,
 )
-from rhosocial.activerecord.backend.suggestion.protocols import (
-    CreateTableLayoutSuggestionSupport,
-)
 
 
-class SQLServerCreateTableLayoutSuggestionMixin(CreateTableLayoutSuggestionSupport):
+class SQLServerCreateTableLayoutSuggestionMixin:
     """Report the CREATE TABLE layout SQL Server renders: no inlining."""
 
     def suggest_create_table_layout(self) -> CreateTableLayoutSuggestion:
