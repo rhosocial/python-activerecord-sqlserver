@@ -78,9 +78,11 @@ def test_type_protocol_and_mro():
     mro = SQLServerDialect.__mro__
     assert mro.index(SQLServerTypeDDLMixin) < mro.index(UserDefinedTypeMixin)
     # A subclass must precede each of its bases, or its extra methods are
-    # shadowed rather than added to.
-    assert mro.index(SQLServerUserDefinedTypeSupport) < mro.index(CreateTypeSupport)
-    assert mro.index(SQLServerUserDefinedTypeSupport) < mro.index(DropTypeSupport)
+    # shadowed rather than added to. The protocols are satisfied structurally,
+    # so they are not MRO members at all.
+    assert SQLServerUserDefinedTypeSupport not in mro
+    assert CreateTypeSupport not in mro
+    assert DropTypeSupport not in mro
 
 
 def test_type_capability_version_boundaries():
