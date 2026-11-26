@@ -562,13 +562,16 @@ class SQLServerProtocolSupportMixin:
     _JSON_FUNCTION_2022 = {"JSON_PATH_EXISTS", "JSON_OBJECT", "JSON_ARRAY"}
     _JSON_FUNCTION_UNSUPPORTED = {"JSON_TABLE"}
 
-    def supports_json_function(self, function_name: str) -> bool:
-        """Check whether a JSON function is supported based on version.
+    def is_json_function_available(self, function_name: str) -> bool:
+        """Check whether a JSON function is available on this server version.
 
         SQL Server JSON support begins with 2016 (13.0): JSON_VALUE,
         JSON_QUERY, ISJSON, JSON_MODIFY, OPENJSON. JSON_OBJECT, JSON_ARRAY
         and JSON_PATH_EXISTS require 2022 (16.0). JSON_TABLE is never
-        supported (SQL Server uses OPENJSON).
+        available (SQL Server uses OPENJSON).
+
+        This is a name lookup, not a capability switch: availability depends
+        on *which* function is asked about, so it takes the name as input.
         """
         name = function_name.upper()
         if name in self._JSON_FUNCTION_UNSUPPORTED:
@@ -773,8 +776,13 @@ class SQLServerProtocolSupportMixin:
         "GEOMETRYCOLLECTION",
     }
 
-    def supports_spatial_type(self, type_name: str) -> bool:
-        """SQL Server supports geometry/geography since 2008 (10.0)."""
+    def is_spatial_type_available(self, type_name: str) -> bool:
+        """Whether the named spatial type exists on this server version.
+
+        SQL Server supports geometry/geography since 2008 (10.0). This is a
+        name lookup for the formatters, not a capability switch: the answer
+        depends on *which* type name is asked about.
+        """
         return self.version_at_least((10, 0, 0)) and type_name.upper() in self._SPATIAL_TYPES
 
     def supports_spatial_index(self) -> bool:

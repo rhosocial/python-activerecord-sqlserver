@@ -1086,7 +1086,7 @@ class SQLServerTypeSupportMixin(DataTypeMixin, DataTypeSupport):
         :meth:`format_data_type_json` emits, and ``NVARCHAR(MAX)`` is a type
         from 2005.  Refusing the concept on a pre-2016 server would misstate
         what this dialect can actually write — the JSON *functions* are version-gated separately, in
-        ``supports_json_function()``.
+        ``is_json_function_available()``.
         """
         return True
 

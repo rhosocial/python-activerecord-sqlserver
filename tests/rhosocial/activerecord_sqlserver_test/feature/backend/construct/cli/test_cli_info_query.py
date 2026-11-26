@@ -21,6 +21,7 @@ from rhosocial.activerecord.backend.impl.sqlserver.backend import async_backend 
 from rhosocial.activerecord.backend.impl.sqlserver.cli import info as info_mod
 from rhosocial.activerecord.backend.impl.sqlserver.cli import query as query_mod
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
+from rhosocial.activerecord.backend.impl.sqlserver.protocols.json import SQLServerJSONSupport
 
 
 @pytest.fixture(autouse=True)
@@ -143,12 +144,25 @@ class TestInfoProtocolHelpers:
     def test_get_protocol_support_methods_sorted(self):
         methods = info_mod.get_protocol_support_methods(ExplainSupport)
         assert methods == sorted(methods)
-        assert "supports_explain_format" in methods
+        assert "supports_explain_format_text" in methods
+        assert "supports_explain_format" not in methods
 
-    def test_check_protocol_support_multi_arg_dict(self, dialect):
+    def test_check_protocol_support_boolean_values(self, dialect):
         results = info_mod.check_protocol_support(dialect, ExplainSupport)
-        fmt = results["supports_explain_format"]
-        assert fmt == {"supported": 2, "total": 2, "args": {"TEXT": True, "XML": True}}
+        assert results["supports_explain_analyze"] is True
+        assert results["supports_explain_format_text"] is True
+        assert results["supports_explain_format_xml"] is True
+        assert results["supports_explain_format_json"] is False
+        assert all(isinstance(value, bool) for value in results.values())
+
+    def test_check_protocol_support_dict_for_name_lookup(self, dialect):
+        results = info_mod.check_protocol_support(dialect, SQLServerJSONSupport)
+        lookup = results["is_json_function_available"]
+        assert lookup["total"] == len(
+            info_mod.SUPPORT_METHOD_ALL_ARGS["is_json_function_available"]
+        )
+        assert lookup["args"]["JSON_VALUE"] is True
+        assert lookup["args"]["JSON_TABLE"] is False
 
     def test_calculate_protocol_stats_mixed_values(self):
         supported, total = info_mod._calculate_protocol_stats({"a": True, "b": False})

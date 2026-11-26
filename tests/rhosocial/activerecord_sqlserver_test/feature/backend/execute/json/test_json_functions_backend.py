@@ -17,13 +17,13 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.json import (
 class TestJSONFunctionBackend:
     """Synchronous tests for SQL Server JSON functions with real database."""
 
-    def test_supports_json_function(self, sqlserver_backend):
+    def test_is_json_function_available(self, sqlserver_backend):
         """Test that JSON functions are supported."""
         dialect = sqlserver_backend.dialect
         if dialect.version >= (13, 0, 0):
-            assert dialect.supports_json_function('JSON_VALUE')
+            assert dialect.is_json_function_available('JSON_VALUE')
         else:
-            assert not dialect.supports_json_function('JSON_VALUE')
+            assert not dialect.is_json_function_available('JSON_VALUE')
 
     def test_create_table_with_json_column(self, sqlserver_backend, json_column_adapter):
         """Test creating table with NVARCHAR(MAX) JSON column type."""
@@ -156,13 +156,13 @@ class TestAsyncJSONFunctionBackend:
     """Asynchronous tests for SQL Server JSON functions with real database."""
 
     @pytest.mark.asyncio
-    async def test_async_supports_json_function(self, async_sqlserver_backend):
+    async def test_async_is_json_function_available(self, async_sqlserver_backend):
         """Test that JSON functions are supported (async)."""
         dialect = async_sqlserver_backend.dialect
         if dialect.version >= (13, 0, 0):
-            assert dialect.supports_json_function('JSON_VALUE')
+            assert dialect.is_json_function_available('JSON_VALUE')
         else:
-            assert not dialect.supports_json_function('JSON_VALUE')
+            assert not dialect.is_json_function_available('JSON_VALUE')
 
     @pytest.mark.asyncio
     async def test_async_create_table_with_json_column(self, async_sqlserver_backend, json_column_adapter):

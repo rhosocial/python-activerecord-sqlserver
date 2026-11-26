@@ -34,32 +34,32 @@ SQL_SERVER_2022 = (16, 0, 0)
 class TestJSONFunctionProtocol:
     """Test JSON function protocol implementation."""
 
-    def test_supports_json_function_basic(self):
+    def test_is_json_function_available_basic(self):
         """Test basic JSON function support (SQL Server 2016+)."""
         dialect_2014 = SQLServerDialect(version=SQL_SERVER_2014)
-        assert not dialect_2014.supports_json_function('JSON_VALUE')
+        assert not dialect_2014.is_json_function_available('JSON_VALUE')
 
         dialect_2016 = SQLServerDialect(version=SQL_SERVER_2016)
-        assert dialect_2016.supports_json_function('JSON_VALUE')
+        assert dialect_2016.is_json_function_available('JSON_VALUE')
 
         dialect_2017 = SQLServerDialect(version=SQL_SERVER_2017)
-        assert dialect_2017.supports_json_function('JSON_VALUE')
+        assert dialect_2017.is_json_function_available('JSON_VALUE')
 
-    def test_supports_json_function_json_table(self):
+    def test_is_json_function_available_json_table(self):
         """Test JSON_TABLE support - SQL Server does NOT support JSON_TABLE."""
         dialect_2016 = SQLServerDialect(version=SQL_SERVER_2016)
-        assert not dialect_2016.supports_json_function('JSON_TABLE')
+        assert not dialect_2016.is_json_function_available('JSON_TABLE')
 
         dialect_2022 = SQLServerDialect(version=SQL_SERVER_2022)
-        assert not dialect_2022.supports_json_function('JSON_TABLE')
+        assert not dialect_2022.is_json_function_available('JSON_TABLE')
 
-    def test_supports_json_function_json_value(self):
+    def test_is_json_function_available_json_value(self):
         """Test JSON_VALUE support (SQL Server 2016+)."""
         dialect_2014 = SQLServerDialect(version=SQL_SERVER_2014)
-        assert not dialect_2014.supports_json_function('JSON_VALUE')
+        assert not dialect_2014.is_json_function_available('JSON_VALUE')
 
         dialect_2016 = SQLServerDialect(version=SQL_SERVER_2016)
-        assert dialect_2016.supports_json_function('JSON_VALUE')
+        assert dialect_2016.is_json_function_available('JSON_VALUE')
 
     def test_format_json_extract_single_path(self):
         """Test JSON_VALUE extraction with a single path."""
@@ -255,10 +255,10 @@ class TestAsyncJSONFunctionProtocol:
     """Test async JSON function protocol (same as sync, but verifies parity)."""
 
     @pytest.mark.asyncio
-    async def test_async_supports_json_function(self):
-        """Test async version of supports_json_function."""
+    async def test_async_is_json_function_available(self):
+        """Test async version of is_json_function_available."""
         dialect = SQLServerDialect(version=SQL_SERVER_2016)
-        assert dialect.supports_json_function('JSON_VALUE')
+        assert dialect.is_json_function_available('JSON_VALUE')
 
     @pytest.mark.asyncio
     async def test_async_format_json_extract(self):

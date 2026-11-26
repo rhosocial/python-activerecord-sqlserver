@@ -138,7 +138,7 @@ class TestFunctionCapabilityMatrix:
         ],
     )
     def test_json_function_gates(self, function, version, expected):
-        assert SQLServerDialect(version).supports_json_function(function) is expected
+        assert SQLServerDialect(version).is_json_function_available(function) is expected
 
     @pytest.mark.parametrize(
         ("version", "json_bits"),
@@ -398,11 +398,20 @@ class TestRenderingSnapshots:
         assert analyze_profile == "SET STATISTICS PROFILE ON; SELECT 1; SET STATISTICS PROFILE OFF"
         assert analyze_xml == "SET STATISTICS XML ON; SELECT 1; SET STATISTICS XML OFF"
 
-    def test_explain_format_support_matrix(self):
+    def test_explain_format_switches(self):
         d = SQLServerDialect((16, 0, 0))
-        assert d.supports_explain_format("TEXT") is True
-        assert d.supports_explain_format("XML") is True
-        assert d.supports_explain_format("JSON") is False
+        assert d.supports_explain_format_text() is True
+        assert d.supports_explain_format_xml() is True
+        assert d.supports_explain_format_json() is False
+        assert d.supports_explain_format_yaml() is False
+        assert d.supports_explain_format_tree() is False
+        assert d.supports_explain_format_traditional() is False
+        assert d.supports_explain_verbose() is False
+        assert d.supports_explain_costs() is False
+        assert d.supports_explain_buffers() is False
+        assert d.supports_explain_timing() is False
+        assert d.supports_explain_settings() is False
+        assert d.supports_explain_wal() is False
 
     def test_option_query_hint_clause(self):
         clause = SQLServerOptionHintClause(

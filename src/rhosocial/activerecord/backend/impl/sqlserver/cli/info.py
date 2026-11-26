@@ -88,7 +88,28 @@ PROTOCOL_FAMILY_GROUPS: Dict[str, list] = {
 }
 
 SUPPORT_METHOD_ALL_ARGS: Dict[str, List[str]] = {
-    "supports_explain_format": ["TEXT", "XML"],
+    "is_json_function_available": [
+        "JSON_VALUE",
+        "JSON_QUERY",
+        "ISJSON",
+        "JSON_MODIFY",
+        "OPENJSON",
+        "JSON_OBJECT",
+        "JSON_ARRAY",
+        "JSON_PATH_EXISTS",
+        "JSON_TABLE",
+    ],
+    "is_spatial_type_available": [
+        "GEOMETRY",
+        "GEOGRAPHY",
+        "POINT",
+        "LINESTRING",
+        "POLYGON",
+        "MULTIPOINT",
+        "MULTILINESTRING",
+        "MULTIPOLYGON",
+        "GEOMETRYCOLLECTION",
+    ],
 }
 
 

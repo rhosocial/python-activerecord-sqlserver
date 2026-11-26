@@ -91,9 +91,9 @@ def test_type_capability_version_boundaries():
     sql2016 = SQLServerDialect(SQL_SERVER_2016)
 
     assert sql2005.supports_type_objects() is True
-    assert sql2005.supports_type_definition(SQLServerAliasTypeDefinition) is True
-    assert sql2005.supports_type_definition(SQLServerTableTypeDefinition) is False
-    assert sql2008.supports_type_definition(SQLServerTableTypeDefinition) is True
+    assert SQLServerAliasTypeDefinition in sql2005.supported_type_definitions()
+    assert SQLServerTableTypeDefinition not in sql2005.supported_type_definitions()
+    assert SQLServerTableTypeDefinition in sql2008.supported_type_definitions()
     assert sql2012.supports_memory_optimized_table_types() is False
     assert sql2014.supports_memory_optimized_table_types() is True
     memory_definition = SQLServerTableTypeDefinition(
@@ -108,7 +108,6 @@ def test_type_capability_version_boundaries():
     assert sql2016.supports_create_type_if_not_exists() is False
     assert sql2016.supports_create_type_or_replace() is False
     assert sql2016.supports_alter_type() is False
-    assert sql2016.supports_type_alter_action(_DummyTypeAlterAction) is False
     table_definition = SQLServerTableTypeDefinition(
         sql2005,
         columns=[ColumnDefinition(sql2005, "id", IntegerType(sql2005))],
@@ -128,13 +127,13 @@ def test_clr_definition_is_platform_gated():
     definition = SQLServerClrTypeDefinition(sqlserver, "sample_assembly", "Sample.Type")
 
     assert sqlserver.supports_clr_type_definition() is True
-    assert sqlserver.supports_type_definition(SQLServerClrTypeDefinition) is True
+    assert SQLServerClrTypeDefinition in sqlserver.supported_type_definitions()
     assert managed_instance.supports_clr_type_definition() is True
-    assert managed_instance.supports_type_definition(SQLServerClrTypeDefinition) is True
+    assert SQLServerClrTypeDefinition in managed_instance.supported_type_definitions()
     assert azure.supports_clr_type_definition() is False
-    assert azure.supports_type_definition(SQLServerClrTypeDefinition) is False
+    assert SQLServerClrTypeDefinition not in azure.supported_type_definitions()
     assert fabric.supports_clr_type_definition() is False
-    assert fabric.supports_type_definition(SQLServerClrTypeDefinition) is False
+    assert SQLServerClrTypeDefinition not in fabric.supported_type_definitions()
     with pytest.raises(UnsupportedFeatureError):
         CreateTypeStatement(azure, Type(azure, "clr_type"), definition).to_sql()
 

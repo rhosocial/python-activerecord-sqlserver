@@ -138,24 +138,6 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             if self._definition_is_supported(definition)
         )
 
-    def supports_type_definition(
-        self,
-        definition_type: TypingType[TypeDefinition],
-    ) -> bool:
-        try:
-            return any(
-                issubclass(definition_type, supported)
-                for supported in self.supported_type_definitions()
-            )
-        except TypeError:
-            return False
-
-    def supports_type_alter_action(
-        self,
-        action_type: TypingType[TypeAlterAction],
-    ) -> bool:
-        return False
-
     def supports_create_type_if_not_exists(self) -> bool:
         return False
 
@@ -609,7 +591,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
             )
         if not isinstance(expr.definition, TypeDefinition):
             raise TypeError("definition must be a TypeDefinition instance")
-        if not self.supports_type_definition(type(expr.definition)):
+        if not issubclass(type(expr.definition), self.supported_type_definitions()):
             raise UnsupportedFeatureError(
                 self.name,
                 f"TYPE definition {expr.definition.definition_kind}",
@@ -701,7 +683,7 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
         """
         if not isinstance(expr, TypeDefinition):
             raise TypeError("expr must be a TypeDefinition instance")
-        if not self.supports_type_definition(type(expr)):
+        if not issubclass(type(expr), self.supported_type_definitions()):
             raise UnsupportedFeatureError(
                 self.name,
                 f"TYPE definition {expr.definition_kind}",

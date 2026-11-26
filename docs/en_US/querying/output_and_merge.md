@@ -81,5 +81,7 @@ of the dialect; the corresponding `supports_*` answers live in the mixins.
 `WITH (...)` table hints, `OPTION (...)` query hints and `INDEX` / `FORCESEEK`
 style hints are available through `mixins/table_hint.py` and
 `expression/option_hint.py`. `EXPLAIN` maps to execution-plan output, with
-`supports_explain_analyze()` / `supports_explain_format()` answering for the
-supported forms.
+`supports_explain_analyze()` plus one switch per plan format
+(`supports_explain_format_text()` / `supports_explain_format_xml()`) answering
+for the supported forms; the other format switches and the option switches
+(`verbose` / `costs` / `buffers` / `timing` / `settings` / `wal`) are `False`.

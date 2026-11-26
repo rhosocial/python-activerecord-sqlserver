@@ -26,15 +26,15 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.spatial import (
 class TestSpatialTypeProtocol:
     """Test spatial data type protocol implementation."""
 
-    def test_supports_spatial_type_point(self):
+    def test_is_spatial_type_available_point(self):
         """Test POINT type support - SQL Server supports spatial types in all versions."""
         dialect_2008 = SQLServerDialect(version=(10, 3, 0))
-        assert dialect_2008.supports_spatial_type('POINT')
+        assert dialect_2008.is_spatial_type_available('POINT')
 
         dialect_2016 = SQLServerDialect(version=(13, 0, 0))
-        assert dialect_2016.supports_spatial_type('POINT')
+        assert dialect_2016.is_spatial_type_available('POINT')
 
-    def test_supports_spatial_type_all_types(self):
+    def test_is_spatial_type_available_all_types(self):
         """Test all spatial types support."""
         dialect = SQLServerDialect(version=(10, 3, 0))
 
@@ -45,12 +45,12 @@ class TestSpatialTypeProtocol:
         ]
 
         for stype in spatial_types:
-            assert dialect.supports_spatial_type(stype), f"{stype} should be supported"
+            assert dialect.is_spatial_type_available(stype), f"{stype} should be supported"
 
-    def test_supports_spatial_type_invalid(self):
+    def test_is_spatial_type_available_invalid(self):
         """Test invalid spatial type."""
         dialect = SQLServerDialect(version=(10, 3, 0))
-        assert not dialect.supports_spatial_type('INVALID_TYPE')
+        assert not dialect.is_spatial_type_available('INVALID_TYPE')
 
     def test_supports_spatial_index(self):
         """Test SPATIAL index support - SQL Server 2008+."""

@@ -82,7 +82,6 @@ class TestCapabilityBooleans:
         assert d.supports_drop_type() is True
         assert d.supports_rename_type() is True
         assert d.supports_alter_type() is False
-        assert d.supports_type_alter_action(_DummyTypeAlterAction) is False
         assert d.supports_create_type_if_not_exists() is False
         assert d.supports_create_type_or_replace() is False
         assert d.supports_alter_type_if_exists() is False
@@ -168,14 +167,12 @@ class TestSupportedTypeDefinitions:
     )
     def test_definition_support_matrix(self, version, target, definition, expected):
         d = dialect(version, deployment_target=target)
-        assert d.supports_type_definition(definition) is expected
         assert (definition in d.supported_type_definitions()) is expected
 
     def test_non_class_definition_is_not_supported(self):
         d = dialect()
         assert d._definition_is_supported("not-a-class") is False
-        assert d.supports_type_definition("not-a-class") is False
-        assert d.supports_type_definition(object()) is False
+        assert d._definition_is_supported(object()) is False
 
 
 class TestNameAndStringHelpers:

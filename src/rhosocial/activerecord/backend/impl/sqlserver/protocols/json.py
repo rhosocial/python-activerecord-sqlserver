@@ -6,6 +6,14 @@ from rhosocial.activerecord.backend.dialect.protocols import JSONSupport
 
 @runtime_checkable
 class SQLServerJSONSupport(JSONSupport, Protocol):
+    def is_json_function_available(self, function_name: str) -> bool:
+        """Whether the named JSON function exists on this server version.
+
+        A name lookup, not a capability switch: availability depends on which
+        function is asked about.
+        """
+        ...
+
     def render_openjson_expression(
         self,
         json_doc: str,

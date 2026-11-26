@@ -14,8 +14,12 @@ from typing import Protocol, Tuple, runtime_checkable
 class SQLServerSpatialSupport(Protocol):
     """SQL Server spatial data type protocol."""
 
-    def supports_spatial_type(self, type_name: str) -> bool:
-        """Whether a specific spatial data type is supported (2008+)."""
+    def is_spatial_type_available(self, type_name: str) -> bool:
+        """Whether the named spatial data type exists (2008+).
+
+        This is a name lookup, not a capability switch: the answer depends on
+        which type name is asked about.
+        """
         ...
 
     def supports_spatial_index(self) -> bool:

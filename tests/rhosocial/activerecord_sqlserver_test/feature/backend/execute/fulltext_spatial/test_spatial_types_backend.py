@@ -22,16 +22,16 @@ from rhosocial.activerecord.backend.impl.sqlserver.expression.spatial import (
 class TestSpatialTypeBackend:
     """Synchronous tests for SQL Server spatial types with real database."""
 
-    def test_supports_spatial_type_detection(self, sqlserver_backend):
+    def test_is_spatial_type_available_detection(self, sqlserver_backend):
         """Test that dialect correctly detects spatial type support."""
         dialect = sqlserver_backend.dialect
 
         if dialect.version >= (10, 0, 0):
-            assert dialect.supports_spatial_type('POINT')
-            assert dialect.supports_spatial_type('GEOMETRY')
-            assert not dialect.supports_spatial_type('INVALID_TYPE')
+            assert dialect.is_spatial_type_available('POINT')
+            assert dialect.is_spatial_type_available('GEOMETRY')
+            assert not dialect.is_spatial_type_available('INVALID_TYPE')
         else:
-            assert not dialect.supports_spatial_type('POINT')
+            assert not dialect.is_spatial_type_available('POINT')
 
     def test_supports_spatial_index_detection(self, sqlserver_backend):
         """Test that dialect correctly detects SPATIAL index support."""
@@ -269,15 +269,15 @@ class TestAsyncSpatialTypeBackend:
     """Asynchronous tests for SQL Server spatial types with real database."""
 
     @pytest.mark.asyncio
-    async def test_async_supports_spatial_type_detection(self, async_sqlserver_backend):
+    async def test_async_is_spatial_type_available_detection(self, async_sqlserver_backend):
         """Test that dialect correctly detects spatial type support (async)."""
         dialect = async_sqlserver_backend.dialect
 
         if dialect.version >= (10, 0, 0):
-            assert dialect.supports_spatial_type('POINT')
-            assert dialect.supports_spatial_type('GEOMETRY')
+            assert dialect.is_spatial_type_available('POINT')
+            assert dialect.is_spatial_type_available('GEOMETRY')
         else:
-            assert not dialect.supports_spatial_type('POINT')
+            assert not dialect.is_spatial_type_available('POINT')
 
     @pytest.mark.asyncio
     async def test_async_format_spatial_literal(self, async_sqlserver_backend):

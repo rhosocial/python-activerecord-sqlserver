@@ -64,7 +64,7 @@ def printed(console):
 
 class TestInfoRichDisplayHelpers:
     def test_format_method_display(self):
-        assert info_mod._format_method_display("supports_explain_format") == "explain format"
+        assert info_mod._format_method_display("supports_explain_format_text") == "explain format text"
         assert info_mod._format_method_display("is_json_available") == "is json available"
 
     def test_display_method_details_bool_values(self, fake_rich):
@@ -77,10 +77,12 @@ class TestInfoRichDisplayHelpers:
 
     def test_display_method_details_dict_value(self, fake_rich):
         info_mod._display_method_details(
-            fake_rich, "supports_explain_format", {"args": {"TEXT": True, "XML": False}}
+            fake_rich,
+            "is_json_function_available",
+            {"args": {"JSON_VALUE": True, "JSON_TABLE": False}},
         )
         out = printed(fake_rich)
-        assert "TEXT" in out and "XML" in out
+        assert "JSON_VALUE" in out and "JSON_TABLE" in out
 
     def test_display_protocol_item_progress_bar(self, fake_rich):
         stats = {"percentage": 100, "supported": 2, "total": 2}
