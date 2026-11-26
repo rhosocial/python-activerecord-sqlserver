@@ -5,6 +5,10 @@ SQL Server supports table partitioning via partition functions and
 partition schemes (Enterprise Edition). This protocol extends the
 generic PartitionSupport contract with SQL Server-specific capabilities.
 
+The Enterprise feature set gates the partitioning *DDL* only:
+``supports_partition_metadata_introspection`` reads ``sys.partition_*`` and
+answers on every edition.
+
 Version Requirements:
 - SQL Server 2012+ (partitioning via columnstore indexes)
 - SQL Server 2008+ (basic partitioning)

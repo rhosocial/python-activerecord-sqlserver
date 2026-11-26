@@ -82,7 +82,10 @@ class TestInfoOffline:
         payload = json.loads(capsys.readouterr().out)
         expected_groups = {
             "Query Features", "JOIN Support", "Data Types", "DML Features",
-            "Transaction & Locking", "Query Analysis", "DDL - Table", "DDL - View",
+            "Transaction & Locking", "Query Analysis",
+            "Introspection - Structure", "Introspection - Operational Stats",
+            "Introspection - Data Profile", "Introspection - DDL Extraction",
+            "DDL - Table", "DDL - View",
             "DDL - Schema & Index", "DDL - Sequence & Trigger", "String Matching",
             "SQL Server Native",
         }

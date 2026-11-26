@@ -201,19 +201,6 @@ class SQLServerIntrospectionMixin(SQLServerNodeBuilderMixin):
         """
         return True
 
-    def supports_partition_info(self) -> bool:
-        """``sys.partition_*`` answers a table's partition state.
-
-        This is core's name for the family; the backend-local spelling is
-        ``supports_partition_metadata_introspection`` on the partition mixin.
-        Both answer the same engine question, so a caller may gate on either.
-        The answer is one table's ``PartitionState`` -- scheme, key, range
-        direction and per-partition bounds -- because that is the neutral
-        shape every backend fills; the database-wide listing of partition
-        functions has no neutral shape and is not offered.
-        """
-        return self.version_at_least((10, 0, 0))
-
     def supports_type_introspection(self) -> bool:
         """``sys.types``/``sys.table_types`` answer user-defined types.
 

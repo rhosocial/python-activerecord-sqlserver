@@ -6,7 +6,9 @@ partition schemes. HASH and LIST are not supported as partitioning
 strategies.
 
 Version notes:
-- Basic partitioning: SQL Server 2008+
+- Basic partitioning (DDL): SQL Server 2008+
+- Reading partition metadata: SQL Server 2008+ on every edition; the
+  Enterprise feature set gates only the DDL, not the ``sys.partition_*`` reads
 - Partition functions/schemes: SQL Server 2008+
 - Columnstore + partitioning: SQL Server 2012+
 - SWITCH, SPLIT, MERGE: SQL Server 2008+
@@ -92,7 +94,29 @@ class SQLServerPartitionMixin:
         return self.supports_table_partitioning()
 
     def supports_partition_metadata_introspection(self) -> bool:
-        return self.supports_table_partitioning()
+        """Whether one table's partition state can be read.
+
+        This asks about *reading*, not about creating. The catalog views
+        ``get_partition_state`` queries -- ``sys.partition_functions``,
+        ``sys.partition_schemes``, ``sys.partition_range_values`` and
+        ``sys.dm_db_partition_stats`` -- are plain metadata reads available on
+        every edition; the Enterprise feature set gates the partition *DDL*
+        (``CREATE PARTITION FUNCTION`` / ``SCHEME`` and ``ALTER TABLE ...
+        SWITCH``), which is what :meth:`supports_table_partitioning` answers.
+
+        Tying the two together answered "cannot read" on a server that could
+        read: a Standard instance restored from an Enterprise database carries
+        partitioned tables, and Standard has supported partitioning since
+        2016 SP1. The probe therefore keeps only the version floor -- the same
+        read predicate core used to spell ``supports_partition_info`` -- and
+        leaves the edition gate to :meth:`supports_table_partitioning`. If the
+        catalog can answer, this must not block :meth:`get_partition_state`.
+
+        The version floor is 2008 (10.0), the release this backend's
+        partition statements were written for; it is a floor on the question,
+        not on the edition that issued the DDL.
+        """
+        return self.version_at_least(_SQL_SERVER_PARTITION_VERSION)
 
     def supports_range_table_partitioning(self) -> bool:
         return self.supports_table_partitioning()

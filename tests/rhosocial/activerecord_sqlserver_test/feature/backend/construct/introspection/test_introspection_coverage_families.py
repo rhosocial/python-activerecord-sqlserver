@@ -906,17 +906,46 @@ class TestIdentityAudit:
 
 
 class TestCapabilitySwitches:
-    def test_the_three_local_switches_answer_true(self):
+    def test_the_local_switches_answer_true(self):
         dialect = make_introspector(version=(16, 0, 0))._backend.dialect
-        assert dialect.supports_partition_info() is True
         assert dialect.supports_partition_metadata_introspection() is True
         assert dialect.supports_type_introspection() is True
         assert dialect.supports_constraint_introspection() is True
 
-    def test_partition_metadata_follows_the_partitioning_floor(self):
+    def test_partition_metadata_follows_the_read_floor(self):
+        """The catalog views are not there before 2008, so neither is the answer."""
         dialect = make_introspector(version=(9, 0, 0))._backend.dialect
-        assert dialect.supports_partition_info() is False
         assert dialect.supports_partition_metadata_introspection() is False
+
+    def test_reading_partitions_is_not_gated_by_the_enterprise_edition(self):
+        """DDL needs Enterprise; reading ``sys.partition_*`` does not.
+
+        The two predicates are deliberately separate. A Standard server can
+        hold partitioned tables (restored from an Enterprise instance, and
+        Standard has supported partitioning since 2016 SP1), so its metadata
+        is readable even though it cannot create the partitioning itself.
+        ``get_partition_state`` reads the catalog directly; if the probe said
+        False here it would block an answer the engine can give.
+        """
+        from rhosocial.activerecord.backend.impl.sqlserver.dialect import (
+            SQLServerDialect,
+        )
+
+        standard = SQLServerDialect((16, 0, 0), edition="Standard Edition")
+        enterprise = SQLServerDialect((16, 0, 0), edition="Enterprise Edition")
+
+        assert standard.supports_partition_metadata_introspection() is True
+        assert standard.supports_table_partitioning() is False
+        assert enterprise.supports_partition_metadata_introspection() is True
+        assert enterprise.supports_table_partitioning() is True
+
+        # Below the read floor both are false, whatever the edition.
+        old = SQLServerDialect((9, 0, 0), edition="Enterprise Edition")
+        assert old.supports_partition_metadata_introspection() is False
+        assert old.supports_table_partitioning() is False
+
+        # The old duplicate probe is gone: one question, one name.
+        assert not hasattr(standard, "supports_partition_info")
 
     def test_type_introspection_follows_the_table_type_floor(self):
         """``sys.table_types`` and ``is_table_type`` arrived with 2008."""

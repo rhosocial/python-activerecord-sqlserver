@@ -19,6 +19,7 @@ import inspect
 
 import pytest
 from rhosocial.activerecord.backend.dialect import protocols as dialect_protocols
+from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 from rhosocial.activerecord.backend.suggestion import protocols as suggestion_protocols
 from rhosocial.activerecord.backend.impl.sqlserver.dialect import SQLServerDialect
 
@@ -91,7 +92,16 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.ILIKESupport,
     dialect_protocols.IdentityColumnSupport,
     suggestion_protocols.GeneratedValueSuggestionSupport,
-    dialect_protocols.IntrospectionSupport,
+    # Core split the single introspection protocol into four families, each
+    # with an async twin. SQL Server answers three of them (structure,
+    # operational statistics and data profiling); the fourth, DDL extraction,
+    # is a declared gap classified (and refused) below.
+    dialect_protocols.StructureIntrospectionSupport,
+    dialect_protocols.AsyncStructureIntrospectionSupport,
+    dialect_protocols.OperationalStatsIntrospectionSupport,
+    dialect_protocols.AsyncOperationalStatsIntrospectionSupport,
+    dialect_protocols.DataProfileIntrospectionSupport,
+    dialect_protocols.AsyncDataProfileIntrospectionSupport,
     dialect_protocols.JSONSupport,
     dialect_protocols.JoinSupport,
     dialect_protocols.LateralJoinSupport,
@@ -163,7 +173,6 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.DqlOrderSupport,
     dialect_protocols.PivotSupport,
     # Protocols added by the core refactor that this dialect satisfies.
-    dialect_protocols.AsyncIntrospectionSupport,
     dialect_protocols.DDLColumnSupport,
     dialect_protocols.DMLSupport,
     dialect_protocols.DQLSupport,
@@ -176,6 +185,19 @@ SQLSERVER_PROTOCOLS = [
     dialect_protocols.RelationSourceSupport,
     dialect_protocols.SchemaNameSupport,
     dialect_protocols.TrimSupport,
+]
+
+
+# Introspection families whose capability answer is "no": the protocol members
+# are structurally present because core's mixin supplies refusing stubs, so
+# ``isinstance`` alone would call the family implemented. The classification
+# here is by the family's capability gate instead -- negative, with an explicit
+# refusal test -- and the implementation is deliberately not flipped: SQL
+# Server has no per-object DDL retrieval, and an assembly would claim the
+# engine said something it did not.
+SQLSERVER_INTROSPECTION_REFUSED = [
+    dialect_protocols.DdlExtractionIntrospectionSupport,
+    dialect_protocols.AsyncDdlExtractionIntrospectionSupport,
 ]
 
 
@@ -260,15 +282,30 @@ class TestDialectNegativeProtocolConformance:
         all_protos = set(get_all_generic_protocols())
         positive = _classified_keys(SQLSERVER_PROTOCOLS)
         negative = _classified_keys(SQLSERVER_NOT_IMPLEMENTED)
+        refused = _classified_keys(SQLSERVER_INTROSPECTION_REFUSED)
 
-        overlap = positive & negative
-        assert not overlap, f"Protocols in BOTH lists: {sorted(overlap)}"
+        overlap = (positive & negative) | (positive & refused) | (negative & refused)
+        assert not overlap, f"Protocols in more than one list: {sorted(overlap)}"
 
-        unclassified = all_protos - positive - negative
+        unclassified = all_protos - positive - negative - refused
         assert not unclassified, (
             f"Generic protocols not classified for SQL Server: {sorted(unclassified)}. "
-            f"Add each to SQLSERVER_PROTOCOLS or SQLSERVER_NOT_IMPLEMENTED."
+            f"Add each to SQLSERVER_PROTOCOLS, SQLSERVER_NOT_IMPLEMENTED or "
+            f"SQLSERVER_INTROSPECTION_REFUSED."
         )
+
+    def test_the_refused_introspection_family_is_capability_false(self):
+        """The DDL family is absent by capability, and refuses with a name."""
+        from rhosocial.activerecord.backend.dialect.exceptions import (
+            UnsupportedFeatureError,
+        )
+
+        dialect = SQLServerDialect(SQLSERVER_VERSION)
+        assert isinstance(dialect, dialect_protocols.DdlExtractionIntrospectionSupport)
+        assert dialect.supports_ddl_extraction() is False
+        assert dialect.supports_ddl_extraction_native() is False
+        with pytest.raises(UnsupportedFeatureError):
+            dialect.format_ddl_statement_query_statement(object())
 
 
 class TestTheBackendOwnAnswersAreTheEffectiveOnes:
@@ -309,3 +346,62 @@ class TestTheBackendOwnAnswersAreTheEffectiveOnes:
             "a core class wins these backend methods, so the backend's "
             f"implementation is dead code: {shadowed}"
         )
+
+
+class TestIntrospectionFamilySplit:
+    """Pin the adoption of core's four-family introspection split."""
+
+    @pytest.fixture
+    def dialect(self):
+        return SQLServerDialect(SQLSERVER_VERSION)
+
+    def test_the_four_families_import_from_their_own_core_modules(self):
+        expected = {
+            dialect_protocols.StructureIntrospectionSupport: (
+                "rhosocial.activerecord.backend.dialect.protocols.introspect.structure"
+            ),
+            dialect_protocols.OperationalStatsIntrospectionSupport: (
+                "rhosocial.activerecord.backend.dialect.protocols.introspect.operational_stats"
+            ),
+            dialect_protocols.DataProfileIntrospectionSupport: (
+                "rhosocial.activerecord.backend.dialect.protocols.introspect.data_profile"
+            ),
+            dialect_protocols.DdlExtractionIntrospectionSupport: (
+                "rhosocial.activerecord.backend.dialect.protocols.introspect.ddl_extraction"
+            ),
+        }
+        for protocol, module in expected.items():
+            assert protocol.__module__ == module, (
+                f"{protocol.__name__} resolves to {protocol.__module__}, not {module}"
+            )
+
+    def test_the_old_single_protocol_names_are_gone(self):
+        """Core removed them without aliases; nothing may import or re-add them."""
+        assert not hasattr(dialect_protocols, "IntrospectionSupport")
+        assert not hasattr(dialect_protocols, "AsyncIntrospectionSupport")
+
+    def test_supports_partition_info_is_gone(self, dialect):
+        """One question now has one name: the partition mixin's metadata probe."""
+        assert not hasattr(dialect, "supports_partition_info")
+
+    def test_the_partitions_cli_family_asks_the_metadata_probe(self, dialect):
+        """``introspect partitions`` must gate on the read probe, not the DDL one."""
+        from rhosocial.activerecord.backend.impl.sqlserver.cli.introspect import (
+            _TYPE_CAPABILITIES,
+        )
+
+        assert _TYPE_CAPABILITIES["partitions"] == (
+            "supports_partition_metadata_introspection"
+        )
+        assert isinstance(dialect, dialect_protocols.PartitionSupport)
+        assert dialect.supports_partition_metadata_introspection() is True
+
+    def test_the_absent_family_refuses_instead_of_answering(self, dialect):
+        """Absence is a refusal with a name, never an empty list or a guess."""
+        assert isinstance(dialect, dialect_protocols.StructureIntrospectionSupport)
+        assert isinstance(
+            dialect, dialect_protocols.DdlExtractionIntrospectionSupport
+        )
+        assert dialect.supports_ddl_extraction() is False
+        with pytest.raises(UnsupportedFeatureError):
+            dialect.format_ddl_statement_query_statement(object())

@@ -39,6 +39,15 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     NamespaceSupport,
     SequenceObjectSupport,
     TemporalTableSupport,
+    # The introspection surface is four families, each its own protocol. The
+    # CLI keeps them apart for the same reason the protocols are apart: "what
+    # the catalogue declares", "how the objects behaved", "what the rows look
+    # like" and "the text that recreates an object" are four different
+    # questions, and a dialect can answer one without claiming the others.
+    StructureIntrospectionSupport,
+    OperationalStatsIntrospectionSupport,
+    DataProfileIntrospectionSupport,
+    DdlExtractionIntrospectionSupport,
 )
 
 from rhosocial.activerecord.backend.impl.sqlserver.protocols import (
@@ -74,6 +83,10 @@ PROTOCOL_FAMILY_GROUPS: Dict[str, list] = {
     ],
     "Transaction & Locking": [LockingSupport, TemporalTableSupport],
     "Query Analysis": [ExplainSupport, GraphSupport, QualifyClauseSupport],
+    "Introspection - Structure": [StructureIntrospectionSupport],
+    "Introspection - Operational Stats": [OperationalStatsIntrospectionSupport],
+    "Introspection - Data Profile": [DataProfileIntrospectionSupport],
+    "Introspection - DDL Extraction": [DdlExtractionIntrospectionSupport],
     "DDL - Table": [TableObjectSupport, TruncateSupport, GeneratedColumnSupport],
     "DDL - View": [ViewObjectSupport],
     "DDL - Schema & Index": [NamespaceSupport, IndexObjectSupport],
