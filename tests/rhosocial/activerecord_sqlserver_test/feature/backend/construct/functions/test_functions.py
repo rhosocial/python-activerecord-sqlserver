@@ -2,7 +2,7 @@
 """
 Tests for SQLServer-specific SQL function factories.
 
-Tests the supports_functions() method and function factories.
+Tests the suggest_functions() method and function factories.
 """
 
 import pytest
@@ -72,64 +72,64 @@ class TestFunctionsModule:
         assert len(functions.__all__) == 40
 
 
-class TestSupportsFunctions:
-    """Test the supports_functions() method."""
+class TestSuggestFunctions:
+    """Test the suggest_functions() method."""
 
-    def test_supports_functions_returns_dict(self):
-        """Test that supports_functions returns a dictionary."""
+    def test_suggest_functions_returns_catalog(self):
+        """Test that suggest_functions returns a dictionary."""
         dialect = SQLServerDialect(version=(16, 0, 0))
-        result = dialect.supports_functions()
+        result = dialect.suggest_functions().functions
         assert isinstance(result, dict)
 
-    def test_supports_functions_all_values_are_bool(self):
-        """Test that all values in supports_functions are booleans."""
+    def test_suggest_functions_all_values_are_bool(self):
+        """Test that all values in suggest_functions are booleans."""
         dialect = SQLServerDialect(version=(16, 0, 0))
-        result = dialect.supports_functions()
+        result = dialect.suggest_functions().functions
         for key, value in result.items():
             assert isinstance(value, bool), f"Non-bool value for {key}: {value}"
 
-    def test_supports_functions_json_functions(self):
+    def test_suggest_functions_json_functions(self):
         """Test JSON functions are supported on SQL Server 2016+."""
         dialect = SQLServerDialect(version=(13, 0, 0))
-        result = dialect.supports_functions()
+        result = dialect.suggest_functions().functions
         json_funcs = ["json_extract", "json_type", "json_valid", "json_search"]
         for func in json_funcs:
             assert result.get(func) is True, f"{func} should be True"
 
-    def test_supports_functions_spatial_functions(self):
+    def test_suggest_functions_spatial_functions(self):
         """Test spatial functions are supported on SQL Server 2008+."""
         dialect = SQLServerDialect(version=(10, 2, 0))
-        result = dialect.supports_functions()
+        result = dialect.suggest_functions().functions
         spatial_funcs = ["st_geom_from_text", "st_distance", "st_contains"]
         for func in spatial_funcs:
             assert result.get(func) is True, f"{func} should be True on 10.2+"
 
-    def test_supports_functions_old_version(self):
+    def test_suggest_functions_old_version(self):
         """Test JSON functions are not supported on SQL Server 2014."""
         dialect_old = SQLServerDialect(version=(12, 0, 0))
-        result_old = dialect_old.supports_functions()
+        result_old = dialect_old.suggest_functions().functions
 
         dialect_new = SQLServerDialect(version=(13, 0, 0))
-        result_new = dialect_new.supports_functions()
+        result_new = dialect_new.suggest_functions().functions
 
         assert result_old.get("json_extract") is False
         assert result_new.get("json_extract") is True
 
-    def test_supports_functions_version_boundaries(self):
+    def test_suggest_functions_version_boundaries(self):
         """Test version boundary checks."""
         dialect_2016 = SQLServerDialect(version=(13, 0, 0))
         dialect_2014 = SQLServerDialect(version=(12, 6, 0))
 
-        result_2016 = dialect_2016.supports_functions()
-        result_2014 = dialect_2014.supports_functions()
+        result_2016 = dialect_2016.suggest_functions().functions
+        result_2014 = dialect_2014.suggest_functions().functions
 
         assert result_2016.get("json_extract") is True
         assert result_2014.get("json_extract") is False
 
-    def test_supports_functions_math_functions(self):
+    def test_suggest_functions_math_functions(self):
         """Test math functions are available on all versions."""
         dialect = SQLServerDialect(version=(10, 0, 0))
-        result = dialect.supports_functions()
+        result = dialect.suggest_functions().functions
         math_funcs = ["round_", "pow", "sqrt", "ceil", "floor", "trunc"]
         for func in math_funcs:
             assert result.get(func) is True, f"{func} should be True"

@@ -57,7 +57,6 @@ from rhosocial.activerecord.backend.dialect.protocols import (
     ConstraintSupport,
     IntrospectionSupport,
     TransactionControlSupport,
-    SQLFunctionSupport,
     ColumnAttributeSupport,
     DataTypeSupport,
     CreateTypeSupport,
@@ -540,7 +539,6 @@ class SQLServerDialect(
     ConstraintSupport,
     IntrospectionSupport,
     TransactionControlSupport,
-    SQLFunctionSupport,
     ColumnAttributeSupport,
     # DataType Support Protocol
     DataTypeSupport,

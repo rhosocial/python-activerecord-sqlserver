@@ -1,12 +1,12 @@
 # src/rhosocial/activerecord/backend/impl/sqlserver/mixins/function.py
-from typing import Dict
+from rhosocial.activerecord.backend.suggestion.definitions import FunctionSuggestion
 
 
 class SQLServerFunctionMixin:
     """SQL Server function support detection."""
 
-    def supports_functions(self) -> Dict[str, bool]:
-        """Return supported SQL functions as function_name -> bool mapping.
+    def suggest_functions(self) -> "FunctionSuggestion":
+        """Return the SQL function catalogue this dialect renders.
 
         Combines the core expression function factories with the SQL Server
         function factories in ``functions.__all__``.
@@ -30,7 +30,7 @@ class SQLServerFunctionMixin:
             if func_name not in result:
                 result[func_name] = self._is_sqlserver_function_supported(func_name)
 
-        return result
+        return FunctionSuggestion(result)
 
     def _is_sqlserver_function_supported(self, func_name: str) -> bool:
         """Check if a SQL Server-specific function is supported based on version."""

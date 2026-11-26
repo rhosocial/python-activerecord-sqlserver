@@ -145,8 +145,8 @@ class TestSecondsBetweenVersionFloor:
         old = SQLServerDialect(version=(12, 0, 0))
         new = SQLServerDialect(version=(13, 0, 0))
 
-        assert old.supports_functions().get("seconds_between") is False
-        assert new.supports_functions().get("seconds_between") is True
+        assert old.suggest_functions().functions.get("seconds_between") is False
+        assert new.suggest_functions().functions.get("seconds_between") is True
 
 
 def _elapsed(backend, start: str, end: str) -> float:
