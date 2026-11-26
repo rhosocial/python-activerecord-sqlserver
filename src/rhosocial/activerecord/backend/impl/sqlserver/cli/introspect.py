@@ -3,7 +3,7 @@
 
 Every type this command offers is answered by ``backend.introspector``. The
 introspector speaks the core API -- ``list_tables``/``list_views``/
-``list_columns``/... -- plus this backend's own ``list_schema_details``,
+``list_columns``/... -- plus this backend's own ``list_schema_infos``,
 ``list_procedures``, ``list_functions``, ``list_sequences``,
 ``list_types`` and ``list_constraints``; there are no
 ``get_tables``/``get_views``/``get_columns`` methods anywhere, and asking for
@@ -181,7 +181,7 @@ _RESULT_TITLES = {
     "list_procedures": "Stored Procedures",
     "list_functions": "User-Defined Functions",
     "list_sequences": "Sequences",
-    "list_schema_details": "Schemas",
+    "list_schema_infos": "Schemas",
     "get_partition_state": "Partitions",
     "list_types": "User-Defined Types",
     "list_constraints": "Constraints",
@@ -567,7 +567,7 @@ def _steps(args) -> List[Tuple[str, Dict[str, Any]]]:
     if kind == "schemas":
         # The database's schemas with their owners; the neutral ``list_schemas``
         # is the names alone, and the CLI's readers want the owner too.
-        return [("list_schema_details", {})]
+        return [("list_schema_infos", {})]
     if kind == "partitions":
         # One table's partition state. The neutral answer is per table --
         # ``scheme is None`` says unpartitioned -- so the name is the whole

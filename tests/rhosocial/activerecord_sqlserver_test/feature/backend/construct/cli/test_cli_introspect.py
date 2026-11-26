@@ -82,8 +82,8 @@ class FakeIntrospector:
     def list_schemas(self):
         return self._record("list_schemas")
 
-    def list_schema_details(self):
-        return self._record("list_schema_details")
+    def list_schema_infos(self):
+        return self._record("list_schema_infos")
 
     def get_partition_state(self, table_name, schema=None, include_stats=False):
         self.calls.append(
@@ -222,8 +222,8 @@ class FakeAsyncIntrospector(FakeIntrospector):
     async def list_schemas(self):
         return FakeIntrospector.list_schemas(self)
 
-    async def list_schema_details(self):
-        return FakeIntrospector.list_schema_details(self)
+    async def list_schema_infos(self):
+        return FakeIntrospector.list_schema_infos(self)
 
     async def get_partition_state(
         self, table_name, schema=None, include_stats=False
@@ -478,7 +478,7 @@ class TestHandleDispatch:
             (["procedures"], "list_procedures"),
             (["functions"], "list_functions"),
             (["sequences"], "list_sequences"),
-            (["schemas"], "list_schema_details"),
+            (["schemas"], "list_schema_infos"),
             (["partitions", "orders"], "get_partition_state"),
             (["types"], "list_types"),
             (["types", "order_note"], "get_type_info"),
@@ -598,7 +598,7 @@ class TestHandleDispatch:
     def test_schemas_take_no_scope_argument(self):
         introspect_mod.handle(make_args(["introspect", "schemas", "--database", "db"]))
         method, kwargs = FakeIntrospector.instances[-1].calls[-1]
-        assert (method, kwargs) == ("list_schema_details", {})
+        assert (method, kwargs) == ("list_schema_infos", {})
 
 
     def test_partitions_render_the_neutral_state(self, capsys):
@@ -1226,7 +1226,7 @@ class TestHandleAsync:
             make_args(["introspect", "schemas", "--database", "db", "-o", "json", "--async"])
         )
         payload = json.loads(capsys.readouterr().out)
-        assert payload[0]["method"] == "list_schema_details"
+        assert payload[0]["method"] == "list_schema_infos"
 
     def test_async_connection_error_exits_nonzero(self, monkeypatch):
         cls = _tracking_class(FakeAsyncBackendBase, "AsyncErr")

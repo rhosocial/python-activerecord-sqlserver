@@ -115,7 +115,7 @@ for column in introspector.list_columns("orders"):
 Schema is a real level here. Every statement that takes one falls back to `dbo` when the caller names none, and the CLI's `schemas` type lists the database's schemas with their owners (`sys.schemas` left-joined to `sys.database_principals` on `principal_id`, because a schema and its owner need not share a name). The backend's own families sit beside the core API:
 
 ```python
-for schema in introspector.list_schema_details():
+for schema in introspector.list_schema_infos():
     print(schema.name, schema.owner)
 
 for property_ in introspector.list_extended_properties(
@@ -139,15 +139,20 @@ for constraint in introspector.list_constraints("orders"):
 ```
 
 `list_schemas()` is core's neutral answer -- the schema names alone -- while
-`list_schema_details()` is this backend's complete one, carrying the owner and
+`list_schema_infos()` is this backend's complete one, carrying the owner and
 schema id. Core's other neutral object-state methods (`get_table_state`,
 `get_partition_state`, `list_index_states`, `list_constraint_states`,
 `list_sequence_states`, `list_derived_objects`, `item_exists`) are answered
 here too: index usability comes from `is_disabled`/`is_hypothetical`,
 constraint trust from `is_not_trusted`/`is_disabled`, derived objects from the
 named default constraints and the temporal history table, and `item_exists`
-covers a partition function, a partition scheme, a schema, a sequence, a type,
-a table and a function.
+answers a partition function, a partition scheme, a schema, a sequence, a type,
+a table and a function. The kinds SQL Server has no objects of (`domain`,
+`extension`) answer `False`; the kinds it has but this backend cannot query
+(`index`, `fulltext_catalog`, `tablespace`) are refused rather than answered
+`False`, because an implementation gap must not read as absence. The declared
+sets are `ITEM_KINDS_ABSENT`, `ITEM_KINDS_UNQUERIED` and
+`ITEM_KINDS_QUERIED`.
 
 `list_extended_properties()` takes either a `major_id` it already has or a `table_name` to resolve — the named form joins `sys.tables` and `sys.schemas`, so a caller needs no first round trip to turn a name into an id. Its `class_name` is checked against the `class_desc` values the engine documents (`OBJECT_OR_COLUMN`, `INDEX`, `DATABASE`, `PARAMETER` and so on), and a schema filter is refused for a class whose `major_id` lives in another id space, because "no rows" there would be a silent contradiction rather than an answer. `value` is `sql_variant` and the driver cannot fetch it, so it is cast to `NVARCHAR(4000)` in the statement.
 

@@ -17,6 +17,10 @@ being selected and dropped.
 import inspect
 
 import pytest
+from rhosocial.activerecord.backend.dialect.exceptions import (
+    ProtocolNotImplementedError,
+)
+from rhosocial.activerecord.backend.introspection import ItemKind
 
 from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
 from rhosocial.activerecord.backend.impl.sqlserver.config import (
@@ -26,7 +30,6 @@ from rhosocial.activerecord.backend.impl.sqlserver.introspection import (
     AsyncSQLServerIntrospector,
     SQLServerIntrospector,
 )
-from rhosocial.activerecord.backend.introspection import ItemKind
 
 
 def make_introspector(version=(16, 0, 0)) -> SQLServerIntrospector:
@@ -482,6 +485,24 @@ class _SyncExecutor:
         return _rows_for(sql)
 
 
+class _NoQueries:
+    """Fail if a kind without a catalogue query reaches the executor."""
+
+    def execute(self, sql, params):
+        raise AssertionError(
+            "a kind without a catalogue query must not reach the executor"
+        )
+
+
+class _AsyncNoQueries:
+    """The asynchronous shape of :class:`_NoQueries`."""
+
+    async def execute(self, sql, params):
+        raise AssertionError(
+            "a kind without a catalogue query must not reach the executor"
+        )
+
+
 def _rows_for(sql):
     if "dm_db_partition_stats" in sql and "boundary_text" in sql:
         return _partition_range_rows()
@@ -673,6 +694,23 @@ class TestAsyncExecution:
         constraints = await introspector.list_constraints("orders")
         assert constraints[0].constraint_type == "C"
 
+    @pytest.mark.asyncio
+    async def test_absent_kinds_answer_false_without_a_query(self):
+        introspector = AsyncSQLServerIntrospector(
+            make_introspector()._backend, executor=_AsyncNoQueries()
+        )
+        for kind in AsyncSQLServerIntrospector.ITEM_KINDS_ABSENT:
+            assert await introspector.item_exists(kind, "anything") is False
+
+    @pytest.mark.asyncio
+    async def test_unqueried_kinds_refuse_instead_of_answering_false(self):
+        introspector = AsyncSQLServerIntrospector(
+            make_introspector()._backend, executor=_AsyncNoQueries()
+        )
+        for kind in AsyncSQLServerIntrospector.ITEM_KINDS_UNQUERIED:
+            with pytest.raises(ProtocolNotImplementedError):
+                await introspector.item_exists(kind, "anything")
+
 
 class TestSyncExecution:
     """The synchronous manager reaches the same parsers and result types."""
@@ -755,11 +793,26 @@ class TestSyncExecution:
         ) is True
         assert introspector.item_exists(ItemKind.SCHEMA, "dbo") is True
 
+    def test_absent_kinds_answer_false_without_a_query(self):
+        introspector = SQLServerIntrospector(
+            make_introspector()._backend, executor=_NoQueries()
+        )
+        for kind in SQLServerIntrospector.ITEM_KINDS_ABSENT:
+            assert introspector.item_exists(kind, "anything") is False
+
+    def test_unqueried_kinds_refuse_instead_of_answering_false(self):
+        introspector = SQLServerIntrospector(
+            make_introspector()._backend, executor=_NoQueries()
+        )
+        for kind in SQLServerIntrospector.ITEM_KINDS_UNQUERIED:
+            with pytest.raises(ProtocolNotImplementedError):
+                introspector.item_exists(kind, "anything")
+
     def test_list_schemas_is_the_neutral_names_only(self):
         introspector = self._introspector()
         assert introspector.list_schemas() == ["dbo"]
-        details = introspector.list_schema_details()
-        assert [(schema.name, schema.owner) for schema in details] == [
+        infos = introspector.list_schema_infos()
+        assert [(schema.name, schema.owner) for schema in infos] == [
             ("dbo", "dbo"),
         ]
 
@@ -782,6 +835,33 @@ class TestSyncExecution:
         introspector = self._introspector()
         constraints = introspector.list_constraints("orders")
         assert constraints[0].constraint_type == "C"
+
+
+class TestItemKindDeclarations:
+    """Every ``ItemKind`` is declared before ``item_exists`` answers.
+
+    The three sets are the declaration the method dispatches on: absent kinds
+    answer ``False``, queried kinds answer from the catalogue, and the
+    remainder refuses. The guard walks the enum, so a kind added to core
+    cannot arrive here without being classified.
+    """
+
+    @pytest.mark.parametrize("kind", list(ItemKind))
+    def test_every_kind_belongs_to_exactly_one_set(self, kind):
+        declared = (
+            kind in SQLServerIntrospector.ITEM_KINDS_ABSENT,
+            kind in SQLServerIntrospector.ITEM_KINDS_UNQUERIED,
+            kind in SQLServerIntrospector.ITEM_KINDS_QUERIED,
+        )
+        assert sum(declared) == 1, kind
+
+    def test_the_declared_sets_cover_the_whole_enum(self):
+        declared = (
+            SQLServerIntrospector.ITEM_KINDS_ABSENT
+            | SQLServerIntrospector.ITEM_KINDS_UNQUERIED
+            | SQLServerIntrospector.ITEM_KINDS_QUERIED
+        )
+        assert declared == frozenset(ItemKind)
 
 
 class TestIdentityAudit:

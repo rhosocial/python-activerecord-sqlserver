@@ -110,8 +110,8 @@ def assert_extended_properties(properties):
 
 
 class TestExtendedFamilies:
-    def test_list_schema_details(self, probed_backend):
-        assert_schemas(probed_backend.introspector.list_schema_details())
+    def test_list_schema_infos(self, probed_backend):
+        assert_schemas(probed_backend.introspector.list_schema_infos())
 
     def test_list_schemas_is_the_neutral_names_only(self, probed_backend):
         names = probed_backend.introspector.list_schemas()
@@ -150,9 +150,9 @@ class TestExtendedFamilies:
 
 
 class TestAsyncExtendedFamilies:
-    async def test_list_schema_details(self, probed_async_backend):
+    async def test_list_schema_infos(self, probed_async_backend):
         assert_schemas(
-            await probed_async_backend.introspector.list_schema_details()
+            await probed_async_backend.introspector.list_schema_infos()
         )
 
     async def test_list_schemas_is_the_neutral_names_only(

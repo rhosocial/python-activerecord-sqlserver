@@ -7,7 +7,7 @@ using INFORMATION_SCHEMA and sys.* catalog views.
 
 import copy
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple, TYPE_CHECKING
 
 from rhosocial.activerecord.backend.introspection.base import (
     IntrospectorMixin,
@@ -175,6 +175,48 @@ _TEMPORAL_TABLE_VERSION = (13, 0, 0)
 
 class SQLServerIntrospectorMixin(SQLServerNodeBuilderMixin, IntrospectorMixin):
     """Shared non-I/O logic for SQL Server introspectors."""
+
+    #: Shared-object kinds this engine does not have at all. Answering these
+    #: ``False`` is a definite "there is none", not "cannot tell".
+    #:
+    #: ``DOMAIN`` is SQL-standard vocabulary SQL Server never adopted: its
+    #: user-defined data types are ``TYPE`` objects and carry no domain
+    #: defaults or checks. ``EXTENSION`` is equally absent -- features arrive
+    #: with the server itself, and the dialect's ``supports_extensions()``
+    #: keeps the default ``False``.
+    ITEM_KINDS_ABSENT: FrozenSet[ItemKind] = frozenset({
+        ItemKind.DOMAIN,
+        ItemKind.EXTENSION,
+    })
+
+    #: Shared-object kinds this engine has objects of, but with no catalogue
+    #: query behind :meth:`item_exists`. These refuse rather than answer
+    #: ``False``: an implementation gap that reads as absence would teach a
+    #: migration plan the wrong thing.
+    #:
+    #: ``INDEX`` is here because an index name alone is not an address in
+    #: SQL Server -- an index belongs to a table, and this method is given
+    #: none. ``FULLTEXT_CATALOG`` is here because the catalogue views have no
+    #: listing here. ``TABLESPACE`` is here because the engine's placement
+    #: objects are filegroups (partition schemes name them), and they have no
+    #: query yet.
+    ITEM_KINDS_UNQUERIED: FrozenSet[ItemKind] = frozenset({
+        ItemKind.INDEX,
+        ItemKind.FULLTEXT_CATALOG,
+        ItemKind.TABLESPACE,
+    })
+
+    #: Shared-object kinds answered by a catalogue query in
+    #: :meth:`item_exists`.
+    ITEM_KINDS_QUERIED: FrozenSet[ItemKind] = frozenset({
+        ItemKind.SCHEMA,
+        ItemKind.TABLE,
+        ItemKind.SEQUENCE,
+        ItemKind.TYPE,
+        ItemKind.FUNCTION,
+        ItemKind.PARTITION_FUNCTION,
+        ItemKind.PARTITION_SCHEME,
+    })
 
     @property
     def default_schema(self) -> str:
@@ -1172,9 +1214,9 @@ class SQLServerIntrospector(
     # ``list_functions(schema="dbo")`` never answer each other.
     # ------------------------------------------------------------------
 
-    def list_schema_details(self) -> List[SQLServerSchemaInfo]:
+    def list_schema_infos(self) -> List[SQLServerSchemaInfo]:
         """List the database's schemas with their owning principal."""
-        key = self._cache.key(IntrospectionScope.SCHEMA, extra="schema_details")
+        key = self._cache.key(IntrospectionScope.SCHEMA, extra="schema_infos")
         cached = self._cache.get(key)
         if cached is not None:
             return cached
@@ -1188,10 +1230,10 @@ class SQLServerIntrospector(
         """List the schema names the server exposes.
 
         Core's neutral answer is the names alone; the owner and schema id
-        this engine also reports stay on :meth:`list_schema_details`, which
+        this engine also reports stay on :meth:`list_schema_infos`, which
         is the backend's own complete answer beside it.
         """
-        return [schema.name for schema in self.list_schema_details()]
+        return [schema.name for schema in self.list_schema_infos()]
 
     def list_extended_properties(
         self,
@@ -1617,16 +1659,28 @@ class SQLServerIntrospector(
     ) -> bool:
         """Whether a shared object of this kind exists.
 
+        Answer for every kind, with core's one rule: a kind this engine does
+        not have at all answers ``False``; a kind it has and this backend
+        queries answers from the catalogue; a kind it has but this backend
+        cannot query is refused, because an implementation gap must not read
+        as absence. :attr:`ITEM_KINDS_ABSENT` and :attr:`ITEM_KINDS_QUERIED`
+        declare the two answer sets; everything else is
+        :attr:`ITEM_KINDS_UNQUERIED` and refuses.
+
         A partition function or scheme is database-scoped, so ``schema``
-        means nothing for those two and is not forwarded. A kind this backend
-        does not answer is refused rather than answered ``False``: "there is
-        no such object" and "I cannot check" are different answers.
+        means nothing for those two and is not forwarded.
         """
         if not isinstance(kind, ItemKind):
             try:
                 kind = ItemKind(kind)
             except ValueError:
                 self._refuse("StructureIntrospectionSupport", "item_exists")
+
+        if kind in self.ITEM_KINDS_ABSENT:
+            return False
+        if kind not in self.ITEM_KINDS_QUERIED:
+            self._refuse("StructureIntrospectionSupport", "item_exists")
+            return False
 
         if kind is ItemKind.SCHEMA:
             return name in self.list_schemas()
@@ -1642,11 +1696,8 @@ class SQLServerIntrospector(
             )
         if kind is ItemKind.PARTITION_FUNCTION:
             statement = self.partition_function_statement(function_name=name)
-        elif kind is ItemKind.PARTITION_SCHEME:
-            statement = self.partition_scheme_statement(scheme_name=name)
         else:
-            self._refuse("StructureIntrospectionSupport", "item_exists")
-            return False
+            statement = self.partition_scheme_statement(scheme_name=name)
 
         cache_key = self._cache.key(
             IntrospectionScope.PARTITION, name, extra=f"exists:{kind.value}"
@@ -1733,9 +1784,9 @@ class AsyncSQLServerIntrospector(
     # only the executor is awaited.
     # ------------------------------------------------------------------
 
-    async def list_schema_details(self) -> List[SQLServerSchemaInfo]:
+    async def list_schema_infos(self) -> List[SQLServerSchemaInfo]:
         """List the database's schemas with their owning principal."""
-        key = self._cache.key(IntrospectionScope.SCHEMA, extra="schema_details")
+        key = self._cache.key(IntrospectionScope.SCHEMA, extra="schema_infos")
         cached = self._cache.get(key)
         if cached is not None:
             return cached
@@ -1747,7 +1798,7 @@ class AsyncSQLServerIntrospector(
 
     async def list_schemas(self) -> List[str]:
         """List the schema names the server exposes."""
-        return [schema.name for schema in await self.list_schema_details()]
+        return [schema.name for schema in await self.list_schema_infos()]
 
     async def list_extended_properties(
         self,
@@ -2102,12 +2153,23 @@ class AsyncSQLServerIntrospector(
     async def item_exists(
         self, kind: ItemKind, name: str, schema: Optional[str] = None
     ) -> bool:
-        """Whether a shared object of this kind exists."""
+        """Whether a shared object of this kind exists.
+
+        The async twin of the sync rule: a kind this engine does not have at
+        all answers ``False``; a queried kind answers from the catalogue; a
+        kind it has but this backend cannot query is refused.
+        """
         if not isinstance(kind, ItemKind):
             try:
                 kind = ItemKind(kind)
             except ValueError:
                 self._refuse("StructureIntrospectionSupport", "item_exists")
+
+        if kind in self.ITEM_KINDS_ABSENT:
+            return False
+        if kind not in self.ITEM_KINDS_QUERIED:
+            self._refuse("StructureIntrospectionSupport", "item_exists")
+            return False
 
         if kind is ItemKind.SCHEMA:
             return name in await self.list_schemas()
@@ -2127,11 +2189,8 @@ class AsyncSQLServerIntrospector(
             )
         if kind is ItemKind.PARTITION_FUNCTION:
             statement = self.partition_function_statement(function_name=name)
-        elif kind is ItemKind.PARTITION_SCHEME:
-            statement = self.partition_scheme_statement(scheme_name=name)
         else:
-            self._refuse("StructureIntrospectionSupport", "item_exists")
-            return False
+            statement = self.partition_scheme_statement(scheme_name=name)
 
         cache_key = self._cache.key(
             IntrospectionScope.PARTITION, name, extra=f"exists:{kind.value}"
