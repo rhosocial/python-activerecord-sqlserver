@@ -289,8 +289,8 @@ class TestRenderingSnapshots:
         assert multiple == ("WITH (NOLOCK, READCOMMITTED)", ())
 
     def test_locking_hints_gain_readpast_only_on_2019_plus(self):
-        base = SQLServerDialect((13, 0, 0)).format_table_hint_locking("UPDLOCK, READPAST")
-        newer = SQLServerDialect((15, 0, 0)).format_table_hint_locking("UPDLOCK, READPAST")
+        base = SQLServerDialect((13, 0, 0)).render_table_hint_locking("UPDLOCK, READPAST")
+        newer = SQLServerDialect((15, 0, 0)).render_table_hint_locking("UPDLOCK, READPAST")
         assert base == ("WITH (UPDLOCK, ROWLOCK)", ())  # READPAST silently dropped pre-2019
         assert newer == ("WITH (UPDLOCK, ROWLOCK, READPAST)", ())
 

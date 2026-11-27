@@ -9,6 +9,8 @@ the ``format_pivot`` / ``format_unpivot`` formatters used by
 
 from typing import Tuple, TYPE_CHECKING
 
+from rhosocial.activerecord.backend.dialect.mixins.pivot import PivotMixin
+
 if TYPE_CHECKING:
     from ..expression.pivot import (
         SQLServerPivotExpression,
@@ -19,8 +21,12 @@ if TYPE_CHECKING:
 _SQL_SERVER_PIVOT_VERSION = (9, 0, 0)
 
 
-class SQLServerPivotMixin:
-    """SQL Server PIVOT / UNPIVOT capability and formatting implementation."""
+class SQLServerPivotMixin(PivotMixin):
+    """SQL Server PIVOT / UNPIVOT capability and formatting implementation.
+
+    Inheriting core's ``PivotMixin`` keeps ``format_pivot_value`` an override of
+    the declared core helper rather than a free-standing renderer with no kind.
+    """
 
     def supports_pivot(self) -> bool:
         """PIVOT is supported since SQL Server 2005."""

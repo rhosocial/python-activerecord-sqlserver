@@ -1,181 +1,188 @@
 """
 JOIN multiple tables.
 """
-from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
-from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-import os
 
-# ============================================================
-# SECTION: Setup (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
-from rhosocial.activerecord.backend.options import ExecutionOptions
-from rhosocial.activerecord.backend.schema import StatementType
+def main():
+    from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+    from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-config = SQLServerConnectionConfig(
-    host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
-    database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
-    username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
-    password=os.environ.get('SQLSERVER_PASSWORD', ''),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
-    encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
-    trust_server_certificate=(
-        os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
-    ),
-)
-backend = SQLServerBackend(connection_config=config)
-backend.connect()
-dialect = backend.dialect
+    import os
 
-from rhosocial.activerecord.backend.expression import (
-    CreateTableStatement,
-    InsertStatement,
-    ValuesSource,
-)
-from rhosocial.activerecord.backend.expression.core import Literal
-from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements import (
-    ColumnDefinition,
-    ColumnConstraint,
-    ColumnNotNullConstraint,
-    ColumnPrimaryKeyConstraint,
-    TableConstraint,
-    TableForeignKeyConstraint,
-)
+    # ============================================================
+    # SECTION: Setup (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+    from rhosocial.activerecord.backend.options import ExecutionOptions
+    from rhosocial.activerecord.backend.schema import StatementType
 
-ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
-
-users_table = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'join_users'),
-    columns=[
-        ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
-            ColumnConstraint(
-                dialect,
-                branch=ColumnPrimaryKeyConstraint(dialect),
-            ),
-        ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
-            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
-        ]),
-    ],
-    if_not_exists=True,
-)
-sql, params = users_table.to_sql()
-backend.execute(sql, params, options=ddl_options)
-
-orders_table = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'join_orders'),
-    columns=[
-        ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
-            ColumnConstraint(
-                dialect,
-                branch=ColumnPrimaryKeyConstraint(dialect),
-            ),
-        ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition('user_id', 'INT'),
-        ColumnDefinition('amount', 'DECIMAL(10,2)'),
-    ],
-    table_constraints=[
-        TableConstraint(
-            dialect,
-            branch=TableForeignKeyConstraint(
-                dialect, ['user_id'], (Table(dialect, 'join_users'), ['id'])
-            ),
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '11434')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', ''),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=(
+            os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
         ),
-    ],
-    if_not_exists=True,
-)
-sql, params = orders_table.to_sql()
-backend.execute(sql, params, options=ddl_options)
-
-users = [('Alice',), ('Bob',)]
-for user in users:
-    insert_expr = InsertStatement(
-        dialect=dialect,
-        into=Table(dialect, 'join_users'),
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, v) for v in user]]),
     )
-    sql, params = insert_expr.to_sql()
-    backend.execute(sql, params)
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
+    dialect = backend.dialect
 
-orders = [
-    (1, 100.0),
-    (1, 200.0),
-    (2, 150.0),
-]
-for row in orders:
-    insert_expr = InsertStatement(
-        dialect=dialect,
-        into=Table(dialect, 'join_orders'),
-        columns=['user_id', 'amount'],
-        source=ValuesSource(dialect, [[Literal(dialect, v) for v in row]]),
+    from rhosocial.activerecord.backend.expression import (
+        CreateTableStatement,
+        InsertStatement,
+        ValuesSource,
     )
-    sql, params = insert_expr.to_sql()
-    backend.execute(sql, params)
+    from rhosocial.activerecord.backend.expression.core import Literal
+    from rhosocial.activerecord.backend.expression.objects import Table
+    from rhosocial.activerecord.backend.expression.statements import (
+        ColumnDefinition,
+        ColumnConstraint,
+        ColumnNotNullConstraint,
+        ColumnPrimaryKeyConstraint,
+        TableConstraint,
+        TableForeignKeyConstraint,
+    )
 
-# ============================================================
-# SECTION: Business Logic (the pattern to learn)
-# ============================================================
-from rhosocial.activerecord.backend.expression import (
-    QueryStatement,
-    Column,
-    JoinClause,
-)
-from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
-from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
+    ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
-join_expr = JoinClause(
-    dialect=dialect,
-    left_table=NamedRelationRef(dialect, Table(dialect, 'join_users'), alias='u'),
-    right_table=NamedRelationRef(dialect, Table(dialect, 'join_orders'), alias='o'),
-    join_type='LEFT JOIN',
-    condition=ComparisonPredicate(
-        dialect,
-        '=',
-        Column(dialect, 'id', 'u'),
-        Column(dialect, 'user_id', 'o'),
-    ),
-)
+    users_table = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'join_users'),
+        columns=[
+            ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
+                ColumnConstraint(
+                    dialect,
+                    branch=ColumnPrimaryKeyConstraint(dialect),
+                ),
+            ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
+                ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
+            ]),
+        ],
+        if_not_exists=True,
+    )
+    sql, params = users_table.to_sql()
+    backend.execute(sql, params, options=ddl_options)
 
-query = QueryStatement(
-    dialect=dialect,
-    select=[
-        Column(dialect, 'name', 'u'),
-        Column(dialect, 'amount', 'o'),
-    ],
-    from_=join_expr,
-)
+    orders_table = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'join_orders'),
+        columns=[
+            ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
+                ColumnConstraint(
+                    dialect,
+                    branch=ColumnPrimaryKeyConstraint(dialect),
+                ),
+            ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition('user_id', 'INT'),
+            ColumnDefinition('amount', 'DECIMAL(10,2)'),
+        ],
+        table_constraints=[
+            TableConstraint(
+                dialect,
+                branch=TableForeignKeyConstraint(
+                    dialect, ['user_id'], (Table(dialect, 'join_users'), ['id'])
+                ),
+            ),
+        ],
+        if_not_exists=True,
+    )
+    sql, params = orders_table.to_sql()
+    backend.execute(sql, params, options=ddl_options)
 
-sql, params = query.to_sql()
-print(f"SQL: {sql}")
-print(f"Params: {params}")
+    users = [('Alice',), ('Bob',)]
+    for user in users:
+        insert_expr = InsertStatement(
+            dialect=dialect,
+            into=Table(dialect, 'join_users'),
+            columns=['name'],
+            source=ValuesSource(dialect, [[Literal(dialect, v) for v in user]]),
+        )
+        sql, params = insert_expr.to_sql()
+        backend.execute(sql, params)
 
-# ============================================================
-# SECTION: Execution (run the expression)
-# ============================================================
-dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
-result = backend.execute(sql, params, options=dql_options)
-print(f"Rows returned: {len(result.data) if result.data else 0}")
-for row in result.data or []:
-    print(f" {row}")
+    orders = [
+        (1, 100.0),
+        (1, 200.0),
+        (2, 150.0),
+    ]
+    for row in orders:
+        insert_expr = InsertStatement(
+            dialect=dialect,
+            into=Table(dialect, 'join_orders'),
+            columns=['user_id', 'amount'],
+            source=ValuesSource(dialect, [[Literal(dialect, v) for v in row]]),
+        )
+        sql, params = insert_expr.to_sql()
+        backend.execute(sql, params)
 
-# ============================================================
-# SECTION: Teardown (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.expression import DropTableStatement
+    # ============================================================
+    # SECTION: Business Logic (the pattern to learn)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import (
+        QueryStatement,
+        Column,
+        JoinClause,
+    )
+    from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
+    from rhosocial.activerecord.backend.expression.sources import NamedRelationRef
 
-drop_orders = DropTableStatement(dialect=dialect, table=Table(dialect, 'join_orders'), if_exists=True)
-sql, params = drop_orders.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    join_expr = JoinClause(
+        dialect=dialect,
+        left_table=NamedRelationRef(dialect, Table(dialect, 'join_users'), alias='u'),
+        right_table=NamedRelationRef(dialect, Table(dialect, 'join_orders'), alias='o'),
+        join_type='LEFT JOIN',
+        condition=ComparisonPredicate(
+            dialect,
+            '=',
+            Column(dialect, 'id', 'u'),
+            Column(dialect, 'user_id', 'o'),
+        ),
+    )
 
-drop_users = DropTableStatement(dialect=dialect, table=Table(dialect, 'join_users'), if_exists=True)
-sql, params = drop_users.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    query = QueryStatement(
+        dialect=dialect,
+        select=[
+            Column(dialect, 'name', 'u'),
+            Column(dialect, 'amount', 'o'),
+        ],
+        from_=join_expr,
+    )
 
-backend.disconnect()
+    sql, params = query.to_sql()
+    print(f"SQL: {sql}")
+    print(f"Params: {params}")
+
+    # ============================================================
+    # SECTION: Execution (run the expression)
+    # ============================================================
+    dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
+    result = backend.execute(sql, params, options=dql_options)
+    print(f"Rows returned: {len(result.data) if result.data else 0}")
+    for row in result.data or []:
+        print(f" {row}")
+
+    # ============================================================
+    # SECTION: Teardown (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import DropTableStatement
+
+    drop_orders = DropTableStatement(dialect=dialect, table=Table(dialect, 'join_orders'), if_exists=True)
+    sql, params = drop_orders.to_sql()
+    backend.execute(sql, params, options=ddl_options)
+
+    drop_users = DropTableStatement(dialect=dialect, table=Table(dialect, 'join_users'), if_exists=True)
+    sql, params = drop_users.to_sql()
+    backend.execute(sql, params, options=ddl_options)
+
+    backend.disconnect()
+
+
+if __name__ == "__main__":
+    main()

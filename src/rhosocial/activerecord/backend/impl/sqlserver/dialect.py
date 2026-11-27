@@ -559,7 +559,7 @@ class SQLServerDialect(
 
         return SQLServerSchemaDiffer()
 
-    def format_auto_increment(self) -> Tuple[str, tuple]:
+    def render_auto_increment(self) -> Tuple[str, tuple]:
         """Return IDENTITY(1,1) for auto-increment columns."""
         return "IDENTITY(1,1)", ()
 
@@ -1431,7 +1431,7 @@ class SQLServerDialect(
             sql = f"{sql} AS {self.format_identifier(expr.alias)}"
         return sql, tuple(operand_params)
 
-    def format_expression(self, expr: Any) -> Tuple[str, tuple]:
+    def render_expression(self, expr: Any) -> Tuple[str, tuple]:
         """Format an arbitrary expression to SQL."""
         if isinstance(expr, BaseExpression):
             return expr.to_sql()

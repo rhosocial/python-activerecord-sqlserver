@@ -1,122 +1,129 @@
 """
 Basic transaction with context manager for automatic commit/rollback.
 """
-from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
-from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-import os
 
-# ============================================================
-# SECTION: Setup (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+def main():
+    from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+    from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-config = SQLServerConnectionConfig(
-    host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
-    database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
-    username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
-    password=os.environ.get('SQLSERVER_PASSWORD', ''),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
-    encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
-    trust_server_certificate=(
-        os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
-    ),
-    autocommit=False,
-)
-backend = SQLServerBackend(connection_config=config)
-backend.connect()
-dialect = backend.dialect
+    import os
 
-from rhosocial.activerecord.backend.expression import CreateTableStatement
-from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements import (
-    ColumnDefinition,
-    ColumnConstraint,
-    ColumnNotNullConstraint,
-    ColumnPrimaryKeyConstraint,
-)
-from rhosocial.activerecord.backend.options import ExecutionOptions
-from rhosocial.activerecord.backend.schema import StatementType
+    # ============================================================
+    # SECTION: Setup (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
-ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
-
-create_table = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'txn_users'),
-    columns=[
-        ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
-            ColumnConstraint(
-                dialect,
-                branch=ColumnPrimaryKeyConstraint(dialect),
-            ),
-        ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
-            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
-        ]),
-    ],
-    if_not_exists=True,
-)
-sql, params = create_table.to_sql()
-backend.execute(sql, params, options=ddl_options)
-
-# ============================================================
-# SECTION: Business Logic (the pattern to learn)
-# ============================================================
-from rhosocial.activerecord.backend.expression import InsertStatement, ValuesSource
-from rhosocial.activerecord.backend.expression.core import Literal
-
-# Use transaction context manager for automatic commit/rollback
-# If an exception occurs, the transaction is automatically rolled back
-with backend.transaction():
-    insert_expr = InsertStatement(
-        dialect=dialect,
-        into=Table(dialect, 'txn_users'),
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '11434')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', ''),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=(
+            os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
+        ),
+        autocommit=False,
     )
-    sql, params = insert_expr.to_sql()
-    backend.execute(sql, params)
-    
-    insert_expr2 = InsertStatement(
-        dialect=dialect,
-        into=Table(dialect, 'txn_users'),
-        columns=['name'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'Bob')]]),
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
+    dialect = backend.dialect
+
+    from rhosocial.activerecord.backend.expression import CreateTableStatement
+    from rhosocial.activerecord.backend.expression.objects import Table
+    from rhosocial.activerecord.backend.expression.statements import (
+        ColumnDefinition,
+        ColumnConstraint,
+        ColumnNotNullConstraint,
+        ColumnPrimaryKeyConstraint,
     )
-    sql, params = insert_expr2.to_sql()
-    backend.execute(sql, params)
-    
-    print("Both inserts executed within transaction")
+    from rhosocial.activerecord.backend.options import ExecutionOptions
+    from rhosocial.activerecord.backend.schema import StatementType
 
-# Transaction is automatically committed when exiting the context
-print("Transaction committed")
+    ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
-# ============================================================
-# SECTION: Execution (verify results)
-# ============================================================
-from rhosocial.activerecord.backend.expression import QueryStatement, Column
+    create_table = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'txn_users'),
+        columns=[
+            ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
+                ColumnConstraint(
+                    dialect,
+                    branch=ColumnPrimaryKeyConstraint(dialect),
+                ),
+            ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
+                ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
+            ]),
+        ],
+        if_not_exists=True,
+    )
+    sql, params = create_table.to_sql()
+    backend.execute(sql, params, options=ddl_options)
 
-query = QueryStatement(
-    dialect=dialect,
-    select=[Column(dialect, 'id'), Column(dialect, 'name')],
-    from_=Table(dialect, 'txn_users'),
-)
-sql, params = query.to_sql()
-dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
-result = backend.execute(sql, params, options=dql_options)
-print(f"Rows after transaction: {len(result.data) if result.data else 0}")
-for row in result.data or []:
-    print(f" {row}")
+    # ============================================================
+    # SECTION: Business Logic (the pattern to learn)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import InsertStatement, ValuesSource
+    from rhosocial.activerecord.backend.expression.core import Literal
 
-# ============================================================
-# SECTION: Teardown (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.expression import DropTableStatement
+    # Use transaction context manager for automatic commit/rollback
+    # If an exception occurs, the transaction is automatically rolled back
+    with backend.transaction():
+        insert_expr = InsertStatement(
+            dialect=dialect,
+            into=Table(dialect, 'txn_users'),
+            columns=['name'],
+            source=ValuesSource(dialect, [[Literal(dialect, 'Alice')]]),
+        )
+        sql, params = insert_expr.to_sql()
+        backend.execute(sql, params)
 
-drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'txn_users'), if_exists=True)
-sql, params = drop_expr.to_sql()
-backend.execute(sql, params, options=ddl_options)
+        insert_expr2 = InsertStatement(
+            dialect=dialect,
+            into=Table(dialect, 'txn_users'),
+            columns=['name'],
+            source=ValuesSource(dialect, [[Literal(dialect, 'Bob')]]),
+        )
+        sql, params = insert_expr2.to_sql()
+        backend.execute(sql, params)
 
-backend.disconnect()
+        print("Both inserts executed within transaction")
+
+    # Transaction is automatically committed when exiting the context
+    print("Transaction committed")
+
+    # ============================================================
+    # SECTION: Execution (verify results)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import QueryStatement, Column
+
+    query = QueryStatement(
+        dialect=dialect,
+        select=[Column(dialect, 'id'), Column(dialect, 'name')],
+        from_=Table(dialect, 'txn_users'),
+    )
+    sql, params = query.to_sql()
+    dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
+    result = backend.execute(sql, params, options=dql_options)
+    print(f"Rows after transaction: {len(result.data) if result.data else 0}")
+    for row in result.data or []:
+        print(f" {row}")
+
+    # ============================================================
+    # SECTION: Teardown (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import DropTableStatement
+
+    drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'txn_users'), if_exists=True)
+    sql, params = drop_expr.to_sql()
+    backend.execute(sql, params, options=ddl_options)
+
+    backend.disconnect()
+
+
+if __name__ == "__main__":
+    main()

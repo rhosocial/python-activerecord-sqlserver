@@ -93,6 +93,14 @@ class SQLServerDQLMixin:
         the generic formatter -- the produced SQL is never patched afterwards,
         because a formatter only concatenates what the clause objects return.
         """
+        from ..expression.dml import SQLServerSelectIntoExpression
+
+        # SELECT INTO has no generic node kind: the SQL Server node carries an
+        # extra ``select_into_table`` field. Dispatch to its own renderer here
+        # so the INTO clause is emitted by the same formatter for both direct
+        # calls and ``to_sql()`` on the node.
+        if isinstance(expr, SQLServerSelectIntoExpression) and expr.select_into_table:
+            return self.format_select_into_statement(expr)
         if expr.limit_offset is None or expr.order_by is not None:
             return super().format_query_statement(expr)
         preamble = OrderByClause(

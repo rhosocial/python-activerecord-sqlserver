@@ -1,122 +1,129 @@
 """
 Batch insert multiple rows efficiently.
 """
-from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
-from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-import os
 
-# ============================================================
-# SECTION: Setup (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+def main():
+    from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+    from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-config = SQLServerConnectionConfig(
-    host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
-    database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
-    username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
-    password=os.environ.get('SQLSERVER_PASSWORD', ''),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
-    encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
-    trust_server_certificate=(
-        os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
-    ),
-)
-backend = SQLServerBackend(connection_config=config)
-backend.connect()
-dialect = backend.dialect
+    import os
 
-from rhosocial.activerecord.backend.expression import CreateTableStatement
-from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements import (
-    ColumnDefinition,
-    ColumnConstraint,
-    ColumnNotNullConstraint,
-    ColumnPrimaryKeyConstraint,
-)
-from rhosocial.activerecord.backend.options import ExecutionOptions
-from rhosocial.activerecord.backend.schema import StatementType
+    # ============================================================
+    # SECTION: Setup (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
-ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '11434')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', ''),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=(
+            os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
+        ),
+    )
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
+    dialect = backend.dialect
 
-create_table = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'batch_users'),
-    columns=[
-        ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
-            ColumnConstraint(
-                dialect,
-                branch=ColumnPrimaryKeyConstraint(dialect),
-            ),
-        ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
-            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
-        ]),
-        ColumnDefinition('email', 'NVARCHAR(200)'),
-    ],
-    if_not_exists=True,
-)
-sql, params = create_table.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    from rhosocial.activerecord.backend.expression import CreateTableStatement
+    from rhosocial.activerecord.backend.expression.objects import Table
+    from rhosocial.activerecord.backend.expression.statements import (
+        ColumnDefinition,
+        ColumnConstraint,
+        ColumnNotNullConstraint,
+        ColumnPrimaryKeyConstraint,
+    )
+    from rhosocial.activerecord.backend.options import ExecutionOptions
+    from rhosocial.activerecord.backend.schema import StatementType
 
-# ============================================================
-# SECTION: Business Logic (the pattern to learn)
-# ============================================================
-from rhosocial.activerecord.backend.expression import InsertStatement, ValuesSource
-from rhosocial.activerecord.backend.expression.core import Literal
+    ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
-# Prepare batch data
-users = [
-    ('Alice', 'alice@example.com'),
-    ('Bob', 'bob@example.com'),
-    ('Charlie', 'charlie@example.com'),
-]
+    create_table = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'batch_users'),
+        columns=[
+            ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
+                ColumnConstraint(
+                    dialect,
+                    branch=ColumnPrimaryKeyConstraint(dialect),
+                ),
+            ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition('name', 'NVARCHAR(100)', constraints=[
+                ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
+            ]),
+            ColumnDefinition('email', 'NVARCHAR(200)'),
+        ],
+        if_not_exists=True,
+    )
+    sql, params = create_table.to_sql()
+    backend.execute(sql, params, options=ddl_options)
 
-# Create batch insert with multiple value rows
-insert_expr = InsertStatement(
-    dialect=dialect,
-    into=Table(dialect, 'batch_users'),
-    columns=['name', 'email'],
-    source=ValuesSource(
-        dialect,
-        [[Literal(dialect, name), Literal(dialect, email)] for name, email in users],
-    ),
-)
+    # ============================================================
+    # SECTION: Business Logic (the pattern to learn)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import InsertStatement, ValuesSource
+    from rhosocial.activerecord.backend.expression.core import Literal
 
-sql, params = insert_expr.to_sql()
-print(f"SQL: {sql}")
-print(f"Params: {params}")
+    # Prepare batch data
+    users = [
+        ('Alice', 'alice@example.com'),
+        ('Bob', 'bob@example.com'),
+        ('Charlie', 'charlie@example.com'),
+    ]
 
-# ============================================================
-# SECTION: Execution (run the expression)
-# ============================================================
-result = backend.execute(sql, params)
-print(f"Affected rows: {result.affected_rows}")
+    # Create batch insert with multiple value rows
+    insert_expr = InsertStatement(
+        dialect=dialect,
+        into=Table(dialect, 'batch_users'),
+        columns=['name', 'email'],
+        source=ValuesSource(
+            dialect,
+            [[Literal(dialect, name), Literal(dialect, email)] for name, email in users],
+        ),
+    )
 
-# Verify insertion
-from rhosocial.activerecord.backend.expression import QueryStatement, Column
+    sql, params = insert_expr.to_sql()
+    print(f"SQL: {sql}")
+    print(f"Params: {params}")
 
-query = QueryStatement(
-    dialect=dialect,
-    select=[Column(dialect, 'id'), Column(dialect, 'name'), Column(dialect, 'email')],
-    from_=Table(dialect, 'batch_users'),
-)
-sql, params = query.to_sql()
-dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
-result = backend.execute(sql, params, options=dql_options)
-print(f"Inserted rows:")
-for row in result.data or []:
-    print(f" {row}")
+    # ============================================================
+    # SECTION: Execution (run the expression)
+    # ============================================================
+    result = backend.execute(sql, params)
+    print(f"Affected rows: {result.affected_rows}")
 
-# ============================================================
-# SECTION: Teardown (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.expression import DropTableStatement
+    # Verify insertion
+    from rhosocial.activerecord.backend.expression import QueryStatement, Column
 
-drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'batch_users'), if_exists=True)
-sql, params = drop_expr.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    query = QueryStatement(
+        dialect=dialect,
+        select=[Column(dialect, 'id'), Column(dialect, 'name'), Column(dialect, 'email')],
+        from_=Table(dialect, 'batch_users'),
+    )
+    sql, params = query.to_sql()
+    dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
+    result = backend.execute(sql, params, options=dql_options)
+    print(f"Inserted rows:")
+    for row in result.data or []:
+        print(f" {row}")
 
-backend.disconnect()
+    # ============================================================
+    # SECTION: Teardown (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import DropTableStatement
+
+    drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'batch_users'), if_exists=True)
+    sql, params = drop_expr.to_sql()
+    backend.execute(sql, params, options=ddl_options)
+
+    backend.disconnect()
+
+
+if __name__ == "__main__":
+    main()

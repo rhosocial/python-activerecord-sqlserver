@@ -1,97 +1,104 @@
 """
 Create an index on an existing table.
 """
-from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
-from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-import os
 
-# ============================================================
-# SECTION: Setup (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+def main():
+    from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+    from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-config = SQLServerConnectionConfig(
-    host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
-    database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
-    username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
-    password=os.environ.get('SQLSERVER_PASSWORD', ''),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
-    encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
-    trust_server_certificate=(
-        os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
-    ),
-)
-backend = SQLServerBackend(connection_config=config)
-backend.connect()
-dialect = backend.dialect
+    import os
 
-from rhosocial.activerecord.backend.expression import CreateTableStatement
-from rhosocial.activerecord.backend.expression.objects import Index, Table
-from rhosocial.activerecord.backend.expression.statements import (
-    ColumnDefinition,
-    ColumnConstraint,
-    ColumnNotNullConstraint,
-    ColumnPrimaryKeyConstraint,
-)
-from rhosocial.activerecord.backend.options import ExecutionOptions
-from rhosocial.activerecord.backend.schema import StatementType
+    # ============================================================
+    # SECTION: Setup (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
-ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '11434')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', ''),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=(
+            os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
+        ),
+    )
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
+    dialect = backend.dialect
 
-create_table = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'users'),
-    columns=[
-        ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
-            ColumnConstraint(
-                dialect,
-                branch=ColumnPrimaryKeyConstraint(dialect),
-            ),
-        ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition('email', 'NVARCHAR(200)', constraints=[
-            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
-        ]),
-        ColumnDefinition('name', 'NVARCHAR(100)'),
-    ],
-    if_not_exists=True,
-)
-sql, params = create_table.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    from rhosocial.activerecord.backend.expression import CreateTableStatement
+    from rhosocial.activerecord.backend.expression.objects import Index, Table
+    from rhosocial.activerecord.backend.expression.statements import (
+        ColumnDefinition,
+        ColumnConstraint,
+        ColumnNotNullConstraint,
+        ColumnPrimaryKeyConstraint,
+    )
+    from rhosocial.activerecord.backend.options import ExecutionOptions
+    from rhosocial.activerecord.backend.schema import StatementType
 
-# ============================================================
-# SECTION: Business Logic (the pattern to learn)
-# ============================================================
-from rhosocial.activerecord.backend.expression import CreateIndexStatement
+    ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
-create_idx = CreateIndexStatement(
-    dialect=dialect,
-    index=Index(dialect, 'idx_users_email'),
-    table=Table(dialect, 'users'),
-    columns=['email'],
-    unique=True,
-    if_not_exists=True,
-)
+    create_table = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'users'),
+        columns=[
+            ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
+                ColumnConstraint(
+                    dialect,
+                    branch=ColumnPrimaryKeyConstraint(dialect),
+                ),
+            ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition('email', 'NVARCHAR(200)', constraints=[
+                ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
+            ]),
+            ColumnDefinition('name', 'NVARCHAR(100)'),
+        ],
+        if_not_exists=True,
+    )
+    sql, params = create_table.to_sql()
+    backend.execute(sql, params, options=ddl_options)
 
-sql, params = create_idx.to_sql()
-print(f"SQL: {sql}")
-print(f"Params: {params}")
+    # ============================================================
+    # SECTION: Business Logic (the pattern to learn)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import CreateIndexStatement
 
-# ============================================================
-# SECTION: Execution (run the expression)
-# ============================================================
-result = backend.execute(sql, params, options=ddl_options)
-print("Index created: idx_users_email")
+    create_idx = CreateIndexStatement(
+        dialect=dialect,
+        index=Index(dialect, 'idx_users_email'),
+        table=Table(dialect, 'users'),
+        columns=['email'],
+        unique=True,
+        if_not_exists=True,
+    )
 
-# ============================================================
-# SECTION: Teardown (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.expression import DropTableStatement
+    sql, params = create_idx.to_sql()
+    print(f"SQL: {sql}")
+    print(f"Params: {params}")
 
-drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'users'), if_exists=True)
-sql, params = drop_expr.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    # ============================================================
+    # SECTION: Execution (run the expression)
+    # ============================================================
+    result = backend.execute(sql, params, options=ddl_options)
+    print("Index created: idx_users_email")
 
-backend.disconnect()
+    # ============================================================
+    # SECTION: Teardown (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import DropTableStatement
+
+    drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'users'), if_exists=True)
+    sql, params = drop_expr.to_sql()
+    backend.execute(sql, params, options=ddl_options)
+
+    backend.disconnect()
+
+
+if __name__ == "__main__":
+    main()

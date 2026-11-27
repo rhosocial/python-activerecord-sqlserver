@@ -6,83 +6,90 @@ The SQLServerSchemaDiffer checks ordinal_position to detect column reordering.
 
 Supported versions: SQL Server 2012+
 """
-from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
 
-import os
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
-config = SQLServerConnectionConfig(
-    host=os.getenv("SQLSERVER_HOST", "localhost"),
-    port=int(os.getenv("SQLSERVER_PORT", "1433")),
-    database=os.getenv("SQLSERVER_DATABASE", "test_db"),
-    username=os.getenv("SQLSERVER_USERNAME", "sa"),
-    password=os.getenv("SQLSERVER_PASSWORD", ""),
-)
-backend = SQLServerBackend(connection_config=config)
-backend.connect()
-backend.introspect_and_adapt()
-dialect = backend.dialect
+def main():
+    from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
 
-from rhosocial.activerecord.backend.expression import (
-    DropTableStatement, CreateTableStatement, ColumnDefinition,
-    ColumnConstraint, ColumnPrimaryKeyConstraint,
-    AlterTableStatement, AddColumnAction,
-)
-from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.types import (
-    IntegerType, VarCharType,
-)
+    import os
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
-users = Table(dialect, "users")
+    config = SQLServerConnectionConfig(
+        host=os.getenv("SQLSERVER_HOST", "localhost"),
+        port=int(os.getenv("SQLSERVER_PORT", "1433")),
+        database=os.getenv("SQLSERVER_DATABASE", "test_db"),
+        username=os.getenv("SQLSERVER_USERNAME", "sa"),
+        password=os.getenv("SQLSERVER_PASSWORD", ""),
+    )
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
+    backend.introspect_and_adapt()
+    dialect = backend.dialect
 
-expr = DropTableStatement(dialect, users, if_exists=True)
-sql, params = expr.to_sql()
-backend.execute(sql, params)
+    from rhosocial.activerecord.backend.expression import (
+        DropTableStatement, CreateTableStatement, ColumnDefinition,
+        ColumnConstraint, ColumnPrimaryKeyConstraint,
+        AlterTableStatement, AddColumnAction,
+    )
+    from rhosocial.activerecord.backend.expression.objects import Table
+    from rhosocial.activerecord.backend.expression.types import (
+        IntegerType, VarCharType,
+    )
 
-# Baseline table: ID, NAME
-expr = CreateTableStatement(
-    dialect=dialect, table=users, columns=[
-        ColumnDefinition(dialect, "id", integer_auto_increment_parts(dialect, IntegerType())[0],
-            constraints=[
-                ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)),
-            ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition(dialect, "name", VarCharType(dialect, length=100)),
-    ]
-)
-sql, params = expr.to_sql()
-backend.execute(sql, params)
+    users = Table(dialect, "users")
 
-from rhosocial.activerecord.backend.schema import (
-    SyncSchemaSnapshotBuilder, SchemaDiffer,
-)
+    expr = DropTableStatement(dialect, users, if_exists=True)
+    sql, params = expr.to_sql()
+    backend.execute(sql, params)
 
-builder = SyncSchemaSnapshotBuilder(
-    introspector=backend.introspector,
-    dialect=dialect,
-)
-snap_before = builder.build()
+    # Baseline table: ID, NAME
+    expr = CreateTableStatement(
+        dialect=dialect, table=users, columns=[
+            ColumnDefinition(dialect, "id", integer_auto_increment_parts(dialect, IntegerType())[0],
+                constraints=[
+                    ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)),
+                ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition(dialect, "name", VarCharType(dialect, length=100)),
+        ]
+    )
+    sql, params = expr.to_sql()
+    backend.execute(sql, params)
 
-# Add a column
-alter = AlterTableStatement(
-    dialect=dialect, table=users,
-    action=AddColumnAction(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
-)
-sql, params = alter.to_sql()
-backend.execute(sql, params)
+    from rhosocial.activerecord.backend.schema import (
+        SyncSchemaSnapshotBuilder, SchemaDiffer,
+    )
 
-snap_after = builder.build()
+    builder = SyncSchemaSnapshotBuilder(
+        introspector=backend.introspector,
+        dialect=dialect,
+    )
+    snap_before = builder.build()
 
-from rhosocial.activerecord.backend.impl.sqlserver.schema import SQLServerSchemaDiffer
-differ = SQLServerSchemaDiffer()
-diff = differ.compare(snap_before, snap_after)
+    # Add a column
+    alter = AlterTableStatement(
+        dialect=dialect, table=users,
+        action=AddColumnAction(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
+    )
+    sql, params = alter.to_sql()
+    backend.execute(sql, params)
 
-assert "users" in diff.modified_tables
-table_diff = diff.table_diffs["users"]
-assert table_diff.is_modified
-added_cols = [cd for cd in table_diff.column_diffs if cd.is_added]
-assert len(added_cols) == 1
-assert added_cols[0].column_name == "email"
+    snap_after = builder.build()
 
-print("Schema diff detected added column 'email'.")
-backend.disconnect()
+    from rhosocial.activerecord.backend.impl.sqlserver.schema import SQLServerSchemaDiffer
+    differ = SQLServerSchemaDiffer()
+    diff = differ.compare(snap_before, snap_after)
+
+    assert "users" in diff.modified_tables
+    table_diff = diff.table_diffs["users"]
+    assert table_diff.is_modified
+    added_cols = [cd for cd in table_diff.column_diffs if cd.is_added]
+    assert len(added_cols) == 1
+    assert added_cols[0].column_name == "email"
+
+    print("Schema diff detected added column 'email'.")
+    backend.disconnect()
+
+
+if __name__ == "__main__":
+    main()

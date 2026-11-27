@@ -79,7 +79,7 @@ class SQLServerViewMixin:
 
         SQL Server spells the replacement form ``CREATE OR ALTER VIEW``, and
         ``WITH SCHEMABINDING`` is an indexed view's requirement rather than an
-        option -- see ``format_create_indexed_view_statement``.
+        option -- see ``render_create_indexed_view_statement``.
 
         Raises:
             TypeError: ``expr.view`` is not a View. A table or a materialized

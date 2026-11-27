@@ -1,113 +1,120 @@
 """
 Create a table with primary key, IDENTITY, and constraints.
 """
-from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
-from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-import os
 
-# ============================================================
-# SECTION: Setup (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+def main():
+    from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+    from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-config = SQLServerConnectionConfig(
-    host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
-    database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
-    username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
-    password=os.environ.get('SQLSERVER_PASSWORD', ''),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
-    encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
-    trust_server_certificate=(
-        os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
-    ),
-)
-backend = SQLServerBackend(connection_config=config)
-backend.connect()
-dialect = backend.dialect
+    import os
 
-# ============================================================
-# SECTION: Business Logic (the pattern to learn)
-# ============================================================
-from rhosocial.activerecord.backend.expression import (
-    CreateTableStatement,
-    ColumnDefinition,
-    ColumnConstraint,
-)
-from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements.ddl_table import (
-    ColumnNotNullConstraint,
-    ColumnPrimaryKeyConstraint,
-    ColumnUniqueConstraint,
-    IndexDefinition,
-)
+    # ============================================================
+    # SECTION: Setup (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
-columns = [
-    ColumnDefinition(
-        name='id',
-        data_type=integer_auto_increment_parts(dialect, IntegerType())[0],
-        constraints=[
-            ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)),
-        ],
-     attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-    ColumnDefinition(
-        name='name',
-        data_type='NVARCHAR(100)',
-        constraints=[
-            ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
-        ],
-    ),
-    ColumnDefinition(
-        name='email',
-        data_type='NVARCHAR(200)',
-        constraints=[
-            ColumnConstraint(dialect, branch=ColumnUniqueConstraint(dialect)),
-        ],
-    ),
-    ColumnDefinition(
-        name='created_at',
-        data_type='DATETIME2',
-    ),
-]
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '11434')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', ''),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=(
+            os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
+        ),
+    )
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
+    dialect = backend.dialect
 
-indexes = [
-    IndexDefinition(
-        name='idx_users_email',
-        columns=['email'],
-    ),
-]
+    # ============================================================
+    # SECTION: Business Logic (the pattern to learn)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import (
+        CreateTableStatement,
+        ColumnDefinition,
+        ColumnConstraint,
+    )
+    from rhosocial.activerecord.backend.expression.objects import Table
+    from rhosocial.activerecord.backend.expression.statements.ddl_table import (
+        ColumnNotNullConstraint,
+        ColumnPrimaryKeyConstraint,
+        ColumnUniqueConstraint,
+        IndexDefinition,
+    )
 
-create_expr = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'users'),
-    columns=columns,
-    indexes=indexes,
-    if_not_exists=True,
-)
+    columns = [
+        ColumnDefinition(
+            name='id',
+            data_type=integer_auto_increment_parts(dialect, IntegerType())[0],
+            constraints=[
+                ColumnConstraint(dialect, branch=ColumnPrimaryKeyConstraint(dialect)),
+            ],
+         attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+        ColumnDefinition(
+            name='name',
+            data_type='NVARCHAR(100)',
+            constraints=[
+                ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect)),
+            ],
+        ),
+        ColumnDefinition(
+            name='email',
+            data_type='NVARCHAR(200)',
+            constraints=[
+                ColumnConstraint(dialect, branch=ColumnUniqueConstraint(dialect)),
+            ],
+        ),
+        ColumnDefinition(
+            name='created_at',
+            data_type='DATETIME2',
+        ),
+    ]
 
-sql, params = create_expr.to_sql()
-print(f"SQL: {sql}")
-print(f"Params: {params}")
+    indexes = [
+        IndexDefinition(
+            name='idx_users_email',
+            columns=['email'],
+        ),
+    ]
 
-# ============================================================
-# SECTION: Execution (run the expression)
-# ============================================================
-from rhosocial.activerecord.backend.options import ExecutionOptions
-from rhosocial.activerecord.backend.schema import StatementType
+    create_expr = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'users'),
+        columns=columns,
+        indexes=indexes,
+        if_not_exists=True,
+    )
 
-ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
-result = backend.execute(sql, params, options=ddl_options)
-print("Table created: users")
+    sql, params = create_expr.to_sql()
+    print(f"SQL: {sql}")
+    print(f"Params: {params}")
 
-# ============================================================
-# SECTION: Teardown (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.expression import DropTableStatement
+    # ============================================================
+    # SECTION: Execution (run the expression)
+    # ============================================================
+    from rhosocial.activerecord.backend.options import ExecutionOptions
+    from rhosocial.activerecord.backend.schema import StatementType
 
-drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'users'), if_exists=True)
-sql, params = drop_expr.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
+    result = backend.execute(sql, params, options=ddl_options)
+    print("Table created: users")
 
-backend.disconnect()
+    # ============================================================
+    # SECTION: Teardown (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import DropTableStatement
+
+    drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'users'), if_exists=True)
+    sql, params = drop_expr.to_sql()
+    backend.execute(sql, params, options=ddl_options)
+
+    backend.disconnect()
+
+
+if __name__ == "__main__":
+    main()

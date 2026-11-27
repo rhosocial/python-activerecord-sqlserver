@@ -4,109 +4,116 @@ JSON operations using SQL Server 2016+ JSON functions.
 SQL Server doesn't have a native JSON type but provides functions
 for working with JSON data stored in NVARCHAR columns.
 """
-from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
-from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-import os
 
-# ============================================================
-# SECTION: Setup (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+def main():
+    from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+    from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
-config = SQLServerConnectionConfig(
-    host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
-    database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
-    username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
-    password=os.environ.get('SQLSERVER_PASSWORD', ''),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
-    encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
-    trust_server_certificate=(
-        os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
-    ),
-)
-backend = SQLServerBackend(connection_config=config)
-backend.connect()
-dialect = backend.dialect
+    import os
 
-from rhosocial.activerecord.backend.expression import CreateTableStatement
-from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.statements import (
-    ColumnDefinition,
-    ColumnConstraint,
-    ColumnPrimaryKeyConstraint,
-)
-from rhosocial.activerecord.backend.options import ExecutionOptions
-from rhosocial.activerecord.backend.schema import StatementType
+    # ============================================================
+    # SECTION: Setup (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
 
-ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
-dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '11434')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', ''),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=(
+            os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
+        ),
+    )
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
+    dialect = backend.dialect
 
-create_table = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'json_data'),
-    columns=[
-        ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
-            ColumnConstraint(
-                dialect,
-                branch=ColumnPrimaryKeyConstraint(dialect),
-            ),
-        ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition('data', 'NVARCHAR(MAX)'),
-    ],
-    if_not_exists=True,
-)
-sql, params = create_table.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    from rhosocial.activerecord.backend.expression import CreateTableStatement
+    from rhosocial.activerecord.backend.expression.objects import Table
+    from rhosocial.activerecord.backend.expression.statements import (
+        ColumnDefinition,
+        ColumnConstraint,
+        ColumnPrimaryKeyConstraint,
+    )
+    from rhosocial.activerecord.backend.options import ExecutionOptions
+    from rhosocial.activerecord.backend.schema import StatementType
 
-# ============================================================
-# SECTION: Business Logic (the pattern to learn)
-# ============================================================
-from rhosocial.activerecord.backend.expression import InsertStatement, ValuesSource
-from rhosocial.activerecord.backend.expression.core import Literal
+    ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
+    dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
 
-# Insert JSON data as string literal
-# Note: SQL Server 2022+ supports JSON_OBJECT function
-json_literal = '{"name": "John", "age": 30, "hobbies": ["reading", "coding"]}'
+    create_table = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'json_data'),
+        columns=[
+            ColumnDefinition('id', integer_auto_increment_parts(dialect, IntegerType())[0], constraints=[
+                ColumnConstraint(
+                    dialect,
+                    branch=ColumnPrimaryKeyConstraint(dialect),
+                ),
+            ], attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition('data', 'NVARCHAR(MAX)'),
+        ],
+        if_not_exists=True,
+    )
+    sql, params = create_table.to_sql()
+    backend.execute(sql, params, options=ddl_options)
 
-insert_expr = InsertStatement(
-    dialect=dialect,
-    into=Table(dialect, 'json_data'),
-    columns=['data'],
-    source=ValuesSource(dialect, [[Literal(dialect, json_literal)]]),
-)
-sql, params = insert_expr.to_sql()
-backend.execute(sql, params)
-print("JSON data inserted")
+    # ============================================================
+    # SECTION: Business Logic (the pattern to learn)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import InsertStatement, ValuesSource
+    from rhosocial.activerecord.backend.expression.core import Literal
 
-# ============================================================
-# SECTION: Execution (query JSON data)
-# ============================================================
-# For JSON queries, we use raw SQL since JSON_VALUE/JSON_QUERY
-# are SQL Server specific functions not yet available as expressions
-from rhosocial.activerecord.backend.expression import QueryStatement, Column
+    # Insert JSON data as string literal
+    # Note: SQL Server 2022+ supports JSON_OBJECT function
+    json_literal = '{"name": "John", "age": 30, "hobbies": ["reading", "coding"]}'
 
-# Basic query to get the JSON data
-query = QueryStatement(
-    dialect=dialect,
-    select=[Column(dialect, 'id'), Column(dialect, 'data')],
-    from_=Table(dialect, 'json_data'),
-)
-sql, params = query.to_sql()
-result = backend.execute(sql, params, options=dql_options)
-print(f"Stored JSON data:")
-for row in result.data or []:
-    print(f" ID={row['id']}: {row['data']}")
+    insert_expr = InsertStatement(
+        dialect=dialect,
+        into=Table(dialect, 'json_data'),
+        columns=['data'],
+        source=ValuesSource(dialect, [[Literal(dialect, json_literal)]]),
+    )
+    sql, params = insert_expr.to_sql()
+    backend.execute(sql, params)
+    print("JSON data inserted")
 
-# ============================================================
-# SECTION: Teardown (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.expression import DropTableStatement
+    # ============================================================
+    # SECTION: Execution (query JSON data)
+    # ============================================================
+    # For JSON queries, we use raw SQL since JSON_VALUE/JSON_QUERY
+    # are SQL Server specific functions not yet available as expressions
+    from rhosocial.activerecord.backend.expression import QueryStatement, Column
 
-drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'json_data'), if_exists=True)
-sql, params = drop_expr.to_sql()
-backend.execute(sql, params, options=ddl_options)
+    # Basic query to get the JSON data
+    query = QueryStatement(
+        dialect=dialect,
+        select=[Column(dialect, 'id'), Column(dialect, 'data')],
+        from_=Table(dialect, 'json_data'),
+    )
+    sql, params = query.to_sql()
+    result = backend.execute(sql, params, options=dql_options)
+    print(f"Stored JSON data:")
+    for row in result.data or []:
+        print(f" ID={row['id']}: {row['data']}")
 
-backend.disconnect()
+    # ============================================================
+    # SECTION: Teardown (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import DropTableStatement
+
+    drop_expr = DropTableStatement(dialect=dialect, table=Table(dialect, 'json_data'), if_exists=True)
+    sql, params = drop_expr.to_sql()
+    backend.execute(sql, params, options=ddl_options)
+
+    backend.disconnect()
+
+
+if __name__ == "__main__":
+    main()

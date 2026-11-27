@@ -380,12 +380,12 @@ class TestDelegatedFormatters:
         assert SQLServerDialect(SQL_SERVER_2017).supports_readpast() is False
 
     def test_format_table_hint_locking(self, dialect):
-        assert dialect.format_table_hint_locking("UPDLOCK") == (
+        assert dialect.render_table_hint_locking("UPDLOCK") == (
             "WITH (UPDLOCK, ROWLOCK)", ()
         )
 
     def test_format_table_hint_locking_readpast(self, dialect):
-        assert dialect.format_table_hint_locking("READPAST") == (
+        assert dialect.render_table_hint_locking("READPAST") == (
             "WITH (UPDLOCK, ROWLOCK, READPAST)", ()
         )
 
@@ -523,7 +523,7 @@ class TestDelegatedFormatters:
             from_=Table(dialect, "users"),
         )
         view = CreateViewStatement(dialect, View(dialect, "user_ids"), query)
-        sql, params = dialect.format_create_indexed_view_statement(view)
+        sql, params = dialect.render_create_indexed_view_statement(view)
         assert sql == (
             "CREATE VIEW [user_ids] WITH SCHEMABINDING AS "
             "SELECT [id], [name] FROM [users]"
@@ -535,4 +535,4 @@ class TestDelegatedFormatters:
 
         query = QueryStatement(dialect=dialect, select=[Column(dialect, "id")])
         with pytest.raises(UnsupportedFeatureError):
-            dialect.format_create_temporal_table_statement(query)
+            dialect.render_create_temporal_table_statement(query)

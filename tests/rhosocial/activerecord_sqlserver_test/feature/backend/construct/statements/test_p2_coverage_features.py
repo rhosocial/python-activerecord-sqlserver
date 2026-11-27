@@ -260,7 +260,7 @@ class TestIndexedView:
         assert isinstance(dialect, SQLServerIndexedViewSupport)
 
     def test_format_create_indexed_view_statement(self, dialect):
-        sql, params = dialect.format_create_indexed_view_statement(self._view(dialect))
+        sql, params = dialect.render_create_indexed_view_statement(self._view(dialect))
         assert sql == (
             "CREATE VIEW [v] WITH SCHEMABINDING AS SELECT [id], [name] FROM [users]"
         )
@@ -269,7 +269,7 @@ class TestIndexedView:
     def test_indexed_view_with_column_aliases(self, dialect):
         view = self._view(dialect, columns=("id",))
         view.column_aliases = ["uid"]
-        sql, _ = dialect.format_create_indexed_view_statement(view)
+        sql, _ = dialect.render_create_indexed_view_statement(view)
         assert sql == (
             "CREATE VIEW [v] ([uid]) WITH SCHEMABINDING AS SELECT [id] FROM [users]"
         )

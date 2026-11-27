@@ -7,252 +7,259 @@ This example demonstrates:
 3. How to execute expression-based queries
 4. How to access query results and handle transactions
 """
-from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
-from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
-
-import os
-
-# ============================================================
-# SECTION: Setup (necessary for execution, reference only)
-# ============================================================
-from rhosocial.activerecord.backend.expression import (
-    CreateTableStatement,
-    DropTableStatement,
-    InsertStatement,
-    QueryStatement,
-    ValuesSource,
-    WhereClause,
-)
-from rhosocial.activerecord.backend.expression.objects import Table
-from rhosocial.activerecord.backend.expression.core import Column, Literal
-from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
-from rhosocial.activerecord.backend.expression.statements import (
-    ColumnConstraint,
-    ColumnDefinition,
-    ColumnNotNullConstraint,
-    ColumnPrimaryKeyConstraint,
-)
-from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
-from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
-from rhosocial.activerecord.backend.options import ExecutionOptions
-from rhosocial.activerecord.backend.schema import StatementType
-
-config = SQLServerConnectionConfig(
-    host=os.environ.get('SQLSERVER_HOST', 'localhost'),
-    port=int(os.environ.get('SQLSERVER_PORT', '11434')),
-    database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
-    username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
-    password=os.environ.get('SQLSERVER_PASSWORD', ''),
-    driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
-    encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
-    trust_server_certificate=(
-        os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
-    ),
-)
-backend = SQLServerBackend(connection_config=config)
-backend.connect()
-dialect = backend.dialect
-
-dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
-ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
 
-def execute_expression(expression, options=None):
-    """Execute an expression and print the generated SQL."""
-    sql, params = expression.to_sql()
-    print(f"SQL: {sql}")
-    print(f"Params: {params}")
-    return backend.execute(sql, params, options=options)
+def main():
+    from rhosocial.activerecord.base.derivation import integer_auto_increment_parts  # noqa: E402
+    from rhosocial.activerecord.backend.expression.types import IntegerType  # noqa: E402
 
+    import os
 
-# Create demo tables
-users_table = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'quickstart_users'),
-    columns=[
-        ColumnDefinition(
-            'id',
-            integer_auto_increment_parts(dialect, IntegerType())[0],
-            constraints=[
-                ColumnConstraint(
-                    dialect,
-                    branch=ColumnPrimaryKeyConstraint(dialect),
-                ),
-            ],
-         attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition(
-            'name',
-            'NVARCHAR(100)',
-            constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
+    # ============================================================
+    # SECTION: Setup (necessary for execution, reference only)
+    # ============================================================
+    from rhosocial.activerecord.backend.expression import (
+        CreateTableStatement,
+        DropTableStatement,
+        InsertStatement,
+        QueryStatement,
+        ValuesSource,
+        WhereClause,
+    )
+    from rhosocial.activerecord.backend.expression.objects import Table
+    from rhosocial.activerecord.backend.expression.core import Column, Literal
+    from rhosocial.activerecord.backend.expression.predicates import ComparisonPredicate
+    from rhosocial.activerecord.backend.expression.statements import (
+        ColumnConstraint,
+        ColumnDefinition,
+        ColumnNotNullConstraint,
+        ColumnPrimaryKeyConstraint,
+    )
+    from rhosocial.activerecord.backend.impl.sqlserver.backend import SQLServerBackend
+    from rhosocial.activerecord.backend.impl.sqlserver.config import SQLServerConnectionConfig
+    from rhosocial.activerecord.backend.options import ExecutionOptions
+    from rhosocial.activerecord.backend.schema import StatementType
+
+    config = SQLServerConnectionConfig(
+        host=os.environ.get('SQLSERVER_HOST', 'localhost'),
+        port=int(os.environ.get('SQLSERVER_PORT', '11434')),
+        database=os.environ.get('SQLSERVER_DATABASE', 'test_db'),
+        username=os.environ.get('SQLSERVER_USERNAME', 'sa'),
+        password=os.environ.get('SQLSERVER_PASSWORD', ''),
+        driver=os.environ.get('SQLSERVER_DRIVER', 'SQL Server'),
+        encrypt=os.environ.get('SQLSERVER_ENCRYPT', 'false').lower() == 'true',
+        trust_server_certificate=(
+            os.environ.get('SQLSERVER_TRUST_SERVER_CERTIFICATE', 'true').lower() == 'true'
         ),
-        ColumnDefinition('status', 'NVARCHAR(20)'),
-    ],
-    if_not_exists=True,
-)
-execute_expression(users_table, ddl_options)
+    )
+    backend = SQLServerBackend(connection_config=config)
+    backend.connect()
+    dialect = backend.dialect
 
-logs_table = CreateTableStatement(
-    dialect=dialect,
-    table=Table(dialect, 'quickstart_logs'),
-    columns=[
-        ColumnDefinition(
-            'id',
-            integer_auto_increment_parts(dialect, IntegerType())[0],
-            constraints=[
-                ColumnConstraint(
-                    dialect,
-                    branch=ColumnPrimaryKeyConstraint(dialect),
-                ),
-            ],
-         attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
-        ColumnDefinition(
-            'message',
-            'NVARCHAR(255)',
-            constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
-        ),
-    ],
-    if_not_exists=True,
-)
-execute_expression(logs_table, ddl_options)
+    dql_options = ExecutionOptions(stmt_type=StatementType.DQL)
+    ddl_options = ExecutionOptions(stmt_type=StatementType.DDL)
 
-# Seed demo data
-insert_users = InsertStatement(
-    dialect=dialect,
-    into=Table(dialect, 'quickstart_users'),
-    columns=['name', 'status'],
-    source=ValuesSource(
-        dialect,
-        [
-            [Literal(dialect, 'Alice'), Literal(dialect, 'active')],
-            [Literal(dialect, 'Bob'), Literal(dialect, 'inactive')],
+
+    def execute_expression(expression, options=None):
+        """Execute an expression and print the generated SQL."""
+        sql, params = expression.to_sql()
+        print(f"SQL: {sql}")
+        print(f"Params: {params}")
+        return backend.execute(sql, params, options=options)
+
+
+    # Create demo tables
+    users_table = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'quickstart_users'),
+        columns=[
+            ColumnDefinition(
+                'id',
+                integer_auto_increment_parts(dialect, IntegerType())[0],
+                constraints=[
+                    ColumnConstraint(
+                        dialect,
+                        branch=ColumnPrimaryKeyConstraint(dialect),
+                    ),
+                ],
+             attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition(
+                'name',
+                'NVARCHAR(100)',
+                constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
+            ),
+            ColumnDefinition('status', 'NVARCHAR(20)'),
         ],
-    ),
-)
-execute_expression(insert_users)
+        if_not_exists=True,
+    )
+    execute_expression(users_table, ddl_options)
 
-# ============================================================
-# SECTION: Business Logic (the pattern to learn)
-# ============================================================
-# Create a simple SELECT query with WHERE clause
-query = QueryStatement(
-    dialect=dialect,
-    select=[
-        Column(dialect, 'id'),
-        Column(dialect, 'name'),
-        Column(dialect, 'status'),
-    ],
-    from_=Table(dialect, 'quickstart_users'),
-    where=WhereClause(
-        dialect,
-        condition=ComparisonPredicate(
+    logs_table = CreateTableStatement(
+        dialect=dialect,
+        table=Table(dialect, 'quickstart_logs'),
+        columns=[
+            ColumnDefinition(
+                'id',
+                integer_auto_increment_parts(dialect, IntegerType())[0],
+                constraints=[
+                    ColumnConstraint(
+                        dialect,
+                        branch=ColumnPrimaryKeyConstraint(dialect),
+                    ),
+                ],
+             attributes=integer_auto_increment_parts(dialect, IntegerType())[1]),
+            ColumnDefinition(
+                'message',
+                'NVARCHAR(255)',
+                constraints=[ColumnConstraint(dialect, branch=ColumnNotNullConstraint(dialect))],
+            ),
+        ],
+        if_not_exists=True,
+    )
+    execute_expression(logs_table, ddl_options)
+
+    # Seed demo data
+    insert_users = InsertStatement(
+        dialect=dialect,
+        into=Table(dialect, 'quickstart_users'),
+        columns=['name', 'status'],
+        source=ValuesSource(
             dialect,
-            '=',
+            [
+                [Literal(dialect, 'Alice'), Literal(dialect, 'active')],
+                [Literal(dialect, 'Bob'), Literal(dialect, 'inactive')],
+            ],
+        ),
+    )
+    execute_expression(insert_users)
+
+    # ============================================================
+    # SECTION: Business Logic (the pattern to learn)
+    # ============================================================
+    # Create a simple SELECT query with WHERE clause
+    query = QueryStatement(
+        dialect=dialect,
+        select=[
+            Column(dialect, 'id'),
+            Column(dialect, 'name'),
             Column(dialect, 'status'),
-            Literal(dialect, 'active'),
-        ),
-    ),
-)
-
-# ============================================================
-# SECTION: Execution (run the expression)
-# ============================================================
-result = execute_expression(query, dql_options)
-
-print(f"Result data: {result.data}")
-print(f"Rows: {result.affected_rows}")
-print(f"Duration: {result.duration:.3f}s")
-
-if result.data:
-    row = result.data[0]
-    print(f"Value from first row: {row['name']}")
-
-# ============================================================
-# SECTION: Business Logic - Parameterized Query
-# ============================================================
-# Use complex predicates with AND/OR
-from rhosocial.activerecord.backend.expression.predicates import LogicalPredicate
-
-filtered_query = QueryStatement(
-    dialect=dialect,
-    select=[
-        Column(dialect, 'id'),
-        Column(dialect, 'name'),
-        Column(dialect, 'status'),
-    ],
-    from_=Table(dialect, 'quickstart_users'),
-    where=WhereClause(
-        dialect,
-        condition=LogicalPredicate(
+        ],
+        from_=Table(dialect, 'quickstart_users'),
+        where=WhereClause(
             dialect,
-            'AND',
-            ComparisonPredicate(dialect, '=', Column(dialect, 'id'), Literal(dialect, 1)),
-            ComparisonPredicate(dialect, '=', Column(dialect, 'status'), Literal(dialect, 'active')),
+            condition=ComparisonPredicate(
+                dialect,
+                '=',
+                Column(dialect, 'status'),
+                Literal(dialect, 'active'),
+            ),
         ),
-    ),
-)
-
-# ============================================================
-# SECTION: Execution
-# ============================================================
-result = execute_expression(filtered_query, dql_options)
-print(f"Parameterized query result: {result.data}")
-
-# ============================================================
-# SECTION: Business Logic - Transaction
-# ============================================================
-# Use transaction context manager for automatic commit/rollback
-with backend.transaction():
-    insert_log = InsertStatement(
-        dialect=dialect,
-        into=Table(dialect, 'quickstart_logs'),
-        columns=['message'],
-        source=ValuesSource(dialect, [[Literal(dialect, 'quickstart transaction')]]),
     )
-    execute_expression(insert_log)
 
-    logs_query = QueryStatement(
+    # ============================================================
+    # SECTION: Execution (run the expression)
+    # ============================================================
+    result = execute_expression(query, dql_options)
+
+    print(f"Result data: {result.data}")
+    print(f"Rows: {result.affected_rows}")
+    print(f"Duration: {result.duration:.3f}s")
+
+    if result.data:
+        row = result.data[0]
+        print(f"Value from first row: {row['name']}")
+
+    # ============================================================
+    # SECTION: Business Logic - Parameterized Query
+    # ============================================================
+    # Use complex predicates with AND/OR
+    from rhosocial.activerecord.backend.expression.predicates import LogicalPredicate
+
+    filtered_query = QueryStatement(
         dialect=dialect,
-        select=[Column(dialect, 'id'), Column(dialect, 'message')],
-        from_=Table(dialect, 'quickstart_logs'),
+        select=[
+            Column(dialect, 'id'),
+            Column(dialect, 'name'),
+            Column(dialect, 'status'),
+        ],
+        from_=Table(dialect, 'quickstart_users'),
+        where=WhereClause(
+            dialect,
+            condition=LogicalPredicate(
+                dialect,
+                'AND',
+                ComparisonPredicate(dialect, '=', Column(dialect, 'id'), Literal(dialect, 1)),
+                ComparisonPredicate(dialect, '=', Column(dialect, 'status'), Literal(dialect, 'active')),
+            ),
+        ),
     )
-    result = execute_expression(logs_query, dql_options)
-    print(f"Transaction result: {result.data}")
 
-# ============================================================
-# SECTION: Business Logic - Error Handling
-# ============================================================
-try:
-    invalid_query = QueryStatement(
-        dialect=dialect,
-        select=[Column(dialect, 'id')],
-        from_=Table(dialect, 'nonexistent_table'),
+    # ============================================================
+    # SECTION: Execution
+    # ============================================================
+    result = execute_expression(filtered_query, dql_options)
+    print(f"Parameterized query result: {result.data}")
+
+    # ============================================================
+    # SECTION: Business Logic - Transaction
+    # ============================================================
+    # Use transaction context manager for automatic commit/rollback
+    with backend.transaction():
+        insert_log = InsertStatement(
+            dialect=dialect,
+            into=Table(dialect, 'quickstart_logs'),
+            columns=['message'],
+            source=ValuesSource(dialect, [[Literal(dialect, 'quickstart transaction')]]),
+        )
+        execute_expression(insert_log)
+
+        logs_query = QueryStatement(
+            dialect=dialect,
+            select=[Column(dialect, 'id'), Column(dialect, 'message')],
+            from_=Table(dialect, 'quickstart_logs'),
+        )
+        result = execute_expression(logs_query, dql_options)
+        print(f"Transaction result: {result.data}")
+
+    # ============================================================
+    # SECTION: Business Logic - Error Handling
+    # ============================================================
+    try:
+        invalid_query = QueryStatement(
+            dialect=dialect,
+            select=[Column(dialect, 'id')],
+            from_=Table(dialect, 'nonexistent_table'),
+        )
+        execute_expression(invalid_query, dql_options)
+    except Exception as error:
+        print(f"Error: {error}")
+
+    # ============================================================
+    # SECTION: Teardown (necessary for execution, reference only)
+    # ============================================================
+    drop_logs = DropTableStatement(
+        dialect=dialect, table=Table(dialect, 'quickstart_logs'), if_exists=True
     )
-    execute_expression(invalid_query, dql_options)
-except Exception as error:
-    print(f"Error: {error}")
+    execute_expression(drop_logs, ddl_options)
 
-# ============================================================
-# SECTION: Teardown (necessary for execution, reference only)
-# ============================================================
-drop_logs = DropTableStatement(
-    dialect=dialect, table=Table(dialect, 'quickstart_logs'), if_exists=True
-)
-execute_expression(drop_logs, ddl_options)
+    drop_users = DropTableStatement(
+        dialect=dialect, table=Table(dialect, 'quickstart_users'), if_exists=True
+    )
+    execute_expression(drop_users, ddl_options)
 
-drop_users = DropTableStatement(
-    dialect=dialect, table=Table(dialect, 'quickstart_users'), if_exists=True
-)
-execute_expression(drop_users, ddl_options)
+    backend.disconnect()
 
-backend.disconnect()
+    # ============================================================
+    # SECTION: Summary
+    # ============================================================
+    # Key points:
+    # 1. Create SQLServerConnectionConfig with environment variables or defaults
+    # 2. Create SQLServerBackend with the config and call backend.connect()
+    # 3. Use expressions to create schema, insert data, and query data
+    # 4. Use backend.transaction() for transaction control
+    # 5. Access QueryResult.data for returned rows
+    # 6. Disconnect when done
 
-# ============================================================
-# SECTION: Summary
-# ============================================================
-# Key points:
-# 1. Create SQLServerConnectionConfig with environment variables or defaults
-# 2. Create SQLServerBackend with the config and call backend.connect()
-# 3. Use expressions to create schema, insert data, and query data
-# 4. Use backend.transaction() for transaction control
-# 5. Access QueryResult.data for returned rows
-# 6. Disconnect when done
+
+if __name__ == "__main__":
+    main()

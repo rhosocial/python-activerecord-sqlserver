@@ -24,7 +24,10 @@ from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeature
 from rhosocial.activerecord.backend.expression.objects import Index, Table, View
 from rhosocial.activerecord.backend.suggestion.definitions import ConcatenationFunctionSuggestion
 
+from .dql import SQLServerDQLMixin
+
 if TYPE_CHECKING:
+    from ..expression.dml import SQLServerSelectIntoExpression
     from ..expression.fulltext import (
         SQLServerCreateFullTextCatalogStatement,
         SQLServerCreateFullTextIndexStatement,
@@ -282,7 +285,7 @@ class SQLServerProtocolSupportMixin:
         """READPAST hint requires SQL Server 2019+."""
         return self.version_at_least((15, 0, 0))
 
-    def format_table_hint_locking(self, expr: str) -> Tuple[str, tuple]:
+    def render_table_hint_locking(self, expr: str) -> Tuple[str, tuple]:
         """Format a locking table hint delegating to SQLServerTableHintClause."""
         from ..expression.locking import SQLServerTableHint, SQLServerTableHintClause
 
@@ -371,7 +374,7 @@ class SQLServerProtocolSupportMixin:
         """SQL Server supports WITH (...) table hints."""
         return True
 
-    def format_table_hint(self, expr: List[str]) -> Tuple[str, tuple]:
+    def render_table_hint(self, expr: List[str]) -> Tuple[str, tuple]:
         """Format a WITH (hint1, hint2, ...) table hint clause."""
         from ..expression.locking import SQLServerTableHint, SQLServerTableHintClause
 
@@ -414,7 +417,9 @@ class SQLServerProtocolSupportMixin:
             clause += f" REPEATABLE ({repeatable})"
         return clause, ()
 
-    def format_select_into_statement(self, expr: Any) -> Tuple[str, tuple]:
+    def format_select_into_statement(
+        self, expr: "SQLServerSelectIntoExpression"
+    ) -> Tuple[str, tuple]:
         """Format a SELECT INTO statement (all SQL Server versions).
 
         SQL Syntax:
@@ -430,7 +435,10 @@ class SQLServerProtocolSupportMixin:
                 "select_into_table is required for SELECT INTO"
             )
 
-        full_sql, params = expr.to_sql()
+        # Render the underlying SELECT through core's DQL formatter, skipping
+        # the SQL Server override that dispatched here: ``expr.to_sql()``
+        # would re-enter this formatter and recurse forever.
+        full_sql, params = super(SQLServerDQLMixin, self).format_query_statement(expr)
         select_head = self._format_select_head(expr)
         if full_sql.startswith(select_head):
             tail = full_sql[len(select_head):]
@@ -487,7 +495,7 @@ class SQLServerProtocolSupportMixin:
             self, start_column, end_column
         ).to_sql()
 
-    def format_create_temporal_table_statement(self, expr: Any) -> Tuple[str, tuple]:
+    def render_create_temporal_table_statement(self, expr: Any) -> Tuple[str, tuple]:
         """Format CREATE TABLE with temporal options - not yet implemented."""
         raise UnsupportedFeatureError(
             self.name,
@@ -533,7 +541,7 @@ class SQLServerProtocolSupportMixin:
         name_sql = self.qualified_object_name(Table, table)
         return f"SET IDENTITY_INSERT {name_sql} {state}", ()
 
-    def format_create_indexed_view_statement(self, expr: Any) -> Tuple[str, tuple]:
+    def render_create_indexed_view_statement(self, expr: Any) -> Tuple[str, tuple]:
         """Format CREATE VIEW WITH SCHEMABINDING (indexed view) (2005+).
 
         SQL Server has no materialized views; the official equivalent is an
