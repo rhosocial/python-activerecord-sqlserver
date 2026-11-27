@@ -192,7 +192,7 @@ class SQLServerRoutineListQueryStatement(IntrospectionExpression):
         dialect: "SQLDialectBase",
         *,
         type_codes: Tuple[str, ...],
-        schema: Optional[str],
+        schema: Optional[str] = None,
     ):
         super().__init__(dialect, schema=schema)
         self.type_codes: Tuple[str, ...] = type_codes
