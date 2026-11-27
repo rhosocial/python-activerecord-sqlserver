@@ -43,6 +43,23 @@ jobs:
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
 
+    - name: Create SQL Server scenario config
+      run: |
+        cat > sqlserver_scenarios.yaml << EOF
+        scenarios:
+          sqlserver_2025:
+            host: localhost
+            port: 1443
+            database: test_db
+            username: sa
+            password: Password123!
+            driver: "ODBC Driver 18 for SQL Server"
+            encrypt: false
+            trust_server_certificate: true
+            autocommit: true
+        EOF
+        echo "SQLSERVER_SCENARIOS_CONFIG_PATH=$(pwd)/sqlserver_scenarios.yaml" >> $GITHUB_ENV
+
     - name: Formal rules contracts
       # Isolated from the full suite: module-level global registries there can
       # change what a contract test constructs, which makes an order-dependent
