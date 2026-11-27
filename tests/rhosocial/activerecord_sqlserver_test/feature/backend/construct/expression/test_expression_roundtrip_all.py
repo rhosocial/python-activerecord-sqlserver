@@ -731,6 +731,27 @@ def register_specials():
 
         return PartitionByHashClause(d, [Column(d, "id")])
 
+    def alter_constraint_action(d):
+        """A named CHECK with the enforcement keyword the action is built around."""
+        from rhosocial.activerecord.backend.expression.statements import (
+            AlterConstraintAction,
+        )
+
+        return AlterConstraintAction(
+            d, "chk", enforced=True, constraint_kind=TableCheckConstraint
+        )
+
+    def add_domain_check_action(d):
+        """ADD DOMAIN CHECK over the same bind-free constraint the matrix builds."""
+        from rhosocial.activerecord.backend.expression.statements.ddl_domain import (
+            AddDomainCheckAction,
+            DomainCheckConstraint,
+        )
+
+        return AddDomainCheckAction(
+            d, DomainCheckConstraint(d, _column_predicate(d), name="chk")
+        )
+
     def partition_function(d):
         from rhosocial.activerecord.backend.impl.sqlserver.expression.partition import (
             SQLServerPartitionFunctionExpression,
@@ -1010,6 +1031,17 @@ def register_specials():
     register_special_constructor(
         "statements.ddl_partition.PartitionByHashClause", core_partition_by_hash
     )
+    # Both take a required payload the guess cannot supply: the enforcement
+    # keyword and branch for ALTER CONSTRAINT, and the constraint node for ADD
+    # DOMAIN CHECK. SQL Server refuses each at render -- the first through its
+    # own enforcement probe, the second through a formatter it does not declare
+    # (already named under DOMAIN in UNMODELLED_FORMATTERS).
+    register_special_constructor(
+        "statements.ddl_alter.AlterConstraintAction", alter_constraint_action
+    )
+    register_special_constructor(
+        "statements.ddl_domain.AddDomainCheckAction", add_domain_check_action
+    )
     register_special_constructor(
         "partition.SQLServerPartitionFunctionExpression", partition_function
     )
@@ -1144,16 +1176,11 @@ register_specials()
 
 #: Classes the introspective constructor cannot build.
 #:
-#: Each is a real coverage gap, named here so it is visible rather than lost.
-#: :func:`test_unconstructible_list_is_exact` pins the tuple against what the
-#: constructor really skips, in both directions: a class that gains a
-#: constructor fails here until this entry is removed, and a class that starts
-#: failing to build fails here too. Neither can become a quiet skip.
-#:
-#: The reasons are grouped by cause, not by module, and all four are now the same
-#: cause: a required parameter the introspective guess cannot satisfy, because it
-#: sits behind a defaulted positional or is a member of a closed set. Registering a
-#: constructor is the way to retire any of them.
+#: Empty, and it must stay empty: every collected class builds once its required
+#: payload is supplied, and each former gap now gets that payload from a
+#: registered special constructor above. The tuple is kept rather than deleted
+#: because :func:`test_unconstructible_list_is_exact` compares the observed set
+#: against it in both directions.
 #:
 #: The four XML classes this tuple used to hold were never a gap in the classes.
 #: ``XMLTableExpression`` wants ``columns: Sequence[XMLTableColumn]`` and the three
@@ -1163,23 +1190,7 @@ register_specials()
 #: classes were fine and the harness was wrong. They construct now, and each one
 #: turns out to be a genuine capability gap rather than a render, which is why all
 #: four moved to :data:`LEGITIMATE_NON_RENDERS` rather than to a render assertion.
-UNCONSTRUCTIBLE = (
-    # ALTER CONSTRAINT (renamed AlterConstraintAction by the core's "name an
-    # action by what it is" wave). `name` and `constraint_type` sit behind
-    # defaulted positionals and are keyword-only, so the introspective
-    # constructor skips them and the class refuses an incomplete action
-    # (`ValueError: constraint_name must be a non-empty string`, because the
-    # defaulted `constraint_name` stays None).
-    "rhosocial.activerecord.backend.expression.statements.ddl_alter.AlterConstraintAction",
-    # ADD DOMAIN CHECK. Widens a SQLPredicate into a DomainCheckConstraint and
-    # needs one; the guess supplies a bare comparison whose literal would have
-    # to render as a bind parameter, which DDL cannot carry. (It supplies a bare
-    # *string* in fact: the annotation names a `DomainCheckConstraint`, whose
-    # `\bDomain\b` fragment does not match inside the longer word, so the guess
-    # falls through to its name-based default and the class raises
-    # `TypeError: check must be a DomainCheckConstraint instance, got str`.)
-    "rhosocial.activerecord.backend.expression.statements.ddl_domain.AddDomainCheckAction",
-)
+UNCONSTRUCTIBLE = ()
 
 #: Message fragments the pins below match on.
 _NO_FORMATTER = "does not declare its dialect formatting method name"
