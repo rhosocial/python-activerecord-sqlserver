@@ -305,8 +305,9 @@ class TestNoOptionIsSilentlyDropped:
 
     def test_cache_zero_is_refused_at_construction(self, dialect):
         """``cache=0`` is not a spelling of NO CACHE (round rule 4)."""
+        clause = IdentityClause(dialect, cache=0)
         with pytest.raises(ValueError, match="cache must be a positive integer"):
-            IdentityClause(dialect, cache=0)
+            clause.to_sql()
 
     def test_the_walk_rejects_a_formatter_that_drops_options(self):
         """The walk is live: a formatter that drops an option must fail it.

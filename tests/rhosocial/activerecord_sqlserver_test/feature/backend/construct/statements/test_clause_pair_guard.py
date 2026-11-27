@@ -494,12 +494,14 @@ class TestSentinelIsGone:
     """``cache=0`` is no longer a spelling of NO CACHE."""
 
     def test_alter_sequence_cache_zero_is_refused(self):
+        stmt = AlterSequenceStatement(_dialect(), _seq(_dialect()), cache=0)
         with pytest.raises(ValueError, match="cache must be a positive integer"):
-            AlterSequenceStatement(_dialect(), _seq(_dialect()), cache=0)
+            stmt.to_sql()
 
     def test_identity_cache_zero_is_refused(self):
+        clause = IdentityClause(_dialect(), cache=0)
         with pytest.raises(ValueError, match="cache must be a positive integer"):
-            IdentityClause(_dialect(), cache=0)
+            clause.to_sql()
 
 
 class TestDialectGapValueConstraints:
