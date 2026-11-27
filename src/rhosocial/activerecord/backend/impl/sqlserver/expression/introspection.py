@@ -219,7 +219,7 @@ class SQLServerSequenceListQueryStatement(IntrospectionExpression):
 
     KIND_RESERVED = ("SQLServer",)
 
-    def __init__(self, dialect: "SQLDialectBase", *, schema: Optional[str]):
+    def __init__(self, dialect: "SQLDialectBase", *, schema: Optional[str] = None):
         super().__init__(dialect, schema=schema)
 
     @property
