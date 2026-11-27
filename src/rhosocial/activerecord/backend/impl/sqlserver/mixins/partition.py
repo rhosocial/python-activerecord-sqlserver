@@ -160,7 +160,12 @@ class SQLServerPartitionMixin:
     def supports_partition_scheme(self) -> bool:
         return self.supports_table_partitioning()
 
-    def supports_switch_partition(self) -> bool:
+    def supports_exchange_partition(self) -> bool:
+        """Whether a partition can be swapped with a standalone table.
+
+        SQL Server spells this ``ALTER TABLE ... SWITCH PARTITION``; it is the
+        same capability Oracle and MySQL call EXCHANGE.
+        """
         return self.supports_table_partitioning()
 
     def supports_split_partition(self) -> bool:
@@ -385,7 +390,7 @@ class SQLServerPartitionMixin:
     ) -> Tuple[str, tuple]:
         """Render ``ALTER TABLE ... SWITCH [PARTITION n] TO ...``."""
         self.check_feature_support(  # type: ignore[attr-defined]
-            "supports_switch_partition",
+            "supports_exchange_partition",
             "SWITCH PARTITION",
             "Use a SQL Server version that supports table partitioning.",
         )

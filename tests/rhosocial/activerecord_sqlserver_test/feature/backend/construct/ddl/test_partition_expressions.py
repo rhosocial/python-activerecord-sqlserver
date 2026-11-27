@@ -91,7 +91,7 @@ class TestPartitionCapabilities:
 
     def test_switch_split_merge_capabilities(self):
         d = SQLServerDialect(SQL_SERVER_2022)
-        assert d.supports_switch_partition() is True
+        assert d.supports_exchange_partition() is True
         assert d.supports_split_partition() is True
         assert d.supports_merge_partition() is True
 

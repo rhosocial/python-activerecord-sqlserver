@@ -48,7 +48,7 @@ There is also no `ADD PARTITION` / `DROP PARTITION`: adding a partition means
 `SPLIT RANGE`, and removing one means `MERGE RANGE`. `supports_add_partition()`
 and `supports_drop_partition()` stay `False`; the SQL Server-specific
 capability flags are `supports_split_partition()`, `supports_merge_partition()`
-and `supports_switch_partition()`.
+and `supports_exchange_partition()` (SQL Server spells it `SWITCH PARTITION`).
 
 ## DDL expressions
 

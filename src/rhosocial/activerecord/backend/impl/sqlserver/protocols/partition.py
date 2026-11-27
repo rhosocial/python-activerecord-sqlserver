@@ -55,8 +55,8 @@ class SQLServerPartitionSupport(PartitionSupport, Protocol):
         """Whether CREATE PARTITION SCHEME is supported."""
         ...
 
-    def supports_switch_partition(self) -> bool:
-        """Whether ALTER TABLE ... SWITCH PARTITION is supported."""
+    def supports_exchange_partition(self) -> bool:
+        """Whether ALTER TABLE ... SWITCH PARTITION (exchange) is supported."""
         ...
 
     def supports_split_partition(self) -> bool:
