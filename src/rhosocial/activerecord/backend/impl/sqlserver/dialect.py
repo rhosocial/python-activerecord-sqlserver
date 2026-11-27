@@ -1157,6 +1157,9 @@ class SQLServerDialect(
                 f"AlterSequenceStatement.sequence must be a Sequence, "
                 f"got {type(expr.sequence).__name__}"
             )
+        # A malformed two-spelling option is judged here, at render time, by
+        # core's public validation rather than in the constructor.
+        expr.validate()
         if not self.supports_sequence():
             raise UnsupportedFeatureError(
                 self.name, "ALTER SEQUENCE",
