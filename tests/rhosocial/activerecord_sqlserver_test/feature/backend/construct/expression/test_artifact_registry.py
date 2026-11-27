@@ -72,13 +72,9 @@ def test_a_proprietary_kind_round_trips_through_the_dialects_registry(sqlserver_
 
 def test_a_foreign_backend_kind_is_refused_by_name(sqlserver_dialect):
     """A kind owned by another backend is not resolvable here."""
-    from rhosocial.activerecord.backend.impl.sqlite.registry import (
-        backend_registry as sqlite_registry,
-    )
-
-    foreign = next(
-        kind for kind in sqlite_registry().node_kinds() if kind.startswith("sqlite_")
-    )
+    # Written as a literal on purpose: importing a peer backend's registry would
+    # make this backend's test suite depend on that backend's implementation.
+    foreign = "sqlite_alias_type_definition"
     assert foreign not in sqlserver_dialect.artifact_registry().node_kinds()
 
     with pytest.raises(RegistryError) as caught:

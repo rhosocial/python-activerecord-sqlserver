@@ -6,7 +6,10 @@ the circular import triggered by the eager ``mixins/__init__.py`` chain
 (``mixins/backend_mixin`` -> ``dialect``).
 """
 
-from typing import Any, Tuple
+from typing import TYPE_CHECKING, Any, Tuple
+
+if TYPE_CHECKING:
+    from .expression.alter_column import SQLServerAlterColumn
 
 from rhosocial.activerecord.backend.dialect.exceptions import UnsupportedFeatureError
 
@@ -120,7 +123,7 @@ class SQLServerAlterColumnModifierMixin:
             result += " CASCADE"
         return result, ()
 
-    def format_alter_column_action(self, expr: Any) -> Tuple[str, tuple]:
+    def format_alter_column_action(self, expr: "SQLServerAlterColumn") -> Tuple[str, tuple]:
         """Dispatch an ALTER COLUMN action to a SQL Server-specific formatter.
 
         SQL Server re-specifies the full column rather than applying the

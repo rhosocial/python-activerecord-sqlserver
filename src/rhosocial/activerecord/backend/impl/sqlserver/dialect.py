@@ -168,6 +168,7 @@ from .reserved_words import SQLSERVER_RESERVED_WORDS
 
 if TYPE_CHECKING:
     from rhosocial.activerecord.backend.expression import bases
+    from .expression.option_hint import SQLServerOptionHintClause
     from rhosocial.activerecord.backend.expression.advanced_functions import ArrayOperation, OrderedSetAggregation
     from rhosocial.activerecord.backend.expression.graph import MatchClause
     from rhosocial.activerecord.backend.expression.query_parts import (
@@ -1472,7 +1473,7 @@ class SQLServerDialect(
             return f"TOP {n} PERCENT", ()
         return f"TOP {n}", ()
 
-    def format_query_option_clause(self, expr: "bases.BaseExpression") -> Tuple[str, tuple]:
+    def format_query_option_clause(self, expr: "SQLServerOptionHintClause") -> Tuple[str, tuple]:
         """Format an OPTION query hint clause.
 
         SQL Server exposes optimizer hints through the query-level OPTION

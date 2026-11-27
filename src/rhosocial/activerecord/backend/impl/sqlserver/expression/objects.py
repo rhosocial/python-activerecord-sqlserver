@@ -14,7 +14,7 @@ and they are defined here rather than smuggled into name strings:
     called rather than a rendering decision. ``temporary`` is therefore a field
     on the object, settled once at construction, and the qualified-name renderer
     never has to ask whether it is looking at a temporary table.
-:class:`PartitionFunction` / :class:`PartitionScheme`
+:class:`SQLServerPartitionFunction` / :class:`SQLServerPartitionScheme`
     SQL Server's partitioning model has two named objects of its own. The
     shared tree does not name them yet; deriving them straight from
     :class:`SchemaObject` keeps them in the same tree with the same three slots
@@ -32,7 +32,13 @@ from typing import Optional
 
 from rhosocial.activerecord.backend.expression.objects import SchemaObject, Table
 
-__all__ = ["SQLServerTable", "PartitionFunction", "PartitionScheme"]
+__all__ = [
+    "SQLServerTable",
+    "SQLServerPartitionFunction",
+    "SQLServerPartitionScheme",
+    "PartitionFunction",
+    "PartitionScheme",
+]
 
 
 class SQLServerTable(Table):
@@ -102,7 +108,7 @@ class SQLServerTable(Table):
         return super().identity() + (self.temporary,)
 
 
-class PartitionFunction(SchemaObject):
+class SQLServerPartitionFunction(SchemaObject):
     """A SQL Server ``PARTITION FUNCTION``.
 
     Named by ``CREATE PARTITION FUNCTION`` and referenced by name from a
@@ -110,13 +116,15 @@ class PartitionFunction(SchemaObject):
     ``format_partition_function_object``.
     """
 
+    KIND_RESERVED = ("SQLServer",)
+
     @property
     def format_method(self) -> str:
         """The dialect formatting method that renders this partition function."""
         return "format_partition_function_object"
 
 
-class PartitionScheme(SchemaObject):
+class SQLServerPartitionScheme(SchemaObject):
     """A SQL Server ``PARTITION SCHEME``.
 
     Named by ``CREATE PARTITION SCHEME`` and referenced from ``CREATE TABLE ...
@@ -124,7 +132,15 @@ class PartitionScheme(SchemaObject):
     ``format_partition_scheme_object``.
     """
 
+    KIND_RESERVED = ("SQLServer",)
+
     @property
     def format_method(self) -> str:
         """The dialect formatting method that renders this partition scheme."""
         return "format_partition_scheme_object"
+
+
+#: Public names kept for callers written before the classes took the backend's
+#: own prefix; both aliases name the same class object, with no second kind.
+PartitionFunction = SQLServerPartitionFunction
+PartitionScheme = SQLServerPartitionScheme

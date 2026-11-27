@@ -13,7 +13,13 @@ suffix kept on both sides of the core/backend seam. The audit that settles the
 set is ``scripts/expression_lineage.py``, read off the running code.
 """
 
-from .objects import SQLServerTable, PartitionFunction, PartitionScheme
+from .objects import (
+    SQLServerTable,
+    SQLServerPartitionFunction,
+    SQLServerPartitionScheme,
+    PartitionFunction,
+    PartitionScheme,
+)
 from .output import SQLServerOutputInsertedExpression, SQLServerOutputDeletedExpression
 from .locking import SQLServerTableHintClause, SQLServerTableHint, SQLServerReadPastHint
 from .temporal import SQLServerTemporalPeriodDefinition, SQLServerSystemVersioningClause
@@ -82,6 +88,8 @@ from .functions import (
 
 __all__ = [
     "SQLServerTable",
+    "SQLServerPartitionFunction",
+    "SQLServerPartitionScheme",
     "PartitionFunction",
     "PartitionScheme",
     "SQLServerOutputInsertedExpression",

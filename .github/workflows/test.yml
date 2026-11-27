@@ -18,6 +18,40 @@ permissions:
   contents: read
 
 jobs:
+  formal-rules-contracts:
+    name: Formal rules contracts
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+    - name: Check out the repository
+      uses: actions/checkout@v6
+
+    - name: Set up Python 3.14
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.14"
+
+    - name: Install activerecord and testsuite from PyPI
+      run: |
+        pip install "rhosocial-activerecord @ git+https://github.com/rhosocial/python-activerecord.git@feature/activerecord-migration"  # NOSONAR
+        pip install "rhosocial-activerecord-testsuite @ git+https://github.com/rhosocial/python-activerecord-testsuite.git@feature/activerecord-migration"  # NOSONAR
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Formal rules contracts
+      # Isolated from the full suite: module-level global registries there can
+      # change what a contract test constructs, which makes an order-dependent
+      # pass meaningless. No SQL Server service: these are static source and
+      # registry audits of this backend only.
+      run: |
+        export PYTHONPATH=src:tests
+        python -m pytest tests/rhosocial/activerecord_sqlserver_test/feature/rules -q -p no:warnings
+
   benchmark-sqlserver:
     name: Run benchmarks with Python 3.14 and SQL Server 2025
     runs-on: ubuntu-24.04
