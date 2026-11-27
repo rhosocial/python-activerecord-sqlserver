@@ -220,8 +220,8 @@ class TestTableConstraintChange:
         assert len(answer.operations) == 1
         statement = answer.operations[0]
         assert isinstance(statement, AlterTableStatement)
-        assert len(statement.actions) == 1
-        assert isinstance(statement.actions[0], AddTableConstraintAction)
+        assert statement.action is not None
+        assert isinstance(statement.action, AddTableConstraintAction)
         assert statement.to_sql() == (
             "ALTER TABLE [events] ADD CONSTRAINT [uq_created] UNIQUE ([created_at])",
             (),
@@ -235,7 +235,7 @@ class TestTableConstraintChange:
         )
         assert answer.state == "actions"
         statement = answer.operations[0]
-        assert isinstance(statement.actions[0], DropTableConstraintAction)
+        assert isinstance(statement.action, DropTableConstraintAction)
         assert statement.to_sql() == (
             "ALTER TABLE [events] DROP CONSTRAINT [uq_created]",
             (),
@@ -256,8 +256,8 @@ class TestTableConstraintChange:
             "ALTER TABLE [events] DROP CONSTRAINT [uq_created] "
             "ALTER TABLE [events] ADD CONSTRAINT [uq_created] UNIQUE ([created_at])"
         )
-        assert isinstance(answer.operations[0].actions[0], DropTableConstraintAction)
-        assert isinstance(answer.operations[1].actions[0], AddTableConstraintAction)
+        assert isinstance(answer.operations[0].action, DropTableConstraintAction)
+        assert isinstance(answer.operations[1].action, AddTableConstraintAction)
 
     def test_frozen_add_projection_is_unsupported_with_reason(self, dialect):
         # The core's freeze drops the branch *class*: UNIQUE and PRIMARY KEY
@@ -520,8 +520,8 @@ class TestEnrichedChangePointContext:
             assert answer.state == "actions"
             assert len(answer.operations) == 1
             statement = answer.operations[0]
-            assert len(statement.actions) == 1
-            action = statement.actions[0]
+            assert statement.action is not None
+            action = statement.action
             assert isinstance(action, AddTableConstraintAction)
             assert action.constraint is declaration
             assert statement.to_sql() == (
@@ -541,8 +541,8 @@ class TestEnrichedChangePointContext:
             "ALTER TABLE [events] DROP CONSTRAINT [c1] "
             "ALTER TABLE [events] ADD CONSTRAINT [c1] PRIMARY KEY ([created_at])"
         )
-        assert isinstance(answer.operations[0].actions[0], DropTableConstraintAction)
-        add = answer.operations[1].actions[0]
+        assert isinstance(answer.operations[0].action, DropTableConstraintAction)
+        add = answer.operations[1].action
         assert isinstance(add, AddTableConstraintAction)
         assert add.constraint is new
         assert isinstance(add.constraint.branch, TablePrimaryKeyConstraint)

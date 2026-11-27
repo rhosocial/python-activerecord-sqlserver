@@ -150,9 +150,6 @@ class SQLServerTypeDDLMixin(UserDefinedTypeMixin):
     def supports_drop_type_if_exists(self) -> bool:
         return self._version_at_least(SQL_SERVER_2016)
 
-    def supports_multiple_type_alter_actions(self) -> bool:
-        return False
-
     def supports_drop_type_cascade(self) -> bool:
         return False
 

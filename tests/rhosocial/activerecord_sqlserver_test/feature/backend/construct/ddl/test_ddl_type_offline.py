@@ -85,7 +85,6 @@ class TestCapabilityBooleans:
         assert d.supports_create_type_if_not_exists() is False
         assert d.supports_create_type_or_replace() is False
         assert d.supports_alter_type_if_exists() is False
-        assert d.supports_multiple_type_alter_actions() is False
         assert d.supports_drop_type_cascade() is False
         assert d.supports_drop_type_restrict() is False
 
@@ -552,7 +551,7 @@ class TestFormatAlterAndDropType:
             d.format_alter_type_statement(object())
         with pytest.raises(UnsupportedFeatureError, match="ALTER TYPE"):
             d.format_alter_type_statement(
-                AlterTypeStatement(d, Type(d, "t"), [action])
+                AlterTypeStatement(d, Type(d, "t"), action)
             )
 
     def test_format_type_alter_action(self):

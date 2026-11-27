@@ -355,7 +355,7 @@ class TestAlterColumn:
         from rhosocial.activerecord.backend.expression.objects import Table
         from rhosocial.activerecord.backend.expression.statements import AlterTableStatement
 
-        return AlterTableStatement(d, Table(d, "t"), actions=[action]).to_sql()[0]
+        return AlterTableStatement(d, Table(d, "t"), action=action).to_sql()[0]
 
     def _alter_column(self, d, column_name="c", operation="SET DATA TYPE", new_value=None, **options):
         from rhosocial.activerecord.backend.impl.sqlserver.expression import (

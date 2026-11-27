@@ -600,7 +600,7 @@ def test_create_and_drop_type_fail_fast_options():
 def test_alter_type_is_explicitly_unsupported():
     dialect = SQLServerDialect(SQL_SERVER_2022)
     action = _DummyTypeAlterAction(dialect, "renamed")
-    expression = AlterTypeStatement(dialect, Type(dialect, "status"), [action])
+    expression = AlterTypeStatement(dialect, Type(dialect, "status"), action)
 
     with pytest.raises(UnsupportedFeatureError, match="ALTER TYPE"):
         expression.to_sql()

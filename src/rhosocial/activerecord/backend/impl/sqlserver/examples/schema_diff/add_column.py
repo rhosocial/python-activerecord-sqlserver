@@ -66,9 +66,7 @@ snap_before = builder.build()
 # Add a column
 alter = AlterTableStatement(
     dialect=dialect, table=users,
-    actions=[
-        AddColumnAction(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
-    ],
+    action=AddColumnAction(dialect, column=ColumnDefinition(dialect, "email", VarCharType(dialect, length=255))),
 )
 sql, params = alter.to_sql()
 backend.execute(sql, params)

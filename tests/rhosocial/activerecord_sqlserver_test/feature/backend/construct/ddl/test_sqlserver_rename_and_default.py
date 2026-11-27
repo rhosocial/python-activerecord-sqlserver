@@ -77,7 +77,7 @@ class TestRenameObject:
 class TestAddDefaultConstraint:
     def _render(self, dialect, action):
         table = Table(dialect, "T1", schema_name="dbo")
-        return AlterTableStatement(dialect, table, [action]).to_sql()
+        return AlterTableStatement(dialect, table, action).to_sql()
 
     def test_named_constraint(self, dialect):
         sql, params = self._render(

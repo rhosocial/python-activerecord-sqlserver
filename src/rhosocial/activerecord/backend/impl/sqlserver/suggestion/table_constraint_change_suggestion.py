@@ -126,6 +126,6 @@ class SQLServerTableConstraintChangeSuggestionMixin:
         actions = [DropTableConstraintAction(self, name) for name in removed]
         actions.extend(AddTableConstraintAction(self, replacements[name]) for name in added)
         statements = tuple(
-            AlterTableStatement(self, table, [action]) for action in actions
+            AlterTableStatement(self, table, action) for action in actions
         )
         return TableConstraintChangeSuggestion(operations=statements)
