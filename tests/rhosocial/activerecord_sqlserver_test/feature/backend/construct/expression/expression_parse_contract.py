@@ -66,6 +66,7 @@ def parse_roundtrip_failures(
     dialect: Any,
     registry: Dict[str, Any],
     *,
+    special_registry: Any,
     widening: Optional[Dict[str, Any]] = None,
     skip: Any = (),
 ) -> Any:
@@ -77,6 +78,9 @@ def parse_roundtrip_failures(
             backend's round-trip module keeps it (``REGISTERED`` or
             ``ALL_CLASSES``). Only concrete ``DataType`` subclasses are
             swept.
+        special_registry: the caller's ``SpecialConstructorRegistry``, passed
+            through to ``make_instance``. Registration is explicit, so a sweep
+            never depends on what another test module happened to import.
         widening: the backend's documented answer table,
             ``{declared class name: answer}``. An entry here asserts the
             parse answers with exactly that class and that the answer
@@ -113,7 +117,7 @@ def parse_roundtrip_failures(
             continue
         if cls.__name__ in skipped:
             continue
-        instance, source = make_instance(cls, dialect)
+        instance, source = make_instance(cls, dialect, special_registry)
         if instance is None:
             continue  # the matrix's UNCONSTRUCTIBLE list owns this class
         try:

@@ -31,7 +31,7 @@ import re
 import typing
 import warnings
 from enum import Enum
-from typing import Any, Callable, Dict, Type
+from typing import Any, Callable, Dict, Optional, Type
 
 from rhosocial.activerecord.backend.expression.bases import BaseExpression
 
@@ -283,12 +283,11 @@ def special_constructors():
     new names is not expressible, because ``endswith`` compares a suffix. A
     class that was split needs one entry per resulting class.
 
-    :func:`register_special_constructor` writes to the module-level
-    ``_SPECIAL_REGISTRY``, which is what :func:`make_instance` reads. Note that
-    this function rebuilds its dict on every call, so a registration made
-    elsewhere is **not** visible to a caller that invokes
-    ``special_constructors()`` directly — core's expression-contract test does
-    exactly that, and therefore sees only the literals below.
+    The returned dict is a fresh base table. A :class:`SpecialConstructorRegistry`
+    copies it at construction time, and a consumer adds its own entries to that
+    instance with :meth:`~SpecialConstructorRegistry.register`. Nothing is
+    installed process-wide: two consumers can hold different tables, and loading
+    a consumer never changes a registry another consumer already built.
     """
     return {
         "statements.ddl_table.ColumnDefinition": _column_definition,
@@ -933,36 +932,62 @@ def _datetime_add_expr(dialect):
     return DatetimeAddExpression(dialect, Column(dialect, "a"), IntervalExpression(dialect, 1, "day"))
 
 
-_SPECIAL_REGISTRY: Dict[str, Callable] = special_constructors()
+class SpecialConstructorRegistry:
+    """One consumer's table of explicit constructors for expression classes.
 
-
-def register_special_constructor(fqn_suffix: str, factory: Callable) -> None:
-    """Register an explicit constructor for an expression class.
-
-    ``fqn_suffix`` must match the tail of the class's fully qualified name
-    (e.g. ``"json.MySQLJSONObjectExpression"``). ``factory(dialect)`` must
-    return an expression instance.
+    Built from a copy of :func:`special_constructors` by default, so creating a
+    registry is cheap and side-effect free: registering on one instance can never
+    be observed through another. The consumer passes its own instance to
+    :func:`make_instance`; there is no process-global table to inherit from.
     """
-    _SPECIAL_REGISTRY[fqn_suffix] = factory
+
+    def __init__(self, base: Optional[Dict[str, Callable]] = None):
+        self.entries: Dict[str, Callable] = dict(
+            special_constructors() if base is None else base
+        )
+
+    def register(self, fqn_suffix: str, factory: Callable) -> None:
+        """Add one constructor to this registry.
+
+        ``fqn_suffix`` must match the tail of the class's fully qualified name
+        (e.g. ``"json.MySQLJSONObjectExpression"``). ``factory(dialect)`` must
+        return an expression instance.
+        """
+        self.entries[fqn_suffix] = factory
+
+    def make_instance(self, cls: Type[BaseExpression], dialect: Any):
+        """Best-effort construction for an expression class.
+
+        Returns (instance, source) where source is "special", "heuristic", or
+        (None, "failed").
+        """
+        full_name = f"{cls.__module__}.{cls.__name__}"
+        special = next(
+            (fn for s, fn in self.entries.items() if full_name.endswith(s)), None
+        )
+        if special is not None:
+            try:
+                return special(dialect), "special"
+            except Exception:
+                return None, "special-failed"
+        instance = _try_construct(cls, dialect)
+        if instance is None:
+            return None, "failed"
+        return instance, "heuristic"
 
 
-def make_instance(cls: Type[BaseExpression], dialect: Any):
-    """Best-effort construction for an expression class.
+def register_special_constructor(
+    registry: SpecialConstructorRegistry, fqn_suffix: str, factory: Callable
+) -> None:
+    """Explicit-injection adapter: add one constructor to *registry*."""
+    registry.register(fqn_suffix, factory)
 
-    Returns (instance, source) where source is "special", "heuristic", or
-    (None, "failed").
-    """
-    full_name = f"{cls.__module__}.{cls.__name__}"
-    special = next((fn for s, fn in _SPECIAL_REGISTRY.items() if full_name.endswith(s)), None)
-    if special is not None:
-        try:
-            return special(dialect), "special"
-        except Exception:
-            return None, "special-failed"
-    instance = _try_construct(cls, dialect)
-    if instance is None:
-        return None, "failed"
-    return instance, "heuristic"
+
+def make_instance(
+    cls: Type[BaseExpression], dialect: Any, registry: SpecialConstructorRegistry
+):
+    """Explicit-injection adapter: construct through *registry*."""
+    return registry.make_instance(cls, dialect)
 
 
 def collect_expression_classes(package_path: str) -> Dict[str, Type[BaseExpression]]:
@@ -1114,10 +1139,12 @@ def sql_consistent(
 
 
 __all__ = [
+    "SpecialConstructorRegistry",
     "assert_params_equal",
     "collect_expression_classes",
     "make_instance",
     "register_special_constructor",
     "roundtrip_expression",
     "sql_consistent",
+    "special_constructors",
 ]

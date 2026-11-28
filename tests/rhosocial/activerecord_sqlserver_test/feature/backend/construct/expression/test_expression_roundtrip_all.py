@@ -182,8 +182,8 @@ _spec.loader.exec_module(_harness)
 assert_params_equal = _harness.assert_params_equal
 collect_expression_classes = _harness.collect_expression_classes
 make_instance = _harness.make_instance
-register_special_constructor = _harness.register_special_constructor
 roundtrip_expression = _harness.roundtrip_expression
+SpecialConstructorRegistry = _harness.SpecialConstructorRegistry
 
 SS_EXPR_PKG = "rhosocial.activerecord.backend.impl.sqlserver.expression"
 CORE_EXPR_PKG = "rhosocial.activerecord.backend.expression"
@@ -388,15 +388,19 @@ def _datetime_fn(dialect, class_name, field, source):
     return getattr(datetime_module, class_name)(dialect, field, source)
 
 
-def register_specials():
-    """Replace every introspective guess that would cost a real assertion."""
+def register_specials(registry):
+    """Fill *registry* with every guess that would cost a real assertion.
+
+    Registration is explicit so that importing this module cannot change what
+    any other consumer's registry contains. The caller owns the instance.
+    """
     # -- the FROM side ------------------------------------------------------
-    register_special_constructor(
+    registry.register(
         "sources.relation.NamedRelationRef",
         lambda d: NamedRelationRef(d, _table_obj(d)),
     )
     # CREATE VIEW needs a query, and the guess supplies the string "x" for it.
-    register_special_constructor(
+    registry.register(
         "statements.ddl_view.CreateViewStatement",
         lambda d: ddl_view.CreateViewStatement(
             d, view=_view_obj(d), query=_one_column_query(d)
@@ -405,7 +409,7 @@ def register_specials():
 
     # -- column pieces ------------------------------------------------------
     # Overrides the shared testsuite factory, which binds no dialect to its type.
-    register_special_constructor(
+    registry.register(
         "statements.ddl_table.ColumnDefinition", _integer_column
     )
 
@@ -421,11 +425,11 @@ def register_specials():
     # ``op`` on both nodes is validated against a closed set at construction
     # (add/sub/mul/div/mod and union/union_all/intersect/except), so the
     # introspective guess raises ValueError before a formatter is reached.
-    register_special_constructor(
+    registry.register(
         "operators.ArithmeticOperation",
         lambda d: ArithmeticOperation(d, "add", Column(d, "a"), Column(d, "b")),
     )
-    register_special_constructor(
+    registry.register(
         "query_sources.SetOperation",
         lambda d: SetOperation(
             d,
@@ -437,34 +441,34 @@ def register_specials():
     # The statement half of the same pair: the word-form enum refuses the
     # guess's bare string at construction, and SQL Server spells a compound
     # SELECT, so a factory turns it into an instance the matrix can assert.
-    register_special_constructor(
+    registry.register(
         "statements.dql.SetOperationStatement",
         lambda d: SetOperationStatement(
             d, op="union_all", parts=_compound_arms(d)
         ),
     )
 
-    register_special_constructor(
+    registry.register(
         "advanced_functions.CaseExpression",
         lambda d: CaseExpression(
             d, cases=[(_column_predicate(d), Literal(d, 1))], else_result=Literal(d, 0)
         ),
     )
-    register_special_constructor(
+    registry.register(
         "advanced_functions.WindowSpecification",
         lambda d: WindowSpecification(d, partition_by=["a"]),
     )
-    register_special_constructor(
+    registry.register(
         "advanced_functions.WindowDefinition",
         lambda d: WindowDefinition(d, "w", WindowSpecification(d, partition_by=["a"])),
     )
-    register_special_constructor(
+    registry.register(
         "advanced_functions.WindowClause",
         lambda d: WindowClause(d, [WindowDefinition(d, "w", WindowSpecification(d, partition_by=["a"]))]),
     )
     # An empty options dict is refused by the formatter, so a time-travel clause
     # needs an actual option.
-    register_special_constructor(
+    registry.register(
         "datetime.TemporalOptionsExpression",
         lambda d: __import__(
             "rhosocial.activerecord.backend.expression.datetime",
@@ -473,7 +477,7 @@ def register_specials():
     )
     # The guess supplies the string "x", which SQL Server's collation validator
     # rightly refuses.
-    register_special_constructor(
+    registry.register(
         "collation.CollateFunction",
         lambda d: __import__(
             "rhosocial.activerecord.backend.expression.collation",
@@ -482,16 +486,16 @@ def register_specials():
     )
 
     # -- ALTER TABLE actions ------------------------------------------------
-    register_special_constructor(
+    registry.register(
         "ddl_alter.AddColumnAction", lambda d: ddl_alter.AddColumnAction(d, _integer_column(d))
     )
-    register_special_constructor(
+    registry.register(
         "ddl_alter.AddTableConstraintAction",
         lambda d: ddl_alter.AddTableConstraintAction(
             d, TableConstraint(d, branch=TablePrimaryKeyConstraint(d, ["a"]), name="c")
         ),
     )
-    register_special_constructor(
+    registry.register(
         "ddl_alter.AddIndexAction",
         lambda d: ddl_alter.AddIndexAction(d, ddl_table.IndexDefinition(d, "i", ["a"])),
     )
@@ -501,22 +505,22 @@ def register_specials():
     # declaration-only action is exactly the kind-based drop this backend
     # refuses. Supplying the name keeps the class constructible and rendered
     # without advertising a kind-based drop.
-    register_special_constructor(
+    registry.register(
         "ddl_alter.DropTableConstraintAction",
         lambda d: ddl_alter.DropTableConstraintAction(d, "c"),
     )
 
     # -- constraints that must render without bind parameters ----------------
-    register_special_constructor(
+    registry.register(
         "ddl_table.ColumnConstraint",
         lambda d: ColumnConstraint(d, branch=ColumnNotNullConstraint(d), name="c"),
     )
-    register_special_constructor(
+    registry.register(
         "ddl_table.TableConstraint",
         lambda d: TableConstraint(d, branch=TablePrimaryKeyConstraint(d, ["a"]), name="c"),
     )
     # REFERENCES needs at least one referenced column; the guess supplies none.
-    register_special_constructor(
+    registry.register(
         "ddl_table.ReferencesClause",
         lambda d: ddl_table.ReferencesClause(d, Table(d, "other"), ["b"]),
     )
@@ -533,11 +537,11 @@ def register_specials():
         LikePredicate,
     )
 
-    register_special_constructor(
+    registry.register(
         "predicates.LikePredicate",
         lambda d: LikePredicate(d, LikeOperator.LIKE, Column(d, "a"), Literal(d, "%x%")),
     )
-    register_special_constructor(
+    registry.register(
         "predicates.ILikePredicate",
         lambda d: ILikePredicate(d, Column(d, "a"), "%x%"),
     )
@@ -561,29 +565,29 @@ def register_specials():
         ddl_truncate,
     )
 
-    register_special_constructor(
+    registry.register(
         "ddl_truncate.TruncateStatement",
         lambda d: ddl_truncate.TruncateStatement(d, _table_obj(d)),
     )
-    register_special_constructor(
+    registry.register(
         "ddl_table.CreateTableStatement",
         lambda d: ddl_table.CreateTableStatement(d, _table_obj(d), [_integer_column(d)]),
     )
-    register_special_constructor(
+    registry.register(
         "ddl_table.DropTableStatement",
         lambda d: ddl_table.DropTableStatement(d, _table_obj(d)),
     )
-    register_special_constructor(
+    registry.register(
         "ddl_view.DropViewStatement",
         lambda d: ddl_view.DropViewStatement(d, _view_obj(d)),
     )
-    register_special_constructor(
+    registry.register(
         "ddl_index.DropFulltextIndexStatement",
         lambda d: ddl_index.DropFulltextIndexStatement(
             d, _index_obj(d), _table_obj(d)
         ),
     )
-    register_special_constructor(
+    registry.register(
         "ddl_index.CreateFulltextIndexStatement",
         lambda d: ddl_index.CreateFulltextIndexStatement(
             d, index=_index_obj(d), table=_table_obj(d), columns=["a"]
@@ -591,11 +595,11 @@ def register_specials():
     )
     # A COMMENT ON is DDL: its comment must render as a literal rather than a
     # bind parameter, so the guess's bare string is replaced by one with a name.
-    register_special_constructor(
+    registry.register(
         "ddl_comment.CommentOnStatement",
         lambda d: ddl_comment.CommentOnStatement(d, "table", _table_obj(d), comment="c"),
     )
-    register_special_constructor(
+    registry.register(
         "ddl_trigger.DropTriggerStatement",
         lambda d: __import__(
             "rhosocial.activerecord.backend.expression.statements.ddl_trigger",
@@ -607,7 +611,7 @@ def register_specials():
     # reports the feature as unsupported rather than rendering. SQL Server's own
     # alias definition is used instead, so it renders and the round-trip is
     # asserted. Same key as the testsuite's, deliberately.
-    register_special_constructor(
+    registry.register(
         "statements.ddl_type.CreateTypeStatement",
         lambda d: ddl_type.CreateTypeStatement(
             d, _type_obj(d), _alias_type_definition(d)
@@ -615,7 +619,7 @@ def register_specials():
     )
 
     # -- MERGE ---------------------------------------------------------------
-    register_special_constructor(
+    registry.register(
         "dml.MergeAction",
         lambda d: MergeAction(
             d,
@@ -625,7 +629,7 @@ def register_specials():
             "matched",
         ),
     )
-    register_special_constructor(
+    registry.register(
         "dml.MergeStatement",
         lambda d: dml.MergeStatement(
             d,
@@ -993,42 +997,42 @@ def register_specials():
     # rows in the rendered half of the matrix, not in LEGITIMATE_NON_RENDERS --
     # and SQL Server's own spelling rides its own class and its own
     # constructor.
-    register_special_constructor(
+    registry.register(
         "sqlserver.expression.pivot.Pivot", pivot
     )
-    register_special_constructor(
+    registry.register(
         "columnstore.SQLServerColumnstoreIndexStatement", columnstore
     )
-    register_special_constructor(
+    registry.register(
         "constraint_state.SQLServerCheckConstraintStatement", check_constraint_state
     )
-    register_special_constructor(
+    registry.register(
         "constraint_state.SQLServerNocheckConstraintStatement", nocheck_constraint_state
     )
-    register_special_constructor(
+    registry.register(
         "extended_property.SQLServerExtendedPropertyWriteStatement",
         extended_property_write,
     )
-    register_special_constructor(
+    registry.register(
         "rename.SQLServerRenameObjectStatement", rename_object
     )
-    register_special_constructor(
+    registry.register(
         "default_constraint.SQLServerAddDefaultConstraintAction",
         add_default_constraint,
     )
-    register_special_constructor(
+    registry.register(
         "partition.SQLServerPartitionByRangeClause", partition_range
     )
     # Core's dedicated strategy clauses: the strategy word rides on the class,
     # so the generic introspective guess cannot supply it. Give them real keys
     # and round-trip them rather than pinning them as unconstructible.
-    register_special_constructor(
+    registry.register(
         "statements.ddl_partition.PartitionByRangeClause", core_partition_by_range
     )
-    register_special_constructor(
+    registry.register(
         "statements.ddl_partition.PartitionByListClause", core_partition_by_list
     )
-    register_special_constructor(
+    registry.register(
         "statements.ddl_partition.PartitionByHashClause", core_partition_by_hash
     )
     # Both take a required payload the guess cannot supply: the enforcement
@@ -1036,65 +1040,65 @@ def register_specials():
     # DOMAIN CHECK. SQL Server refuses each at render -- the first through its
     # own enforcement probe, the second through a formatter it does not declare
     # (already named under DOMAIN in UNMODELLED_FORMATTERS).
-    register_special_constructor(
+    registry.register(
         "statements.ddl_alter.AlterConstraintAction", alter_constraint_action
     )
-    register_special_constructor(
+    registry.register(
         "statements.ddl_domain.AddDomainCheckAction", add_domain_check_action
     )
-    register_special_constructor(
+    registry.register(
         "partition.SQLServerPartitionFunctionExpression", partition_function
     )
-    register_special_constructor(
+    registry.register(
         "partition.SQLServerPartitionSchemeExpression", partition_scheme
     )
-    register_special_constructor("type.SQLServerAliasTypeDefinition", alias_type)
-    register_special_constructor("type.SQLServerTableTypeDefinition", table_type)
-    register_special_constructor("type.SQLServerClrTypeDefinition", clr_type)
-    register_special_constructor("type.SQLServerDropTypeExpression", drop_type)
-    register_special_constructor("type.SQLServerRenameTypeStatement", rename_type)
-    register_special_constructor("column.SQLServerColumnDefinition", column_definition)
-    register_special_constructor("alter_column.SQLServerAlterColumn", alter_column)
+    registry.register("type.SQLServerAliasTypeDefinition", alias_type)
+    registry.register("type.SQLServerTableTypeDefinition", table_type)
+    registry.register("type.SQLServerClrTypeDefinition", clr_type)
+    registry.register("type.SQLServerDropTypeExpression", drop_type)
+    registry.register("type.SQLServerRenameTypeStatement", rename_type)
+    registry.register("column.SQLServerColumnDefinition", column_definition)
+    registry.register("alter_column.SQLServerAlterColumn", alter_column)
     # -- predicates and constraints that must render with no bind parameters ---
     # The operator normalises, the CHECK condition is a DDL position, and the
     # generated expression inlines its literal: three places the guess's bound
     # ``Literal`` is refused by name.
-    register_special_constructor("predicates.ComparisonPredicate", comparison)
-    register_special_constructor("ddl_table.TableCheckConstraint", check_constraint)
-    register_special_constructor(
+    registry.register("predicates.ComparisonPredicate", comparison)
+    registry.register("ddl_table.TableCheckConstraint", check_constraint)
+    registry.register(
         "ddl_table.ColumnCheckConstraint", column_check_constraint
     )
-    register_special_constructor(
+    registry.register(
         "ddl_table.ColumnGeneratedConstraint", generated_constraint
     )
     # A core node whose own default is an enum member cannot travel: the words
     # are supplied here so the class is constructible on the side of the
     # contract this matrix asserts, and the default path stays recorded in
     # ARTIFACT_GAPS rather than being quietly un-testable.
-    register_special_constructor(
+    registry.register(
         "statements.ddl_table.ForeignKeyConstraint", foreign_key
     )
-    register_special_constructor(
+    registry.register(
         "create_table.SQLServerCreateTableStatement", create_table
     )
-    register_special_constructor(
+    registry.register(
         "ddl.graph.SQLServerAsGraphTableExpression", as_graph_table
     )
-    register_special_constructor(
+    registry.register(
         "ddl.routine.SQLServerCreateFunctionStatement", create_function
     )
-    register_special_constructor(
+    registry.register(
         "ddl.routine.SQLServerCreateProcedureStatement", create_procedure
     )
-    register_special_constructor(
+    registry.register(
         "ddl.trigger.SQLServerCreateTriggerStatement", create_trigger
     )
-    register_special_constructor("dml.SQLServerMergeExpression", sqlserver_merge)
-    register_special_constructor("option_hint.SQLServerOptionHintClause", option_hint)
-    register_special_constructor("graph.SQLServerGraphPseudoColumn", pseudo_column)
-    register_special_constructor("graph.SQLServerGraphPattern", graph_pattern)
-    register_special_constructor("graph.SQLServerMatchPredicate", match_predicate)
-    register_special_constructor(
+    registry.register("dml.SQLServerMergeExpression", sqlserver_merge)
+    registry.register("option_hint.SQLServerOptionHintClause", option_hint)
+    registry.register("graph.SQLServerGraphPseudoColumn", pseudo_column)
+    registry.register("graph.SQLServerGraphPattern", graph_pattern)
+    registry.register("graph.SQLServerMatchPredicate", match_predicate)
+    registry.register(
         "graph.SQLServerShortestPathExpression", shortest_path
     )
     # -- two core classes that build as soon as they get a valid argument ----
@@ -1103,10 +1107,10 @@ def register_specials():
     # renders the nil literal cast to UNIQUEIDENTIFIER. Neither is a skip, and
     # neither belongs in UNCONSTRUCTIBLE -- a constructor is the honest answer
     # for a class that constructs fine once its own slot is filled.
-    register_special_constructor(
+    registry.register(
         "types.custom.CustomType", lambda d: CustomType(d, raw="VARCHAR(10)")
     )
-    register_special_constructor(
+    registry.register(
         "uuid.UUIDConstantExpression", lambda d: UUIDConstantExpression(d, "nil")
     )
     # -- one backend-specific question, answered in the form a name allows -----
@@ -1120,7 +1124,7 @@ def register_specials():
         SQLServerExtendedPropertyListQueryStatement,
     )
 
-    register_special_constructor(
+    registry.register(
         "introspection.SQLServerExtendedPropertyListQueryStatement",
         lambda d: SQLServerExtendedPropertyListQueryStatement(d, table_name="users"),
     )
@@ -1128,27 +1132,27 @@ def register_specials():
     # The introspective guess supplies a bare string where these classes take
     # SQLValue / BaseExpression operands, so the constructor refuses; each
     # one renders as soon as a real operand rides in the slot.
-    register_special_constructor(
+    registry.register(
         "functions.string.ChrFunction",
         lambda d: _string_fn(d, "ChrFunction", Literal(d, 65)),
     )
-    register_special_constructor(
+    registry.register(
         "functions.string.LeftFunction",
         lambda d: _string_fn(d, "LeftFunction", Column(d, "a"), Literal(d, 3)),
     )
-    register_special_constructor(
+    registry.register(
         "functions.string.RightFunction",
         lambda d: _string_fn(d, "RightFunction", Column(d, "a"), Literal(d, 3)),
     )
-    register_special_constructor(
+    registry.register(
         "functions.string.SpaceFunction",
         lambda d: _string_fn(d, "SpaceFunction", Literal(d, 3)),
     )
-    register_special_constructor(
+    registry.register(
         "functions.string.SubstringExpression",
         lambda d: _string_fn(d, "SubstringExpression", Column(d, "a"), Literal(d, 1)),
     )
-    register_special_constructor(
+    registry.register(
         "functions.string.OverlayExpression",
         lambda d: _string_fn(
             d, "OverlayExpression", Column(d, "a"), Column(d, "b"), Literal(d, 1)
@@ -1157,17 +1161,26 @@ def register_specials():
     # -- the EXTRACT family's shared base and its concrete node ---------------
     # Both take a field plus a BaseExpression source; the guess supplies a
     # bare string for the source and the class refuses it.
-    register_special_constructor(
+    registry.register(
         "datetime.ExtractFieldExpression",
         lambda d: _datetime_fn(d, "ExtractFieldExpression", "YEAR", Column(d, "ts")),
     )
-    register_special_constructor(
+    registry.register(
         "datetime._ExtractBase",
         lambda d: _datetime_fn(d, "_ExtractBase", "YEAR", Column(d, "ts")),
     )
 
 
-register_specials()
+@pytest.fixture(scope="session")
+def special_registry():
+    """The matrix's constructor table, built once and injected into its callers.
+
+    Registration is a fixture, not an import side effect: loading this module
+    by path from another test changes no one else's registry.
+    """
+    registry = SpecialConstructorRegistry()
+    register_specials(registry)
+    return registry
 
 
 # ---------------------------------------------------------------------------
@@ -1942,16 +1955,17 @@ def assert_sql_roundtrip_classified(
 
 
 @pytest.fixture(params=sorted(REGISTERED), ids=sorted(REGISTERED))
-def sqlserver_expr_case(request, sqlserver_dialect):
+def sqlserver_expr_case(request, sqlserver_dialect, special_registry):
     """One expression instance per collected class, or a pinned skip.
 
     A class that cannot be built is a skip only if it is named in
     :data:`UNCONSTRUCTIBLE`; anything else fails here rather than disappearing,
-    because an unnamed skip is a coverage hole with no marker.
+    because an unnamed skip is a coverage hole with no marker. The instance comes
+    from the caller's injected registry, never from a process-global one.
     """
     fqn = request.param
     cls = REGISTERED[fqn]
-    instance, source = make_instance(cls, sqlserver_dialect)
+    instance, source = make_instance(cls, sqlserver_dialect, special_registry)
     if instance is None:
         assert fqn in UNCONSTRUCTIBLE, (
             f"{fqn} cannot be built by the generic constructor ({source}) and is "
@@ -2209,7 +2223,38 @@ class TestExpressionRoundtrip:
 class TestMatrixIntegrity:
     """Guards on the matrix and its lists, so neither can quietly change."""
 
-    def test_unconstructible_list_is_exact(self, sqlserver_dialect):
+    def test_special_registry_is_import_order_independent(self, sqlserver_dialect):
+        """Loading a consumer cannot change the table a registry is built from.
+
+        One registry is built before the consumer module is loaded and one after;
+        with the old process-global table those two differed, because registering
+        specials was an import side effect. Now the consumer is inert and reads
+        only the registry it is handed.
+        """
+        import importlib.util
+        from pathlib import Path
+
+        before = SpecialConstructorRegistry()
+        register_specials(before)
+
+        contract_path = Path(__file__).parent / "expression_parse_contract.py"
+        spec = importlib.util.spec_from_file_location(
+            "sqlserver_parse_contract_order_probe", contract_path
+        )
+        contract = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(contract)
+
+        after = SpecialConstructorRegistry()
+        register_specials(after)
+        assert set(after.entries) == set(before.entries)
+        assert len(before.entries) > len(SpecialConstructorRegistry().entries)
+
+        instance, source = contract.make_instance(
+            NamedRelationRef, sqlserver_dialect, before
+        )
+        assert instance is not None and source == "special"
+
+    def test_unconstructible_list_is_exact(self, sqlserver_dialect, special_registry):
         """Pin the unconstructible tuple against what the constructor really skips.
 
         Two directions are checked. A class named here that now builds has gained
@@ -2220,7 +2265,7 @@ class TestMatrixIntegrity:
             sorted(
                 fqn
                 for fqn in REGISTERED
-                if make_instance(REGISTERED[fqn], sqlserver_dialect)[0] is None
+                if make_instance(REGISTERED[fqn], sqlserver_dialect, special_registry)[0] is None
             )
         )
         assert actual == tuple(sorted(UNCONSTRUCTIBLE)), (
@@ -2252,14 +2297,16 @@ class TestMatrixIntegrity:
             f"{sorted(unknown)}"
         )
 
-    def test_pinned_non_render_really_does_not_render(self, sqlserver_dialect):
+    def test_pinned_non_render_really_does_not_render(
+        self, sqlserver_dialect, special_registry
+    ):
         """Each pinned entry still raises what it claims, for the stated reason.
 
         Without this, an entry could sit in the dict for a class that renders
         perfectly well, and the matrix would be asserting nothing about it.
         """
         for fqn, (expected_type, fragment) in LEGITIMATE_NON_RENDERS.items():
-            instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect)
+            instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect, special_registry)
             assert instance is not None, (
                 f"{fqn} is pinned as a non-render but could not be constructed "
                 f"({source})"
@@ -2271,7 +2318,7 @@ class TestMatrixIntegrity:
                 f"{exc_info.value}"
             )
 
-    def test_unmodelled_formatter_list_is_exact(self, sqlserver_dialect):
+    def test_unmodelled_formatter_list_is_exact(self, sqlserver_dialect, special_registry):
         """Pin the unmodelled-formatter table against what the dialect lacks.
 
         Observed rather than assumed: for each class the matrix covers, either
@@ -2299,7 +2346,7 @@ class TestMatrixIntegrity:
         """
         observed = set()
         for fqn in sorted(REGISTERED):
-            instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect)
+            instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect, special_registry)
             if instance is None:
                 continue
             try:
@@ -2381,7 +2428,7 @@ class TestMatrixIntegrity:
             f"the matrix covers classes the kind whitelist cannot resolve: {unresolved}"
         )
 
-    def test_artifact_gap_list_is_exact(self, sqlserver_dialect):
+    def test_artifact_gap_list_is_exact(self, sqlserver_dialect, special_registry):
         """Pin the artifact-gap table against what the channels really carry.
 
         Both directions, and each row is checked against the tree right here: a
@@ -2404,7 +2451,7 @@ class TestMatrixIntegrity:
                     f"{fqn}: ARTIFACT_GAPS names channel {name!r}; the matrix "
                     f"runs {list(_ARTIFACT_CHANNELS)}"
                 )
-            instance, _source = make_instance(REGISTERED[fqn], sqlserver_dialect)
+            instance, _source = make_instance(REGISTERED[fqn], sqlserver_dialect, special_registry)
             assert instance is not None, (
                 f"{fqn} is pinned as an artifact gap but cannot be built"
             )
@@ -2424,7 +2471,7 @@ class TestMatrixIntegrity:
                     "it -- remove the row"
                 )
 
-    def test_coverage_report(self, sqlserver_dialect):
+    def test_coverage_report(self, sqlserver_dialect, special_registry):
         """Surface what the matrix covers, so coverage stays transparent."""
         branches = {
             "rendered": 0,
@@ -2435,7 +2482,7 @@ class TestMatrixIntegrity:
         }
         constructible = []
         for fqn in sorted(REGISTERED):
-            instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect)
+            instance, source = make_instance(REGISTERED[fqn], sqlserver_dialect, special_registry)
             if instance is None:
                 continue
             constructible.append(fqn)

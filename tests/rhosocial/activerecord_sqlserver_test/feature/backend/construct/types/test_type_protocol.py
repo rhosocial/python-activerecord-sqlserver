@@ -1649,12 +1649,10 @@ class TestParseRoundTripSweep:
 
     @pytest.fixture(scope="class")
     def registry(self):
-        """The round-trip module's registry, loaded from beside this file.
+        """The round-trip module's class table, loaded from beside this file.
 
-        Executing it also registers its special constructors, which the
-        sweep's ``make_instance`` consults -- the same registrations the
-        full suite performs at collection time, repeated here so the
-        sweep also holds when this file runs alone.
+        Loading the module is inert now: its special constructors are registered
+        into the explicit registry below, not into a process-global table.
         """
         import importlib.util
         from pathlib import Path
@@ -1669,7 +1667,31 @@ class TestParseRoundTripSweep:
         assert registry, "the round-trip module exposes no registry"
         return registry
 
-    def test_every_rendered_type_parses_back_coherently(self, registry):
+    @pytest.fixture(scope="session")
+    def special_registry(self):
+        """This sweep's own constructor table, filled by explicit injection.
+
+        A fixture-local module cannot see a fixture defined beside the matrix,
+        so the same construction is repeated here from the same source: build a
+        ``SpecialConstructorRegistry`` and call the matrix's ``register_specials``
+        on that one instance.
+        """
+        import importlib.util
+        from pathlib import Path
+
+        path = (
+            Path(__file__).parents[1] / "expression" / "test_expression_roundtrip_all.py"
+        )
+        spec = importlib.util.spec_from_file_location("sqlserver_rt_specials", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        registry = module.SpecialConstructorRegistry()
+        module.register_specials(registry)
+        return registry
+
+    def test_every_rendered_type_parses_back_coherently(
+        self, registry, special_registry
+    ):
         # The testsuite dropped utils/expression in e05edb0 ("round-trip
         # coverage moves to the owning repository") and parse_contract died
         # with it -- it imported make_instance from the deleted harness. The
@@ -1694,6 +1716,7 @@ class TestParseRoundTripSweep:
         failures = parse_roundtrip_failures(
             dialect,
             registry,
+            special_registry=special_registry,
             widening=self.WIDENING_ANSWERS,
         )
         assert failures == [], "\n".join(failures)
