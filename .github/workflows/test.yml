@@ -71,6 +71,7 @@ jobs:
 
   benchmark-sqlserver:
     name: Run benchmarks with Python 3.14 and SQL Server 2025
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -206,6 +207,7 @@ jobs:
 
   test-py39-sqlserver2022:
     name: Run tests with Python 3.9 and SQL Server 2022
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     services:
       sqlserver:
@@ -292,10 +294,11 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
 
   test-py39-sqlserver2017:
     name: Run tests with Python 3.9 and SQL Server 2017
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     services:
       sqlserver:
@@ -382,10 +385,11 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
 
   test-py310-sqlserver2019:
     name: Run tests with Python 3.10 and SQL Server 2019
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     services:
       sqlserver:
@@ -472,10 +476,11 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
 
   test-py311-sqlserver2019:
     name: Run tests with Python 3.11 and SQL Server 2019
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     services:
       sqlserver:
@@ -562,10 +567,11 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
 
   test-py312-sqlserver2025:
     name: Run tests with Python 3.12 and SQL Server 2025
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     services:
       sqlserver:
@@ -652,10 +658,11 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
 
   test-py313-sqlserver2022:
     name: Run tests with Python 3.13 and SQL Server 2022
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     services:
       sqlserver:
@@ -742,10 +749,11 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
 
   test-py313t-sqlserver2019:
     name: Run tests with Python 3.13t (free-threaded) and SQL Server 2019
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     continue-on-error: true
     services:
@@ -833,10 +841,11 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
 
   test-py314-sqlserver2025:
     name: Run tests with Python 3.14 and SQL Server 2025
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     services:
       sqlserver:
@@ -923,7 +932,7 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ --tb=short -n 8 --dist=loadgroup --cov=rhosocial.activerecord.backend.impl.sqlserver --cov-branch --cov-report=xml --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ --tb=short -n 8 --dist=loadgroup --cov=rhosocial.activerecord.backend.impl.sqlserver --cov-branch --cov-report=xml --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
@@ -936,6 +945,7 @@ jobs:
 
   test-py314t-sqlserver2022:
     name: Run tests with Python 3.14t (free-threaded) and SQL Server 2022
+    needs: formal-rules-contracts
     runs-on: ubuntu-24.04
     services:
       sqlserver:
@@ -1022,4 +1032,4 @@ jobs:
       run: |
         export PYTHONPATH=src:tests
         python tests/enable_read_committed_snapshot.py || true
-        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection
+        python -m pytest tests/ -n 8 --dist=loadgroup --tb=short -x --ignore=tests/benchmark --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/connection --ignore=tests/rhosocial/activerecord_sqlserver_test/feature/rules
